@@ -1,0 +1,7 @@
+# PLUMA development and test dependencies
+# Install with: pip install -r requirements-dev.txt
+pytest>=8.2
+pytest-timeout>=2.3
+psutil>=6.0
+pydantic>=2.7
+pyyaml>=6.0

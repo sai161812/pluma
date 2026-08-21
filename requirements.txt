@@ -1,0 +1,6 @@
+# PLUMA runtime dependencies
+# Heavy ML runtimes (whisper.cpp, llama.cpp, PaddleOCR/ONNX) are NOT listed here.
+# They are loaded on-demand through adapter interfaces and must not be imported
+# by the resident core at startup.
+pydantic>=2.7
+pyyaml>=6.0
