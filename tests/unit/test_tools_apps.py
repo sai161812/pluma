@@ -1,0 +1,68 @@
+"""tests.unit.test_tools_apps — Unit and verification tests for App tools."""
+
+import sys
+import time
+import pytest
+
+from pluma.tools.apps import (
+    execute_app_status,
+    execute_close_app,
+    execute_list_apps,
+    execute_open_app,
+)
+from pluma.tools.registry import ToolRegistry, register_default_tools
+
+
+@pytest.fixture
+def registry() -> ToolRegistry:
+    reg = ToolRegistry()
+    register_default_tools(reg)
+    return reg
+
+
+def test_list_apps_and_app_status() -> None:
+    res = execute_list_apps({})
+    assert res.ok is True
+    assert res.verified is True
+    assert "count" in res.data
+    assert res.data["count"] > 0
+
+    # Query status of python executable
+    res_stat = execute_app_status({"app_name": "python"})
+    assert res_stat.ok is True
+    assert res_stat.verified is True
+
+
+def test_open_and_close_fixture_app() -> None:
+    # Open the fixture app in spin mode
+    open_res = execute_open_app({
+        "app_name": sys.executable,
+        "arguments": ["tests/fixtures/fixture_app.py", "spin"],
+    })
+    assert open_res.ok is True
+    assert open_res.verified is True
+    assert "pid" in open_res.data
+    pid = open_res.data["pid"]
+
+    try:
+        # Check app status by PID
+        stat_res = execute_app_status({"app_name": str(pid)})
+        assert stat_res.ok is True
+        assert stat_res.data["running"] is True
+
+        # Close the fixture app
+        close_res = execute_close_app({"app_name": str(pid), "force": True})
+        assert close_res.ok is True
+        assert close_res.verified is True
+        
+        # Verify it's not running
+        time.sleep(0.2)
+        stat_after = execute_app_status({"app_name": str(pid)})
+        assert stat_after.data["running"] is False
+    finally:
+        # Emergency cleanup if still alive
+        import subprocess
+        try:
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+        except Exception:
+            pass

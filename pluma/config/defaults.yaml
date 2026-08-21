@@ -1,0 +1,57 @@
+# PLUMA configuration baseline
+# Source: PLUMA_MASTER_SPEC.md Appendix A
+# Do not add ML model paths or runtime settings here; those live in user_settings.json.
+
+agent:
+  text_hotkey: "alt+space"
+  stop_hotkey: "ctrl+alt+esc"
+  max_plan_steps: 8
+  default_tool_timeout_seconds: 15
+  fast_path_enabled: true
+  continuous_screen_polling: false
+
+runtime:
+  model_idle_unload_seconds: 30
+  stt_idle_unload_seconds: 20
+  ocr_idle_unload_seconds: 10
+  allow_short_warm_grace: true
+
+voice:
+  required: true
+  activation_default: "push_to_talk"
+  wake_phrase_enabled: false
+  save_audio: false
+
+perception:
+  uia_first: true
+  ocr_enabled: true
+  ocr_scope: "target_window_or_region"
+  persist_screenshots: false
+  snapshot_ttl_seconds: 3
+  coordinate_fallback_requires_fresh_snapshot: true
+
+brain:
+  runtime: "llama_cpp"
+  temperature: 0.0
+  structured_output: true
+  model_profile: "benchmark_selected_small_local"
+
+policy:
+  confirm_high_risk: true
+  permanent_elevation: false
+  redact_sensitive_logs: true
+
+stop:
+  block_new_steps_immediately: true
+  rollback_reversible_actions: true
+  terminate_owned_unresponsive_workers: true
+  touch_preexisting_user_apps: false
+
+memory:
+  database: "sqlite"
+  activity_view_enabled: true
+  save_chain_of_thought: false
+  deterministic_activity_text: true
+
+ui:
+  visual_design_status: "owner_defined_later"

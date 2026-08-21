@@ -1,0 +1,314 @@
+"""pluma.tools.registry — ToolRegistry: register, validate, look up, and execute tools.
+
+The registry is the single source of truth for what PLUMA can do. Every
+tool that the router, planner, policy engine, or executor uses must be
+registered here. Tools that are not in the registry cannot be executed.
+
+Spec §11: "Every real action is a registered tool."
+Spec §20.2 Plan constraints: "tool must exist in registry."
+
+No OS-automation, ML, or adapter code in this module.
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from typing import Any, Callable, Dict, Iterator, List, Optional
+
+from pydantic import BaseModel, ValidationError
+
+from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
+
+
+class UnknownToolError(KeyError):
+    """Raised when a tool name is not found in the registry."""
+
+
+class ToolArgumentError(ValueError):
+    """Raised when tool arguments fail schema validation."""
+
+
+class ToolRegistry:
+    """Thread-safe registry of ToolSpec objects.
+
+    Usage:
+        registry = ToolRegistry()
+        register_default_tools(registry)
+        spec = registry.lookup("open_app")
+        result = registry.execute(ToolCall(...), task_context)
+    """
+
+    def __init__(self) -> None:
+        self._specs: Dict[str, ToolSpec] = {}
+        self._lock = threading.RLock()
+
+    # ------------------------------------------------------------------
+    # Registration
+    # ------------------------------------------------------------------
+
+    def register(self, spec: ToolSpec, *, overwrite: bool = False) -> None:
+        """Register a ToolSpec.
+
+        Raises ValueError if a tool with the same name is already registered
+        and *overwrite* is False.
+        """
+        with self._lock:
+            if spec.name in self._specs and not overwrite:
+                raise ValueError(
+                    f"Tool {spec.name!r} is already registered. "
+                    "Pass overwrite=True to replace it."
+                )
+            self._specs[spec.name] = spec
+
+    def unregister(self, name: str) -> None:
+        """Remove a tool from the registry. Raises UnknownToolError if absent."""
+        with self._lock:
+            if name not in self._specs:
+                raise UnknownToolError(name)
+            del self._specs[name]
+
+    # ------------------------------------------------------------------
+    # Lookup
+    # ------------------------------------------------------------------
+
+    def lookup(self, name: str) -> ToolSpec:
+        """Return the ToolSpec for *name*. Raises UnknownToolError if absent."""
+        with self._lock:
+            try:
+                return self._specs[name]
+            except KeyError:
+                raise UnknownToolError(name) from None
+
+    def contains(self, name: str) -> bool:
+        """Return True if *name* is a registered tool."""
+        with self._lock:
+            return name in self._specs
+
+    def all_names(self) -> List[str]:
+        """Return sorted list of all registered tool names."""
+        with self._lock:
+            return sorted(self._specs.keys())
+
+    def tools_by_risk(self, risk_class: RiskClass) -> List[ToolSpec]:
+        """Return all tools with the given risk class."""
+        with self._lock:
+            return [s for s in self._specs.values() if s.risk_class == risk_class]
+
+    def __iter__(self) -> Iterator[ToolSpec]:
+        with self._lock:
+            return iter(list(self._specs.values()))
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._specs)
+
+    # ------------------------------------------------------------------
+    # Argument validation
+    # ------------------------------------------------------------------
+
+    def validate_call(self, tool_name: str, arguments: Dict[str, Any]) -> None:
+        """Validate *arguments* against the registered ToolSpec's args_schema.
+
+        Raises:
+            UnknownToolError   — tool name is not registered.
+            ToolArgumentError  — arguments fail schema validation.
+
+        This is the gating check that runs before policy and before execution.
+        Spec §20.2: "arguments must validate" and "tool must exist in registry".
+        """
+        spec = self.lookup(tool_name)  # Raises UnknownToolError if absent.
+        self._validate_args(spec, arguments)
+
+    @staticmethod
+    def _validate_args(spec: ToolSpec, arguments: Dict[str, Any]) -> None:
+        """Run the args_schema validator for *spec* against *arguments*."""
+        schema = spec.args_schema
+
+        # Pydantic model class
+        if isinstance(schema, type) and issubclass(schema, BaseModel):
+            try:
+                schema.model_validate(arguments)
+            except ValidationError as exc:
+                raise ToolArgumentError(
+                    f"Invalid arguments for tool {spec.name!r}: {exc}"
+                ) from exc
+            return
+
+        # JSON Schema dict
+        if isinstance(schema, dict):
+            try:
+                import jsonschema
+                try:
+                    jsonschema.validate(instance=arguments, schema=schema)
+                except jsonschema.ValidationError as exc:
+                    raise ToolArgumentError(
+                        f"Invalid arguments for tool {spec.name!r}: {exc.message}"
+                    ) from exc
+            except ImportError:
+                raise ToolArgumentError(
+                    f"Tool {spec.name!r} uses a JSON Schema but jsonschema is not installed."
+                )
+            return
+
+        # Unknown schema type
+        raise ToolArgumentError(
+            f"Tool {spec.name!r} has an unsupported args_schema type: "
+            f"{type(schema).__name__!r}. Use a Pydantic BaseModel subclass or a dict."
+        )
+
+    # ------------------------------------------------------------------
+    # Execution Runner with Verification, Undo, & Ledger
+    # ------------------------------------------------------------------
+
+    def execute(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        task_context: Any = None,
+        ledger: Any = None,
+        step_index: int = 0,
+    ) -> ToolResult:
+        """Execute a tool call with validation, cancellation check, verification, and undo capture."""
+        spec = self.lookup(tool_name)
+        self._validate_args(spec, arguments)
+
+        # 1. Check cancellation latch before starting
+        if spec.cancellable and task_context and hasattr(task_context, "cancellation_token"):
+            task_context.cancellation_token.raise_if_cancelled()
+
+        # 2. Pre-state capture for reversible tools
+        undo_record = None
+        if spec.undo_builder:
+            try:
+                undo_record = spec.undo_builder(arguments)
+                if undo_record and task_context and hasattr(task_context, "undo_stack"):
+                    task_context.undo_stack.append(undo_record)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to build undo record for %s: %s", tool_name, e)
+
+        # 3. Execution with duration measurement
+        start_t = time.perf_counter()
+        try:
+            result = spec.executor(arguments, task_context)
+        except Exception as e:
+            duration_ms = (time.perf_counter() - start_t) * 1000.0
+            result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
+
+        duration_ms = (time.perf_counter() - start_t) * 1000.0
+
+        # 4. Postcondition verification
+        verified = result.verified
+        verify_detail = result.verify_detail
+        if result.ok and spec.verifier:
+            try:
+                v_res = spec.verifier(result)
+                verified = v_res.ok
+                verify_detail = v_res
+            except Exception as e:
+                verified = False
+                verify_detail = VerifyResult(ok=False, method="verifier_exception", detail=str(e))
+
+        # 5. Build final consolidated result
+        final_result = ToolResult(
+            ok=result.ok and verified,
+            tool=tool_name,
+            data=result.data,
+            factual_message=result.factual_message,
+            verified=verified,
+            verify_detail=verify_detail,
+            duration_ms=duration_ms,
+            adapter_used=result.adapter_used or "native",
+            error=result.error if not (result.ok and verified) else None,
+            error_code=result.error_code if not (result.ok and verified) else None,
+            undo_record=undo_record,
+        )
+
+        # 6. Record to Activity Ledger if provided
+        if ledger and task_context and hasattr(task_context, "task_id"):
+            try:
+                from pluma.memory.activity import ActionRecord, UndoRecord
+                action_rec = ActionRecord(
+                    task_id=task_context.task_id,
+                    step_index=step_index,
+                    tool=tool_name,
+                    args_raw=arguments,
+                    risk=spec.risk_class.value,
+                    adapter=final_result.adapter_used,
+                    duration_ms=duration_ms,
+                    result_data=final_result.data,
+                    verified=verified,
+                    verification_detail=verify_detail.model_dump() if verify_detail else None,
+                    error_detail={"error": final_result.error, "code": final_result.error_code} if final_result.error else None,
+                )
+                row_id = ledger.insert_action(action_rec)
+                if undo_record and row_id is not None:
+                    ledger.insert_undo_record(UndoRecord(action_row_id=row_id, undo_data=undo_record))
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error("Failed to record tool execution to Activity Ledger: %s", e)
+
+        return final_result
+
+    # ------------------------------------------------------------------
+    # Schema export for planner
+    # ------------------------------------------------------------------
+
+    def schema_for_planner(self, names: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Return a list of minimal tool schema dicts suitable for sending to the planner."""
+        with self._lock:
+            targets = (
+                [self._specs[n] for n in names if n in self._specs]
+                if names is not None
+                else list(self._specs.values())
+            )
+
+        result: List[Dict[str, Any]] = []
+        for spec in targets:
+            schema = spec.args_schema
+            if isinstance(schema, type) and issubclass(schema, BaseModel):
+                args_json = schema.model_json_schema()
+            elif isinstance(schema, dict):
+                args_json = schema
+            else:
+                args_json = {}
+
+            result.append({
+                "name": spec.name,
+                "description": spec.description,
+                "risk_class": spec.risk_class.value,
+                "args_schema": args_json,
+                "timeout_s": spec.timeout_s,
+                "cancellable": spec.cancellable,
+            })
+        return result
+
+
+def register_default_tools(registry: ToolRegistry) -> None:
+    """Register all 19 default tools into the provided ToolRegistry.
+    
+    Tools registered:
+      Files (5): list_files, find_file, move_file, rename_file, create_folder
+      Apps (5): open_app, close_app, focus_app, list_apps, app_status
+      Windows (2): list_windows, focus_window
+      Audio (3): set_volume, mute, unmute
+      System & Memory (4): get_system_status, stop_current, show_activity, undo_last
+    """
+    from pluma.tools.apps import APP_TOOL_SPECS
+    from pluma.tools.audio import AUDIO_TOOL_SPECS
+    from pluma.tools.clipboard import CLIPBOARD_TOOL_SPECS
+    from pluma.tools.files import FILE_TOOL_SPECS
+    from pluma.tools.system import SYSTEM_TOOL_SPECS
+    from pluma.tools.windows import WINDOW_TOOL_SPECS
+
+    all_specs = (
+        FILE_TOOL_SPECS
+        + APP_TOOL_SPECS
+        + WINDOW_TOOL_SPECS
+        + AUDIO_TOOL_SPECS
+        + SYSTEM_TOOL_SPECS
+        + CLIPBOARD_TOOL_SPECS
+    )
+    for spec in all_specs:
+        registry.register(spec, overwrite=True)

@@ -1,0 +1,32 @@
+# PLUMA
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# PLUMA runtime data (user-local; never committed)
+data/pluma.db
+cache/
+logs/
+temp/
+
+# Model weights (never committed)
+models/
+
+# Test artifacts
+.pytest_cache/
+*.log

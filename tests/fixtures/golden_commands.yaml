@@ -1,0 +1,225 @@
+# PLUMA golden command corpus — Phase 0 baseline
+# Format per entry:
+#   id: unique test ID
+#   command: natural language command text
+#   input_mode: text | voice
+#   expected_route: FAST | SCREEN | SMART | DEEP
+#   expected_tools: list of tool names (in order, for multi-step)
+#   expected_risk: risk class of the primary action
+#   no_llm: true if the LLM must NOT be started for this command
+#   no_ocr: true if OCR must NOT start
+#   notes: optional explanation
+
+commands:
+  # --- FAST route: volume and audio ---
+  - id: GC-001
+    command: "mute"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [mute]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-002
+    command: "volume 30"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [set_volume]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-003
+    command: "unmute"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [unmute]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-004
+    command: "set volume to 50 percent"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [set_volume]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  # --- FAST route: app launch ---
+  - id: GC-005
+    command: "open notepad"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [open_app]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-006
+    command: "open calculator"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [open_app]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-007
+    command: "launch notepad"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [open_app]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  # --- FAST route: window management ---
+  - id: GC-008
+    command: "minimize window"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [minimize_window]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-009
+    command: "maximize window"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [maximize_window]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  # --- FAST route: system status ---
+  - id: GC-010
+    command: "show activity"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [show_activity]
+    expected_risk: READ
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-011
+    command: "system status"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [get_system_status]
+    expected_risk: READ
+    no_llm: true
+    no_ocr: true
+
+  - id: GC-012
+    command: "battery status"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [battery_status]
+    expected_risk: READ
+    no_llm: true
+    no_ocr: true
+
+  # --- FAST route: voice commands (same tools, different input_mode) ---
+  - id: GC-013
+    command: "mute"
+    input_mode: voice
+    expected_route: FAST
+    expected_tools: [mute]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+    notes: "Voice and text must use the same route and tool."
+
+  - id: GC-014
+    command: "volume twenty"
+    input_mode: voice
+    expected_route: FAST
+    expected_tools: [set_volume]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  # --- FAST route: clipboard ---
+  - id: GC-015
+    command: "clear clipboard"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [clipboard_clear]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  # --- SCREEN route: UI interaction ---
+  - id: GC-016
+    command: "click submit"
+    input_mode: text
+    expected_route: SCREEN
+    expected_tools: [get_active_window_context, find_control, invoke_control]
+    expected_risk: MEDIUM
+    no_llm: true
+    no_ocr: false
+    notes: "UIA first; OCR only if UIA cannot find Submit."
+
+  - id: GC-017
+    command: "click OK on this screen"
+    input_mode: text
+    expected_route: SCREEN
+    expected_tools: [get_active_window_context, find_control, invoke_control]
+    expected_risk: MEDIUM
+    no_llm: true
+    no_ocr: false
+
+  # --- SMART route: file operations requiring planner ---
+  - id: GC-018
+    command: "move the PDF I downloaded yesterday to my Documents folder"
+    input_mode: text
+    expected_route: SMART
+    expected_tools: [find_file, move_file]
+    expected_risk: MEDIUM
+    no_llm: false
+    no_ocr: true
+    notes: "Planner needed for temporal reference resolution."
+
+  - id: GC-019
+    command: "rename the latest screenshot to project_demo"
+    input_mode: text
+    expected_route: SMART
+    expected_tools: [find_file, rename_file]
+    expected_risk: MEDIUM
+    no_llm: false
+    no_ocr: true
+
+  # --- HIGH risk: requires confirmation ---
+  - id: GC-020
+    command: "delete all files in temp folder"
+    input_mode: text
+    expected_route: SMART
+    expected_tools: [list_folder, safe_delete]
+    expected_risk: HIGH
+    no_llm: false
+    no_ocr: true
+    notes: "Must trigger material-effect confirmation before execution."
+
+  # --- STOP command: always FAST ---
+  - id: GC-021
+    command: "stop"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [stop_current]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
+
+  # --- Undo command ---
+  - id: GC-022
+    command: "undo"
+    input_mode: text
+    expected_route: FAST
+    expected_tools: [undo_last]
+    expected_risk: LOW
+    no_llm: true
+    no_ocr: true
