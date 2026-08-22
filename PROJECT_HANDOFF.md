@@ -77,10 +77,10 @@
 | **Phase 1** | Resident Core, Task Capsule, Windows Job Objects, atomic STOP sequence | **COMPLETED** | 82 (cumul.) |
 | **Phase 2** | Typed tool framework, initial 19 tools, postcondition verifiers, ledger integration | **COMPLETED** | 101 (cumul.) |
 | **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | **COMPLETED** | 220 (cumul.) |
-| **Phase 4** | Windows Automation Adapters (Native Win32, PowerShell, UIA, Input, Screen capture) | **COMPLETED** | **246 (cumul.)** |
-| **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | **NEXT UP** | Pending |
-| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Planned | Pending |
-| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Planned | Pending |
+| **Phase 4** | Windows Automation Adapters (Native Win32, PowerShell, UIA, Input, Screen capture) | **COMPLETED** | 246 (cumul.) |
+| **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | **COMPLETED** | 266 (cumul.) |
+| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **COMPLETED** | **294 (cumul.)** |
+| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **NEXT UP** | Pending |
 | **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Planned | Pending |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | Planned | Pending |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | Planned | Pending |
@@ -91,45 +91,23 @@
 
 ---
 
-## 5. Current Verified Implementation Details (Phases 0–4)
+## 5. Current Verified Implementation Details (Phases 0–6)
 
 ### Phase 0: Schema Contracts & Storage Foundation
 - [`pluma/brain/schemas.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/schemas.py): `RouteMode` (`FAST`, `SCREEN`, `SMART`, `DEEP`), `PlanMode`, `ToolCall`, `Plan` with hard cap step validation ($N \le 20$).
 - [`pluma/core/request.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/request.py): `PlumaRequest`, `InputMode` (`TEXT`, `VOICE`), `RequestID` validation.
 - [`pluma/core/cancellation.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/cancellation.py): `CancellationToken`, `StopReason`, `TaskCancelledError`.
 - [`pluma/memory/db.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/db.py): SQLite with WAL mode, busy timeout, queued async background writer loop for crash resiliency.
-- [`pluma/config/loader.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/config/loader.py): Structured YAML config loader.
-- [`tests/fixtures/golden_commands.yaml`](file:///D:/Workspace/DEVEL/PLUMA/tests/fixtures/golden_commands.yaml): 22 reference golden commands (GC-001 to GC-022) with expected routes, tools, and `no_llm`/`no_ocr` assertions.
 
 ### Phase 1: Resident Core & Process Containment
 - [`pluma/core/job_object.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/job_object.py): Win32 `CreateJobObjectW`, `SetInformationJobObject` setting `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, `AssignProcessToJobObject`.
 - [`pluma/core/ownership.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/ownership.py): `OwnershipRegistry` tracking PID creation timestamps via `GetProcessTimes` to protect against PID reuse.
-- [`pluma/core/task_supervisor.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/task_supervisor.py): `TaskCapsule` and `TaskSupervisor` implementing the deterministic STOP sequence (§12.2): (1) cancel latch, (2) STOPPING transition, (3) Job Object termination, (4) resource cleanup, (5) STOPPED state.
-- [`pluma/core/ipc.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/ipc.py): Local-only Windows named pipe `IpcServer` / `IpcClient` with blocking accept loop and test isolation.
-- [`pluma/core/resident.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/resident.py): Resident daemon with Win32 `RegisterHotKey` loop and crash recovery stubs.
+- [`pluma/core/task_supervisor.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/task_supervisor.py): Complete task state machine with reverse rollback and Job Object termination.
+- [`pluma/core/ipc.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/ipc.py): Local-only Windows named pipe `IpcServer` / `IpcClient`.
+- [`pluma/core/resident.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/resident.py): Resident daemon with Win32 `RegisterHotKey` loop and push-to-talk integration.
 
 ### Phase 2: Typed Tool Framework & Initial Tools
 - [`pluma/tools/base.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/base.py): `ToolSpec`, `ToolResult`, `VerifyResult`, `RiskClass`, `AdapterPriority`.
-- [`pluma/tools/registry.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/registry.py): `ToolRegistry` with full `execute()` lifecycle: argument validation $\rightarrow$ cancellation latch check $\rightarrow$ undo pre-state capture $\rightarrow$ execution with perf timing $\rightarrow$ postcondition verification $\rightarrow$ Activity Ledger recording.
-- [`pluma/verify/common.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/verify/common.py): Deterministic postcondition verifiers (`verify_file_exists`, `verify_file_moved`, `verify_file_renamed`, `verify_dir_created`, `verify_process_running`, `verify_process_closed`, `verify_window_focused`, `verify_noop`).
-- Built-in Tool Implementations:
-  - [`pluma/tools/files.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/files.py): `list_files`, `find_file`, `move_file`, `rename_file`, `create_folder`.
-  - [`pluma/tools/apps.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/apps.py): `open_app`, `close_app`, `focus_app`, `list_apps`, `app_status` (assigned to Windows Job Objects).
-  - [`pluma/tools/windows.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/windows.py): `list_windows`, `focus_window`.
-  - [`pluma/tools/audio.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/audio.py): `set_volume`, `mute`, `unmute` (lazy `pycaw` with mock fallback for headless test environments).
-  - [`pluma/tools/system.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/system.py): `get_system_status`, `stop_current`, `show_activity`, `undo_last`.
-
-### Phase 3: Deterministic FAST Route
-- [`pluma/core/router.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/router.py):
-  - Ordered regex intent router.
-  - Generates direct `Plan` for all FAST commands without starting an LLM.
-  - Spoken number word parser (`_parse_number` handles "twenty", "thirty five", etc. clamped to 0–100).
-  - Normalizes app aliases ("calculator" $\rightarrow$ "calc", "paint" $\rightarrow$ "mspaint", "vs code" $\rightarrow$ "code").
-  - Detects SCREEN and SMART boundary keywords and assigns proper `RouteMode`.
-- [`pluma/core/orchestrator.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/orchestrator.py):
-  - End-to-end FAST command coordinator: receives `PlumaRequest`, creates `TaskCapsule`, inserts task to ledger, calls router, iterates plan steps with cancellation checks before each step, executes through `ToolRegistry`, records final state and timings.
-  - Non-FAST commands return `final_state="DEFERRED"` without touching uninitialized workers.
-- Additional Tools Added:
 - [`pluma/tools/registry.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/registry.py): `ToolRegistry` with validation, cancellation checks, pre-state capture, execution, verification, and ledger writes.
 - Deterministic Tool Suites: `files.py`, `apps.py`, `windows.py`, `audio.py`, `system.py`, `clipboard.py`.
 
@@ -146,14 +124,21 @@
 - [`pluma/adapters/screen.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/screen.py): Targeted window/rect GDI screen capture with headless fallback.
 
 ### Phase 5: Activity Ledger, Redaction & Rollback Engine
-- [`pluma/memory/activity.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/activity.py): Complete `ActivityLedger` write path and `ActivityQuery` read path supporting all 5 tables (`tasks`, `actions`, `undo_records`, `resources`, `screen_events`).
-- [`pluma/memory/redaction.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/redaction.py): Deterministic sensitive-value redaction for passwords, tokens, API keys, private clipboard entries.
-- [`pluma/memory/preferences.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/preferences.py): `PreferencesStore` for user configuration storage in SQLite.
-- [`pluma/memory/aliases.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/aliases.py): `AliasStore` for user command/path aliases.
-- [`pluma/memory/routines.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/routines.py): `RoutineStore` for saved multi-step routine sequences.
-- [`pluma/rollback/recipes.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/rollback/recipes.py): `RollbackRecipes` registry implementing inverse operations for `move_file`, `rename_file`, `create_folder`, `set_volume`, `mute`, `unmute`.
-- [`pluma/rollback/engine.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/rollback/engine.py): `RollbackEngine` walking completed reversible actions in reverse order, updating the Activity Ledger with per-step rollback status and residual tracking.
-- [`pluma/ui/activity_contract.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/ui/activity_contract.py): `ActivityViewContract` functional abstract UI contract.
+- [`pluma/memory/activity.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/activity.py): Complete `ActivityLedger` write path and `ActivityQuery` read path.
+- [`pluma/memory/redaction.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/redaction.py): Deterministic sensitive-value redaction.
+- [`pluma/memory/preferences.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/preferences.py): `PreferencesStore` for user settings.
+- [`pluma/memory/aliases.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/aliases.py): `AliasStore` for command aliases.
+- [`pluma/memory/routines.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/routines.py): `RoutineStore` for multi-step routines.
+- [`pluma/rollback/recipes.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/rollback/recipes.py): `RollbackRecipes` inverse operations.
+- [`pluma/rollback/engine.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/rollback/engine.py): `RollbackEngine` reverse-order execution.
+
+### Phase 6: Mandatory Voice Path
+- [`pluma/voice/vad.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/vad.py): Lightweight `EnergyVAD` calculation of RMS energy for 16-bit 16kHz PCM audio, silence trimming, and utterance completion detection. Zero ML dependencies.
+- [`pluma/voice/capture.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/capture.py): `AudioCapture` managing microphone recording with lazy-loaded `sounddevice`, cancellation token integration, and buffer cleanup.
+- [`pluma/voice/stt_adapter.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/stt_adapter.py): `WhisperSttAdapter` for on-demand `whisper.cpp` local inference with segment confidence calculation and cancellation support.
+- [`pluma/voice/lifecycle.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/lifecycle.py): `VoiceLifecycleManager` managing on-demand model loading and automatic idle unloading timer (`stt_idle_unload_seconds`) with `COLD` $\rightarrow$ `LOADING` $\rightarrow$ `WARM` $\rightarrow$ `TRANSCRIBING` states.
+- [`pluma/voice/pipeline.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/pipeline.py): `VoicePipeline` orchestrating VAD trimming, STT transcription, transcript normalization, material target low-confidence safety checks, and synthesizing `PlumaRequest(input_mode=VOICE)`.
+- [`pluma/voice/activation.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/activation.py): `VoiceActivation` managing configurable push-to-talk keybindings (`agent.voice_hotkey`) and press/release events.
 
 ---
 
@@ -164,77 +149,55 @@ Run the complete test suite with:
 python -m pytest tests/unit/ -v
 ```
 
-**Current status: 266 passed, 0 failed, 0 warnings (Execution time ~9.0s)**
+**Current status: 294 passed, 0 failed, 0 warnings (Execution time ~9.5s)**
 
 ### Test Coverage Summary by File
-- `tests/unit/test_rollback_engine.py` (4 tests): Reverse-order task rollback, ledger result tracking, partial failure/residual handling, single-step `rollback_last_reversible`, `TaskSupervisor.stop_task` rollback integration.
-- `tests/unit/test_rollback_recipes.py` (8 tests): All built-in recipe handlers (`move_file`, `rename_file`, `create_folder`, `set_volume`, `mute`), missing target failure, non-empty folder refusal.
-- `tests/unit/test_activity_ledger_lifecycle.py` (5 tests): Full lifecycle task writes, action redaction on insert, resource tracking, screen event metadata, `show_activity` executor integration.
-- `tests/unit/test_memory_stores.py` (3 tests): SQLite-backed `PreferencesStore`, `AliasStore`, and `RoutineStore`.
-- `tests/unit/test_adapters_base.py` (4 tests)
-- `tests/unit/test_adapters_win32.py` (4 tests)
-- `tests/unit/test_adapters_powershell.py` (5 tests)
-- `tests/unit/test_adapters_uia.py` (5 tests)
-- `tests/unit/test_adapters_input.py` (4 tests)
-- `tests/unit/test_adapters_screen.py` (4 tests)
-- `tests/unit/test_config.py` (4 tests)
-- `tests/unit/test_db.py` (7 tests)
-- `tests/unit/test_schemas.py` (39 tests)
-- `tests/unit/test_job_object.py` (3 tests)
-- `tests/unit/test_ownership.py` (5 tests)
-- `tests/unit/test_task_supervisor.py` (5 tests)
-- `tests/unit/test_ipc.py` (2 tests)
-- `tests/unit/test_resident.py` (2 tests)
-- `tests/unit/test_redaction.py` (15 tests)
-- `tests/unit/test_tools_files.py` (4 tests)
-- `tests/unit/test_tools_apps.py` (2 tests)
-- `tests/unit/test_tools_windows.py` (2 tests)
-- `tests/unit/test_tools_audio.py` (2 tests)
-- `tests/unit/test_tools_system.py` (4 tests)
-- `tests/unit/test_tool_runner_ledger.py` (5 tests)
-- `tests/unit/test_tools_clipboard.py` (22 tests)
-- `tests/unit/test_router.py` (58 tests)
-- `tests/unit/test_fast_orchestrator.py` (39 tests)
+- `tests/unit/test_voice_vad.py` (5 tests): Energy calculation, silence trimming, utterance completion detection, empty audio safety.
+- `tests/unit/test_voice_capture.py` (3 tests): Capture start/stop, feed, cancellation, zero module-level sounddevice import.
+- `tests/unit/test_voice_stt_adapter.py` (6 tests): Zero module-level ML import, confidence thresholds, cancellation, missing model error, unload reset.
+- `tests/unit/test_voice_lifecycle.py` (4 tests): Cold load on first call, warm reuse within grace period, cold after grace expires, immediate shutdown.
+- `tests/unit/test_voice_pipeline.py` (6 tests): Normalization, material target detection, PlumaRequest creation, silence discard, cancellation, low-confidence rejection.
+- `tests/unit/test_voice_activation.py` (2 tests): Hotkey string parsing, push-to-talk press and release event firing.
+- `tests/unit/test_voice_orchestrator_integration.py` (2 tests): End-to-end voice FAST command execution, router parity, Activity Ledger input_mode recording.
+- All existing tests (266 tests across Phases 0–5) fully passing.
 
 ---
 
 ## 7. Known Architectural Decisions & Technical Nuances
 
-1. **Win32 `HGLOBAL` 64-bit Handle Safety**: In `pluma/tools/clipboard.py`, `GlobalAlloc`, `GlobalLock`, and `SetClipboardData` must use `ctypes.c_size_t` for `HGLOBAL` and handle pointer conversions to prevent 64-bit `OverflowError`.
-2. **Win32 GDI & Screen Capture Handle Masking**: In `pluma/adapters/screen.py`, GDI handles (HDC, HBITMAP) must be declared with proper restype/argtypes to prevent 32-bit sign extension on 64-bit Windows. Headless/service desktop DC denial (error 5/6) falls back cleanly to generating memory BMP buffers.
-3. **Foreign Key Integrity in Activity Ledger**: `actions.task_id`, `resources.task_id`, and `screen_events.task_id` reference `tasks.task_id`. Tests and callers must ensure `ledger.insert_task()` is called before adding actions/resources/screen events.
-4. **Task State Machine with Rollback**: `TaskSupervisor.stop_task()` transitions `STOPPING` $\rightarrow$ `ROLLING_BACK` $\rightarrow$ `STOPPED` (or `STOPPED_WITH_RESIDUAL` if an irreversible action or failed undo step exists).
-5. **Folder Rollback Safety (§13)**: Folders created by PLUMA are deleted during rollback only if they were not preexisting and are currently empty (preventing destructive deletion of user-added content).
-6. **Task Completion Calls**: On `TaskSupervisor`, use `mark_succeeded(task_id)` and `mark_failed(task_id)`. For stops, default reason is `StopReason.USER_STOP`.
+1. **Zero ML & Audio at Idle**: `sounddevice` and `pywhispercpp` are strictly imported inside method bodies. At startup and idle, resident core memory footprint is completely free of audio and ML models.
+2. **Audio Data Transience**: Raw audio bytes are held strictly in memory during push-to-talk, trimmed by VAD, sent to STT, and discarded immediately. No audio files or raw waveforms are written to disk or the Activity Ledger by default.
+3. **STT Warm Grace Timer**: `VoiceLifecycleManager` uses a configurable background timer (`stt_idle_unload_seconds=20`) to unload the Whisper model back to `COLD` state if no follow-up voice commands occur.
+4. **Low-Confidence Material Target Guard**: If STT confidence is below `0.65` on commands involving files, numbers, or destructive verbs, the pipeline rejects guessing and produces `None` to require user clarification.
+5. **Configurable Push-to-Talk Hotkey**: Hotkey string (default `"ctrl+alt+v"`) is parsed by `parse_hotkey_string` into Win32 modifier and virtual-key codes.
 
 ---
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 6 — Voice Mandatory Path**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 6 & `PLUMA_MASTER_SPEC.md` §6, §7, §8.
+### Next Phase: **Phase 7 — UIA Perception Worker**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 7 & `PLUMA_MASTER_SPEC.md` §8.
 
-### Objectives for Phase 6:
-1. **Push-to-Talk & Hotkey Audio Capture (`pluma/voice/`)**:
-   - Push-to-talk keybinding contract (press to capture, release to transcribe).
-   - Audio input capture buffer via WASAPI / `wave` / `sounddevice` or native Windows audio capture.
-   - Zero background audio monitoring when not actively recording.
-2. **Voice Activity Detection (VAD)**:
-   - Energy/silence detection to trim leading/trailing silence safely.
-3. **Local Speech-to-Text Pipeline (`whisper.cpp`)**:
-   - `whisper.cpp` / `pywhispercpp` on-demand worker with warm grace period lifecycle.
-   - Raw audio discarded immediately after transcription (never saved in Activity Ledger).
-   - Minimal normalization producing identical `PlumaRequest` (`InputMode.VOICE`).
-4. **End-to-End Voice Route Parity**:
-   - Spoken commands flow through identical Router, FAST route, tool execution, and ledger pipeline as text.
+### Objectives for Phase 7:
+1. **Context & Active Window Inspection (`pluma/perception/context.py`)**:
+   - Active process, window title, HWND, and geometry capture.
+2. **UIA Snapshot Worker (`pluma/perception/uia_snapshot.py`)**:
+   - Query target window control tree using `pywinauto` UIA backend.
+   - Extract semantic `ScreenElement` instances (buttons, text fields, menus, dialogs) with bounding boxes and invocation capabilities.
+3. **Screen Element References & Freshness (`pluma/perception/element_refs.py`, `pluma/perception/freshness.py`)**:
+   - Snapshot TTL enforcement (3 seconds default).
+   - Window movement / active window change invalidation.
+4. **UIA-Based Verification (`pluma/verify/screen.py`)**:
+   - Verify control state changes and window activations via UIA state reads.
 5. **Write Unit & Integration Tests**:
-   - Push-to-talk start/stop events.
-   - Transcript normalization into `PlumaRequest`.
-   - Voice audio lifecycle & zero residual audio check.
+   - Semantic element extraction from standard controls.
+   - Target invalidation on window focus switch.
+   - Snapshot freshness and TTL expiration.
 
 ### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 6 section) and `PLUMA_MASTER_SPEC.md` (§6, §7, §8).
-2. Prepare and present the Phase 6 Implementation Plan to the user for approval.
-3. Upon approval, implement `pluma/voice/` components and corresponding unit tests.
+1. Review `PLUMA_BUILD_PLAN.md` (Phase 7 section) and `PLUMA_MASTER_SPEC.md` (§8).
+2. Prepare and present the Phase 7 Implementation Plan to the user for approval.
+3. Upon approval, implement `pluma/perception/` components and corresponding unit tests.
 4. Verify all tests pass (`pytest tests/unit/ -v`).
-5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 7.
+5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 8.
+

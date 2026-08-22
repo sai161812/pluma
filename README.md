@@ -35,9 +35,9 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 | **Phase 2** | Typed tool framework, initial 19 tools, postcondition verifiers, ledger | Complete | 101 |
 | **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | Complete | 220 |
 | **Phase 4** | Windows Automation Adapters (Win32, PowerShell, UIA, Input, Screen) | Complete | 246 |
-| **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Complete | **266** |
-| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **Next Up** | — |
-| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Planned | — |
+| **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Complete | 266 |
+| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Complete | **294** |
+| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **Next Up** | — |
 | **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Planned | — |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Planned | — |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Planned | — |
@@ -48,7 +48,14 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 
 ---
 
-## Key Subsystems Implemented (Phases 0–5)
+## Key Subsystems Implemented (Phases 0–6)
+
+### Mandatory Voice Subsystem (`pluma.voice`)
+- **Push-to-Talk Activation**: Win32 hotkey listener (`agent.voice_hotkey`, default `ctrl+alt+v`) with press/release triggers.
+- **Energy-Based VAD**: Pure Python/numpy RMS energy calculation for 16-bit 16kHz PCM audio and silence trimming.
+- **On-Demand STT Lifecycle**: `WhisperSttAdapter` for `whisper.cpp` with warm/cold state machine and configurable idle timeout unload (`runtime.stt_idle_unload_seconds`).
+- **Unified Pipeline Parity**: Produces `PlumaRequest(input_mode=VOICE)` flowing through identical router and tool execution paths as typed text.
+- **Material Target Safety**: Low-confidence transcripts (< 0.65) for commands with files, numbers, or destructive verbs prompt for clarification.
 
 ### Activity Ledger & Persistence (`pluma.memory`)
 - **SQLite WAL Baseline**: Crash-safe async queued background writer thread (`DbConnection`).
@@ -95,7 +102,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 pip install -e .
 
-# Run complete test suite (266 unit tests)
+# Run complete test suite (294 unit tests)
 python -m pytest tests/unit/ -v
 ```
 
