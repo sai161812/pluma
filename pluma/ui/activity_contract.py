@@ -1,15 +1,26 @@
-"""pluma.ui.activity_contract — Activity view UI contract (stub).
+"""pluma.ui.activity_contract — Activity view UI contract.
 
-Spec §19: Activity view is a functional contract; visual design is not defined here.
-Implemented in Phase 5.
+Spec §16.1, §17.1:
+Activity view is a functional contract exposing access to task history,
+actions, verification, timings, and rollback state without defining
+visual design or styling.
 """
 
+from __future__ import annotations
+
 import abc
+from typing import Any, Dict, List, Optional
 
 
 class ActivityViewContract(abc.ABC):
-    """Stub: Abstract activity view contract. Implemented in Phase 5."""
+    """Abstract activity view contract for PLUMA functional surfaces."""
 
     @abc.abstractmethod
-    def show_activity(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-        raise NotImplementedError("ActivityViewContract not implemented until Phase 5.")
+    def show_activity(self, tasks: List[Dict[str, Any]]) -> None:
+        """Display recent tasks in the Activity view."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def show_task_detail(self, task: Dict[str, Any], actions: List[Dict[str, Any]]) -> None:
+        """Display detailed step execution and rollback for a specific task."""
+        raise NotImplementedError
