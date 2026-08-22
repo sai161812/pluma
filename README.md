@@ -44,7 +44,7 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 | **Phase 11** | Policy engine, risk classifications, elevation broker | Planned | — |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | Planned | — |
 | **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Planned | — |
-| **Phase 14** | Owner-directed UI implementation | Planned | — |
+| **Phase 14** | Creator-directed UI implementation | Planned | — |
 
 ---
 
