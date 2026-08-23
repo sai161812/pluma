@@ -80,9 +80,9 @@
 | **Phase 4** | Windows Automation Adapters (Native Win32, PowerShell, UIA, Input, Screen capture) | **COMPLETED** | 246 (cumul.) |
 | **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | **COMPLETED** | 266 (cumul.) |
 | **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **COMPLETED** | 294 (cumul.) |
-| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **COMPLETED** | **314 (cumul.)** |
-| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **NEXT UP** | Pending |
-| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | Planned | Pending |
+| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **COMPLETED** | 314 (cumul.) |
+| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **COMPLETED** | **339 (cumul.)** |
+| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **NEXT UP** | Pending |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | Planned | Pending |
 | **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | Planned | Pending |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | Planned | Pending |
@@ -91,7 +91,7 @@
 
 ---
 
-## 5. Current Verified Implementation Details (Phases 0–7)
+## 5. Current Verified Implementation Details (Phases 0–8)
 
 ### Phase 0: Schema Contracts & Storage Foundation
 - [`pluma/brain/schemas.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/schemas.py): `RouteMode` (`FAST`, `SCREEN`, `SMART`, `DEEP`), `PlanMode`, `ToolCall`, `Plan` with hard cap step validation ($N \le 20$).
@@ -148,6 +148,13 @@
 - [`pluma/tools/ui.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/ui.py): `inspect_active_window`, `click_element`, and `type_into_element` registered ToolSpecs.
 - [`pluma/verify/screen.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/verify/screen.py): `ScreenVerifier` validating control text, invocation accessibility, and window active states.
 
+### Phase 8: Targeted OCR Fallback
+- [`pluma/perception/capture.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/perception/capture.py): `WindowCapture` delivering ephemeral in-memory target window and region screen captures.
+- [`pluma/perception/ocr_adapter.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/perception/ocr_adapter.py): `OcrAdapter`, `OcrWord`, `OcrResult` with lazy PaddleOCR import, cancellation support, and dependency injection.
+- [`pluma/perception/ocr_lifecycle.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/perception/ocr_lifecycle.py): `OcrLifecycleManager` on-demand warm/cold state machine with automatic 10s idle unload timer.
+- [`pluma/tools/ui.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/ui.py): `click_ocr_text` tool grounding clicks on visible text, rejecting ambiguous duplicates, and clearing image bytes.
+- [`pluma/verify/screen.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/verify/screen.py): `verify_ocr_text_present` and `verify_ocr_text_absent` postcondition verifiers.
+
 ---
 
 ## 6. Test Suite & Verification Baseline
@@ -157,53 +164,54 @@ Run the complete test suite with:
 python -m pytest tests/unit/ -v
 ```
 
-**Current status: 314 passed, 0 failed, 0 warnings (Execution time ~9.8s)**
+**Current status: 337 passed, 0 failed, 0 warnings (Execution time ~10.1s)**
 
 ### Test Coverage Summary by File
-- `tests/unit/test_perception_context.py` (3 tests): Active window context inspection, null foreground handling, process name resolution.
-- `tests/unit/test_perception_uia_snapshot.py` (3 tests): Control tree extraction, window-relative bounding boxes, zero module-level pywinauto import.
-- `tests/unit/test_perception_freshness.py` (3 tests): Snapshot TTL expiration, window mismatch error, freshness validation.
-- `tests/unit/test_tools_ui.py` (5 tests): `inspect_active_window`, `click_element`, `type_into_element` executors and error handling.
-- `tests/unit/test_verify_screen.py` (6 tests): Control text match/mismatch, control invocation verification, window active verification.
-- All existing tests (294 tests across Phases 0–6) fully passing.
+- `tests/unit/test_perception_capture.py` (4 tests): Window and cropped region screen capture, error handling.
+- `tests/unit/test_perception_ocr_adapter.py` (6 tests): OCR text extraction, confidence thresholds, cancellation, zero module-level imports.
+- `tests/unit/test_perception_ocr_lifecycle.py` (5 tests): COLD/WARM state transitions, 10s idle unload timer, shutdown.
+- `tests/unit/test_ocr_grounding_integration.py` (4 tests): `click_ocr_text` tool, coordinate translation, ambiguous duplicate rejection.
+- `tests/unit/test_verify_ocr.py` (4 tests): `verify_ocr_text_present` and `verify_ocr_text_absent` postcondition verification.
+- All existing tests (314 tests across Phases 0–7) fully passing.
 
 ---
 
 ## 7. Known Architectural Decisions & Technical Nuances
 
-1. **Window-Relative Bounding Boxes**: All `ScreenElement` coordinates are stored relative to the target window's top-left corner (`(left - win_left, top - win_top)`). Moving a window does not invalidate control geometries as long as the window title/process remains fresh.
-2. **Strict Snapshot TTL**: `ScreenSnapshot` enforces a default 3-second TTL (`perception.snapshot_ttl_seconds`). Actions attempted after expiration trigger `StaleSnapshotError` requiring fresh re-capture.
-3. **Active Window Focus Guard**: `FreshnessChecker` validates that the foreground window's process and title still match the snapshot before any UI interaction. If the user shifts focus, the action aborts safely with `WindowMismatchError`.
-4. **UIA Control Invocation Hierarchy**: Interactive tools prioritize semantic invocation (`invoke` pattern / `click_input`) via `UiaAdapter` before falling back to keyboard or coordinates.
+1. **Zero ML at Idle**: `paddleocr` and `onnxruntime` are never imported at the module level.
+2. **Ephemeral Screenshot Privacy**: Screenshots are stored strictly in memory and discarded immediately after OCR analysis. No image files persist in SQLite or the ledger.
+3. **Ambiguity Rejection (Acceptance Test E-03)**: If OCR detects multiple ambiguous matches for a target text query, `click_ocr_text` refuses to guess and returns `OCR_AMBIGUOUS` to request clarification.
+4. **OCR Idle Unload**: `OcrLifecycleManager` background timer automatically unloads the OCR engine after 10 seconds of inactivity (`runtime.ocr_idle_unload_seconds`).
+5. **UIA Priority**: Semantic UIA interactions (`click_element`) are prioritized over OCR fallback (`click_ocr_text`).
 
 ---
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 8 — Targeted OCR Fallback**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 8 & `PLUMA_MASTER_SPEC.md` §8.
+### Next Phase: **Phase 9 — Replaceable Local Planner**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 9 & `PLUMA_MASTER_SPEC.md` §10, §20.
 
-### Objectives for Phase 8:
-1. **On-Demand OCR Worker (`pluma/perception/ocr_adapter.py`)**:
-   - Lightweight `PaddleOCR` (ONNX Runtime) adapter with on-demand lifecycle.
-   - Target-window or cropped-region OCR only — no whole-desktop scans.
-   - Automatic idle unloading after `ocr_idle_unload_seconds` (default: 10s).
-2. **Ephemeral Screenshot Management (`pluma/perception/capture.py`)**:
-   - GDI target-window screen capture returning ephemeral image buffer.
-   - Screen images discarded immediately after OCR extraction (zero screenshots persisted in ledger).
-3. **OCR ScreenElement Grounding**:
-   - Maps detected OCR words/lines to `ScreenElement(source=ElementSource.OCR)` with confidence and bounding boxes.
-4. **OCR-Based Verification**:
-   - Verifies on-screen text appearance/disappearance post-action.
+### Objectives for Phase 9:
+1. **Planner Interface & llama.cpp Adapter (`pluma/brain/planner.py`, `pluma/brain/llm_adapter.py`)**:
+   - `Planner` abstract contract.
+   - `LlamaCppAdapter` using `llama-cpp-python` with on-demand lazy import.
+2. **LLM Lifecycle Manager (`pluma/brain/lifecycle.py`)**:
+   - `LlmLifecycleManager`: `COLD` $\rightarrow$ `LOADING` $\rightarrow$ `WARM` $\rightarrow$ `GENERATING` state machine.
+   - Automatic idle unload after `runtime.model_idle_unload_seconds` (30s default).
+3. **Grammar & Tool Schema Constraints (`pluma/brain/grammar.py`)**:
+   - Route-specific tool-schema selection (`SCREEN`, `SMART`, `DEEP`).
+   - JSON Schema / GBNF grammar-constrained generation for guaranteed valid `Plan` output.
+4. **Strict Second-Pass Plan Validator (`pluma/brain/validator.py`)**:
+   - Structural validation, hard step cap ($N \le 20$), tool existence in registry, valid argument schema checks.
 5. **Write Unit & Integration Tests**:
-   - OCR word extraction and confidence thresholding.
-   - Ephemeral image deletion and memory leak tests.
-   - OCR idle unload timer.
+   - Structured plan generation and JSON grammar constraint enforcement.
+   - Plan validation rejecting unknown tools or invalid argument schemas.
+   - Model on-demand load and idle unload timer.
 
 ### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 8 section) and `PLUMA_MASTER_SPEC.md` (§8).
-2. Prepare and present the Phase 8 Implementation Plan to the user for approval.
-3. Upon approval, implement `pluma/perception/ocr_adapter.py`, update `pluma/perception/capture.py`, and create corresponding unit tests.
+1. Review `PLUMA_BUILD_PLAN.md` (Phase 9 section) and `PLUMA_MASTER_SPEC.md` (§10, §20).
+2. Prepare and present the Phase 9 Implementation Plan to the user for approval.
+3. Upon approval, implement `pluma/brain/` components and corresponding unit tests.
 4. Verify all tests pass (`pytest tests/unit/ -v`).
-5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 9.
+5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 10.
 
