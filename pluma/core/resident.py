@@ -4,32 +4,83 @@ Spec §5.1 Resident Core: "Hotkeys, voice trigger, STOP, IPC, request creation,
 runtime lifecycle, task state. Must not load heavy ML at startup."
 """
 
+from __future__ import annotations
+
 import logging
 import sys
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
+from pluma.config.loader import get, load_config
 from pluma.core.ipc import IpcServer
 from pluma.core.ownership import OwnershipRegistry
 from pluma.core.task_supervisor import TaskSupervisor
+from pluma.voice.activation import VoiceActivation, parse_hotkey_string
+from pluma.voice.capture import AudioCapture
+from pluma.voice.pipeline import VoicePipeline
 
 logger = logging.getLogger(__name__)
 
 # Hotkey identifiers
 HOTKEY_ID_TEXT = 1
 HOTKEY_ID_STOP = 2
+HOTKEY_ID_VOICE = 3
 
 
 class ResidentCore:
-    """Resident process coordinating IPC, Task Supervisor, and global hotkeys."""
+    """Resident process coordinating IPC, Task Supervisor, Voice, and global hotkeys."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        voice_pipeline: Optional[VoicePipeline] = None,
+        on_request_callback: Optional[Callable[[Any], Any]] = None,
+    ) -> None:
+        self.config = config or load_config()
         self.registry = OwnershipRegistry()
         self.supervisor = TaskSupervisor(ownership_registry=self.registry)
         self.ipc = IpcServer(command_handler=self.handle_ipc_command)
         
+        self.on_request_callback = on_request_callback
+
+        # Voice subsystem components (zero-ML at idle)
+        self.voice_enabled = get(self.config, "voice", "required", default=True)
+        self.voice_hotkey_str = get(self.config, "agent", "voice_hotkey", default="ctrl+alt+v")
+        
+        self.audio_capture = AudioCapture()
+        self.voice_pipeline = voice_pipeline or VoicePipeline()
+        self.voice_activation = VoiceActivation(
+            on_press=self._on_voice_press,
+            on_release=self._on_voice_release,
+            hotkey=self.voice_hotkey_str,
+        )
+
         self._hotkey_thread: Optional[threading.Thread] = None
         self._running = False
+
+    def _on_voice_press(self) -> None:
+        """Handle push-to-talk key down event."""
+        logger.info("Voice push-to-talk activated. Starting audio capture...")
+        self.audio_capture.start()
+
+    def _on_voice_release(self) -> None:
+        """Handle push-to-talk key release event."""
+        logger.info("Voice push-to-talk released. Finalizing capture and processing audio...")
+        raw_audio = self.audio_capture.stop_and_get()
+        if not raw_audio:
+            logger.debug("No audio recorded during voice push-to-talk.")
+            return
+
+        try:
+            request = self.voice_pipeline.process_audio(raw_audio)
+            if request is not None:
+                logger.info("Voice command produced PlumaRequest(%s): '%s'", request.input_mode.value, request.text)
+                if self.on_request_callback:
+                    self.on_request_callback(request)
+            else:
+                logger.info("Voice processing produced no executable command (silence or clarification needed).")
+        except Exception as exc:
+            logger.error("Error executing voice pipeline: %s", exc)
 
     def handle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming IPC commands."""
@@ -54,9 +105,6 @@ class ResidentCore:
         Spec §13: "On PLUMA startup, stale tasks are marked ABORTED and 
         residual temp metadata is checked."
         """
-        # In a complete implementation, this queries the local SQLite ledger
-        # for tasks left in RUNNING state, transitions them to ABORTED_BY_CRASH,
-        # and calls self.registry.cleanup_task_resources(tid).
         logger.info("Running startup crash recovery...")
         pass
 
@@ -70,17 +118,17 @@ class ResidentCore:
         
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         
-        # MOD_ALT = 0x0001, MOD_CONTROL = 0x0002, MOD_WIN = 0x0008
-        # Register Win+Alt+P (Text)
-        if not user32.RegisterHotKey(None, HOTKEY_ID_TEXT, 0x0008 | 0x0001, 0x50):
-            logger.warning("Failed to register Text hotkey (Win+Alt+P)")
+        # Register text and STOP hotkeys from config
+        text_mods, text_vk = parse_hotkey_string(get(self.config, "agent", "text_hotkey", default="win+alt+p"))
+        stop_mods, stop_vk = parse_hotkey_string(get(self.config, "agent", "stop_hotkey", default="ctrl+alt+esc"))
+
+        if not user32.RegisterHotKey(None, HOTKEY_ID_TEXT, text_mods, text_vk):
+            logger.warning("Failed to register Text hotkey")
             
-        # Register Ctrl+Alt+S (STOP)
-        if not user32.RegisterHotKey(None, HOTKEY_ID_STOP, 0x0002 | 0x0001, 0x53):
-            logger.warning("Failed to register STOP hotkey (Ctrl+Alt+S)")
+        if not user32.RegisterHotKey(None, HOTKEY_ID_STOP, stop_mods, stop_vk):
+            logger.warning("Failed to register STOP hotkey")
 
         msg = wintypes.MSG()
-        # GetMessageW blocks until a message is received
         while self._running:
             bRet = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
             if bRet <= 0:
@@ -91,7 +139,7 @@ class ResidentCore:
                     logger.info("Global STOP hotkey triggered!")
                     self.supervisor.stop_all_active_tasks()
                 elif msg.wParam == HOTKEY_ID_TEXT:
-                    logger.info("Global Text hotkey triggered! (stub)")
+                    logger.info("Global Text hotkey triggered!")
             
             user32.TranslateMessage(ctypes.byref(msg))
             user32.DispatchMessageW(ctypes.byref(msg))
@@ -100,24 +148,29 @@ class ResidentCore:
         user32.UnregisterHotKey(None, HOTKEY_ID_STOP)
 
     def start(self) -> None:
-        """Start the resident core and its background workers."""
+        """Start the resident core, voice listener, and background workers."""
         self._run_crash_recovery()
         self.ipc.start()
         
+        if self.voice_enabled:
+            self.voice_activation.start()
+
         self._running = True
         if sys.platform == "win32":
             self._hotkey_thread = threading.Thread(target=self._hotkey_loop, daemon=True, name="HotkeyThread")
             self._hotkey_thread.start()
 
     def stop(self) -> None:
-        """Stop the resident core and IPC server."""
+        """Stop the resident core, voice listener, and IPC server."""
         self._running = False
         self.ipc.stop()
         
+        if self.voice_enabled:
+            self.voice_activation.stop()
+            self.voice_pipeline.lifecycle.shutdown()
+
         if sys.platform == "win32" and self._hotkey_thread and self._hotkey_thread.is_alive():
-            # Send a dummy message to wake up GetMessageW so it can exit
             import ctypes
             user32 = ctypes.WinDLL("user32")
-            # WM_QUIT = 0x0012
             user32.PostThreadMessageW(self._hotkey_thread.ident, 0x0012, 0, 0)
             self._hotkey_thread.join(timeout=1.0)

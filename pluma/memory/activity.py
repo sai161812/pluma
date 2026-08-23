@@ -306,6 +306,9 @@ class ActivityQuery:
         )
         return dict(row) if row else None
 
+    # Alias for compatibility
+    get_task = task_by_id
+
     def actions_for_task(self, task_id: str) -> List[Dict[str, Any]]:
         """Return all action rows for *task_id*, ordered by step_index."""
         rows = self._db.execute_read(
