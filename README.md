@@ -75,7 +75,7 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 - **Input Adapter**: `SendInput` ctypes with guaranteed modifier key safe-release in `finally` blocks and coordinate boundary checks.
 - **Screen Adapter**: Window and region GDI screen capture with headless buffer fallbacks. Zero persistent screenshots.
 
----
+----
 
 ## Implemented Tool Catalog
 
@@ -86,7 +86,7 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 - **System & Activity**: `get_system_status`, `battery_status`, `stop_current`, `show_activity`, `undo_last`
 - **Clipboard Management**: `clear_clipboard`, `clipboard_clear`, `get_clipboard_text`, `set_clipboard_text`
 
----
+----
 
 ## Requirements & Development Setup
 
