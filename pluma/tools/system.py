@@ -129,32 +129,57 @@ def execute_stop_current(args: Dict[str, Any], task_context: Any = None) -> Tool
 def execute_show_activity(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     limit = args.get("limit", 10)
     
-    # Check if a database connection is accessible
     from pluma.memory.activity import ActivityQuery
     from pluma.memory.db import DbConnection
     
     records: List[Dict[str, Any]] = []
-    try:
-        # Default application DB path
-        appdata = os.environ.get("LOCALAPPDATA") or "/tmp"
-        db_path = os.path.join(appdata, "PLUMA", "activity.db")
+    
+    # 1. Check if db or query is attached to task_context
+    query: Optional[ActivityQuery] = None
+    if task_context:
+        if hasattr(task_context, "query") and isinstance(task_context.query, ActivityQuery):
+            query = task_context.query
+        elif hasattr(task_context, "db") and isinstance(task_context.db, DbConnection):
+            query = ActivityQuery(task_context.db)
+
+    # 2. Check default or env configured database path
+    if query is None:
+        db_path = os.environ.get("PLUMA_DB_PATH")
+        if not db_path:
+            appdata = os.environ.get("LOCALAPPDATA") or "/tmp"
+            db_path = os.path.join(appdata, "PLUMA", "activity.db")
         
         if os.path.exists(db_path):
-            with DbConnection(db_path) as db:
-                query = ActivityQuery(db)
-                tasks = query.get_recent_tasks(limit=limit)
-                for t in tasks:
-                    actions = query.get_task_actions(t["task_id"])
-                    records.append({
-                        "task_id": t["task_id"],
-                        "command": t["command_text"],
-                        "state": t["final_state"],
-                        "created_at": t["created_at"],
-                        "action_count": len(actions),
-                    })
-    except Exception:
-        pass
-        
+            try:
+                with DbConnection(db_path) as db:
+                    q = ActivityQuery(db)
+                    tasks = q.recent_tasks(limit=limit)
+                    for t in tasks:
+                        actions = q.actions_for_task(t["task_id"])
+                        records.append({
+                            "task_id": t["task_id"],
+                            "command": t["command_text"],
+                            "state": t.get("final_state"),
+                            "created_at": t.get("created_at"),
+                            "action_count": len(actions),
+                        })
+            except Exception:
+                pass
+    else:
+        try:
+            tasks = query.recent_tasks(limit=limit)
+            for t in tasks:
+                actions = query.actions_for_task(t["task_id"])
+                records.append({
+                    "task_id": t["task_id"],
+                    "command": t["command_text"],
+                    "state": t.get("final_state"),
+                    "created_at": t.get("created_at"),
+                    "action_count": len(actions),
+                })
+        except Exception:
+            pass
+
     count = len(records)
     return ToolResult(
         ok=True,
@@ -170,9 +195,8 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
     
     Spec §13: Evidence-based undo.
     """
-    import os
-    import shutil
-    from pathlib import Path
+    from pluma.rollback.engine import RollbackEngine
+    from pluma.rollback.recipes import RollbackRecipes
     
     # Look for undo records in task_context or memory
     undo_data: Optional[Dict[str, Any]] = None
@@ -182,78 +206,19 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
     if not undo_data:
         return ToolResult.failure("undo_last", "No undo records available to reverse.")
         
-    action = undo_data.get("action")
-    try:
-        if action == "move_file":
-            src = Path(undo_data["source"])
-            dst = Path(undo_data["destination"])
-            if dst.exists():
-                shutil.move(str(dst), str(src))
-                return ToolResult(
-                    ok=True,
-                    tool="undo_last",
-                    data={"action": action, "restored_path": str(src)},
-                    factual_message=f"Undo: restored '{dst.name}' back to '{src}'.",
-                    verified=True,
-                )
-            return ToolResult.failure("undo_last", f"Cannot undo move: '{dst}' no longer exists.")
-            
-        elif action == "rename_file":
-            orig = Path(undo_data["original_path"])
-            current = Path(undo_data["new_path"])
-            if current.exists():
-                current.rename(orig)
-                return ToolResult(
-                    ok=True,
-                    tool="undo_last",
-                    data={"action": action, "restored_path": str(orig)},
-                    factual_message=f"Undo: renamed '{current.name}' back to '{orig.name}'.",
-                    verified=True,
-                )
-            return ToolResult.failure("undo_last", f"Cannot undo rename: '{current}' does not exist.")
-            
-        elif action == "create_folder":
-            p = Path(undo_data["path"])
-            if not undo_data.get("existed_before", False) and p.exists():
-                # Only delete if directory is empty
-                if not any(p.iterdir()):
-                    p.rmdir()
-                    return ToolResult(
-                        ok=True,
-                        tool="undo_last",
-                        data={"action": action, "removed_path": str(p)},
-                        factual_message=f"Undo: removed created folder '{p}'.",
-                        verified=True,
-                    )
-            return ToolResult.failure("undo_last", f"Cannot undo folder creation: '{p}' is not empty or existed before.")
-            
-        elif action == "set_volume":
-            from pluma.tools.audio import _set_audio_endpoint_volume
-            prev_vol = undo_data.get("previous_volume", 50)
-            _set_audio_endpoint_volume(level=prev_vol)
-            return ToolResult(
-                ok=True,
-                tool="undo_last",
-                data={"action": action, "restored_volume": prev_vol},
-                factual_message=f"Undo: restored volume to {prev_vol}%.",
-                verified=True,
-            )
-            
-        elif action == "mute":
-            from pluma.tools.audio import _set_audio_endpoint_volume
-            prev_muted = undo_data.get("previous_muted", False)
-            _set_audio_endpoint_volume(mute=prev_muted)
-            return ToolResult(
-                ok=True,
-                tool="undo_last",
-                data={"action": action, "restored_mute": prev_muted},
-                factual_message=f"Undo: restored mute state ({'muted' if prev_muted else 'unmuted'}).",
-                verified=True,
-            )
-            
-        return ToolResult.failure("undo_last", f"Unsupported undo action: '{action}'.")
-    except Exception as e:
-        return ToolResult.failure("undo_last", f"Undo execution failed: {e}")
+    engine = RollbackEngine()
+    step_res = engine.rollback_last_reversible(undo_data=undo_data)
+    
+    if not step_res.ok:
+        return ToolResult.failure("undo_last", step_res.message)
+        
+    return ToolResult(
+        ok=True,
+        tool="undo_last",
+        data=step_res.data or {"action": step_res.action},
+        factual_message=f"Undo: {step_res.message}",
+        verified=True,
+    )
 
 
 # ---------------------------------------------------------------------------

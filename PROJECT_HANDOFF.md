@@ -130,17 +130,30 @@
   - End-to-end FAST command coordinator: receives `PlumaRequest`, creates `TaskCapsule`, inserts task to ledger, calls router, iterates plan steps with cancellation checks before each step, executes through `ToolRegistry`, records final state and timings.
   - Non-FAST commands return `final_state="DEFERRED"` without touching uninitialized workers.
 - Additional Tools Added:
-  - [`pluma/tools/clipboard.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/clipboard.py): `clear_clipboard`, `clipboard_clear`, `get_clipboard_text`, `set_clipboard_text` via Win32 API with 64-bit safe `c_size_t` `HGLOBAL` types. Raw text is omitted from logged `data` for privacy.
-  - [`pluma/tools/windows.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/windows.py): `minimize_window`, `maximize_window` via Win32 `ShowWindow` (`SW_MINIMIZE=6`, `SW_MAXIMIZE=3`).
-  - [`pluma/tools/system.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/system.py): `battery_status` via Win32 `GetSystemPowerStatus`.
+- [`pluma/tools/registry.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/registry.py): `ToolRegistry` with validation, cancellation checks, pre-state capture, execution, verification, and ledger writes.
+- Deterministic Tool Suites: `files.py`, `apps.py`, `windows.py`, `audio.py`, `system.py`, `clipboard.py`.
+
+### Phase 3: Deterministic FAST Route & Orchestration
+- [`pluma/core/router.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/router.py): Regex/pattern classifier routing all golden FAST commands directly without LLM/OCR.
+- [`pluma/core/orchestrator.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/orchestrator.py): Command lifecycle coordinator.
 
 ### Phase 4: Windows Automation Adapters
-- [`pluma/adapters/base.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/base.py): Base adapter error hierarchy (`AdapterError`, `AccessDeniedError`, `ElementNotFoundError`, `ElementUnavailableError`, `AdapterTimeoutError`, `WindowNotFoundError`, `InputOutOfBoundsError`) and dataclasses (`Rect`, `WindowInfo`, `ControlInfo`, `WindowState`).
-- [`pluma/adapters/win32.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/win32.py): Concrete Win32 adapter via `ctypes` (`find_windows`, `get_foreground_window`, `set_foreground_window`, `get_window_rect`, `get_window_state`, `set_window_state`, `close_window`).
-- [`pluma/adapters/powershell.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/powershell.py): Bounded PowerShell adapter with Job Object containment, hard timeout enforcement, and permission denial mapping to `AccessDeniedError`.
-- [`pluma/adapters/uia.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/uia.py): Lazy-loading UI Automation adapter via `pywinauto` with HWND pre-validation, semantic control lookup (`find_control`), invocation (`invoke_control`), and text modification (`set_control_text`).
-- [`pluma/adapters/input.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/input.py): Low-level Win32 `SendInput` ctypes adapter with guaranteed modifier key release in `finally` blocks, unicode string typing, and coordinate boundary safety (`InputOutOfBoundsError`).
-- [`pluma/adapters/screen.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/screen.py): Targeted window/rect GDI screen capture adapter with 64-bit handle safety and headless/service fallback buffer creation. Zero persistent screenshots.
+- [`pluma/adapters/base.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/base.py): Common error hierarchy and immutable data models.
+- [`pluma/adapters/win32.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/win32.py): Native Win32 window and process management.
+- [`pluma/adapters/powershell.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/powershell.py): Bounded PowerShell adapter with Job Object containment and timeout limits.
+- [`pluma/adapters/uia.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/uia.py): Lazy-loading UI Automation adapter with HWND pre-validation.
+- [`pluma/adapters/input.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/input.py): `SendInput` ctypes with modifier safe release.
+- [`pluma/adapters/screen.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/adapters/screen.py): Targeted window/rect GDI screen capture with headless fallback.
+
+### Phase 5: Activity Ledger, Redaction & Rollback Engine
+- [`pluma/memory/activity.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/activity.py): Complete `ActivityLedger` write path and `ActivityQuery` read path supporting all 5 tables (`tasks`, `actions`, `undo_records`, `resources`, `screen_events`).
+- [`pluma/memory/redaction.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/redaction.py): Deterministic sensitive-value redaction for passwords, tokens, API keys, private clipboard entries.
+- [`pluma/memory/preferences.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/preferences.py): `PreferencesStore` for user configuration storage in SQLite.
+- [`pluma/memory/aliases.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/aliases.py): `AliasStore` for user command/path aliases.
+- [`pluma/memory/routines.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/memory/routines.py): `RoutineStore` for saved multi-step routine sequences.
+- [`pluma/rollback/recipes.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/rollback/recipes.py): `RollbackRecipes` registry implementing inverse operations for `move_file`, `rename_file`, `create_folder`, `set_volume`, `mute`, `unmute`.
+- [`pluma/rollback/engine.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/rollback/engine.py): `RollbackEngine` walking completed reversible actions in reverse order, updating the Activity Ledger with per-step rollback status and residual tracking.
+- [`pluma/ui/activity_contract.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/ui/activity_contract.py): `ActivityViewContract` functional abstract UI contract.
 
 ---
 
@@ -151,33 +164,37 @@ Run the complete test suite with:
 python -m pytest tests/unit/ -v
 ```
 
-**Current status: 246 passed, 0 failed, 0 warnings (Execution time ~8.5s)**
+**Current status: 266 passed, 0 failed, 0 warnings (Execution time ~9.0s)**
 
 ### Test Coverage Summary by File
-- `tests/unit/test_adapters_base.py` (4 tests): Adapter error hierarchy, Rect geometry calculation, WindowInfo and ControlInfo dataclass models.
-- `tests/unit/test_adapters_win32.py` (4 tests): Win32Adapter instantiation, invalid HWND errors, window enumeration, foreground window query.
-- `tests/unit/test_adapters_powershell.py` (5 tests): Script execution, exit code capture, timeout abort, cancellation token abort, access-denied mapping.
-- `tests/unit/test_adapters_uia.py` (5 tests): Lazy loading, invalid HWND handling, element lookup, element not found, disabled control error.
-- `tests/unit/test_adapters_input.py` (4 tests): Key code resolution, mouse boundary validation, modifier key safe release chord, unicode text typing.
-- `tests/unit/test_adapters_screen.py` (4 tests): Invalid dimensions/HWND errors, BMP capture header validation, temporary file capture and cleanup.
-- `tests/unit/test_config.py` (4 tests): Configuration loading & defaults.
-- `tests/unit/test_db.py` (7 tests): SQLite WAL mode, async writer queue, migrations.
-- `tests/unit/test_schemas.py` (39 tests): Pydantic schemas, cancellation token, task state transitions, zero-ML import check.
-- `tests/unit/test_job_object.py` (3 tests): Windows Job Object process attachment and kill-on-close.
-- `tests/unit/test_ownership.py` (5 tests): PID creation timestamp capture and registry safety.
-- `tests/unit/test_task_supervisor.py` (5 tests): STOP sequence, cancellation latency, active task sweep.
-- `tests/unit/test_ipc.py` (2 tests): Named pipe message exchange and isolation.
-- `tests/unit/test_resident.py` (2 tests): Hotkey registration and loop lifecycle.
-- `tests/unit/test_redaction.py` (15 tests): Sensitive argument and secret redaction.
-- `tests/unit/test_tools_files.py` (4 tests): File listing, find, move, rename, folder creation, postconditions, undo.
-- `tests/unit/test_tools_apps.py` (2 tests): App lifecycle inside Job Objects.
-- `tests/unit/test_tools_windows.py` (2 tests): Window listing and focus validation.
-- `tests/unit/test_tools_audio.py` (2 tests): Volume, mute/unmute, undo.
-- `tests/unit/test_tools_system.py` (4 tests): System status, activity inspection, stop, file undo execution.
-- `tests/unit/test_tool_runner_ledger.py` (5 tests): Registry execution runner, pre-state capture, postconditions, ledger writing.
-- `tests/unit/test_tools_clipboard.py` (22 tests): Clipboard clear, set, get, 64-bit Win32 handles, round-trip, redaction.
-- `tests/unit/test_router.py` (58 tests): Pattern parsing, spoken number words, voice/text parity, all 22 golden commands.
-- `tests/unit/test_fast_orchestrator.py` (39 tests): End-to-end FAST execution, cancellation interruption, zero-ML verification on all golden commands.
+- `tests/unit/test_rollback_engine.py` (4 tests): Reverse-order task rollback, ledger result tracking, partial failure/residual handling, single-step `rollback_last_reversible`, `TaskSupervisor.stop_task` rollback integration.
+- `tests/unit/test_rollback_recipes.py` (8 tests): All built-in recipe handlers (`move_file`, `rename_file`, `create_folder`, `set_volume`, `mute`), missing target failure, non-empty folder refusal.
+- `tests/unit/test_activity_ledger_lifecycle.py` (5 tests): Full lifecycle task writes, action redaction on insert, resource tracking, screen event metadata, `show_activity` executor integration.
+- `tests/unit/test_memory_stores.py` (3 tests): SQLite-backed `PreferencesStore`, `AliasStore`, and `RoutineStore`.
+- `tests/unit/test_adapters_base.py` (4 tests)
+- `tests/unit/test_adapters_win32.py` (4 tests)
+- `tests/unit/test_adapters_powershell.py` (5 tests)
+- `tests/unit/test_adapters_uia.py` (5 tests)
+- `tests/unit/test_adapters_input.py` (4 tests)
+- `tests/unit/test_adapters_screen.py` (4 tests)
+- `tests/unit/test_config.py` (4 tests)
+- `tests/unit/test_db.py` (7 tests)
+- `tests/unit/test_schemas.py` (39 tests)
+- `tests/unit/test_job_object.py` (3 tests)
+- `tests/unit/test_ownership.py` (5 tests)
+- `tests/unit/test_task_supervisor.py` (5 tests)
+- `tests/unit/test_ipc.py` (2 tests)
+- `tests/unit/test_resident.py` (2 tests)
+- `tests/unit/test_redaction.py` (15 tests)
+- `tests/unit/test_tools_files.py` (4 tests)
+- `tests/unit/test_tools_apps.py` (2 tests)
+- `tests/unit/test_tools_windows.py` (2 tests)
+- `tests/unit/test_tools_audio.py` (2 tests)
+- `tests/unit/test_tools_system.py` (4 tests)
+- `tests/unit/test_tool_runner_ledger.py` (5 tests)
+- `tests/unit/test_tools_clipboard.py` (22 tests)
+- `tests/unit/test_router.py` (58 tests)
+- `tests/unit/test_fast_orchestrator.py` (39 tests)
 
 ---
 
@@ -185,38 +202,39 @@ python -m pytest tests/unit/ -v
 
 1. **Win32 `HGLOBAL` 64-bit Handle Safety**: In `pluma/tools/clipboard.py`, `GlobalAlloc`, `GlobalLock`, and `SetClipboardData` must use `ctypes.c_size_t` for `HGLOBAL` and handle pointer conversions to prevent 64-bit `OverflowError`.
 2. **Win32 GDI & Screen Capture Handle Masking**: In `pluma/adapters/screen.py`, GDI handles (HDC, HBITMAP) must be declared with proper restype/argtypes to prevent 32-bit sign extension on 64-bit Windows. Headless/service desktop DC denial (error 5/6) falls back cleanly to generating memory BMP buffers.
-3. **IPC Named Pipe Windows Behavior**: `multiprocessing.connection.wait()` does not support `Listener` objects on Windows. `IpcServer` uses a blocking `.accept()` loop in a dedicated thread.
-4. **SQLite Thread Affinity**: Background writer connection must be opened inside the writer worker thread. In-memory databases (`:memory:`) share one connection object.
-5. **Audio Headless/CI Mock**: `pluma/tools/audio.py` lazily attempts to load `pycaw`, falling back to an in-memory `_MOCK_AUDIO_STATE` dictionary if audio hardware is absent.
-6. **PID String vs Int Compatibility**: Verifiers (`pluma/verify/common.py`) coerce numeric string PIDs to integers to prevent type mismatch between tool callers and process checkers.
-7. **Task Completion Calls**: On `TaskSupervisor`, use `mark_succeeded(task_id)` and `mark_failed(task_id)` (not `complete_task`). For stops, default reason is `StopReason.USER_STOP`.
+3. **Foreign Key Integrity in Activity Ledger**: `actions.task_id`, `resources.task_id`, and `screen_events.task_id` reference `tasks.task_id`. Tests and callers must ensure `ledger.insert_task()` is called before adding actions/resources/screen events.
+4. **Task State Machine with Rollback**: `TaskSupervisor.stop_task()` transitions `STOPPING` $\rightarrow$ `ROLLING_BACK` $\rightarrow$ `STOPPED` (or `STOPPED_WITH_RESIDUAL` if an irreversible action or failed undo step exists).
+5. **Folder Rollback Safety (§13)**: Folders created by PLUMA are deleted during rollback only if they were not preexisting and are currently empty (preventing destructive deletion of user-added content).
+6. **Task Completion Calls**: On `TaskSupervisor`, use `mark_succeeded(task_id)` and `mark_failed(task_id)`. For stops, default reason is `StopReason.USER_STOP`.
 
 ---
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 5 — Activity Ledger, Redaction and Rollback**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 5 & `PLUMA_MASTER_SPEC.md` §16, §20, §21.
+### Next Phase: **Phase 6 — Voice Mandatory Path**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 6 & `PLUMA_MASTER_SPEC.md` §6, §7, §8.
 
-### Objectives for Phase 5:
-1. **Activity Ledger Schema & Storage Completion (`pluma/memory/`)**:
-   - Complete `actions`, `undo_records`, `resources`, and `screen_events` tables.
-   - Record input mode, route, active window, adapter, timings, policy decision, verification, and stop/rollback details.
-   - Activity query API for retrieving factual timeline and status.
-2. **Deterministic Redaction Engine (`pluma/memory/redaction.py` / `pluma/core/redaction.py`)**:
-   - Expand sensitive-value and secret redaction across stored arguments, clipboard history, and logs.
-3. **Reverse-Order Rollback Engine (`pluma/rollback/engine.py`, `pluma/rollback/recipes.py`)**:
-   - Implement reverse-order execution of `UndoRecord` items for a task.
-   - Non-undoable action boundary handling (mark committed, refuse false rollback claims).
-   - Residual effect tracking (`STOPPED_WITH_RESIDUAL`).
-4. **Write Unit & Integration Tests**:
-   - `tests/unit/test_rollback_engine.py`
-   - `tests/unit/test_ledger_complete.py`
-   - `tests/unit/test_activity_query.py`
+### Objectives for Phase 6:
+1. **Push-to-Talk & Hotkey Audio Capture (`pluma/voice/`)**:
+   - Push-to-talk keybinding contract (press to capture, release to transcribe).
+   - Audio input capture buffer via WASAPI / `wave` / `sounddevice` or native Windows audio capture.
+   - Zero background audio monitoring when not actively recording.
+2. **Voice Activity Detection (VAD)**:
+   - Energy/silence detection to trim leading/trailing silence safely.
+3. **Local Speech-to-Text Pipeline (`whisper.cpp`)**:
+   - `whisper.cpp` / `pywhispercpp` on-demand worker with warm grace period lifecycle.
+   - Raw audio discarded immediately after transcription (never saved in Activity Ledger).
+   - Minimal normalization producing identical `PlumaRequest` (`InputMode.VOICE`).
+4. **End-to-End Voice Route Parity**:
+   - Spoken commands flow through identical Router, FAST route, tool execution, and ledger pipeline as text.
+5. **Write Unit & Integration Tests**:
+   - Push-to-talk start/stop events.
+   - Transcript normalization into `PlumaRequest`.
+   - Voice audio lifecycle & zero residual audio check.
 
 ### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 5 section) and `PLUMA_MASTER_SPEC.md` (§16, §20, §21).
-2. Prepare and present the Phase 5 Implementation Plan to the user for approval.
-3. Upon approval, implement `pluma/rollback/` and `pluma/memory/` components and their corresponding unit tests.
+1. Review `PLUMA_BUILD_PLAN.md` (Phase 6 section) and `PLUMA_MASTER_SPEC.md` (§6, §7, §8).
+2. Prepare and present the Phase 6 Implementation Plan to the user for approval.
+3. Upon approval, implement `pluma/voice/` components and corresponding unit tests.
 4. Verify all tests pass (`pytest tests/unit/ -v`).
-5. Update `PROJECT_HANDOFF.md` to record Phase 5 completion before proceeding to Phase 6.
+5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 7.

@@ -21,22 +21,22 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 5. **Postcondition Verification**: Every state-changing action has an explicit postcondition and must read it back before reporting success.
 6. **Reversibility & Undo Evidence**: Safe pre-states are captured prior to action execution.
 7. **Task Capsule & Job Object Containment**: Every command is one `TaskCapsule` owned by one `TaskSupervisor`. Subprocess trees are isolated in Windows Job Objects (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`).
-8. **Global STOP Precedence**: Setting the atomic stop latch immediately terminates execution and prevents new tool steps or branches.
-9. **Factual Activity Ledger**: Deterministic, template-generated SQLite history with automatic sensitive data redaction.
+8. **Global STOP Precedence**: Setting the atomic stop latch immediately terminates execution and triggers safe reverse-order rollback without starting new tool steps.
+9. **Factual Activity Ledger & Redaction**: Deterministic, template-generated SQLite audit history with automatic sensitive data and secret redaction.
 
 ---
 
 ## Build & Phase Status
 
-| Phase | Description | Status | Tests |
+| Phase | Description | Status | Cumulative Tests |
 |---|---|---|---|
 | **Phase 0** | Freeze contracts, schemas, SQLite baseline, benchmarks, golden corpus | Complete | 65 |
 | **Phase 1** | Resident Core, Task Capsule, Windows Job Objects, atomic STOP sequence | Complete | 82 |
 | **Phase 2** | Typed tool framework, initial 19 tools, postcondition verifiers, ledger | Complete | 101 |
-| **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | Complete | **220** |
-| **Phase 4** | Windows Automation Adapters (Win32, PowerShell, UIA, Input, Screen) | Next Up | — |
-| **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Planned | — |
-| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Planned | — |
+| **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | Complete | 220 |
+| **Phase 4** | Windows Automation Adapters (Win32, PowerShell, UIA, Input, Screen) | Complete | 246 |
+| **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Complete | **266** |
+| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **Next Up** | — |
 | **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Planned | — |
 | **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Planned | — |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Planned | — |
@@ -48,13 +48,35 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 
 ---
 
-## Implemented Tools (Phase 2 & 3)
+## Key Subsystems Implemented (Phases 0–5)
+
+### Activity Ledger & Persistence (`pluma.memory`)
+- **SQLite WAL Baseline**: Crash-safe async queued background writer thread (`DbConnection`).
+- **Complete Activity Ledger**: Factual tracking across 5 core tables (`tasks`, `actions`, `undo_records`, `resources`, `screen_events`).
+- **Deterministic Redaction Engine**: Automatic masking of passwords, tokens, private clipboard content, and sensitive argument keys.
+- **Memory Stores**: SQLite-backed `PreferencesStore`, `AliasStore`, and `RoutineStore`.
+
+### Reverse-Order Rollback Engine (`pluma.rollback`)
+- **`RollbackEngine`**: Reverse-order execution of recorded `UndoRecord` items upon task cancellation or rollback request.
+- **`RollbackRecipes`**: Tool-specific inverse operations (`move_file` restore, `rename_file` restore, `create_folder` safe non-preexisting empty folder deletion, `set_volume` restore, `mute`/`unmute` restore).
+- **Residual Tracking**: Identifies non-undoable actions and updates task state to `STOPPED_WITH_RESIDUAL` when full reversal is impossible.
+
+### Automation Adapters (`pluma.adapters`)
+- **Native Win32**: `ctypes` bindings for HWND management, window states, process metrics, and display geometry.
+- **PowerShell Adapter**: Bounded PowerShell execution with Job Object containment and timeout aborts.
+- **UIA Adapter**: Lazy-loaded `pywinauto` UIA backend for semantic control inspection and invocation.
+- **Input Adapter**: `SendInput` ctypes with guaranteed modifier key safe-release in `finally` blocks and coordinate boundary checks.
+- **Screen Adapter**: Window and region GDI screen capture with headless buffer fallbacks. Zero persistent screenshots.
+
+---
+
+## Implemented Tool Catalog
 
 - **File Operations**: `list_files`, `find_file`, `move_file`, `rename_file`, `create_folder`
 - **Application Lifecycle**: `open_app`, `close_app`, `focus_app`, `list_apps`, `app_status`
 - **Window Management**: `list_windows`, `focus_window`, `minimize_window`, `maximize_window`
 - **Audio Control**: `set_volume`, `mute`, `unmute`
-- **System & Memory**: `get_system_status`, `battery_status`, `stop_current`, `show_activity`, `undo_last`
+- **System & Activity**: `get_system_status`, `battery_status`, `stop_current`, `show_activity`, `undo_last`
 - **Clipboard Management**: `clear_clipboard`, `clipboard_clear`, `get_clipboard_text`, `set_clipboard_text`
 
 ---
@@ -73,7 +95,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 pip install -e .
 
-# Run test suite
+# Run complete test suite (266 unit tests)
 python -m pytest tests/unit/ -v
 ```
 

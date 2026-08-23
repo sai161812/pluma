@@ -84,6 +84,33 @@ class UndoRecord:
     available: bool = True
 
 
+@dataclass
+class ResourceRecord:
+    """Data needed to insert a row into the resources table."""
+    id: str
+    task_id: str
+    resource_type: str            # 'temp_dir', 'subprocess', 'browser_tab', etc.
+    ownership: str                # 'PREEXISTING' or 'PLUMA_CREATED'
+    external_id: Optional[str] = None
+    created_at: str = field(default_factory=_now_iso)
+    released_at: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ScreenEventRecord:
+    """Data needed to insert a row into the screen_events table."""
+    task_id: str
+    snapshot_id: str
+    source: str                   # 'UIA' or 'OCR'
+    target_label: Optional[str] = None
+    control_type: Optional[str] = None
+    bounds: Optional[Dict[str, Any]] = None
+    confidence: Optional[float] = None
+    active_window_signature: Optional[str] = None
+    created_at: str = field(default_factory=_now_iso)
+
+
 # ---------------------------------------------------------------------------
 # ActivityLedger — write path
 # ---------------------------------------------------------------------------
@@ -203,6 +230,53 @@ class ActivityLedger:
             (int(ok), json.dumps(result) if result else None, action_row_id),
         )
 
+    # -- Resources --
+
+    def insert_resource(self, record: ResourceRecord) -> None:
+        """Insert a claimed or created resource row."""
+        self._db.execute_write(
+            """
+            INSERT OR REPLACE INTO resources
+              (id, task_id, resource_type, ownership, external_id, created_at, released_at, metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.id, record.task_id, record.resource_type, record.ownership,
+                record.external_id, record.created_at, record.released_at,
+                json.dumps(record.metadata) if record.metadata else None,
+            ),
+        )
+
+    def release_resource(self, resource_id: str, released_at: Optional[str] = None) -> None:
+        """Mark a resource as released."""
+        rel_time = released_at or _now_iso()
+        self._db.execute_write(
+            "UPDATE resources SET released_at = ? WHERE id = ?",
+            (rel_time, resource_id),
+        )
+
+    # -- Screen events --
+
+    def insert_screen_event(self, record: ScreenEventRecord) -> int:
+        """Insert a screen event metadata record (no raw screenshots)."""
+        row_id = self._db.execute_write(
+            """
+            INSERT INTO screen_events
+              (task_id, snapshot_id, source, target_label, control_type,
+               bounds_json, confidence, active_window_signature, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.task_id, record.snapshot_id, record.source,
+                record.target_label, record.control_type,
+                json.dumps(record.bounds) if record.bounds else None,
+                record.confidence, record.active_window_signature,
+                record.created_at,
+            ),
+            wait=True,
+        )
+        return row_id  # type: ignore[return-value]
+
 
 # ---------------------------------------------------------------------------
 # ActivityQuery — read path
@@ -222,6 +296,9 @@ class ActivityQuery:
         )
         return [dict(r) for r in rows]
 
+    # Alias for compatibility with external caller expectations
+    get_recent_tasks = recent_tasks
+
     def task_by_id(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Return one task row or None."""
         row = self._db.execute_read_one(
@@ -236,6 +313,9 @@ class ActivityQuery:
             (task_id,),
         )
         return [dict(r) for r in rows]
+
+    # Alias for compatibility with external caller expectations
+    get_task_actions = actions_for_task
 
     def undo_record_for_action(self, action_row_id: int) -> Optional[Dict[str, Any]]:
         """Return the undo record for an action row, or None."""
@@ -257,6 +337,22 @@ class ActivityQuery:
             WHERE a.task_id = ? AND ur.available = 1
             ORDER BY a.step_index DESC
             """,
+            (task_id,),
+        )
+        return [dict(r) for r in rows]
+
+    def resources_for_task(self, task_id: str) -> List[Dict[str, Any]]:
+        """Return all tracked resources for a task."""
+        rows = self._db.execute_read(
+            "SELECT * FROM resources WHERE task_id = ? ORDER BY created_at",
+            (task_id,),
+        )
+        return [dict(r) for r in rows]
+
+    def screen_events_for_task(self, task_id: str) -> List[Dict[str, Any]]:
+        """Return all screen events for a task."""
+        rows = self._db.execute_read(
+            "SELECT * FROM screen_events WHERE task_id = ? ORDER BY created_at",
             (task_id,),
         )
         return [dict(r) for r in rows]

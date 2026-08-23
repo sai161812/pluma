@@ -134,8 +134,15 @@ class TaskSupervisor:
     Spec §12: Owns task state, cancellation, child processes, stop and cleanup.
     """
 
-    def __init__(self, ownership_registry: Any = None) -> None:
+    def __init__(
+        self,
+        ownership_registry: Any = None,
+        ledger: Any = None,
+        rollback_engine: Any = None,
+    ) -> None:
         self._registry = ownership_registry
+        self._ledger = ledger
+        self._rollback_engine = rollback_engine
         self._tasks: Dict[str, TaskCapsule] = {}
         self._lock = threading.RLock()
 
@@ -205,19 +212,57 @@ class TaskSupervisor:
             except Exception as e:
                 logger.error("Failed to terminate job object for %s: %s", task_id, e)
 
-        # 4. Rollback safe reversible actions
-        # (Phase 5 will plug the rollback engine here)
+        # 4. Rollback safe reversible actions in reverse order (Spec §13)
+        has_residual = any(u.get("non_undoable", False) for u in capsule.undo_stack)
+        with self._lock:
+            self._transition(capsule, TaskState.ROLLING_BACK)
+
+        if self._rollback_engine is not None:
+            try:
+                rollback_res = self._rollback_engine.rollback_task(
+                    task_id=task_id,
+                    cancellation_token=capsule.cancellation_token,
+                    memory_undo_stack=capsule.undo_stack,
+                )
+                if rollback_res.has_residual:
+                    has_residual = True
+            except Exception as e:
+                logger.error("Rollback execution error on task %s: %s", task_id, e)
+                has_residual = True
+        elif capsule.undo_stack:
+            # Fallback basic rollback if engine not injected
+            try:
+                from pluma.rollback.recipes import RollbackRecipes
+                recipes = RollbackRecipes()
+                for undo_item in reversed(capsule.undo_stack):
+                    action_name = undo_item.get("action", "")
+                    res = recipes.apply(action_name, undo_item)
+                    if not res.ok:
+                        has_residual = True
+            except Exception as e:
+                logger.error("Basic fallback rollback error on task %s: %s", task_id, e)
+                has_residual = True
         
         # 5. Close/delete task-owned temporary resources
         if self._registry:
             self._registry.cleanup_task_resources(task_id)
         
         # 6. Mark final state
+        final_state = TaskState.STOPPED_WITH_RESIDUAL if has_residual else TaskState.STOPPED
         with self._lock:
-            # Check if any irreversible actions were left
-            residual = any(u.get("non_undoable", False) for u in capsule.undo_stack)
-            final_state = TaskState.STOPPED_WITH_RESIDUAL if residual else TaskState.STOPPED
             self._transition(capsule, final_state)
+
+        # 7. Update ledger if present
+        if self._ledger:
+            try:
+                self._ledger.update_task(
+                    task_id,
+                    final_state=final_state.value,
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                    stop_reason=reason.value,
+                )
+            except Exception as e:
+                logger.error("Failed to update task %s final state in ledger: %s", task_id, e)
 
     def stop_all_active_tasks(self) -> None:
         """Emergency stop for all non-terminal tasks."""
