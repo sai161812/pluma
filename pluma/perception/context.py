@@ -90,3 +90,31 @@ class ActiveWindowContext:
         except Exception as exc:
             logger.debug("Failed to get active window context: %s", exc)
             return ActiveWindowInfo(is_valid=False)
+
+    def get_window_info(self, hwnd: int) -> ActiveWindowInfo:
+        """Retrieve context for an explicit window HWND."""
+        if not hwnd or not self._win32.is_window(hwnd):
+            return ActiveWindowInfo(is_valid=False)
+        try:
+            w_info = self._win32.get_window_info(hwnd)
+            pname = self.get_process_name(w_info.pid)
+            dpi = self.get_dpi_scale(w_info.hwnd)
+            bbox = BoundingBox(
+                left=w_info.rect.left,
+                top=w_info.rect.top,
+                right=w_info.rect.right,
+                bottom=w_info.rect.bottom,
+            )
+            return ActiveWindowInfo(
+                hwnd=w_info.hwnd,
+                process_name=pname,
+                window_title=w_info.title,
+                rect=bbox,
+                dpi_scale=dpi,
+                is_valid=True,
+                pid=w_info.pid,
+                class_name=w_info.class_name,
+            )
+        except Exception as exc:
+            logger.debug("Failed to get window context for %d: %s", hwnd, exc)
+            return ActiveWindowInfo(is_valid=False)
