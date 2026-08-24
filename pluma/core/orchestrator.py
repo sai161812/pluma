@@ -44,6 +44,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _format_planning_error(exc: Exception, command: str) -> str:
+    """Format an intelligent, user-friendly factual summary for failed planning."""
+    msg = str(exc)
+    cmd_preview = command[:40] if command else "empty command"
+    if "not configured" in msg.lower() or "missing model" in msg.lower():
+        return f"Cannot execute '{cmd_preview}': local planner model is not configured."
+    if "at least one step" in msg.lower() or "empty plan" in msg.lower():
+        return f"Cannot execute '{cmd_preview}': no actionable steps could be determined."
+    if "unknown tool" in msg.lower() or "unsupported" in msg.lower() or "validation" in msg.lower():
+        return f"Cannot execute '{cmd_preview}': no supported capability or tool available."
+    return f"Cannot execute '{cmd_preview}': {msg}"
+
+
 # ---------------------------------------------------------------------------
 # TaskExecutionResult
 # ---------------------------------------------------------------------------
@@ -301,7 +314,7 @@ class Orchestrator:
                 final_state="FAILED",
                 error=f"Planning failed: {exc}",
                 duration_ms=duration_ms,
-                factual_summary=f"Failed to create plan: {exc}",
+                factual_summary=_format_planning_error(exc, request.text),
             )
 
         # 2. Execute bounded plan via MultiStepOrchestrator
@@ -368,7 +381,7 @@ class Orchestrator:
                 final_state="FAILED",
                 error=f"SCREEN planning failed: {exc}",
                 duration_ms=duration_ms,
-                factual_summary=f"Failed to create SCREEN plan: {exc}",
+                factual_summary=_format_planning_error(exc, request.text),
             )
 
         ms_res = self._multi_step.execute_plan(
@@ -423,7 +436,7 @@ class Orchestrator:
                 final_state="FAILED",
                 error=f"DEEP planning failed: {exc}",
                 duration_ms=duration_ms,
-                factual_summary=f"Failed to create DEEP plan: {exc}",
+                factual_summary=_format_planning_error(exc, request.text),
             )
 
         ms_res = self._multi_step.execute_plan(

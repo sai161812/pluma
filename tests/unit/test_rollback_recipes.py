@@ -1,4 +1,4 @@
-﻿"""Unit tests for RollbackRecipes (Spec §13, §17)."""
+"""Unit tests for RollbackRecipes (Spec §13, §17)."""
 import pytest
 from pathlib import Path
 from pluma.rollback.recipes import RollbackRecipes, RollbackStepResult

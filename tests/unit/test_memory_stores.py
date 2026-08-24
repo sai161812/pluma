@@ -1,4 +1,4 @@
-﻿"""Unit tests for SQLite-backed PreferencesStore, AliasStore, and RoutineStore (Spec §18, §20)."""
+"""Unit tests for SQLite-backed PreferencesStore, AliasStore, and RoutineStore (Spec §18, §20)."""
 import pytest
 from pluma.memory.aliases import AliasStore
 from pluma.memory.db import DbConnection

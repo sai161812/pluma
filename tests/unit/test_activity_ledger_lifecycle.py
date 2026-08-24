@@ -1,4 +1,4 @@
-﻿"""Unit tests for ActivityLedger lifecycle and query (Spec §16, §20)."""
+"""Unit tests for ActivityLedger lifecycle and query (Spec §16, §20)."""
 import json
 import pytest
 from pluma.memory.activity import (
