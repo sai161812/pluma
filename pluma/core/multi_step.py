@@ -67,6 +67,7 @@ class MultiStepOrchestrator:
         ledger: Optional[ActivityLedger] = None,
         rollback_engine: Optional[RollbackEngine] = None,
         planner: Optional[PlannerInterface] = None,
+        policy_engine: Optional[Any] = None,
         max_replans: int = DEFAULT_MAX_REPLANS,
     ) -> None:
         self.registry = registry
@@ -76,6 +77,7 @@ class MultiStepOrchestrator:
             ledger=ledger,
         )
         self.planner = planner
+        self.policy_engine = policy_engine
         self.max_replans = min(max_replans, HARD_CAP_MAX_REPLANS)
 
     def execute_plan(
@@ -126,13 +128,14 @@ class MultiStepOrchestrator:
                     tool_call.tool, tool_call.purpose,
                 )
 
-                # 2. Execute Step through ToolRegistry
+                # 2. Execute Step through ToolRegistry (with policy evaluation)
                 tool_result = self.registry.execute(
                     tool_name=tool_call.tool,
                     arguments=tool_call.arguments,
                     task_context=capsule,
                     ledger=self.ledger,
                     step_index=step_idx,
+                    policy_engine=self.policy_engine,
                 )
                 step_duration_ms = (time.perf_counter() - step_start) * 1000.0
 

@@ -40,9 +40,9 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 | **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Complete | 314 |
 | **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Complete | 339 |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Complete | 365 |
-| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Complete | **384** |
-| **Phase 11** | Policy engine, risk classifications, elevation broker | **Next Up** | — |
-| **Phase 12** | Latency and quality benchmark tuning, leak testing | Planned | — |
+| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Complete | 384 |
+| **Phase 11** | Policy engine, risk classifications, elevation broker | Complete | **393** |
+| **Phase 12** | Latency and quality benchmark tuning, leak testing | **Next Up** | — |
 | **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Planned | — |
 | **Phase 14** | Creator-directed UI implementation | Planned | — |
 

@@ -38,6 +38,7 @@ class RiskClass(str, Enum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     ADMIN = "ADMIN"
+    RESTRICTED = "RESTRICTED"
     DENY = "DENY"
 
 
@@ -191,6 +192,7 @@ class ToolResult(BaseModel):
         error: str,
         error_code: str = "TOOL_FAILED",
         duration_ms: Optional[float] = None,
+        adapter_used: Optional[str] = None,
     ) -> "ToolResult":
         """Convenience constructor for a failed tool result."""
         return cls(
@@ -200,4 +202,5 @@ class ToolResult(BaseModel):
             error=error,
             error_code=error_code,
             duration_ms=duration_ms,
+            adapter_used=adapter_used,
         )
