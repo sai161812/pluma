@@ -118,6 +118,9 @@ class OcrLifecycleManager:
             self._state = OcrLifecycleState.COLD
         logger.info("OcrLifecycleManager: shutdown complete (COLD).")
 
+    # Alias for uniform lifecycle interface
+    unload = shutdown
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

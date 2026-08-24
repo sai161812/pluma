@@ -84,9 +84,9 @@
 | **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **COMPLETED** | 339 (cumul.) |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **COMPLETED** | 365 (cumul.) |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | **COMPLETED** | 384 (cumul.) |
-| **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | **COMPLETED** | **399 (cumul.)** |
-| **Phase 12** | Latency and quality benchmark tuning, leak testing | **NEXT UP** | Pending |
-| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Planned | Pending |
+| **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | **COMPLETED** | 399 (cumul.) |
+| **Phase 12** | Latency and quality benchmark tuning, leak testing | **COMPLETED** | **405 (cumul.)** |
+| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | **NEXT UP** | Pending |
 | **Phase 14** | Owner-directed UI implementation | Blocked on Owner Design | Pending |
 
 ---
@@ -213,27 +213,32 @@ python -m pytest tests/unit/ -v
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 12 — Latency & Quality Benchmark Tuning, Soak Testing**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 12 & `PLUMA_MASTER_SPEC.md` §22, §23.
+### Next Phase: **Phase 13 — Packaging, `%LOCALAPPDATA%` Isolation & Crash Recovery**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 13 & `PLUMA_MASTER_SPEC.md` §20, §25.
 
-### Objectives for Phase 12:
-1. **Benchmark Suite (`tests/benchmarks/`)**:
-   - FAST route latency benchmark ($<50\text{ms}$ execution target).
-   - Memory benchmark ensuring idle resident memory $<30\text{MB}$.
-   - Voice pipeline latency measurement (VAD + push-to-talk response).
-2. **Soak & Memory Leak Verification**:
-   - 1,000 continuous FAST loop executions ensuring 0 memory leaks.
-   - Cyclic STT, OCR, and LLM load/unload cycles ensuring full garbage collection.
-3. **Write Benchmark & Soak Tests**:
-   - `tests/benchmarks/test_latency_benchmarks.py`
-   - `tests/benchmarks/test_memory_soak.py`
+### Objectives for Phase 13:
+1. **Directory Isolation & `%LOCALAPPDATA%` Structure (Spec §20)**:
+   - Config directory: `%LOCALAPPDATA%\Pluma\config\`
+   - Database directory: `%LOCALAPPDATA%\Pluma\data\pluma.db`
+   - Log directory: `%LOCALAPPDATA%\Pluma\logs\`
+   - Models directory: `%LOCALAPPDATA%\Pluma\models\`
+2. **Crash Recovery & Startup Reconciliation (Spec §20.3)**:
+   - Mark incomplete tasks as `ABORTED_BY_CRASH` upon restart.
+   - Clean up orphaned temporary directories and IPC handles.
+   - Validate SQLite WAL integrity and execute pending migrations.
+3. **Application Entry Point & Packaging (`pluma/app.py`)**:
+   - Production entry point launching Resident Core with graceful signal handling (`SIGINT`, `SIGTERM`).
+   - PyInstaller / Windows packaging script & specification.
+4. **Write Unit & Integration Tests**:
+   - `tests/unit/test_app_lifecycle.py`
+   - `tests/unit/test_crash_recovery.py`
 
 ### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 12 section) and `PLUMA_MASTER_SPEC.md` (§22, §23).
-2. Prepare and present the Phase 12 Implementation Plan to the user for approval.
-3. Upon approval, implement `tests/benchmarks/` benchmark harness and soak tests.
+1. Review `PLUMA_BUILD_PLAN.md` (Phase 13 section) and `PLUMA_MASTER_SPEC.md` (§20, §25).
+2. Prepare and present the Phase 13 Implementation Plan to the user for approval.
+3. Upon approval, implement `pluma/app.py`, crash recovery reconciliation, and packaging config.
 4. Verify all tests pass (`pytest tests/unit/ tests/benchmarks/ -v`).
-5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 13.
+5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 14.
 
 ### Phase 0: Schema Contracts & Storage Foundation
 - [`pluma/brain/schemas.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/schemas.py): `RouteMode` (`FAST`, `SCREEN`, `SMART`, `DEEP`), `PlanMode`, `ToolCall`, `Plan` with hard cap step validation ($N \le 20$).

@@ -172,6 +172,23 @@ class LlmLifecycleManager:
             self._state = LlmLifecycleState.COLD
         logger.info("LlmLifecycleManager: LLM model unloaded (COLD).")
 
+    def shutdown(self) -> None:
+        """Immediately unload the LLM model and cancel any pending idle timer."""
+        self._cancel_idle_timer()
+        with self._lock:
+            if self._state in (LlmLifecycleState.WARM, LlmLifecycleState.GENERATING):
+                self._state = LlmLifecycleState.UNLOADING
+        try:
+            self.adapter.unload()
+        except Exception as exc:
+            logger.debug("Error during shutdown: %s", exc)
+        with self._lock:
+            self._state = LlmLifecycleState.COLD
+        logger.info("LlmLifecycleManager: shutdown complete (COLD).")
+
+    # Alias for uniform lifecycle interface
+    unload = shutdown
+
 
 # ---------------------------------------------------------------------------
 # Process-wide Default Instance
