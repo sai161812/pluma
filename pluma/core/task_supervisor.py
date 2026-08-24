@@ -44,7 +44,7 @@ _TERMINAL_STATES: frozenset[TaskState] = frozenset({
 })
 
 _TRANSITIONS: Dict[TaskState, frozenset[TaskState]] = {
-    TaskState.CREATED: frozenset({TaskState.RUNNING, TaskState.ABORTED_BY_CRASH}),
+    TaskState.CREATED: frozenset({TaskState.RUNNING, TaskState.FAILED, TaskState.ABORTED_BY_CRASH}),
     TaskState.RUNNING: frozenset({
         TaskState.STOPPING, TaskState.SUCCEEDED, TaskState.FAILED,
         TaskState.ABORTED_BY_CRASH,
@@ -52,10 +52,11 @@ _TRANSITIONS: Dict[TaskState, frozenset[TaskState]] = {
     TaskState.STOPPING: frozenset({
         TaskState.ROLLING_BACK, TaskState.STOPPED,
         TaskState.STOPPED_WITH_RESIDUAL, TaskState.ABORTED_BY_CRASH,
+        TaskState.FAILED,
     }),
     TaskState.ROLLING_BACK: frozenset({
         TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL,
-        TaskState.ABORTED_BY_CRASH,
+        TaskState.ABORTED_BY_CRASH, TaskState.FAILED,
     }),
     TaskState.SUCCEEDED: frozenset(),
     TaskState.FAILED: frozenset(),
@@ -170,6 +171,12 @@ class TaskSupervisor:
     def get_task(self, task_id: str) -> TaskCapsule:
         with self._lock:
             return self._get_task(task_id)
+
+    def transition(self, task_id: str, new_state: TaskState) -> None:
+        """Explicitly transition a task to a new state."""
+        with self._lock:
+            capsule = self._get_task(task_id)
+            self._transition(capsule, new_state)
 
     def mark_succeeded(self, task_id: str) -> None:
         with self._lock:

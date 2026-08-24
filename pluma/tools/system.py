@@ -239,6 +239,18 @@ SYSTEM_TOOL_SPECS: List[ToolSpec] = [
         cancellable=True,
     ),
     ToolSpec(
+        name="system_status",
+        description="Query system resource metrics (CPU, RAM, disk usage).",
+        args_schema=GetSystemStatusArgs,
+        risk_class=RiskClass.READ,
+        timeout_s=5.0,
+        executor=execute_get_system_status,
+        verifier=verify_noop,
+        undo_builder=None,
+        adapter_priority=[AdapterPriority.NATIVE_API],
+        cancellable=True,
+    ),
+    ToolSpec(
         name="stop_current",
         description="Stop active task execution immediately.",
         args_schema=StopCurrentArgs,

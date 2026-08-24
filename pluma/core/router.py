@@ -196,6 +196,13 @@ class Router:
             (re.compile(r"^\s*(?:clear\s+clipboard|clipboard\s+clear)\s*$", re.I), "_fast_clear_clipboard"),
         ]
 
+        # Deep-route indicators (combined visual perception + multi-step reasoning)
+        self._deep_patterns: List[re.Pattern[str]] = [
+            re.compile(r"\b(?:look\s+at|inspect|analyze)\s+(?:this|the)\s+(?:setup|screen|window)\s+and\b", re.I),
+            re.compile(r"\b(?:finish|complete)\s+(?:the\s+)?(?:remaining\s+)?configuration\b", re.I),
+            re.compile(r"\bmulti-?step\b", re.I),
+        ]
+
         # Screen-route indicators (UI interaction terms)
         self._screen_patterns: List[re.Pattern[str]] = [
             re.compile(r"\bclick\b", re.I),
@@ -236,7 +243,16 @@ class Router:
                 handler = getattr(self, handler_name)
                 return handler(request, m)
 
-        # 2. Screen route indicators
+        # 2. Deep route indicators (multi-step visual + reasoning)
+        for pat in self._deep_patterns:
+            if pat.search(text):
+                return RouteResult(
+                    route=RouteMode.DEEP,
+                    reason=f"Command requires combined visual perception and multi-step reasoning: '{text[:80]}'",
+                    confidence=0.85,
+                )
+
+        # 3. Screen route indicators
         for pat in self._screen_patterns:
             if pat.search(text):
                 return RouteResult(

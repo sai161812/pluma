@@ -82,16 +82,16 @@
 | **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **COMPLETED** | 294 (cumul.) |
 | **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **COMPLETED** | 314 (cumul.) |
 | **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **COMPLETED** | 339 (cumul.) |
-| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **COMPLETED** | **365 (cumul.)** |
-| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | **NEXT UP** | Pending |
-| **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | Planned | Pending |
+| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **COMPLETED** | 365 (cumul.) |
+| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | **COMPLETED** | **384 (cumul.)** |
+| **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | **NEXT UP** | Pending |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | Planned | Pending |
 | **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Planned | Pending |
 | **Phase 14** | Owner-directed UI implementation | Blocked on Owner Design | Pending |
 
 ---
 
-## 5. Current Verified Implementation Details (Phases 0–9)
+## 5. Current Verified Implementation Details (Phases 0–10)
 
 ### Phase 0: Schema Contracts & Storage Foundation
 - [`pluma/brain/schemas.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/schemas.py): `RouteMode` (`FAST`, `SCREEN`, `SMART`, `DEEP`), `PlanMode`, `ToolCall`, `Plan` with hard cap step validation ($N \le 20$).
@@ -163,6 +163,12 @@
 - [`pluma/brain/llama_cpp_adapter.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/llama_cpp_adapter.py): `LlamaCppAdapter` pluggable local LLM worker using `llama.cpp` with zero module-level imports.
 - [`pluma/brain/lifecycle.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/lifecycle.py): `LlmLifecycleManager` state machine with 30s idle unload timer (`runtime.model_idle_unload_seconds`).
 
+### Phase 10: Bounded Multi-Step Orchestration
+- [`pluma/core/multi_step.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/multi_step.py): `MultiStepOrchestrator` coordinating the **Execute $\rightarrow$ Observe $\rightarrow$ Replan** loop with per-step stop-latch checks and reverse rollback.
+- [`pluma/core/orchestrator.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/orchestrator.py): Unified 4-route dispatcher (`FAST`, `SMART`, `SCREEN`, `DEEP`).
+- [`pluma/core/router.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/router.py): Pattern classifiers for `DEEP` route commands.
+- [`pluma/core/task_supervisor.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/core/task_supervisor.py): State machine transitions with rollback failure handling.
+
 ---
 
 ## 6. Test Suite & Verification Baseline
@@ -172,9 +178,11 @@ Run the complete test suite with:
 python -m pytest tests/unit/ -v
 ```
 
-**Current status: 365 passed, 0 failed, 0 warnings (Execution time ~10.5s)**
+**Current status: 377 passed, 0 failed, 0 warnings (Execution time ~11.0s)**
 
 ### Test Coverage Summary by File
+- `tests/unit/test_multi_step_orchestrator.py` (7 tests): Sequential execution, stop-latch checks, replan bounds, rollback on abort, SMART/SCREEN/DEEP e2e routes.
+- `tests/unit/test_deep_audit_verification.py` (5 tests): End-to-end multi-subsystem integrity, TTL enforcement, OCR ambiguity, VAD safety, string redaction.
 - `tests/unit/test_brain_tool_subset.py` (6 tests): Route-specific tool selection, prompt schema formatting.
 - `tests/unit/test_brain_prompt_builder.py` (4 tests): System/user prompt formatting, context injection, credential redaction.
 - `tests/unit/test_brain_validator.py` (6 tests): Valid plan acceptance, invented tool rejection, schema mismatch rejection, step count cap.
@@ -187,38 +195,37 @@ python -m pytest tests/unit/ -v
 ## 7. Known Architectural Decisions & Technical Nuances
 
 1. **Zero ML at Idle (Spec §4)**: `llama_cpp`, `paddleocr`, and `whisper` are never imported at the module level.
-2. **Grammar & Schema Constraints (Spec §10)**: Local model output is constrained to valid JSON Plan schemas and validated second-pass by `PlanValidator`.
-3. **Route-Specific Tool Subsets (Spec §10)**: Tools sent to the model are restricted to the active route (`SMART`, `SCREEN`, `DEEP`) to minimize token overhead and eliminate tool hallucination.
-4. **Credential Redaction in Prompts (Spec §14, §16)**: Passwords, tokens, API keys, and sensitive clipboard data are redacted prior to prompt injection.
-5. **Idle Unload Windows**: STT unloads after 20s, OCR unloads after 10s, and LLM unloads after 30s of inactivity.
+2. **Execute-Observe-Replan Loop (Spec §6)**: Step outputs are verified immediately; failures trigger bounded replanning up to `max_replans = 3`.
+3. **Stop-Latch Pre-Check (Spec §12)**: Checked before every tool execution and before every replan invocation; halts immediately if cancelled.
+4. **Reverse Rollback on Abort (Spec §13)**: Reversible prior actions are rolled back in reverse order via `RollbackEngine`.
+5. **Layering Compliance**: Low-level `pluma.core` does not import high-level `pluma.brain` or `pluma.perception` at module level.
 
 ---
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 10 — Bounded Multi-Step Orchestration**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 10 & `PLUMA_MASTER_SPEC.md` §6, §12.
+### Next Phase: **Phase 11 — Policy Engine, Risk Classes & Elevation Broker**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 11 & `PLUMA_MASTER_SPEC.md` §14, §15.
 
-### Objectives for Phase 10:
-1. **Execute-Observe-Replan Loop (`pluma/core/multi_step.py`, `pluma/core/orchestrator.py`)**:
-   - Multi-step task execution coordinator.
-   - Per-step observation and state verification.
-   - Bounded replanning limit (replan count $\le \text{max\_replans}$, default 3).
-2. **Stop-Latch Check Before Every Step**:
-   - Evaluates `TaskCapsule.stop_latch` before starting any tool or replan.
-   - Safe halt without executing subsequent steps if stopped.
-3. **Partial Failure & Residual States**:
-   - Distinguishes clean failures from partial failures (`STOPPED_WITH_RESIDUAL`).
-   - Inverse rollback coordination on abort.
+### Objectives for Phase 11:
+1. **Policy Engine (`pluma/policy/engine.py`, `pluma/policy/rules.py`)**:
+   - Evaluates action against policy rules before execution.
+   - Risk classifications: `READ`, `LOW`, `HIGH`, `RESTRICTED`.
+   - Explicit user confirmations for `HIGH` risk operations (destructive deletes, system modifications).
+2. **Single-Operation Elevation Broker (`pluma/policy/elevation_broker.py`)**:
+   - Elevated operations run isolated single subprocesses via UAC elevation broker.
+   - Resident core NEVER runs elevated; only isolated single tasks.
+3. **Confirmation Contract (`pluma/ui/confirmations.py`)**:
+   - Functional contract for user confirmation prompts.
 4. **Write Unit & Integration Tests**:
-   - Multi-step execution through sequential tools.
-   - Stop mid-execution preventing subsequent step execution.
-   - Bounded replan limits halting infinite loops.
+   - Policy evaluation for `READ`, `LOW`, `HIGH`, `RESTRICTED` risk classes.
+   - Confirmation prompts blocking execution until approved.
+   - Elevation broker running single isolated operations.
 
 ### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 10 section) and `PLUMA_MASTER_SPEC.md` (§6, §12).
-2. Prepare and present the Phase 10 Implementation Plan to the user for approval.
-3. Upon approval, implement `pluma/core/` multi-step orchestration components and unit tests.
+1. Review `PLUMA_BUILD_PLAN.md` (Phase 11 section) and `PLUMA_MASTER_SPEC.md` (§14, §15).
+2. Prepare and present the Phase 11 Implementation Plan to the user for approval.
+3. Upon approval, implement `pluma/policy/` components and unit tests.
 4. Verify all tests pass (`pytest tests/unit/ -v`).
-5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 11.
+5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 12.
 

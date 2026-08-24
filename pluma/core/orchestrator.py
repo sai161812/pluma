@@ -1,22 +1,16 @@
-"""pluma.core.orchestrator — Command lifecycle coordinator.
+"""pluma.core.orchestrator — Command lifecycle coordinator for all execution routes.
 
-Spec §6 command lifecycle for the FAST route:
+Spec §6 command lifecycle:
   1. Receive PlumaRequest (voice or text — same path).
   2. Create TaskCapsule via TaskSupervisor.
   3. Insert task record into ActivityLedger.
-  4. Classify route via Router.
-  5. For FAST: execute plan steps through ToolRegistry (validate → undo-capture
-     → execute → verify → ledger-record) while checking the cancellation latch
-     before each step.
-  6. Transition task state (RUNNING → SUCCEEDED / FAILED / STOPPED).
-  7. Update ActivityLedger with final task state and timing.
-  8. Return TaskExecutionResult.
-
-For non-FAST routes the orchestrator records the routing decision and returns
-a result indicating the route class; higher-level phases will handle SCREEN /
-SMART / DEEP execution.
-
-No ML, OCR, or screen-capture code is used here.
+  4. Classify route via Router (FAST, SMART, SCREEN, DEEP).
+  5. FAST: execute plan steps directly through ToolRegistry.
+  6. SMART: local LLM planning + bounded multi-step execution.
+  7. SCREEN: UIA/OCR perception + targeted interaction.
+  8. DEEP: combined perception + local LLM planning + multi-step orchestration.
+  9. Transition task state and update ActivityLedger.
+ 10. Return TaskExecutionResult.
 """
 
 from __future__ import annotations
@@ -25,16 +19,27 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from pluma.brain.schemas import RouteMode
+from pluma.brain.schemas import Plan, PlanMode, RouteMode, ToolCall
 from pluma.core.cancellation import StopReason, TaskCancelledError
+from pluma.core.multi_step import (
+    MultiStepExecutionResult,
+    MultiStepOrchestrator,
+    StepExecutionRecord,
+)
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult, Router
-from pluma.core.task_supervisor import TaskSupervisor
+from pluma.core.task_supervisor import TaskCapsule, TaskState, TaskSupervisor
 from pluma.memory.activity import ActionRecord, ActivityLedger, TaskRecord
+from pluma.rollback.engine import RollbackEngine
 from pluma.tools.base import ToolResult
 from pluma.tools.registry import ToolRegistry, register_default_tools
+
+if TYPE_CHECKING:
+    from pluma.brain.lifecycle import LlmLifecycleManager
+    from pluma.perception.context import ActiveWindowContext
+    from pluma.perception.uia_snapshot import UiaSnapshotBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +64,12 @@ class TaskExecutionResult:
     request_id: str
     route: RouteMode
     route_reason: str
-    final_state: str        # SUCCEEDED | FAILED | STOPPED | DEFERRED
+    final_state: str        # SUCCEEDED | FAILED | STOPPED | STOPPED_WITH_RESIDUAL | DEFERRED
     steps: List[StepRecord] = field(default_factory=list)
     error: Optional[str] = None
     duration_ms: float = 0.0
     factual_summary: str = ""
+    replan_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -71,11 +77,7 @@ class TaskExecutionResult:
 # ---------------------------------------------------------------------------
 
 class Orchestrator:
-    """Coordinates the end-to-end lifecycle of a single PLUMA command.
-
-    Phase 3 implements the FAST route path (zero-ML, zero-OCR, zero-screen-scan).
-    Non-FAST routes return DEFERRED results; later phases will implement them.
-    """
+    """Coordinates the end-to-end lifecycle of a single PLUMA command across all 4 routes."""
 
     def __init__(
         self,
@@ -83,22 +85,27 @@ class Orchestrator:
         supervisor: Optional[TaskSupervisor] = None,
         ledger: Optional[ActivityLedger] = None,
         router: Optional[Router] = None,
+        multi_step_orchestrator: Optional[MultiStepOrchestrator] = None,
+        llm_manager: Optional[Any] = None,
     ) -> None:
         self._registry = registry or _build_default_registry()
-        self._supervisor = supervisor or TaskSupervisor()
+        self._supervisor = supervisor or TaskSupervisor(ledger=ledger)
         self._ledger = ledger
         self._router = router or Router()
+        self._llm_manager = llm_manager
+        self._multi_step = multi_step_orchestrator or MultiStepOrchestrator(
+            registry=self._registry,
+            supervisor=self._supervisor,
+            ledger=self._ledger,
+            planner=self._llm_manager.adapter if self._llm_manager and hasattr(self._llm_manager, "adapter") else None,
+        )
 
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
 
     def execute(self, request: PlumaRequest) -> TaskExecutionResult:
-        """Execute *request* through the full command lifecycle.
-
-        Thread-safe: each call creates its own TaskCapsule and returns
-        when the task has reached a terminal state.
-        """
+        """Execute *request* through the full command lifecycle across all routes."""
         wall_start = time.perf_counter()
 
         # 1. Create Task Capsule
@@ -127,32 +134,37 @@ class Orchestrator:
         route_result: RouteResult = self._router.route(request)
         logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason)
 
-        # Update ledger with route
         if self._ledger:
             try:
                 self._ledger.update_task(task_id, route=route_result.route.value)
             except Exception as e:
                 logger.error("Ledger update_task (route) failed: %s", e)
 
-        # 4. Non-FAST routes: defer (later phases implement SCREEN/SMART/DEEP)
-        if route_result.route != RouteMode.FAST:
-            duration_ms = (time.perf_counter() - wall_start) * 1000.0
-            if self._ledger:
-                try:
-                    self._ledger.update_task(task_id, final_state="DEFERRED")
-                except Exception:
-                    pass
-            return TaskExecutionResult(
-                task_id=task_id,
-                request_id=request.request_id,
-                route=route_result.route,
-                route_reason=route_result.reason,
-                final_state="DEFERRED",
-                factual_summary=f"Routed to {route_result.route.value} (not yet implemented in Phase 3).",
-                duration_ms=duration_ms,
-            )
+        # 4. Route Dispatch
+        if route_result.route == RouteMode.FAST:
+            return self._execute_fast_route(capsule, request, route_result, wall_start)
+        elif route_result.route == RouteMode.SMART:
+            return self._execute_smart_route(capsule, request, route_result, wall_start)
+        elif route_result.route == RouteMode.SCREEN:
+            return self._execute_screen_route(capsule, request, route_result, wall_start)
+        elif route_result.route == RouteMode.DEEP:
+            return self._execute_deep_route(capsule, request, route_result, wall_start)
+        else:
+            return self._execute_fast_route(capsule, request, route_result, wall_start)
 
-        # 5. FAST route: execute the plan
+    # ------------------------------------------------------------------
+    # Route Implementations
+    # ------------------------------------------------------------------
+
+    def _execute_fast_route(
+        self,
+        capsule: TaskCapsule,
+        request: PlumaRequest,
+        route_result: RouteResult,
+        wall_start: float,
+    ) -> TaskExecutionResult:
+        """FAST route: Direct deterministic execution (zero-ML, zero-OCR)."""
+        task_id = capsule.task_id
         plan = route_result.plan
         if plan is None or not plan.steps:
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
@@ -173,7 +185,6 @@ class Orchestrator:
         last_message = ""
 
         for idx, step in enumerate(plan.steps):
-            # Check STOP latch before every step
             if capsule.cancellation_token.is_cancelled:
                 final_state = "STOPPED"
                 last_error = "Task was stopped before this step could run."
@@ -211,7 +222,6 @@ class Orchestrator:
 
             last_message = result.factual_message
 
-        # 6. Finalise task state
         duration_ms = (time.perf_counter() - wall_start) * 1000.0
 
         if final_state == "STOPPED":
@@ -225,7 +235,6 @@ class Orchestrator:
             except Exception:
                 pass
 
-        # Update ledger final state
         if self._ledger:
             try:
                 self._ledger.update_task(
@@ -239,11 +248,6 @@ class Orchestrator:
                 logger.error("Ledger update_task (final) failed: %s", e)
 
         summary = last_message if final_state == "SUCCEEDED" else (last_error or "Task completed.")
-        logger.info(
-            "task=%s final_state=%s duration_ms=%.1f summary=%r",
-            task_id, final_state, duration_ms, summary,
-        )
-
         return TaskExecutionResult(
             task_id=task_id,
             request_id=request.request_id,
@@ -256,16 +260,236 @@ class Orchestrator:
             factual_summary=summary,
         )
 
+    def _execute_smart_route(
+        self,
+        capsule: TaskCapsule,
+        request: PlumaRequest,
+        route_result: RouteResult,
+        wall_start: float,
+    ) -> TaskExecutionResult:
+        """SMART route: Local LLM planning + bounded multi-step execution."""
+        task_id = capsule.task_id
+
+        if self._llm_manager:
+            llm = self._llm_manager
+        else:
+            from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
+            llm = get_default_llm_lifecycle_manager()
+
+        context = {
+            "active_process": request.active_process,
+            "active_window_title": request.active_window_title,
+        }
+
+        # 1. Synthesize plan with local LLM
+        try:
+            plan = llm.plan(
+                command=request.text,
+                context=context,
+                cancellation_token=capsule.cancellation_token,
+                route=RouteMode.SMART,
+            )
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - wall_start) * 1000.0
+            logger.error("Task %s: SMART route planning failed: %s", task_id, exc)
+            self._supervisor.transition(task_id, TaskState.FAILED)
+            return TaskExecutionResult(
+                task_id=task_id,
+                request_id=request.request_id,
+                route=RouteMode.SMART,
+                route_reason=route_result.reason,
+                final_state="FAILED",
+                error=f"Planning failed: {exc}",
+                duration_ms=duration_ms,
+                factual_summary=f"Failed to create plan: {exc}",
+            )
+
+        # 2. Execute bounded plan via MultiStepOrchestrator
+        ms_res = self._multi_step.execute_plan(
+            capsule=capsule,
+            initial_plan=plan,
+            command_text=request.text,
+            context=context,
+        )
+
+        return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
+
+    def _execute_screen_route(
+        self,
+        capsule: TaskCapsule,
+        request: PlumaRequest,
+        route_result: RouteResult,
+        wall_start: float,
+    ) -> TaskExecutionResult:
+        """SCREEN route: UIA / OCR perception + targeted interaction."""
+        task_id = capsule.task_id
+
+        # If deterministic router already produced an unambiguous plan
+        if route_result.plan and route_result.plan.steps:
+            ms_res = self._multi_step.execute_plan(
+                capsule=capsule,
+                initial_plan=route_result.plan,
+                command_text=request.text,
+            )
+            return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
+
+        # Otherwise capture UIA snapshot and query planner
+        snapshot = None
+        try:
+            from pluma.perception.context import ActiveWindowContext
+            from pluma.perception.uia_snapshot import UiaSnapshotBuilder
+            context_inspector = ActiveWindowContext()
+            builder = UiaSnapshotBuilder(context=context_inspector)
+            snapshot = builder.capture(ttl_seconds=3.0)
+        except Exception as exc:
+            logger.debug("Active window snapshot capture failed: %s", exc)
+
+        if self._llm_manager:
+            llm = self._llm_manager
+        else:
+            from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
+            llm = get_default_llm_lifecycle_manager()
+
+        try:
+            plan = llm.plan(
+                command=request.text,
+                screen_snapshot=snapshot,
+                cancellation_token=capsule.cancellation_token,
+                route=RouteMode.SCREEN,
+            )
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - wall_start) * 1000.0
+            self._supervisor.transition(task_id, TaskState.FAILED)
+            return TaskExecutionResult(
+                task_id=task_id,
+                request_id=request.request_id,
+                route=RouteMode.SCREEN,
+                route_reason=route_result.reason,
+                final_state="FAILED",
+                error=f"SCREEN planning failed: {exc}",
+                duration_ms=duration_ms,
+                factual_summary=f"Failed to create SCREEN plan: {exc}",
+            )
+
+        ms_res = self._multi_step.execute_plan(
+            capsule=capsule,
+            initial_plan=plan,
+            command_text=request.text,
+        )
+        return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
+
+    def _execute_deep_route(
+        self,
+        capsule: TaskCapsule,
+        request: PlumaRequest,
+        route_result: RouteResult,
+        wall_start: float,
+    ) -> TaskExecutionResult:
+        """DEEP route: UIA + OCR + Local LLM + Bounded Multi-Step Execution."""
+        task_id = capsule.task_id
+
+        # Capture snapshot with OCR fallback enabled
+        snapshot = None
+        try:
+            from pluma.perception.context import ActiveWindowContext
+            from pluma.perception.uia_snapshot import UiaSnapshotBuilder
+            context_inspector = ActiveWindowContext()
+            builder = UiaSnapshotBuilder(context=context_inspector)
+            snapshot = builder.capture(ttl_seconds=5.0, include_ocr=True)
+        except Exception as exc:
+            logger.debug("DEEP route perception capture failed: %s", exc)
+
+        if self._llm_manager:
+            llm = self._llm_manager
+        else:
+            from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
+            llm = get_default_llm_lifecycle_manager()
+
+        try:
+            plan = llm.plan(
+                command=request.text,
+                screen_snapshot=snapshot,
+                cancellation_token=capsule.cancellation_token,
+                route=RouteMode.DEEP,
+            )
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - wall_start) * 1000.0
+            self._supervisor.transition(task_id, TaskState.FAILED)
+            return TaskExecutionResult(
+                task_id=task_id,
+                request_id=request.request_id,
+                route=RouteMode.DEEP,
+                route_reason=route_result.reason,
+                final_state="FAILED",
+                error=f"DEEP planning failed: {exc}",
+                duration_ms=duration_ms,
+                factual_summary=f"Failed to create DEEP plan: {exc}",
+            )
+
+        ms_res = self._multi_step.execute_plan(
+            capsule=capsule,
+            initial_plan=plan,
+            command_text=request.text,
+        )
+        return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
+
+    def _finalize_multi_step_result(
+        self,
+        capsule: TaskCapsule,
+        request: PlumaRequest,
+        route_result: RouteResult,
+        ms_res: MultiStepExecutionResult,
+        wall_start: float,
+    ) -> TaskExecutionResult:
+        """Convert MultiStepExecutionResult to TaskExecutionResult and update ledger."""
+        duration_ms = (time.perf_counter() - wall_start) * 1000.0
+        final_state_str = ms_res.final_state.value
+
+        if self._ledger:
+            try:
+                self._ledger.update_task(
+                    capsule.task_id,
+                    final_state=final_state_str,
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                    stop_reason=capsule.cancellation_token.reason.value if capsule.cancellation_token.is_cancelled and capsule.cancellation_token.reason else None,
+                    error_code="TOOL_FAILED" if final_state_str == "FAILED" else None,
+                )
+            except Exception as e:
+                logger.error("Ledger update_task failed: %s", e)
+
+        step_records = [
+            StepRecord(
+                step_index=s.step_index,
+                tool=s.tool,
+                result=s.result,
+                duration_ms=s.duration_ms,
+            )
+            for s in ms_res.steps_executed
+        ]
+
+        return TaskExecutionResult(
+            task_id=capsule.task_id,
+            request_id=request.request_id,
+            route=route_result.route,
+            route_reason=route_result.reason,
+            final_state=final_state_str,
+            steps=step_records,
+            error=ms_res.error,
+            duration_ms=duration_ms,
+            factual_summary=ms_res.factual_summary,
+            replan_count=ms_res.replan_count,
+        )
+
 
 # ---------------------------------------------------------------------------
-# Default registry factory (cached lazily)
+# Default registry factory
 # ---------------------------------------------------------------------------
 
 _DEFAULT_REGISTRY: Optional[ToolRegistry] = None
 
 
 def _build_default_registry() -> ToolRegistry:
-    """Build and cache the default ToolRegistry with all 19+ tools registered."""
+    """Build and cache the default ToolRegistry with all standard tools registered."""
     global _DEFAULT_REGISTRY
     if _DEFAULT_REGISTRY is None:
         reg = ToolRegistry()
