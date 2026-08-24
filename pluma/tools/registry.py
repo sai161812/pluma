@@ -284,6 +284,9 @@ class ToolRegistry:
             })
         return result
 
+    # Alias for convenience
+    schemas_for_planner = schema_for_planner
+
 
 def register_default_tools(registry: ToolRegistry) -> None:
     """Register all 19 default tools into the provided ToolRegistry.
@@ -314,3 +317,17 @@ def register_default_tools(registry: ToolRegistry) -> None:
     )
     for spec in all_specs:
         registry.register(spec, overwrite=True)
+
+
+_default_registry: Optional[ToolRegistry] = None
+_default_registry_lock = threading.Lock()
+
+
+def get_default_tool_registry() -> ToolRegistry:
+    """Return the global default ToolRegistry with all standard tools registered."""
+    global _default_registry
+    with _default_registry_lock:
+        if _default_registry is None:
+            _default_registry = ToolRegistry()
+            register_default_tools(_default_registry)
+        return _default_registry
