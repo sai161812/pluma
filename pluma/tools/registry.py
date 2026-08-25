@@ -300,6 +300,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.clipboard import CLIPBOARD_TOOL_SPECS
     from pluma.tools.files import FILE_TOOL_SPECS
     from pluma.tools.system import SYSTEM_TOOL_SPECS
+    from pluma.tools.ui import ALL_UI_TOOLS
     from pluma.tools.windows import WINDOW_TOOL_SPECS
 
     all_specs = (
@@ -309,6 +310,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + AUDIO_TOOL_SPECS
         + SYSTEM_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS
+        + ALL_UI_TOOLS
     )
     for spec in all_specs:
         registry.register(spec, overwrite=True)

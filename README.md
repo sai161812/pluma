@@ -36,9 +36,9 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 | **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | Complete | 220 |
 | **Phase 4** | Windows Automation Adapters (Win32, PowerShell, UIA, Input, Screen) | Complete | 246 |
 | **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Complete | 266 |
-| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Complete | **294** |
-| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **Next Up** | — |
-| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Planned | — |
+| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Complete | 294 |
+| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Complete | **314** |
+| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **Next Up** | — |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Planned | — |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Planned | — |
 | **Phase 11** | Policy engine, risk classifications, elevation broker | Planned | — |
@@ -48,7 +48,14 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 
 ---
 
-## Key Subsystems Implemented (Phases 0–6)
+## Key Subsystems Implemented (Phases 0–7)
+
+### UIA Perception Subsystem (`pluma.perception`)
+- **Active Window Context**: Inspects foreground window identity, PID, process name, window geometry, and DPI scale (`ActiveWindowContext`).
+- **UIA Snapshot Worker**: Traverses UI Automation control tree extracting semantic `ScreenElement` instances with window-relative bounding boxes and invocation capabilities (`UiaSnapshotBuilder`).
+- **Freshness & Focus Guard**: Enforces snapshot TTL (3s default) and aborts stale or mismatched window interactions (`FreshnessChecker`).
+- **UI Interaction Tools**: Typed tools for active window inspection (`inspect_active_window`), element clicking (`click_element`), and text entry (`type_into_element`).
+- **Postcondition Verification**: UI control text, accessibility, and window focus verification (`ScreenVerifier`).
 
 ### Mandatory Voice Subsystem (`pluma.voice`)
 - **Push-to-Talk Activation**: Win32 hotkey listener (`agent.voice_hotkey`, default `ctrl+alt+v`) with press/release triggers.
@@ -102,7 +109,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 pip install -e .
 
-# Run complete test suite (294 unit tests)
+# Run complete test suite (314 unit tests)
 python -m pytest tests/unit/ -v
 ```
 

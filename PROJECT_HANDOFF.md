@@ -79,9 +79,9 @@
 | **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | **COMPLETED** | 220 (cumul.) |
 | **Phase 4** | Windows Automation Adapters (Native Win32, PowerShell, UIA, Input, Screen capture) | **COMPLETED** | 246 (cumul.) |
 | **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | **COMPLETED** | 266 (cumul.) |
-| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **COMPLETED** | **294 (cumul.)** |
-| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **NEXT UP** | Pending |
-| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Planned | Pending |
+| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **COMPLETED** | 294 (cumul.) |
+| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **COMPLETED** | **314 (cumul.)** |
+| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **NEXT UP** | Pending |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | Planned | Pending |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | Planned | Pending |
 | **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | Planned | Pending |
@@ -91,7 +91,7 @@
 
 ---
 
-## 5. Current Verified Implementation Details (Phases 0–6)
+## 5. Current Verified Implementation Details (Phases 0–7)
 
 ### Phase 0: Schema Contracts & Storage Foundation
 - [`pluma/brain/schemas.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/schemas.py): `RouteMode` (`FAST`, `SCREEN`, `SMART`, `DEEP`), `PlanMode`, `ToolCall`, `Plan` with hard cap step validation ($N \le 20$).
@@ -133,12 +133,20 @@
 - [`pluma/rollback/engine.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/rollback/engine.py): `RollbackEngine` reverse-order execution.
 
 ### Phase 6: Mandatory Voice Path
-- [`pluma/voice/vad.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/vad.py): Lightweight `EnergyVAD` calculation of RMS energy for 16-bit 16kHz PCM audio, silence trimming, and utterance completion detection. Zero ML dependencies.
-- [`pluma/voice/capture.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/capture.py): `AudioCapture` managing microphone recording with lazy-loaded `sounddevice`, cancellation token integration, and buffer cleanup.
-- [`pluma/voice/stt_adapter.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/stt_adapter.py): `WhisperSttAdapter` for on-demand `whisper.cpp` local inference with segment confidence calculation and cancellation support.
-- [`pluma/voice/lifecycle.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/lifecycle.py): `VoiceLifecycleManager` managing on-demand model loading and automatic idle unloading timer (`stt_idle_unload_seconds`) with `COLD` $\rightarrow$ `LOADING` $\rightarrow$ `WARM` $\rightarrow$ `TRANSCRIBING` states.
-- [`pluma/voice/pipeline.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/pipeline.py): `VoicePipeline` orchestrating VAD trimming, STT transcription, transcript normalization, material target low-confidence safety checks, and synthesizing `PlumaRequest(input_mode=VOICE)`.
-- [`pluma/voice/activation.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/activation.py): `VoiceActivation` managing configurable push-to-talk keybindings (`agent.voice_hotkey`) and press/release events.
+- [`pluma/voice/vad.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/vad.py): Lightweight `EnergyVAD` calculation of RMS energy for 16-bit 16kHz PCM audio.
+- [`pluma/voice/capture.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/capture.py): `AudioCapture` managing microphone recording with lazy-loaded `sounddevice`.
+- [`pluma/voice/stt_adapter.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/stt_adapter.py): `WhisperSttAdapter` for on-demand `whisper.cpp` inference.
+- [`pluma/voice/lifecycle.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/lifecycle.py): `VoiceLifecycleManager` managing on-demand loading and idle unload timer.
+- [`pluma/voice/pipeline.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/pipeline.py): `VoicePipeline` orchestrating VAD trimming, STT transcription, and material target safety.
+- [`pluma/voice/activation.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/voice/activation.py): `VoiceActivation` managing configurable push-to-talk keybindings.
+
+### Phase 7: UIA Perception Worker
+- [`pluma/perception/context.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/perception/context.py): `ActiveWindowContext` inspecting active foreground window identity, PID, executable name, geometry, and DPI scale.
+- [`pluma/perception/element_refs.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/perception/element_refs.py): `ScreenElement`, `ScreenSnapshot`, `BoundingBox`, and `SnapshotFreshness` models.
+- [`pluma/perception/uia_snapshot.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/perception/uia_snapshot.py): `UiaSnapshotBuilder` capturing semantic control trees with window-relative bounding boxes and TTL expiration.
+- [`pluma/perception/freshness.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/perception/freshness.py): `FreshnessChecker` asserting TTL expiration and active window focus matching.
+- [`pluma/tools/ui.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/ui.py): `inspect_active_window`, `click_element`, and `type_into_element` registered ToolSpecs.
+- [`pluma/verify/screen.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/verify/screen.py): `ScreenVerifier` validating control text, invocation accessibility, and window active states.
 
 ---
 
@@ -149,55 +157,53 @@ Run the complete test suite with:
 python -m pytest tests/unit/ -v
 ```
 
-**Current status: 294 passed, 0 failed, 0 warnings (Execution time ~9.5s)**
+**Current status: 314 passed, 0 failed, 0 warnings (Execution time ~9.8s)**
 
 ### Test Coverage Summary by File
-- `tests/unit/test_voice_vad.py` (5 tests): Energy calculation, silence trimming, utterance completion detection, empty audio safety.
-- `tests/unit/test_voice_capture.py` (3 tests): Capture start/stop, feed, cancellation, zero module-level sounddevice import.
-- `tests/unit/test_voice_stt_adapter.py` (6 tests): Zero module-level ML import, confidence thresholds, cancellation, missing model error, unload reset.
-- `tests/unit/test_voice_lifecycle.py` (4 tests): Cold load on first call, warm reuse within grace period, cold after grace expires, immediate shutdown.
-- `tests/unit/test_voice_pipeline.py` (6 tests): Normalization, material target detection, PlumaRequest creation, silence discard, cancellation, low-confidence rejection.
-- `tests/unit/test_voice_activation.py` (2 tests): Hotkey string parsing, push-to-talk press and release event firing.
-- `tests/unit/test_voice_orchestrator_integration.py` (2 tests): End-to-end voice FAST command execution, router parity, Activity Ledger input_mode recording.
-- All existing tests (266 tests across Phases 0–5) fully passing.
+- `tests/unit/test_perception_context.py` (3 tests): Active window context inspection, null foreground handling, process name resolution.
+- `tests/unit/test_perception_uia_snapshot.py` (3 tests): Control tree extraction, window-relative bounding boxes, zero module-level pywinauto import.
+- `tests/unit/test_perception_freshness.py` (3 tests): Snapshot TTL expiration, window mismatch error, freshness validation.
+- `tests/unit/test_tools_ui.py` (5 tests): `inspect_active_window`, `click_element`, `type_into_element` executors and error handling.
+- `tests/unit/test_verify_screen.py` (6 tests): Control text match/mismatch, control invocation verification, window active verification.
+- All existing tests (294 tests across Phases 0–6) fully passing.
 
 ---
 
 ## 7. Known Architectural Decisions & Technical Nuances
 
-1. **Zero ML & Audio at Idle**: `sounddevice` and `pywhispercpp` are strictly imported inside method bodies. At startup and idle, resident core memory footprint is completely free of audio and ML models.
-2. **Audio Data Transience**: Raw audio bytes are held strictly in memory during push-to-talk, trimmed by VAD, sent to STT, and discarded immediately. No audio files or raw waveforms are written to disk or the Activity Ledger by default.
-3. **STT Warm Grace Timer**: `VoiceLifecycleManager` uses a configurable background timer (`stt_idle_unload_seconds=20`) to unload the Whisper model back to `COLD` state if no follow-up voice commands occur.
-4. **Low-Confidence Material Target Guard**: If STT confidence is below `0.65` on commands involving files, numbers, or destructive verbs, the pipeline rejects guessing and produces `None` to require user clarification.
-5. **Configurable Push-to-Talk Hotkey**: Hotkey string (default `"ctrl+alt+v"`) is parsed by `parse_hotkey_string` into Win32 modifier and virtual-key codes.
+1. **Window-Relative Bounding Boxes**: All `ScreenElement` coordinates are stored relative to the target window's top-left corner (`(left - win_left, top - win_top)`). Moving a window does not invalidate control geometries as long as the window title/process remains fresh.
+2. **Strict Snapshot TTL**: `ScreenSnapshot` enforces a default 3-second TTL (`perception.snapshot_ttl_seconds`). Actions attempted after expiration trigger `StaleSnapshotError` requiring fresh re-capture.
+3. **Active Window Focus Guard**: `FreshnessChecker` validates that the foreground window's process and title still match the snapshot before any UI interaction. If the user shifts focus, the action aborts safely with `WindowMismatchError`.
+4. **UIA Control Invocation Hierarchy**: Interactive tools prioritize semantic invocation (`invoke` pattern / `click_input`) via `UiaAdapter` before falling back to keyboard or coordinates.
 
 ---
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 7 — UIA Perception Worker**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 7 & `PLUMA_MASTER_SPEC.md` §8.
+### Next Phase: **Phase 8 — Targeted OCR Fallback**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 8 & `PLUMA_MASTER_SPEC.md` §8.
 
-### Objectives for Phase 7:
-1. **Context & Active Window Inspection (`pluma/perception/context.py`)**:
-   - Active process, window title, HWND, and geometry capture.
-2. **UIA Snapshot Worker (`pluma/perception/uia_snapshot.py`)**:
-   - Query target window control tree using `pywinauto` UIA backend.
-   - Extract semantic `ScreenElement` instances (buttons, text fields, menus, dialogs) with bounding boxes and invocation capabilities.
-3. **Screen Element References & Freshness (`pluma/perception/element_refs.py`, `pluma/perception/freshness.py`)**:
-   - Snapshot TTL enforcement (3 seconds default).
-   - Window movement / active window change invalidation.
-4. **UIA-Based Verification (`pluma/verify/screen.py`)**:
-   - Verify control state changes and window activations via UIA state reads.
+### Objectives for Phase 8:
+1. **On-Demand OCR Worker (`pluma/perception/ocr_adapter.py`)**:
+   - Lightweight `PaddleOCR` (ONNX Runtime) adapter with on-demand lifecycle.
+   - Target-window or cropped-region OCR only — no whole-desktop scans.
+   - Automatic idle unloading after `ocr_idle_unload_seconds` (default: 10s).
+2. **Ephemeral Screenshot Management (`pluma/perception/capture.py`)**:
+   - GDI target-window screen capture returning ephemeral image buffer.
+   - Screen images discarded immediately after OCR extraction (zero screenshots persisted in ledger).
+3. **OCR ScreenElement Grounding**:
+   - Maps detected OCR words/lines to `ScreenElement(source=ElementSource.OCR)` with confidence and bounding boxes.
+4. **OCR-Based Verification**:
+   - Verifies on-screen text appearance/disappearance post-action.
 5. **Write Unit & Integration Tests**:
-   - Semantic element extraction from standard controls.
-   - Target invalidation on window focus switch.
-   - Snapshot freshness and TTL expiration.
+   - OCR word extraction and confidence thresholding.
+   - Ephemeral image deletion and memory leak tests.
+   - OCR idle unload timer.
 
 ### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 7 section) and `PLUMA_MASTER_SPEC.md` (§8).
-2. Prepare and present the Phase 7 Implementation Plan to the user for approval.
-3. Upon approval, implement `pluma/perception/` components and corresponding unit tests.
+1. Review `PLUMA_BUILD_PLAN.md` (Phase 8 section) and `PLUMA_MASTER_SPEC.md` (§8).
+2. Prepare and present the Phase 8 Implementation Plan to the user for approval.
+3. Upon approval, implement `pluma/perception/ocr_adapter.py`, update `pluma/perception/capture.py`, and create corresponding unit tests.
 4. Verify all tests pass (`pytest tests/unit/ -v`).
-5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 8.
+5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 9.
 
