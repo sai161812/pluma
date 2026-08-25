@@ -39,9 +39,10 @@ class ToolRegistry:
         result = registry.execute(ToolCall(...), task_context)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, policy_engine: Optional[Any] = None) -> None:
         self._specs: Dict[str, ToolSpec] = {}
         self._lock = threading.RLock()
+        self._policy_engine = policy_engine
 
     # ------------------------------------------------------------------
     # Registration
@@ -177,12 +178,32 @@ class ToolRegistry:
         task_context: Any = None,
         ledger: Any = None,
         step_index: int = 0,
+        policy_engine: Any = None,
     ) -> ToolResult:
-        """Execute a tool call with validation, cancellation check, verification, and undo capture."""
+        """Execute a tool call with validation, policy check, cancellation check, verification, and undo capture."""
         spec = self.lookup(tool_name)
         self._validate_args(spec, arguments)
 
-        # 1. Check cancellation latch before starting
+        # 1. Policy check
+        active_policy = policy_engine or self._policy_engine
+        if active_policy is not None:
+            task_id = getattr(task_context, "task_id", None) if task_context else None
+            policy_eval = active_policy.evaluate(
+                tool_name=tool_name,
+                arguments=arguments,
+                default_risk=spec.risk_class,
+                task_id=task_id,
+            )
+            # If policy explicitly denies or requires unfulfilled confirmation
+            decision_val = getattr(policy_eval, "decision", None)
+            if decision_val != "ALLOW" and str(decision_val) not in ("ALLOW", "PolicyDecision.ALLOW"):
+                return ToolResult.failure(
+                    tool=tool_name,
+                    error=f"Blocked by policy: {policy_eval.reason}",
+                    error_code="POLICY_DENIED",
+                )
+
+        # 2. Check cancellation latch before starting
         if spec.cancellable and task_context and hasattr(task_context, "cancellation_token"):
             task_context.cancellation_token.raise_if_cancelled()
 
