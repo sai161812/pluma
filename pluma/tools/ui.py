@@ -288,8 +288,228 @@ TYPE_INTO_ELEMENT_SPEC = ToolSpec(
     cancellable=True,
 )
 
+
+# ---------------------------------------------------------------------------
+# click_ocr_text — OCR-grounded coordinate-based click (Phase 8 fallback)
+# ---------------------------------------------------------------------------
+
+class ClickOcrTextArgs(BaseModel):
+    """Arguments for click_ocr_text."""
+    text: str = Field(description="Visible text string to locate and click on screen via OCR.")
+    hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
+    min_confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum OCR confidence required to accept a text target.",
+    )
+    region: Optional[Dict[str, int]] = Field(
+        default=None,
+        description="Window-relative region {'left', 'top', 'right', 'bottom'} to restrict OCR scan.",
+    )
+
+    @model_validator(mode="after")
+    def _require_text(self) -> "ClickOcrTextArgs":
+        if not self.text or not self.text.strip():
+            raise ValueError("'text' must not be empty for click_ocr_text.")
+        return self
+
+
+def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    """Locate visible text via OCR and click the matched screen coordinate.
+
+    Flow:
+    1. Resolve active window HWND and verify foreground focus.
+    2. Capture window/region image (ephemeral bytes — discarded immediately).
+    3. Run OCR via OcrLifecycleManager.
+    4. Find matching text words at or above min_confidence.
+    5. Reject if zero or multiple ambiguous matches (Spec §E-03, §E-08).
+    6. Translate window-relative center coordinates to desktop absolute.
+    7. Click via InputAdapter.
+    8. Discard image bytes; return ToolResult.
+    """
+    from pluma.adapters.base import WindowNotFoundError
+    from pluma.adapters.input import InputAdapter
+    from pluma.perception.capture import WindowCapture, CaptureError
+    from pluma.perception.element_refs import BoundingBox
+    from pluma.perception.freshness import FreshnessChecker, WindowMismatchError
+    from pluma.perception.ocr_lifecycle import OcrLifecycleManager
+
+    text_query = args["text"]
+    hwnd = args.get("hwnd")
+    min_confidence = args.get("min_confidence", 0.5)
+    raw_region = args.get("region")
+
+    # 1. Resolve active window
+    context = ActiveWindowContext()
+    if hwnd is None:
+        active_info = context.get_active_window()
+        if not active_info.is_valid or not active_info.hwnd:
+            return ToolResult(
+                ok=False,
+                tool="click_ocr_text",
+                data=args,
+                factual_message="Cannot perform OCR click: no active foreground window found.",
+                verified=False,
+                error="No active window.",
+            )
+        hwnd = active_info.hwnd
+        window_rect = active_info.rect
+    else:
+        try:
+            from pluma.adapters.win32 import Win32Adapter
+            w32 = Win32Adapter()
+            if w32.is_window(hwnd):
+                r = w32.get_window_rect(hwnd)
+                window_rect = BoundingBox(left=r.left, top=r.top, right=r.right, bottom=r.bottom)
+            else:
+                active_info = context.get_active_window()
+                window_rect = active_info.rect if active_info.is_valid else BoundingBox(left=0, top=0, right=1920, bottom=1080)
+        except Exception:
+            window_rect = BoundingBox(left=0, top=0, right=1920, bottom=1080)
+
+    # 2. Parse optional region
+    region: Optional[BoundingBox] = None
+    if raw_region:
+        try:
+            region = BoundingBox(
+                left=int(raw_region["left"]),
+                top=int(raw_region["top"]),
+                right=int(raw_region["right"]),
+                bottom=int(raw_region["bottom"]),
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            return ToolResult(
+                ok=False, tool="click_ocr_text", data=args,
+                factual_message=f"Invalid region specification: {e}",
+                verified=False, error=str(e),
+            )
+
+    # 3. Capture ephemeral image bytes
+    image_bytes: Optional[bytes] = None
+    try:
+        capture = WindowCapture()
+        if region is not None:
+            image_bytes = capture.capture_region(region, hwnd=hwnd)
+        else:
+            image_bytes = capture.capture_window(hwnd)
+    except Exception as cap_exc:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"Screen capture failed: {cap_exc}",
+            verified=False, error=str(cap_exc),
+        )
+
+    # 4. Run OCR (image_bytes discarded after recognition)
+    try:
+        from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
+        ocr_manager = get_default_ocr_lifecycle_manager()
+        ocr_result = ocr_manager.run_ocr(image_bytes)
+    except Exception as ocr_exc:
+        image_bytes = None  # Discard on error
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"OCR recognition failed: {ocr_exc}",
+            verified=False, error=str(ocr_exc),
+        )
+    finally:
+        image_bytes = None  # Explicitly discard ephemeral bytes
+
+    # 5. Find matching words
+    matches = ocr_result.find_words(text_query, min_confidence=min_confidence)
+
+    if len(matches) == 0:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=(
+                f"OCR found no text matching '{text_query}' "
+                f"(min_confidence={min_confidence:.2f}) in window HWND {hwnd}."
+            ),
+            verified=False,
+            error="OCR_NO_MATCH",
+        )
+
+    if len(matches) > 1:
+        # Ambiguous duplicate labels — refuse to guess (Acceptance Test E-03)
+        labels = [m.text for m in matches]
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=(
+                f"Ambiguous OCR result: {len(matches)} matches for '{text_query}': "
+                f"{labels}. Clarify which target to click."
+            ),
+            verified=False,
+            error="OCR_AMBIGUOUS",
+        )
+
+    target_word = matches[0]
+    word_bounds = target_word.bounds
+
+    # Apply region offset if scanning a sub-region
+    offset_left = region.left if region else 0
+    offset_top = region.top if region else 0
+
+    # Window-relative center of the matched word
+    center_x_window_rel = word_bounds.center_x + offset_left
+    center_y_window_rel = word_bounds.center_y + offset_top
+
+    # Convert to desktop-absolute coordinates
+    desktop_abs_x = window_rect.left + center_x_window_rel
+    desktop_abs_y = window_rect.top + center_y_window_rel
+
+    # 6. Click via InputAdapter
+    try:
+        input_adapter = InputAdapter()
+        input_adapter.mouse_click(desktop_abs_x, desktop_abs_y)
+    except Exception as click_exc:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"Mouse click failed at ({desktop_abs_x}, {desktop_abs_y}): {click_exc}",
+            verified=False, error=str(click_exc),
+        )
+
+    return ToolResult(
+        ok=True,
+        tool="click_ocr_text",
+        data={
+            "hwnd": hwnd,
+            "text": text_query,
+            "matched_text": target_word.text,
+            "confidence": round(target_word.confidence, 3),
+            "window_rel_x": center_x_window_rel,
+            "window_rel_y": center_y_window_rel,
+            "desktop_x": desktop_abs_x,
+            "desktop_y": desktop_abs_y,
+        },
+        factual_message=(
+            f"Clicked OCR-matched text '{target_word.text}' "
+            f"(confidence={target_word.confidence:.2f}) at desktop "
+            f"({desktop_abs_x}, {desktop_abs_y}) in window HWND {hwnd}."
+        ),
+        verified=False,  # Postcondition verified by caller or ScreenVerifier
+    )
+
+
+CLICK_OCR_TEXT_SPEC = ToolSpec(
+    name="click_ocr_text",
+    description=(
+        "OCR fallback: locate visible text in the active window using optical "
+        "character recognition and click the matched screen position. Use only "
+        "when UI Automation (click_element) cannot reach the target."
+    ),
+    args_schema=ClickOcrTextArgs,
+    risk_class=RiskClass.LOW,
+    timeout_s=10.0,
+    executor=execute_click_ocr_text,
+    verifier=verify_noop,
+    adapter_priority=[AdapterPriority.OCR_GROUNDED, AdapterPriority.RAW_COORDINATE],
+    cancellable=True,
+)
+
+
 ALL_UI_TOOLS: List[ToolSpec] = [
     INSPECT_ACTIVE_WINDOW_SPEC,
     CLICK_ELEMENT_SPEC,
     TYPE_INTO_ELEMENT_SPEC,
+    CLICK_OCR_TEXT_SPEC,
 ]

@@ -121,6 +121,10 @@ class UiaSnapshotBuilder:
         self,
         hwnd: Optional[int] = None,
         ttl_seconds: float = 3.0,
+        include_ocr: bool = False,
+        ocr_if_no_controls: bool = False,
+        ocr_manager: Optional[Any] = None,
+        window_capture: Optional[Any] = None,
     ) -> ScreenSnapshot:
         """Capture a point-in-time ScreenSnapshot for the specified or active window."""
         active_info: Optional[ActiveWindowInfo] = None
@@ -179,6 +183,33 @@ class UiaSnapshotBuilder:
                 )
                 raw_elements.append(elem)
 
+        # Optional OCR fallback pass
+        ocr_elements: List[ScreenElement] = []
+        should_run_ocr = include_ocr or (ocr_if_no_controls and len(raw_elements) == 0)
+        if should_run_ocr:
+            try:
+                from pluma.perception.capture import WindowCapture
+                from pluma.perception.ocr_lifecycle import OcrLifecycleManager
+                
+                cap = window_capture or WindowCapture()
+                omgr = ocr_manager or OcrLifecycleManager()
+                
+                img_bytes = cap.capture_window(hwnd)
+                ocr_res = omgr.run_ocr(img_bytes)
+                for word in ocr_res.words:
+                    ocr_el = ScreenElement(
+                        snapshot_id=snapshot_id,
+                        source=ElementSource.OCR,
+                        label=word.text,
+                        control_type="StaticText",
+                        bounds=word.bounds,
+                        confidence=word.confidence,
+                        invocation_capability="click",
+                    )
+                    ocr_elements.append(ocr_el)
+            except Exception as ocr_exc:
+                logger.debug("OCR fallback pass failed for window %d: %s", hwnd, ocr_exc)
+
         return ScreenSnapshot(
             snapshot_id=snapshot_id,
             created_at=now,
@@ -188,7 +219,7 @@ class UiaSnapshotBuilder:
             window_rect=win_rect,
             dpi_scale=dpi_scale,
             controls=raw_elements,
-            ocr_words=[],
+            ocr_words=ocr_elements,
             image_ref=None,
         )
 

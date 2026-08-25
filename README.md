@@ -37,9 +37,9 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 | **Phase 4** | Windows Automation Adapters (Win32, PowerShell, UIA, Input, Screen) | Complete | 246 |
 | **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Complete | 266 |
 | **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Complete | 294 |
-| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Complete | **314** |
-| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **Next Up** | — |
-| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Planned | — |
+| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Complete | 314 |
+| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Complete | **339** |
+| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | **Next Up** | — |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Planned | — |
 | **Phase 11** | Policy engine, risk classifications, elevation broker | Planned | — |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | Planned | — |
@@ -48,7 +48,14 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 
 ---
 
-## Key Subsystems Implemented (Phases 0–7)
+## Key Subsystems Implemented (Phases 0–8)
+
+### Targeted OCR Fallback Subsystem (`pluma.perception`)
+- **Ephemeral Screen Capture**: Target-window and region capture returning in-memory raw BMP bytes; zero screenshots written to disk or the Activity Ledger (`WindowCapture`).
+- **On-Demand OCR Worker**: Lazy-loaded `PaddleOCR`/ONNX Runtime adapter extracting `OcrWord` items with window-relative bounding boxes and confidence scoring (`OcrAdapter`).
+- **Warm/Cold Lifecycle Management**: Automatic model unload after 10 seconds of idle inactivity (`OcrLifecycleManager`).
+- **OCR Interaction Tools**: Grounded text clicking with coordinate translation and duplicate label ambiguity rejection (`click_ocr_text`).
+- **Postcondition Verification**: On-screen text presence and absence verification (`ScreenVerifier`).
 
 ### UIA Perception Subsystem (`pluma.perception`)
 - **Active Window Context**: Inspects foreground window identity, PID, process name, window geometry, and DPI scale (`ActiveWindowContext`).
@@ -109,7 +116,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 pip install -e .
 
-# Run complete test suite (314 unit tests)
+# Run complete test suite (339 unit tests)
 python -m pytest tests/unit/ -v
 ```
 

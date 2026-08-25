@@ -130,3 +130,93 @@ class ScreenVerifier:
                 method="win32",
                 detail=f"Window active verification failed: {exc}",
             )
+
+    def verify_ocr_text_present(
+        self,
+        hwnd: int,
+        expected_text: str,
+        region: Optional[Any] = None,
+        min_confidence: float = 0.5,
+        timeout_s: float = 3.0,
+        ocr_manager: Optional[Any] = None,
+        capture: Optional[Any] = None,
+    ) -> VerifyResult:
+        """Verify that expected text is visible on screen using OCR."""
+        from pluma.perception.capture import WindowCapture
+        from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
+        
+        cap = capture or WindowCapture(win32_adapter=self._win32)
+        ocr = ocr_manager or get_default_ocr_lifecycle_manager()
+
+        try:
+            if region is not None:
+                image_bytes = cap.capture_region(region, hwnd=hwnd)
+            else:
+                image_bytes = cap.capture_window(hwnd)
+
+            result = ocr.run_ocr(image_bytes)
+            matches = result.find_words(expected_text, min_confidence=min_confidence)
+
+            if matches:
+                best = max(matches, key=lambda w: w.confidence)
+                return VerifyResult(
+                    ok=True,
+                    method="ocr",
+                    detail=f"OCR verified text '{expected_text}' present in window HWND {hwnd} (confidence={best.confidence:.2f}).",
+                )
+            return VerifyResult(
+                ok=False,
+                method="ocr",
+                detail=f"OCR text '{expected_text}' not found in window HWND {hwnd} (min_confidence={min_confidence:.2f}).",
+            )
+        except Exception as exc:
+            return VerifyResult(
+                ok=False,
+                method="ocr",
+                detail=f"OCR verification failed for '{expected_text}': {exc}",
+            )
+
+    def verify_ocr_text_absent(
+        self,
+        hwnd: int,
+        absent_text: str,
+        region: Optional[Any] = None,
+        min_confidence: float = 0.5,
+        timeout_s: float = 3.0,
+        ocr_manager: Optional[Any] = None,
+        capture: Optional[Any] = None,
+    ) -> VerifyResult:
+        """Verify that text is NOT visible on screen (e.g. dismissed dialog or closed tab)."""
+        from pluma.perception.capture import WindowCapture
+        from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
+        
+        cap = capture or WindowCapture(win32_adapter=self._win32)
+        ocr = ocr_manager or get_default_ocr_lifecycle_manager()
+
+        try:
+            if region is not None:
+                image_bytes = cap.capture_region(region, hwnd=hwnd)
+            else:
+                image_bytes = cap.capture_window(hwnd)
+
+            result = ocr.run_ocr(image_bytes)
+            matches = result.find_words(absent_text, min_confidence=min_confidence)
+
+            if not matches:
+                return VerifyResult(
+                    ok=True,
+                    method="ocr",
+                    detail=f"OCR verified text '{absent_text}' is absent from window HWND {hwnd}.",
+                )
+            best = max(matches, key=lambda w: w.confidence)
+            return VerifyResult(
+                ok=False,
+                method="ocr",
+                detail=f"OCR found unexpected text '{absent_text}' still present in window HWND {hwnd} (confidence={best.confidence:.2f}).",
+            )
+        except Exception as exc:
+            return VerifyResult(
+                ok=False,
+                method="ocr",
+                detail=f"OCR absence verification failed for '{absent_text}': {exc}",
+            )
