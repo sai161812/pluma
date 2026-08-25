@@ -120,3 +120,24 @@ def sanitise_args_for_ledger(tool_name: str, args: Dict[str, Any]) -> str:
     """
     sanitised = redact_dict(args, deep=True)
     return json.dumps({"tool": tool_name, "args": sanitised}, ensure_ascii=False)
+
+
+def redact_string(text: str) -> str:
+    """Redact known secret patterns and tokens from an arbitrary string."""
+    result = text
+    for pattern in _SECRET_VALUE_PATTERNS:
+        result = pattern.sub(REDACTED_TOKEN, result)
+    # Also check specific token words like "api_key=...", "password=..."
+    result = re.sub(r"(?i)\b(api_key|apikey|password|passwd|secret|token)\s*=\s*['\"]?([^\s'\"]+)['\"]?", r"\1=" + REDACTED_TOKEN, result)
+    return result
+
+
+def redact_sensitive_data(data: Any) -> Any:
+    """Recursively redact sensitive data in dicts, lists, strings, or primitives."""
+    if isinstance(data, dict):
+        return redact_dict(data)
+    elif isinstance(data, list):
+        return _redact_list(data)
+    elif isinstance(data, str):
+        return redact_string(data)
+    return data

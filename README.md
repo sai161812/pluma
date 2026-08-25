@@ -38,9 +38,9 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 | **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Complete | 266 |
 | **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Complete | 294 |
 | **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Complete | 314 |
-| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Complete | **339** |
-| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | **Next Up** | — |
-| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Planned | — |
+| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Complete | 339 |
+| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Complete | **365** |
+| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | **Next Up** | — |
 | **Phase 11** | Policy engine, risk classifications, elevation broker | Planned | — |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | Planned | — |
 | **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Planned | — |
@@ -48,7 +48,14 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 
 ---
 
-## Key Subsystems Implemented (Phases 0–8)
+## Key Subsystems Implemented (Phases 0–9)
+
+### Replaceable Local Planner Subsystem (`pluma.brain`)
+- **Pluggable Local LLM Adapter**: `LlamaCppAdapter` using `llama.cpp` for local quantized inference with zero module-level imports.
+- **On-Demand Warm/Cold Lifecycle**: `LlmLifecycleManager` state machine with automatic 30s idle unloading (`runtime.model_idle_unload_seconds`) enforcing zero ML footprint at idle.
+- **Route-Specific Tool Subsets**: `ToolSubsetSelector` delivering only route-permitted tool schemas (`SMART`, `SCREEN`, `DEEP`) to prevent token bloat and eliminate hallucination.
+- **Sanitized Prompt Construction**: `PromptBuilder` injecting minimal context and redacting passwords, API keys, and sensitive tokens.
+- **Strict Second-Pass Validation**: `PlanValidator` verifying tool existence in `ToolRegistry`, argument Pydantic schemas, and step limits ($N \le 20$).
 
 ### Targeted OCR Fallback Subsystem (`pluma.perception`)
 - **Ephemeral Screen Capture**: Target-window and region capture returning in-memory raw BMP bytes; zero screenshots written to disk or the Activity Ledger (`WindowCapture`).
@@ -116,7 +123,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 pip install -e .
 
-# Run complete test suite (339 unit tests)
+# Run complete test suite (365 unit tests)
 python -m pytest tests/unit/ -v
 ```
 

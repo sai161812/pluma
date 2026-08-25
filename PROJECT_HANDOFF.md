@@ -81,9 +81,9 @@
 | **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | **COMPLETED** | 266 (cumul.) |
 | **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | **COMPLETED** | 294 (cumul.) |
 | **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | **COMPLETED** | 314 (cumul.) |
-| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **COMPLETED** | **339 (cumul.)** |
-| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **NEXT UP** | Pending |
-| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | Planned | Pending |
+| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **COMPLETED** | 339 (cumul.) |
+| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **COMPLETED** | **365 (cumul.)** |
+| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | **NEXT UP** | Pending |
 | **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | Planned | Pending |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | Planned | Pending |
 | **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Planned | Pending |
@@ -91,7 +91,7 @@
 
 ---
 
-## 5. Current Verified Implementation Details (Phases 0–8)
+## 5. Current Verified Implementation Details (Phases 0–9)
 
 ### Phase 0: Schema Contracts & Storage Foundation
 - [`pluma/brain/schemas.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/schemas.py): `RouteMode` (`FAST`, `SCREEN`, `SMART`, `DEEP`), `PlanMode`, `ToolCall`, `Plan` with hard cap step validation ($N \le 20$).
@@ -155,6 +155,14 @@
 - [`pluma/tools/ui.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/tools/ui.py): `click_ocr_text` tool grounding clicks on visible text, rejecting ambiguous duplicates, and clearing image bytes.
 - [`pluma/verify/screen.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/verify/screen.py): `verify_ocr_text_present` and `verify_ocr_text_absent` postcondition verifiers.
 
+### Phase 9: Replaceable Local Planner
+- [`pluma/brain/interface.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/interface.py): `PlannerInterface` abstract contract and error hierarchy.
+- [`pluma/brain/tool_subset.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/tool_subset.py): `ToolSubsetSelector` selecting route-specific tool schemas (`SMART`, `SCREEN`, `DEEP`) to prevent token bloat and hallucination.
+- [`pluma/brain/prompt_builder.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/prompt_builder.py): `PromptBuilder` constructing sanitized prompts with credential redaction.
+- [`pluma/brain/validator.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/validator.py): `PlanValidator` strict 2nd-pass validation enforcing tool existence, argument schemas, and hard step limits ($N \le 20$).
+- [`pluma/brain/llama_cpp_adapter.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/llama_cpp_adapter.py): `LlamaCppAdapter` pluggable local LLM worker using `llama.cpp` with zero module-level imports.
+- [`pluma/brain/lifecycle.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/lifecycle.py): `LlmLifecycleManager` state machine with 30s idle unload timer (`runtime.model_idle_unload_seconds`).
+
 ---
 
 ## 6. Test Suite & Verification Baseline
@@ -164,54 +172,53 @@ Run the complete test suite with:
 python -m pytest tests/unit/ -v
 ```
 
-**Current status: 337 passed, 0 failed, 0 warnings (Execution time ~10.1s)**
+**Current status: 365 passed, 0 failed, 0 warnings (Execution time ~10.5s)**
 
 ### Test Coverage Summary by File
-- `tests/unit/test_perception_capture.py` (4 tests): Window and cropped region screen capture, error handling.
-- `tests/unit/test_perception_ocr_adapter.py` (6 tests): OCR text extraction, confidence thresholds, cancellation, zero module-level imports.
-- `tests/unit/test_perception_ocr_lifecycle.py` (5 tests): COLD/WARM state transitions, 10s idle unload timer, shutdown.
-- `tests/unit/test_ocr_grounding_integration.py` (4 tests): `click_ocr_text` tool, coordinate translation, ambiguous duplicate rejection.
-- `tests/unit/test_verify_ocr.py` (4 tests): `verify_ocr_text_present` and `verify_ocr_text_absent` postcondition verification.
-- All existing tests (314 tests across Phases 0–7) fully passing.
+- `tests/unit/test_brain_tool_subset.py` (6 tests): Route-specific tool selection, prompt schema formatting.
+- `tests/unit/test_brain_prompt_builder.py` (4 tests): System/user prompt formatting, context injection, credential redaction.
+- `tests/unit/test_brain_validator.py` (6 tests): Valid plan acceptance, invented tool rejection, schema mismatch rejection, step count cap.
+- `tests/unit/test_brain_lifecycle.py` (5 tests): COLD/WARM state transitions, 30s idle unload timer, cancellation, shutdown.
+- `tests/unit/test_brain_llama_cpp_adapter.py` (5 tests): Structured plan generation, complex file decomposition, cancellation, zero module-level imports.
+- All existing tests (339 tests across Phases 0–8) fully passing.
 
 ---
 
 ## 7. Known Architectural Decisions & Technical Nuances
 
-1. **Zero ML at Idle**: `paddleocr` and `onnxruntime` are never imported at the module level.
-2. **Ephemeral Screenshot Privacy**: Screenshots are stored strictly in memory and discarded immediately after OCR analysis. No image files persist in SQLite or the ledger.
-3. **Ambiguity Rejection (Acceptance Test E-03)**: If OCR detects multiple ambiguous matches for a target text query, `click_ocr_text` refuses to guess and returns `OCR_AMBIGUOUS` to request clarification.
-4. **OCR Idle Unload**: `OcrLifecycleManager` background timer automatically unloads the OCR engine after 10 seconds of inactivity (`runtime.ocr_idle_unload_seconds`).
-5. **UIA Priority**: Semantic UIA interactions (`click_element`) are prioritized over OCR fallback (`click_ocr_text`).
+1. **Zero ML at Idle (Spec §4)**: `llama_cpp`, `paddleocr`, and `whisper` are never imported at the module level.
+2. **Grammar & Schema Constraints (Spec §10)**: Local model output is constrained to valid JSON Plan schemas and validated second-pass by `PlanValidator`.
+3. **Route-Specific Tool Subsets (Spec §10)**: Tools sent to the model are restricted to the active route (`SMART`, `SCREEN`, `DEEP`) to minimize token overhead and eliminate tool hallucination.
+4. **Credential Redaction in Prompts (Spec §14, §16)**: Passwords, tokens, API keys, and sensitive clipboard data are redacted prior to prompt injection.
+5. **Idle Unload Windows**: STT unloads after 20s, OCR unloads after 10s, and LLM unloads after 30s of inactivity.
 
 ---
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 9 — Replaceable Local Planner**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 9 & `PLUMA_MASTER_SPEC.md` §10, §20.
+### Next Phase: **Phase 10 — Bounded Multi-Step Orchestration**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 10 & `PLUMA_MASTER_SPEC.md` §6, §12.
 
-### Objectives for Phase 9:
-1. **Planner Interface & llama.cpp Adapter (`pluma/brain/planner.py`, `pluma/brain/llm_adapter.py`)**:
-   - `Planner` abstract contract.
-   - `LlamaCppAdapter` using `llama-cpp-python` with on-demand lazy import.
-2. **LLM Lifecycle Manager (`pluma/brain/lifecycle.py`)**:
-   - `LlmLifecycleManager`: `COLD` $\rightarrow$ `LOADING` $\rightarrow$ `WARM` $\rightarrow$ `GENERATING` state machine.
-   - Automatic idle unload after `runtime.model_idle_unload_seconds` (30s default).
-3. **Grammar & Tool Schema Constraints (`pluma/brain/grammar.py`)**:
-   - Route-specific tool-schema selection (`SCREEN`, `SMART`, `DEEP`).
-   - JSON Schema / GBNF grammar-constrained generation for guaranteed valid `Plan` output.
-4. **Strict Second-Pass Plan Validator (`pluma/brain/validator.py`)**:
-   - Structural validation, hard step cap ($N \le 20$), tool existence in registry, valid argument schema checks.
-5. **Write Unit & Integration Tests**:
-   - Structured plan generation and JSON grammar constraint enforcement.
-   - Plan validation rejecting unknown tools or invalid argument schemas.
-   - Model on-demand load and idle unload timer.
+### Objectives for Phase 10:
+1. **Execute-Observe-Replan Loop (`pluma/core/multi_step.py`, `pluma/core/orchestrator.py`)**:
+   - Multi-step task execution coordinator.
+   - Per-step observation and state verification.
+   - Bounded replanning limit (replan count $\le \text{max\_replans}$, default 3).
+2. **Stop-Latch Check Before Every Step**:
+   - Evaluates `TaskCapsule.stop_latch` before starting any tool or replan.
+   - Safe halt without executing subsequent steps if stopped.
+3. **Partial Failure & Residual States**:
+   - Distinguishes clean failures from partial failures (`STOPPED_WITH_RESIDUAL`).
+   - Inverse rollback coordination on abort.
+4. **Write Unit & Integration Tests**:
+   - Multi-step execution through sequential tools.
+   - Stop mid-execution preventing subsequent step execution.
+   - Bounded replan limits halting infinite loops.
 
 ### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 9 section) and `PLUMA_MASTER_SPEC.md` (§10, §20).
-2. Prepare and present the Phase 9 Implementation Plan to the user for approval.
-3. Upon approval, implement `pluma/brain/` components and corresponding unit tests.
+1. Review `PLUMA_BUILD_PLAN.md` (Phase 10 section) and `PLUMA_MASTER_SPEC.md` (§6, §12).
+2. Prepare and present the Phase 10 Implementation Plan to the user for approval.
+3. Upon approval, implement `pluma/core/` multi-step orchestration components and unit tests.
 4. Verify all tests pass (`pytest tests/unit/ -v`).
-5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 10.
+5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 11.
 

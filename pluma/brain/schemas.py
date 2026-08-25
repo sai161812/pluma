@@ -17,6 +17,7 @@ No OS-automation, ML, or adapter code in this module.
 
 from __future__ import annotations
 
+import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -110,13 +111,14 @@ class ToolCall(BaseModel):
 class Plan(BaseModel):
     """A validated sequence of ToolCall steps for one task.
 
-    Spec §20.2 Plan fields: task_id, mode, steps[].
+    Spec §20.2 Plan fields: task_id, route, mode, steps[].
     """
 
     model_config = {"frozen": True}
 
-    task_id: str = Field(min_length=1)
-    mode: PlanMode
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1)
+    route: Optional[RouteMode] = None
+    mode: PlanMode = Field(default=PlanMode.DIRECT)
     steps: List[ToolCall] = Field(min_length=1)
 
     @model_validator(mode="after")
