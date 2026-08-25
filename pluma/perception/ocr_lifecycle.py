@@ -51,9 +51,10 @@ class OcrLifecycleManager:
         self,
         idle_unload_seconds: float = DEFAULT_IDLE_UNLOAD_SECONDS,
         custom_backend: Optional[OcrBackend] = None,
+        adapter: Optional[OcrAdapter] = None,
     ) -> None:
         self._idle_unload_seconds = idle_unload_seconds
-        self._adapter = OcrAdapter(custom_backend=custom_backend)
+        self._adapter = adapter or OcrAdapter(custom_backend=custom_backend)
         self._state = OcrLifecycleState.COLD
         self._lock = threading.Lock()
         self._idle_timer: Optional[threading.Timer] = None

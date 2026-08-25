@@ -42,7 +42,9 @@ UI_PERCEPTION_TOOLS = [
 ]
 
 SYSTEM_CLIPBOARD_TOOLS = [
-    "get_system_status",
+    "system_status",
+    "battery_status",
+    "clear_clipboard",
     "clipboard_read",
     "clipboard_write",
     "show_activity",
@@ -111,6 +113,9 @@ class ToolSubsetSelector:
         available_names = [n for n in tool_names if target_registry.contains(n)]
         return target_registry.schema_for_planner(available_names)
 
+    # Alias for caller compatibility
+    select_schemas_for_route = select_schemas
+
     @staticmethod
     def format_tools_for_prompt(schemas: List[Dict[str, Any]]) -> str:
         """Format tool schemas into a concise, token-efficient text description for LLM prompts."""
@@ -134,3 +139,6 @@ class ToolSubsetSelector:
             lines.append(f"- {name}({args_str}): {desc}")
 
         return "\n".join(lines)
+
+    # Alias for caller compatibility
+    format_schemas_for_prompt = format_tools_for_prompt

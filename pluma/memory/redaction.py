@@ -122,13 +122,24 @@ def sanitise_args_for_ledger(tool_name: str, args: Dict[str, Any]) -> str:
     return json.dumps({"tool": tool_name, "args": sanitised}, ensure_ascii=False)
 
 
+# Unanchored patterns for finding secrets embedded in free-form strings
+_UNANCHORED_SECRET_PATTERNS: List[re.Pattern] = [
+    re.compile(r"\bghp_[A-Za-z0-9]{36}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    re.compile(r"(?i)\b(api_key|apikey|password|passwd|secret|token)\s*[:=]\s*['\"]?([^\s'\"]+)['\"]?"),
+    re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._~+/-]{20,})"),
+]
+
+
 def redact_string(text: str) -> str:
     """Redact known secret patterns and tokens from an arbitrary string."""
     result = text
+    for pattern in _UNANCHORED_SECRET_PATTERNS:
+        result = pattern.sub(REDACTED_TOKEN, result)
     for pattern in _SECRET_VALUE_PATTERNS:
         result = pattern.sub(REDACTED_TOKEN, result)
-    # Also check specific token words like "api_key=...", "password=..."
-    result = re.sub(r"(?i)\b(api_key|apikey|password|passwd|secret|token)\s*=\s*['\"]?([^\s'\"]+)['\"]?", r"\1=" + REDACTED_TOKEN, result)
     return result
 
 

@@ -95,6 +95,11 @@ class ToolRegistry:
         with self._lock:
             return [s for s in self._specs.values() if s.risk_class == risk_class]
 
+    def list_specs(self) -> List[ToolSpec]:
+        """Return a list of all registered ToolSpec instances."""
+        with self._lock:
+            return list(self._specs.values())
+
     def __iter__(self) -> Iterator[ToolSpec]:
         with self._lock:
             return iter(list(self._specs.values()))
@@ -138,7 +143,7 @@ class ToolRegistry:
         # JSON Schema dict
         if isinstance(schema, dict):
             try:
-                import jsonschema
+                import jsonschema  # type: ignore[import-not-found]
                 try:
                     jsonschema.validate(instance=arguments, schema=schema)
                 except jsonschema.ValidationError as exc:
@@ -146,9 +151,13 @@ class ToolRegistry:
                         f"Invalid arguments for tool {spec.name!r}: {exc.message}"
                     ) from exc
             except ImportError:
-                raise ToolArgumentError(
-                    f"Tool {spec.name!r} uses a JSON Schema but jsonschema is not installed."
-                )
+                # Fallback: check required keys
+                required_keys = schema.get("required", [])
+                for req in required_keys:
+                    if req not in arguments:
+                        raise ToolArgumentError(
+                            f"Missing required argument {req!r} for tool {spec.name!r}."
+                        )
             return
 
         # Unknown schema type

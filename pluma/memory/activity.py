@@ -214,6 +214,9 @@ class ActivityLedger:
             ),
         )
 
+    # Alias for convenient cross-caller use
+    insert_undo = insert_undo_record
+
     def mark_rollback_result(
         self,
         action_row_id: int,
