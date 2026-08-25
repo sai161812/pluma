@@ -18,7 +18,7 @@ from pluma.adapters.base import (
     AdapterError,
     AdapterTimeoutError,
 )
-from pluma.core.cancellation import CancellationToken
+from pluma.core.cancellation import CancellationToken, TaskCancelledError
 from pluma.core.job_object import WindowsJobObject
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,28 @@ class PowerShellAdapter:
                 except Exception as exc:
                     logger.debug("Failed to assign pid %d to JobObject: %s", proc.pid, exc)
 
-            stdout, stderr = proc.communicate(timeout=effective_timeout)
+            # Cooperative execution loop checking token and timeout
+            while proc.poll() is None:
+                if token and token.is_cancelled:
+                    proc.kill()
+                    try:
+                        proc.communicate(timeout=0.5)
+                    except Exception:
+                        pass
+                    raise TaskCancelledError("PowerShell execution aborted: cancellation requested")
+
+                if (time.perf_counter() - t0) > effective_timeout:
+                    proc.kill()
+                    try:
+                        proc.communicate(timeout=0.5)
+                    except Exception:
+                        pass
+                    raise AdapterTimeoutError(
+                        f"PowerShell command timed out after {effective_timeout:.1f}s"
+                    )
+                time.sleep(0.02)
+
+            stdout, stderr = proc.communicate()
             duration_ms = (time.perf_counter() - t0) * 1000.0
             exit_code = proc.returncode
 
@@ -125,20 +146,7 @@ class PowerShellAdapter:
                 timed_out=False,
             )
 
-        except subprocess.TimeoutExpired:
-            if proc:
-                try:
-                    proc.kill()
-                    proc.communicate(timeout=1.0)
-                except Exception:
-                    pass
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            logger.warning("PowerShell command timed out after %.2fs: %s", effective_timeout, script[:60])
-            raise AdapterTimeoutError(
-                f"PowerShell command timed out after {effective_timeout:.1f}s"
-            )
-
-        except (AccessDeniedError, AdapterTimeoutError):
+        except (AccessDeniedError, AdapterTimeoutError, TaskCancelledError):
             raise
 
         except Exception as exc:

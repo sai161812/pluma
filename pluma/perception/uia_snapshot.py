@@ -138,10 +138,11 @@ class UiaSnapshotBuilder:
             window_title = active_info.window_title
             dpi_scale = active_info.dpi_scale
         else:
-            win_rect = BoundingBox(left=0, top=0, right=1920, bottom=1080)
-            process_name = self._context.get_process_name(hwnd)
-            window_title = f"HWND:{hwnd}"
-            dpi_scale = self._context.get_dpi_scale(hwnd)
+            w_info = self._context.get_window_info(hwnd)
+            win_rect = w_info.rect if w_info.is_valid else BoundingBox(left=0, top=0, right=1920, bottom=1080)
+            process_name = w_info.process_name if w_info.is_valid else self._context.get_process_name(hwnd)
+            window_title = w_info.window_title if w_info.is_valid else f"HWND:{hwnd}"
+            dpi_scale = w_info.dpi_scale if w_info.is_valid else self._context.get_dpi_scale(hwnd)
 
         snapshot_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
