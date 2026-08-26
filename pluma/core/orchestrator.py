@@ -110,16 +110,19 @@ class Orchestrator:
         router: Optional[Router] = None,
         multi_step_orchestrator: Optional[MultiStepOrchestrator] = None,
         llm_manager: Optional[Any] = None,
+        rollback_engine: Optional[RollbackEngine] = None,
     ) -> None:
         self._registry = registry or _build_default_registry()
         self._supervisor = supervisor or TaskSupervisor(ledger=ledger)
         self._ledger = ledger
         self._router = router or Router()
         self._llm_manager = llm_manager
+        self._rollback_engine = rollback_engine
         self._multi_step = multi_step_orchestrator or MultiStepOrchestrator(
             registry=self._registry,
             supervisor=self._supervisor,
             ledger=self._ledger,
+            rollback_engine=self._rollback_engine,
             planner=self._llm_manager.adapter if self._llm_manager and hasattr(self._llm_manager, "adapter") else None,
         )
 

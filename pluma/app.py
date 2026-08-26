@@ -18,14 +18,88 @@ import signal
 import sys
 import threading
 import time
-from typing import Any, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
+from pluma.config.loader import load_config
 from pluma.config.paths import PlumaPaths, set_paths
+from pluma.core.orchestrator import Orchestrator
+from pluma.core.ownership import OwnershipRegistry
 from pluma.core.recovery import CrashRecoveryManager, CrashRecoveryResult
 from pluma.core.resident import ResidentCore
+from pluma.core.router import Router
+from pluma.core.task_supervisor import TaskSupervisor
+from pluma.memory.activity import ActivityLedger
+from pluma.memory.db import DbConnection
+from pluma.policy.engine import PolicyEngine
+from pluma.policy.rules import PolicyRules
+from pluma.rollback.engine import RollbackEngine
+from pluma.tools.registry import ToolRegistry, register_default_tools
+from pluma.ui.confirmations import ConfirmationContract
+from pluma.voice.pipeline import VoicePipeline
 
 __version__ = "0.1.0"
 logger = logging.getLogger("pluma")
+
+
+class PlumaApplicationRuntime:
+    """Encapsulates the single cohesive runtime dependency graph for PLUMA."""
+
+    def __init__(
+        self,
+        paths: PlumaPaths,
+        config: Optional[Dict[str, Any]] = None,
+        confirmation_contract: Optional[ConfirmationContract] = None,
+        db_connection: Optional[DbConnection] = None,
+    ) -> None:
+        self.paths = paths
+        self.config = config or load_config()
+        self.db = db_connection or DbConnection(str(paths.db_path))
+        if not self.db.is_open:
+            self.db.open()
+
+        self.ledger = ActivityLedger(db=self.db)
+        self.ownership_registry = OwnershipRegistry(db_conn=self.db)
+        self.supervisor = TaskSupervisor(
+            ledger=self.ledger,
+            ownership_registry=self.ownership_registry,
+        )
+        self.policy_rules = PolicyRules()
+        self.policy_engine = PolicyEngine(
+            rules=self.policy_rules,
+            confirmation_contract=confirmation_contract,
+        )
+        self.tool_registry = ToolRegistry(policy_engine=self.policy_engine)
+        register_default_tools(self.tool_registry)
+
+        self.rollback_engine = RollbackEngine(ledger=self.ledger)
+        self.router = Router()
+        self.orchestrator = Orchestrator(
+            registry=self.tool_registry,
+            supervisor=self.supervisor,
+            ledger=self.ledger,
+            router=self.router,
+            rollback_engine=self.rollback_engine,
+        )
+        self.voice_pipeline = VoicePipeline()
+        self.resident_core = ResidentCore(
+            config=self.config,
+            voice_pipeline=self.voice_pipeline,
+            supervisor=self.supervisor,
+            orchestrator=self.orchestrator,
+            ledger=self.ledger,
+            ownership_registry=self.ownership_registry,
+        )
+
+    def close(self) -> None:
+        """Close resident core and database connection cleanly."""
+        try:
+            self.resident_core.stop()
+        except Exception:
+            pass
+        try:
+            self.db.close()
+        except Exception:
+            pass
 
 
 def setup_logging(logs_dir: Path, debug: bool = False) -> None:
@@ -124,8 +198,11 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
         shutdown_logging()
         return 0
 
-    # 4. Initialize and start Resident Core
-    core = ResidentCore()
+    # 4. Initialize and start Production Runtime Dependency Graph
+    custom_cfg = load_config(args.config) if args.config else None
+    runtime = PlumaApplicationRuntime(paths=paths, config=custom_cfg)
+    core = runtime.resident_core
+
     stop_event = threading.Event()
 
     def _signal_handler(signum: int, frame: Any) -> None:
@@ -147,7 +224,7 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
         logger.info("Keyboard interrupt received.")
     finally:
         logger.info("Stopping Resident Core and releasing resources...")
-        core.stop()
+        runtime.close()
         logger.info("PLUMA shutdown cleanly.")
         shutdown_logging()
 
