@@ -171,8 +171,7 @@ def test_uia_snapshot_builder_with_ocr_fallback() -> None:
     from pluma.perception.uia_snapshot import UiaSnapshotBuilder
     from pluma.perception.element_refs import ElementSource
 
-    mock_context = MagicMock()
-    mock_context.get_active_window.return_value = ActiveWindowInfo(
+    win_info = ActiveWindowInfo(
         hwnd=101,
         process_name="graphic_app.exe",
         window_title="Canvas Editor",
@@ -180,6 +179,9 @@ def test_uia_snapshot_builder_with_ocr_fallback() -> None:
         dpi_scale=1.0,
         is_valid=True,
     )
+    mock_context = MagicMock()
+    mock_context.get_active_window.return_value = win_info
+    mock_context.get_window_info.return_value = win_info
 
     mock_capture = MagicMock()
     mock_capture.capture_window.return_value = b"BM_BYTES"

@@ -25,7 +25,7 @@ where = ["."]
 include = ["pluma*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.yaml", "*.yml", "*.json"]
+"*" = ["*.yaml", "*.yml", "*.json", "*.sql"]
 
 [project.scripts]
 pluma = "pluma.app:main"
