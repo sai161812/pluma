@@ -244,6 +244,9 @@ def execute_find_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
 
 
 def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+        return ToolResult.failure("move_file", "Task cancelled before move could execute.", error_code="TASK_CANCELLED")
+
     import os
     import shutil
     import uuid
@@ -301,6 +304,9 @@ def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
 
 
 def execute_rename_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+        return ToolResult.failure("rename_file", "Task cancelled before rename could execute.", error_code="TASK_CANCELLED")
+
     import os
     from pathlib import Path
 
@@ -333,6 +339,9 @@ def execute_rename_file(args: Dict[str, Any], task_context: Any = None) -> ToolR
 
 
 def execute_create_folder(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+        return ToolResult.failure("create_folder", "Task cancelled before folder could be created.", error_code="TASK_CANCELLED")
+
     from pathlib import Path
     
     target = Path(args["path"]).resolve()
