@@ -99,7 +99,15 @@ class ResidentCore:
 
         # 1. Execute text command
         if cmd in ("execute", "request", "submit"):
-            text = req.get("text") or req.get("command_text") or req.get("query")
+            req_data = req.get("request") if isinstance(req.get("request"), dict) else req
+            text = (
+                req_data.get("text")
+                or req_data.get("command_text")
+                or req_data.get("query")
+                or req.get("text")
+                or req.get("command_text")
+                or req.get("query")
+            )
             if not text:
                 return {"status": "error", "message": "Missing 'text' in command payload."}
 
@@ -124,8 +132,8 @@ class ResidentCore:
 
         # 2. Stop all active tasks
         elif cmd == "stop_all":
-            self.supervisor.stop_all_active_tasks()
-            return {"status": "ok", "message": "All active tasks stopped."}
+            stopped = self.supervisor.stop_all_active_tasks()
+            return {"status": "ok", "message": "All active tasks stopped.", "stopped_count": len(stopped) if isinstance(stopped, list) else 0}
 
         # 3. Stop specific task
         elif cmd == "stop_task":
@@ -139,10 +147,19 @@ class ResidentCore:
         elif cmd == "status":
             return {
                 "status": "ok",
+                "running": self._running,
                 "message": "Resident core running",
                 "active_tasks": len(self.supervisor.get_active_tasks()),
                 "voice_enabled": self.voice_enabled,
             }
+
+        # 5. Recent tasks
+        elif cmd in ("recent_tasks", "get_recent_tasks"):
+            limit = req.get("limit", 50)
+            from pluma.memory.activity import ActivityQuery
+            query = ActivityQuery(self.ledger._db) if hasattr(self.ledger, "_db") else None
+            tasks = query.recent_tasks(limit=limit) if query else []
+            return {"status": "ok", "tasks": tasks}
 
         return {"status": "error", "message": f"Unknown command: {cmd}"}
 
