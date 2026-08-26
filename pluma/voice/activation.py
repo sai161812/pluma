@@ -121,11 +121,27 @@ class VoiceActivation:
         import ctypes
         user32 = ctypes.WinDLL("user32", use_last_error=True)
 
+        VK_SHIFT = 0x10
+        VK_CONTROL = 0x11
+        VK_MENU = 0x12
+        VK_LWIN = 0x5B
+        VK_RWIN = 0x5C
+
         while self._running:
-            # Check if key is held down via GetAsyncKeyState
-            # High-order bit set if key is down
+            # Check primary vk_code
             state = user32.GetAsyncKeyState(self.vk_code)
             key_down = bool(state & 0x8000)
+
+            # Check configured modifiers
+            if key_down and self.modifiers:
+                if (self.modifiers & MOD_CONTROL) and not (user32.GetAsyncKeyState(VK_CONTROL) & 0x8000):
+                    key_down = False
+                if (self.modifiers & MOD_ALT) and not (user32.GetAsyncKeyState(VK_MENU) & 0x8000):
+                    key_down = False
+                if (self.modifiers & MOD_SHIFT) and not (user32.GetAsyncKeyState(VK_SHIFT) & 0x8000):
+                    key_down = False
+                if (self.modifiers & MOD_WIN) and not ((user32.GetAsyncKeyState(VK_LWIN) | user32.GetAsyncKeyState(VK_RWIN)) & 0x8000):
+                    key_down = False
 
             if key_down and not self.is_active:
                 self.trigger_press()

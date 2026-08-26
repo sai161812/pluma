@@ -32,6 +32,7 @@ from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult, Router
 from pluma.core.task_supervisor import TaskCapsule, TaskState, TaskSupervisor
 from pluma.memory.activity import ActionRecord, ActivityLedger, TaskRecord
+from pluma.memory.redaction import redact_string
 from pluma.rollback.engine import RollbackEngine
 from pluma.tools.base import ToolResult
 from pluma.tools.registry import ToolRegistry, register_default_tools
@@ -139,7 +140,7 @@ class Orchestrator:
         task_id = capsule.task_id
         logger.info(
             "task=%s request=%s mode=%s text=%r",
-            task_id, request.request_id, request.input_mode.value, request.text[:120],
+            task_id, request.request_id, request.input_mode.value, redact_string(request.text[:120]),
         )
 
         # 2. Insert task record into Activity Ledger

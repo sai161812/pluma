@@ -147,9 +147,9 @@ class ResidentCore:
                 return {"status": "error", "message": "No orchestrator or callback configured."}
 
         # 2. Stop all active tasks
-        elif cmd == "stop_all":
+        elif cmd in ("stop", "STOP", "stop_all"):
             stopped = self.supervisor.stop_all_active_tasks()
-            return {"status": "ok", "message": "All active tasks stopped.", "stopped_count": len(stopped) if isinstance(stopped, list) else 0}
+            return {"status": "ok", "message": "All active tasks stopped.", "stopped_count": len(stopped), "stopped_tasks": stopped}
 
         # 3. Stop specific task
         elif cmd == "stop_task":

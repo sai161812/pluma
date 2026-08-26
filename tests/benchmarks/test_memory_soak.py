@@ -87,8 +87,8 @@ def test_resident_core_idle_memory_footprint() -> None:
     mem_mb = float(res.stdout.strip())
     print(f"\n[BENCHMARK] Resident Core Idle Memory: {mem_mb:.2f} MB")
 
-    # Spec §4 target: < 30MB resident core idle memory
-    assert mem_mb < 30.0, f"Resident core idle memory {mem_mb:.2f}MB exceeded strict <30MB target!"
+    # Spec §4 definition of done: < 25MB resident core idle memory target
+    assert mem_mb < 25.0, f"Resident core idle memory {mem_mb:.2f}MB exceeded strict <25MB target!"
 
 
 def test_soak_1000_fast_tasks_no_memory_leak() -> None:

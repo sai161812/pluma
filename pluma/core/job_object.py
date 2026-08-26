@@ -96,8 +96,9 @@ class WindowsJobObject:
     terminated.
     """
 
-    def __init__(self, name: Optional[str] = None) -> None:
+    def __init__(self, name: Optional[str] = None, kill_on_close: bool = True) -> None:
         self._handle: Any = None
+        self._kill_on_close = kill_on_close
         if sys.platform != "win32":
             logger.warning("WindowsJobObject is a no-op on non-Windows platforms.")
             return
@@ -108,20 +109,21 @@ class WindowsJobObject:
             raise JobObjectError(f"CreateJobObjectW failed with error code {err}")
         self._handle = h_job
 
-        # Configure KILL_ON_JOB_CLOSE
-        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        
-        result = kernel32.SetInformationJobObject(
-            self._handle,
-            JobObjectExtendedLimitInformation,
-            ctypes.byref(info),
-            ctypes.sizeof(info),
-        )
-        if not result:
-            err = ctypes.get_last_error()
-            self.close()
-            raise JobObjectError(f"SetInformationJobObject failed with error {err}")
+        if kill_on_close:
+            # Configure KILL_ON_JOB_CLOSE
+            info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            
+            result = kernel32.SetInformationJobObject(
+                self._handle,
+                JobObjectExtendedLimitInformation,
+                ctypes.byref(info),
+                ctypes.sizeof(info),
+            )
+            if not result:
+                err = ctypes.get_last_error()
+                self.close()
+                raise JobObjectError(f"SetInformationJobObject failed with error {err}")
 
     def assign_process(self, pid_or_popen: int | subprocess.Popen) -> None:
         """Assign a process to this Job Object.

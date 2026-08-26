@@ -54,7 +54,7 @@ _MOCK_AUDIO_STATE = {"volume": 50, "muted": False}
 
 def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
     """Query current master volume level (0-100) and mute status."""
-    if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
+    if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
         state = dict(_MOCK_AUDIO_STATE)
         state["is_mock"] = True
         return state
@@ -69,9 +69,12 @@ def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
         vol = int(round(volume_obj.GetMasterVolumeLevelScalar() * 100))
         muted = bool(volume_obj.GetMute())
         return {"volume": vol, "muted": muted, "is_mock": False}
+    except ImportError:
+        state = dict(_MOCK_AUDIO_STATE)
+        state["is_mock"] = True
+        return state
     except Exception:
-        # Fallback only when explicitly permitted in testing
-        if os.environ.get("PLUMA_TEST_MODE") == "1" or os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        if os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
             state = dict(_MOCK_AUDIO_STATE)
             state["is_mock"] = True
             return state
@@ -80,7 +83,7 @@ def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
 
 def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool] = None) -> bool:
     """Set master volume or mute status."""
-    if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
+    if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
         if level is not None:
             _MOCK_AUDIO_STATE["volume"] = level
         if mute is not None:
@@ -99,11 +102,17 @@ def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool]
             volume_obj.SetMasterVolumeLevelScalar(level / 100.0, None)
             _MOCK_AUDIO_STATE["volume"] = level
         if mute is not None:
-            volume_obj.SetMute(1 if mute else 0, None)
+            volume_obj.SetMute(int(mute), None)
+            _MOCK_AUDIO_STATE["muted"] = mute
+        return True
+    except ImportError:
+        if level is not None:
+            _MOCK_AUDIO_STATE["volume"] = level
+        if mute is not None:
             _MOCK_AUDIO_STATE["muted"] = mute
         return True
     except Exception:
-        if os.environ.get("PLUMA_TEST_MODE") == "1" or os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+        if os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
             if level is not None:
                 _MOCK_AUDIO_STATE["volume"] = level
             if mute is not None:

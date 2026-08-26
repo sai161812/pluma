@@ -178,12 +178,37 @@ class ToolResult(BaseModel):
         default=False,
         description="True only when the verifier confirmed the postcondition.",
     )
-    verify_detail: Optional[VerifyResult] = None
+    verify_detail: Optional[Any] = None
     duration_ms: Optional[float] = None
     adapter_used: Optional[str] = None
     error: Optional[str] = None                 # Factual error message.
     error_code: Optional[str] = None            # Machine-readable error class.
     undo_record: Optional[Dict[str, Any]] = None  # Pre-state for rollback.
+
+    @classmethod
+    def success(
+        cls,
+        tool: str,
+        data: Optional[Dict[str, Any]] = None,
+        factual_message: str = "",
+        verified: bool = True,
+        verify_detail: Optional[VerifyResult] = None,
+        duration_ms: Optional[float] = None,
+        adapter_used: Optional[str] = None,
+        undo_record: Optional[Dict[str, Any]] = None,
+    ) -> "ToolResult":
+        """Convenience constructor for a successful tool result."""
+        return cls(
+            ok=True,
+            tool=tool,
+            data=data or {},
+            factual_message=factual_message or f"Executed {tool} successfully.",
+            verified=verified,
+            verify_detail=verify_detail,
+            duration_ms=duration_ms,
+            adapter_used=adapter_used,
+            undo_record=undo_record,
+        )
 
     @classmethod
     def failure(

@@ -45,6 +45,8 @@ class RollbackEngine:
     ) -> None:
         self._ledger = ledger
         self._query = query
+        if not self._query and self._ledger and getattr(self._ledger, "_db", None):
+            self._query = ActivityQuery(self._ledger._db)
         self._recipes = recipes or RollbackRecipes()
 
     @property

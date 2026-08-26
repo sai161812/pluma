@@ -164,10 +164,10 @@ class UiaAdapter:
         self,
         hwnd: int,
         text: str,
-        *,
         auto_id: Optional[str] = None,
         name: Optional[str] = None,
         timeout_s: float = 3.0,
+        clear_existing: bool = True,
     ) -> bool:
         """Set the text value of an editable control element."""
         if not self._win32.is_window(hwnd):
@@ -194,7 +194,8 @@ class UiaAdapter:
             elif hasattr(wrapper, "set_text"):
                 wrapper.set_text(text)
             else:
-                wrapper.type_keys(text, with_spaces=True)
+                prefix = "^a{BACKSPACE}" if clear_existing else ""
+                wrapper.type_keys(prefix + text, with_spaces=True)
             return True
 
         except (ElementNotFoundError, ElementUnavailableError):

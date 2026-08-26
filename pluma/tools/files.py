@@ -166,27 +166,62 @@ def execute_list_files(args: Dict[str, Any], task_context: Any = None) -> ToolRe
         return ToolResult.failure("list_files", f"Path '{target_dir}' is not a directory.")
         
     include_hidden = args.get("include_hidden", False)
+    max_depth = args.get("max_depth", 1)
     entries: List[Dict[str, Any]] = []
+    root_depth = len(target_dir.parts)
     
     try:
-        for entry in os.scandir(target_dir):
-            if not include_hidden and entry.name.startswith("."):
-                continue
-            stat = entry.stat()
-            entries.append({
-                "name": entry.name,
-                "path": str(Path(entry.path).resolve()),
-                "is_dir": entry.is_dir(),
-                "size_bytes": stat.st_size if not entry.is_dir() else 0,
-                "modified_at": stat.st_mtime,
-            })
-            
+        if max_depth <= 1:
+            for entry in os.scandir(target_dir):
+                if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+                    return ToolResult.failure("list_files", "Task cancelled during file listing.", error_code="TASK_CANCELLED")
+                if not include_hidden and entry.name.startswith("."):
+                    continue
+                stat = entry.stat()
+                entries.append({
+                    "name": entry.name,
+                    "path": str(Path(entry.path).resolve()),
+                    "is_dir": entry.is_dir(),
+                    "size_bytes": stat.st_size if not entry.is_dir() else 0,
+                    "modified_at": stat.st_mtime,
+                })
+        else:
+            for current_root, dirs, files in os.walk(target_dir):
+                if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+                    return ToolResult.failure("list_files", "Task cancelled during file listing.", error_code="TASK_CANCELLED")
+                current_p = Path(current_root)
+                depth = len(current_p.parts) - root_depth
+                if depth >= max_depth:
+                    dirs.clear()
+
+                if not include_hidden:
+                    dirs[:] = [d for d in dirs if not d.startswith(".")]
+                    files = [f for f in files if not f.startswith(".")]
+
+                for name in (dirs if depth < max_depth else []) + files:
+                    full_p = current_p / name
+                    is_d = full_p.is_dir()
+                    try:
+                        stat = full_p.stat()
+                        size = stat.st_size if not is_d else 0
+                        mtime = stat.st_mtime
+                    except Exception:
+                        size = 0
+                        mtime = 0.0
+                    entries.append({
+                        "name": name,
+                        "path": str(full_p.resolve()),
+                        "is_dir": is_d,
+                        "size_bytes": size,
+                        "modified_at": mtime,
+                    })
+
         entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()))
         count = len(entries)
         return ToolResult(
             ok=True,
             tool="list_files",
-            data={"path": str(target_dir), "count": count, "entries": entries},
+            data={"path": str(target_dir), "count": count, "entries": entries, "max_depth": max_depth},
             factual_message=f"Listed {count} item{'s' if count != 1 else ''} in '{target_dir}'.",
             verified=True,
         )
@@ -212,6 +247,9 @@ def execute_find_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
     
     try:
         for current_root, dirs, files in os.walk(root_dir):
+            if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+                return ToolResult.failure("find_file", "Search cancelled by task token.", error_code="TASK_CANCELLED")
+
             current_path = Path(current_root)
             depth = len(current_path.parts) - root_depth
             if depth >= max_depth:
@@ -277,8 +315,12 @@ def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
             shutil.copy2(str(final_dst), str(backup_file))
             backup_path_str = str(backup_file)
             args["preserved_destination_backup"] = backup_path_str
-        except Exception:
-            pass
+        except Exception as e:
+            return ToolResult.failure(
+                "move_file",
+                f"Failed to create safety rollback backup for destination '{final_dst}': {e}",
+                error_code="BACKUP_FAILED",
+            )
 
     try:
         final_dst.parent.mkdir(parents=True, exist_ok=True)

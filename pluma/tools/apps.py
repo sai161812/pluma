@@ -174,14 +174,7 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
             except Exception:
                 pass
 
-        # 2. Assign process to TaskCapsule's Windows Job Object for hard boundary containment
-        if task_context and getattr(task_context, "job_object", None) is not None:
-            try:
-                task_context.job_object.assign_process(proc)
-            except Exception:
-                pass
-
-        # 3. Register in global or task ownership registry if available
+        # 2. Register in global or task ownership registry if available
         if task_context and hasattr(task_context, "task_id"):
             reg = getattr(task_context, "ownership_registry", None) or getattr(task_context, "_registry", None)
             if reg and hasattr(reg, "register_subprocess"):
