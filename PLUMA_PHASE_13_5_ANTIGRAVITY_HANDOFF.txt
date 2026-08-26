@@ -1,0 +1,418 @@
+PLUMA PHASE 13.5 — INTEGRATION, SAFETY, AND RELEASE-HARDENING HANDOFF
+
+Give this file together with the latest PLUMA project ZIP to Antigravity.
+
+======================================================================
+ROLE AND OBJECTIVE
+======================================================================
+
+You are the senior engineer responsible for repairing and finishing PLUMA Phases
+0–13 before any Phase 14 visual UI is built.
+
+Do not rewrite the project from scratch. Preserve the existing modular design,
+public contracts, user work, and useful tests. Your job is to connect the existing
+components into one real Windows application, repair every safety and correctness
+gap described below, add regression coverage, and prove the application works from
+a clean Windows installation.
+
+The repository currently describes Phase 13 as complete, but an independent audit
+found release-blocking integration, safety, rollback, redaction, and packaging
+defects. Therefore create and execute a new internal milestone:
+
+    Phase 13.5 — Integration and Safety Hardening
+
+Phase 14 is explicitly blocked until all Phase 13.5 gates pass. Do not hide a
+backend defect behind a UI, mock, fallback success, skipped test, or documentation
+claim.
+
+======================================================================
+NON-NEGOTIABLE WORKING RULES
+======================================================================
+
+1. Work from the repository root. Read AGENTS.md completely before changing code.
+   Then read PLUMA_MASTER_SPEC.md, PLUMA_BUILD_PLAN.md, README.md,
+   PROJECT_HANDOFF.md, pyproject.toml, requirements files, packaging/pluma.spec,
+   and the UI contracts.
+
+2. Treat PLUMA_MASTER_SPEC.md and executable safety requirements as authoritative.
+   README.md and PROJECT_HANDOFF.md contain stale and contradictory completion/test
+   counts; do not trust them as evidence.
+
+3. Begin with a clean baseline:
+   - Record git status, current commit, Python/Windows versions, and installed tools.
+   - Preserve all pre-existing user changes.
+   - Create a recoverable checkpoint before edits.
+   - Compile every source file and collect the full test suite from source.
+   - Ignore/remove reliance on committed __pycache__, .pyc, and .pytest_cache data.
+   - Run the baseline on Windows; do not treat Linux mocks as Windows proof.
+
+4. Do not weaken, delete, skip, or rewrite a valid test merely to make the suite
+   green. If an old test conflicts with the master specification, document the
+   conflict, update it narrowly, and add a replacement that proves the specified
+   behavior.
+
+5. Add a focused regression test for every corrected defect. Tests must verify
+   outcomes and side effects, not just that methods were called.
+
+6. Production code must fail truthfully. Never return success after silently using
+   fake audio state, a blank screen capture, an unavailable model, a failed Win32
+   call, or a mock adapter. Non-Windows code may return an explicit unsupported
+   result, but Windows production paths must use and verify the real OS operation.
+
+7. Do not perform broad refactors unrelated to the failures. Keep commits small and
+   grouped by subsystem. Do not call a phase complete until its acceptance gate is
+   demonstrated with command output.
+
+8. Never hard-code developer paths, credentials, model locations, usernames, or
+   machine-specific values.
+
+9. Do not implement Phase 14 visual styling. The repository explicitly requires
+   owner direction for colors, typography, layout, cards, animations, icons,
+   waveforms, and other visual choices. Complete the functional backend first and
+   stop at the Phase 14 readiness gate.
+
+======================================================================
+KNOWN AUDIT BASELINE — EACH ITEM MUST BE REPRODUCED AND THEN FIXED
+======================================================================
+
+The independent audit of commit f4b16a70243555ad00ea7e91deccbeaaa8f494c9 found:
+
+- 430 tests collected in a Linux audit environment: 378 passed, 48 failed, and
+  4 skipped. Many failures were platform-related, but several were independent of
+  Windows.
+- The production app constructs a plain ResidentCore without a request callback,
+  Orchestrator, PolicyEngine, ActivityLedger, or usable rollback integration.
+- Voice requests can be transcribed and then discarded. IPC cannot submit normal
+  text commands.
+- Voice and LLM model paths are unset in normal production composition.
+- ToolRegistry has no production PolicyEngine. MEDIUM, ADMIN, and DENY risk classes
+  fall through to ALLOW in PolicyEngine.
+- open_app accepts an arbitrary executable plus argument list, permitting shell or
+  interpreter execution through a nominally LOW-risk tool.
+- Most argument models accept undeclared fields. Registry validation does not pass
+  the normalized validated model into execution.
+- A planner can invoke a tool excluded from its route-specific permitted subset.
+- Invented target_ref values are accepted rather than bound to a fresh snapshot.
+- Tool timeout metadata is not enforced.
+- An observed multi-step task executed 80 actions despite the claimed maximum of
+  20, because the limit resets after every replan.
+- Replanning can pass an empty permitted-tool list to the real LLM adapter.
+- stop_current can cancel its own newly created STOP task and return SUCCEEDED
+  without stopping the intended running task.
+- Job Object, worker, TaskSupervisor, and cancellation lifecycles can race. Model,
+  OCR, and STT inference are blocking and not hard-terminable.
+- Opened processes are not consistently registered in OwnershipRegistry. Job
+  handles are not consistently released after successful tasks.
+- A move rollback probe reported success while the source was not restored and the
+  destination remained.
+- Undo uses the new task's empty in-memory stack instead of the persisted previous
+  reversible task. Successful undo records remain available for repeated use.
+- move/rename/create-folder recipes do not adequately preserve overwritten state,
+  prevent traversal, verify identity, or handle conflicts.
+- UIA and OCR action tools do not enforce snapshot freshness, target binding,
+  active-window identity, DPI-correct geometry, ambiguity rejection, or meaningful
+  postconditions.
+- No-op verification is used for state-changing operations. OCR or capture failures
+  can be mistaken for successful results.
+- Raw command text, voice transcript, clipboard results, verification data, errors,
+  and generic text arguments can reach logs or SQLite without sufficient redaction.
+- show_activity points at a different database path from the production app.
+- The wheel omits defaults.yaml, tool_policy.yaml, migrations, and a console entry
+  point. Installing it makes load_config() fail immediately.
+- Runtime dependencies and local model acquisition/configuration are incomplete.
+- Promised features are missing or incomplete: get-volume status, restore-window,
+  window bounds, CPU utilization, custom-alias app launch, and a complete truthful
+  activity/undo path.
+- Benchmarks do not actually prove the under-25-MB Windows resident requirement.
+  The idle benchmark measures the benchmark process, not the resident application;
+  another test permits 60 MB. The 1000-task test does not validate Windows handle
+  leakage.
+
+Do not assume this list is exhaustive. Inspect adjacent code whenever a defect
+reveals a broken invariant.
+
+======================================================================
+IMPLEMENTATION ORDER
+======================================================================
+
+Complete the following stages in order. Do not proceed past a gate with an open P0
+defect.
+
+STAGE A — BUILD ONE REAL PRODUCTION COMPOSITION ROOT
+
+Repair pluma/app.py and the resident startup lifecycle so the installed executable
+creates and owns exactly one coherent runtime graph:
+
+- Validated configuration and canonical PlumaPaths.
+- ActivityLedger/ActivityQuery using the same SQLite database.
+- RollbackEngine connected to persistent undo records.
+- PolicyRules, PolicyEngine, confirmation contract, and elevation boundary.
+- ToolRegistry with the PolicyEngine and all supported production tools.
+- Router, planner/model lifecycle, perception services, MultiStepEngine, and
+  CommandOrchestrator.
+- TaskSupervisor, cancellation, OwnershipRegistry, Job Objects, and recovery.
+- ResidentCore voice callback connected to Orchestrator.handle_request().
+- Text and voice requests entering the same PlumaRequest boundary.
+- IPC command submission, task status events, STOP, and clean shutdown.
+
+Use a clear composition/container object if helpful, but do not create multiple
+independent ledgers, supervisors, registries, or model managers. Task/request IDs
+must remain consistent through routing, execution, ledger records, UI events, STOP,
+and rollback.
+
+Gate A:
+- A packaged local command can submit a text request and receive a factual result.
+- A voice request reaches the same orchestrator path.
+- FAST, SMART, SCREEN, and DEEP routes fail or succeed truthfully depending on
+  installed/configured capabilities.
+- Activity and task state are written to the canonical database.
+
+STAGE B — MAKE POLICY AND TOOL EXECUTION FAIL CLOSED
+
+- Define explicit behavior for every RiskClass: READ, LOW, MEDIUM, HIGH,
+  RESTRICTED, ADMIN, and DENY. No implicit ALLOW fall-through is permitted.
+- Require a material-effect confirmation before HIGH risk execution.
+- Require the proper one-operation elevation flow for ADMIN actions.
+- Reject RESTRICTED and DENY actions deterministically.
+- Ensure the production registry always applies policy.
+- Replace arbitrary open_app execution with a safe application/alias resolver.
+  Do not allow cmd, PowerShell, Python, script hosts, interpreters, shell metacharacters,
+  encoded commands, or nested command lists through a LOW-risk launch tool.
+- Validate nested structures recursively.
+- Make all planner-facing Pydantic argument schemas reject extra fields.
+- Execute with the validated and normalized model output, not the original raw dict.
+- Enforce the exact route-specific tool allowlist during final validation/execution.
+- Bind target_ref to an existing fresh perception snapshot and reject invented,
+  expired, or mismatched references.
+- Enforce ToolSpec timeouts, cancellation, adapter priority/fallback rules, and
+  truthful errors.
+- Run undo builders only after a successful operation has produced sufficient
+  verified state. Never keep an undo record for an operation that failed.
+- Record the actual PolicyRules classification, confirmation, and elevation result
+  in the ledger.
+- Rebuild ElevationBroker without nested command-string injection. It must execute
+  one validated operation, propagate the real exit code, respect timeout/STOP, and
+  contain or terminate the elevated child tree.
+
+Gate B adversarial tests must prove:
+- A route cannot call an omitted tool.
+- Unknown arguments and target references are rejected.
+- A sleeping tool cannot exceed its declared timeout and still return success.
+- Shell/interpreter escapes through open_app are denied.
+- Every risk class produces its explicitly specified decision.
+
+STAGE C — CORRECT STOP, OWNERSHIP, AND BOUNDED EXECUTION
+
+- Maintain an unambiguous active-task registry. A STOP request must target the
+  existing active task, never its own control request.
+- Define race-safe supervisor transitions for cancellation at every point.
+- Check cancellation before and after every external operation and before commit.
+- Terminate task-owned process trees immediately through Job Objects.
+- Close Job Object handles deterministically on every terminal path.
+- Register each spawned PID with its 64-bit creation timestamp and verify identity
+  before later process actions.
+- Persist enough ownership/resource state for crash reconciliation.
+- Make OCR/STT/LLM work cancellable or isolate it in killable workers with bounded
+  timeouts. Shutdown/unload must not race active inference.
+- Enforce the 20-step maximum across the entire task, including every replan.
+- Enforce the maximum of three replans and pass the correct allowed tool schemas.
+- Fix the voice hotkey so all configured modifiers are required. Add maximum
+  recording duration and bounded audio memory.
+- Recovery may clean only resources demonstrably owned by PLUMA.
+
+Gate C tests must cover STOP before start, during adapter execution, during model
+work, during replan, during rollback, and after terminal completion. Add a Windows
+handle/process soak test that proves no growth after repeated tasks.
+
+STAGE D — MAKE FILE OPERATIONS AND ROLLBACK TRUSTWORTHY
+
+- Persist undo state and select the most recent eligible completed reversible task.
+- Mark consumed undo records unavailable atomically after successful rollback.
+- Never claim rollback success unless the original state is verified.
+- Preserve and restore any overwritten destination safely.
+- Record and verify file identity, expected source/destination state, and relevant
+  metadata. Refuse ambiguous conflicts instead of overwriting new user data.
+- Restrict rename to a single valid child name; reject absolute paths, separators,
+  dot traversal, reserved names, and invalid Windows names.
+- Implement list max_depth and cancellation/timeouts for recursive find operations.
+- Remove only directories created and still owned by the task; account for parent
+  chains without deleting user content.
+- Use one canonical task temp directory convention.
+
+Gate D must include real temporary-directory round trips for create, move, rename,
+overwrite, conflict, failed operation, repeated undo, cancellation, and crash
+recovery.
+
+STAGE E — GROUND UIA/OCR ACTIONS IN FRESH STATE
+
+- Carry HWND, PID/process identity, window class, rectangle, monitor/DPI context,
+  capture time, and snapshot ID through perception and action execution.
+- Revalidate active window identity and geometry immediately before interaction.
+- Reject stale snapshots, moved/mismatched windows, duplicate labels, multiple
+  matching controls, and invented target references.
+- Prefer stable UIA identity and invoke patterns; use OCR only as a targeted fallback.
+- Make OCR matching token/word aware so a request for "OK" cannot select "BOOK".
+- Translate coordinates correctly across monitor origins and DPI scaling.
+- Treat UIA, OCR, GDI/capture, and dependency failures as failures, not empty or
+  blank successful observations.
+- Implement clear_existing correctly.
+- Replace verify_noop for all state-changing UI actions with action-specific
+  postconditions. Verify actual ValuePattern text, focus/state transitions, or the
+  expected material effect.
+- Write factual screen interaction events to the Activity Ledger without storing
+  screenshots by default.
+
+Gate E requires Windows tests at 100%, 125%, and 150% scaling, multiple monitors if
+available, duplicate labels, a moved window, a closed window, unsupported custom
+controls, OCR unavailable, and capture failure.
+
+STAGE F — CLOSE EVERY REDACTION AND MEMORY BOUNDARY
+
+- Apply structured redaction before every log, prompt, database write, error report,
+  and UI history display.
+- Cover raw command text, voice transcript, clipboard values, tool results,
+  verification, exceptions, OCR/UI text, prior results, and nested list/string data.
+- Redact sensitive values even when the key is generic text/content/value.
+- Never return the original unredacted payload when JSON parsing/redaction fails.
+- Keep useful factual metadata while removing secrets.
+- Make PreferencesStore, AliasStore, RoutineStore, ActivityQuery, and rollback use
+  canonical paths and production instances.
+
+Gate F must seed representative passwords, API keys, bearer tokens, private keys,
+connection strings, clipboard secrets, generic phrases, nested structures, and
+malformed JSON; then scan logs, prompts, UI records, and the SQLite database to prove
+the originals do not appear.
+
+STAGE G — COMPLETE AND VERIFY EVERY PROMISED ACTION
+
+Audit the specification-to-tool matrix and either implement each in-scope feature or
+truthfully document an intentional scope change approved by the owner. At minimum:
+
+- Set/get/mute/unmute master volume with real Windows readback.
+- Launch/focus/close/list/status applications through safe aliases and ownership.
+- List windows with title, HWND/PID, and bounds; focus/minimize/maximize/restore.
+- List/find/create/move/rename files and folders with cancellation and rollback.
+- Read/write/clear clipboard with truthful readback where applicable.
+- CPU utilization, available RAM, battery, and AC status.
+- Activity history from the canonical database.
+- Undo the most recent eligible reversible operation.
+- Emergency STOP of the real active task.
+- Inspect/click/type through fresh UIA, with targeted OCR fallback.
+- Multi-action execution with bounded observe/replan behavior.
+
+Remove or clearly exclude dead NotImplemented tool stubs from the production surface.
+Do not advertise functionality that is not registered, wired, and integration-tested.
+
+STAGE H — VOICE, PLANNER, IPC, AND DEPENDENCY LIFECYCLES
+
+- Load model paths and runtime options from validated settings.
+- Provide a clear local model installation/acquisition and integrity-check flow.
+- Declare and install every required dependency or supported optional extra.
+- Never report success when pycaw, pywinauto, OCR, Whisper, llama.cpp, NumPy, Pillow,
+  sound input, or another required backend is unavailable.
+- Enforce inference timeout, mutual exclusion/lifecycle safety, and idle unloading.
+- Remove duplicate/dead lifecycle methods and ensure configured planner limits are
+  actually used.
+- Align route tool subsets with registered tool names.
+- Do not send secrets, unrelated screen text, or excessive context to the planner.
+- SCREEN must avoid an LLM when an unambiguous deterministic UIA action is possible.
+- Add user-scoped named-pipe security/ACLs, bounded message size, connection/read
+  timeouts, malformed-message handling, and normal command dispatch.
+
+STAGE I — REPAIR PACKAGING AND CLEAN INSTALLATION
+
+- Include defaults.yaml, tool_policy.yaml, migrations, and every required runtime
+  resource in wheels and PyInstaller output.
+- Add a working console/GUI entry point and make --config effective.
+- Reconcile application/package versions.
+- Define Windows dependency extras and document model locations without bundling
+  models into the resident executable.
+- Build and install the wheel in a brand-new virtual environment.
+- Build the PyInstaller executable on Windows and run it on a clean Windows VM.
+- Implement/verify installer, uninstaller, startup registration, clean removal, data
+  retention policy, configuration migration, crash recovery, and local-only IPC.
+- Exclude .git, caches, bytecode, build artifacts, test databases, and developer paths
+  from release archives.
+
+Gate I:
+- Fresh install can start, load configuration, expose the entry point, accept a text
+  command, perform a safe FAST action, show truthful status/activity, stop cleanly,
+  and uninstall without deleting unrelated user data.
+
+STAGE J — TESTS, CORPUS, PERFORMANCE, AND DOCUMENTATION
+
+- Run compileall, lint/static checks, unit tests, integration tests, adversarial
+  tests, packaging tests, and native Windows end-to-end acceptance tests.
+- Expand the golden command corpus to the specified 100–300 commands. Verify route,
+  permitted tools, arguments, policy decision, execution outcome, and postcondition;
+  route-only assertions are insufficient.
+- Make the committed test count and documentation agree with actual collection.
+- Measure the real ResidentCore process on Windows. Prove under 25 MB at idle with no
+  ML libraries/models loaded; do not measure the benchmark runner itself and do not
+  loosen the threshold.
+- Verify 30-second model unload behavior and that memory returns to an acceptable
+  baseline after real model load/unload cycles.
+- Attribute CPU/GPU/RAM/handle measurements to the PLUMA process.
+- Run at least 1000 task lifecycles and measure memory, threads, handles, Job Objects,
+  child processes, database health, and temp resources.
+- Commit reproducible benchmark reports with environment and methodology.
+- Reconcile README.md, PROJECT_HANDOFF.md, acceptance checklists, version, test
+  counts, and phase status only after evidence passes.
+
+======================================================================
+PHASE 13.5 DEFINITION OF DONE
+======================================================================
+
+Phase 13.5 is complete only when all of the following are true:
+
+[ ] All source compiles from a clean checkout.
+[ ] Full Windows test suite passes with zero unexplained failures or skips.
+[ ] Every audit-baseline defect above has a regression test and verified fix.
+[ ] Normal text and voice requests execute through the production composition root.
+[ ] Policy is fail-closed and adversarial escape tests pass.
+[ ] STOP terminates the intended task/process tree within the specified bound.
+[ ] The total task cap is 20 actions including replans, with at most 3 replans.
+[ ] Rollback restores and verifies exact state without destroying new user data.
+[ ] Freshness/target/DPI/postcondition rules are enforced for UIA and OCR.
+[ ] Secret scanning finds no seeded secrets in logs, prompts, UI history, or SQLite.
+[ ] Every advertised tool is present, wired, truthful, and integration-tested.
+[ ] Wheel and PyInstaller clean-install tests pass on Windows.
+[ ] Installer, startup, crash recovery, and uninstaller behavior are verified.
+[ ] Real Windows resident idle RAM is below 25 MB with zero ML loaded.
+[ ] No leaked handles, threads, children, or task resources appear in soak testing.
+[ ] Documentation and test counts match the actual repository.
+
+If any item cannot be proven, mark Phase 13.5 INCOMPLETE. Do not replace evidence
+with phrases such as "should work", "implemented", or "tests mocked successfully".
+
+======================================================================
+REQUIRED FINAL HANDOFF
+======================================================================
+
+At completion, create PHASE_13_5_COMPLETION_REPORT.md containing:
+
+1. Starting commit and final commit(s).
+2. Exact files changed, grouped by subsystem.
+3. Root cause and fix for every audit-baseline defect.
+4. Regression tests added for each defect.
+5. Exact commands and summarized output for compile, lint, tests, wheel installation,
+   PyInstaller, native acceptance, secret scan, and benchmarks.
+6. A specification-to-tool capability matrix with PASS/FAIL/PARTIAL status.
+7. Windows version, Python version, hardware, display scaling, and model/dependency
+   versions used for native tests.
+8. Any remaining limitation, skipped test, unsupported environment, or unverified
+   claim—stated plainly.
+9. A final GO/NO-GO recommendation for Phase 14.
+
+Then stop. Do not begin Phase 14 styling. Ask the owner for the visual design brief
+required by PLUMA_BUILD_PLAN.md. The functional Phase 14 surfaces will eventually be:
+
+- Voice and text command entry.
+- Current task state and material-effect confirmations.
+- Globally accessible STOP and configured hotkey.
+- Activity history and task details.
+- Settings for hotkeys, model path, warm grace period, retention, voice, and privacy.
+- Clear deterministic factual results and errors.
+
+Do not declare success until the owner can reproduce the clean-install acceptance
+flow on their own Windows machine.

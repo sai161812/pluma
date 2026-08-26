@@ -315,7 +315,7 @@ class MultiStepOrchestrator:
 
         rb_success = True
         try:
-            rb_result = self.rollback_engine.rollback_task(task_id)
+            rb_result = self.rollback_engine.rollback_task(task_id, memory_undo_stack=capsule.undo_stack)
             rb_success = rb_result.all_ok
         except Exception as exc:
             logger.error("Task %s: Rollback failed during stop: %s", task_id, exc)
@@ -352,7 +352,7 @@ class MultiStepOrchestrator:
 
         rb_success = True
         try:
-            rb_result = self.rollback_engine.rollback_task(task_id)
+            rb_result = self.rollback_engine.rollback_task(task_id, memory_undo_stack=capsule.undo_stack)
             rb_success = rb_result.all_ok
         except Exception as exc:
             logger.error("Task %s: Rollback failed during error recovery: %s", task_id, exc)

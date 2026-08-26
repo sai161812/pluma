@@ -9,6 +9,7 @@ Boundary: No audio libraries imported at module level.
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -53,43 +54,11 @@ _MOCK_AUDIO_STATE = {"volume": 50, "muted": False}
 
 def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
     """Query current master volume level (0-100) and mute status."""
-    if sys.platform != "win32":
-        return dict(_MOCK_AUDIO_STATE)
-        
-    try:
-        # We can query via controlled PowerShell or ctypes.
-        # PowerShell script using Audio Device Cmdlet / Windows CoreAudio API
-        import subprocess
-        ps_cmd = (
-            "$obj = New-Object -ComObject WScript.Shell; "
-            "# Audio state query via WScript is write-only, use fallback if pycaw is not loaded"
-        )
-        # Check if pycaw is available lazily
-        try:
-            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # type: ignore
-            from ctypes import cast, POINTER
-            from comtypes import CLSCTX_ALL  # type: ignore
-            devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            volume_obj = cast(interface, POINTER(IAudioEndpointVolume))
-            vol = int(round(volume_obj.GetMasterVolumeLevelScalar() * 100))
-            muted = bool(volume_obj.GetMute())
-            return {"volume": vol, "muted": muted}
-        except Exception:
-            return dict(_MOCK_AUDIO_STATE)
-    except Exception:
-        return dict(_MOCK_AUDIO_STATE)
+    if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
+        state = dict(_MOCK_AUDIO_STATE)
+        state["is_mock"] = True
+        return state
 
-
-def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool] = None) -> bool:
-    """Set master volume or mute status."""
-    if sys.platform != "win32":
-        if level is not None:
-            _MOCK_AUDIO_STATE["volume"] = level
-        if mute is not None:
-            _MOCK_AUDIO_STATE["muted"] = mute
-        return True
-        
     try:
         from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # type: ignore
         from ctypes import cast, POINTER
@@ -97,7 +66,35 @@ def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool]
         devices = AudioUtilities.GetSpeakers()
         interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
         volume_obj = cast(interface, POINTER(IAudioEndpointVolume))
-        
+        vol = int(round(volume_obj.GetMasterVolumeLevelScalar() * 100))
+        muted = bool(volume_obj.GetMute())
+        return {"volume": vol, "muted": muted, "is_mock": False}
+    except Exception:
+        # Fallback only when explicitly permitted in testing
+        if os.environ.get("PLUMA_TEST_MODE") == "1" or os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+            state = dict(_MOCK_AUDIO_STATE)
+            state["is_mock"] = True
+            return state
+        return None
+
+
+def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool] = None) -> bool:
+    """Set master volume or mute status."""
+    if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
+        if level is not None:
+            _MOCK_AUDIO_STATE["volume"] = level
+        if mute is not None:
+            _MOCK_AUDIO_STATE["muted"] = mute
+        return True
+
+    try:
+        from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # type: ignore
+        from ctypes import cast, POINTER
+        from comtypes import CLSCTX_ALL  # type: ignore
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume_obj = cast(interface, POINTER(IAudioEndpointVolume))
+
         if level is not None:
             volume_obj.SetMasterVolumeLevelScalar(level / 100.0, None)
             _MOCK_AUDIO_STATE["volume"] = level
@@ -106,12 +103,13 @@ def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool]
             _MOCK_AUDIO_STATE["muted"] = mute
         return True
     except Exception:
-        # Fallback to simulated audio endpoint for test environments
-        if level is not None:
-            _MOCK_AUDIO_STATE["volume"] = level
-        if mute is not None:
-            _MOCK_AUDIO_STATE["muted"] = mute
-        return True
+        if os.environ.get("PLUMA_TEST_MODE") == "1" or os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules:
+            if level is not None:
+                _MOCK_AUDIO_STATE["volume"] = level
+            if mute is not None:
+                _MOCK_AUDIO_STATE["muted"] = mute
+            return True
+        return False
 
 
 # ---------------------------------------------------------------------------

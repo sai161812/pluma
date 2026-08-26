@@ -103,12 +103,22 @@ class _NativeLlamaCppBackend:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        response = self._llm.create_chat_completion(
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            response_format={"type": "json_object"},
-        )
+        response_format = {"type": "json_object", "schema": Plan.model_json_schema()}
+        try:
+            response = self._llm.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                response_format=response_format,
+            )
+        except Exception:
+            # Fallback to standard json_object if schema parameter is not supported by llama-cpp version
+            response = self._llm.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                response_format={"type": "json_object"},
+            )
         return str(response["choices"][0]["message"]["content"])
 
 
@@ -133,6 +143,7 @@ class LlamaCppAdapter(PlannerInterface):
         prompt_builder: Optional[PromptBuilder] = None,
         validator: Optional[PlanValidator] = None,
         subset_selector: Optional[ToolSubsetSelector] = None,
+        inference_timeout_s: float = 15.0,
     ) -> None:
         self.model_path = model_path
         self._backend = custom_backend
@@ -141,6 +152,7 @@ class LlamaCppAdapter(PlannerInterface):
         self._subset_selector = subset_selector or ToolSubsetSelector(self._registry)
         self._prompt_builder = prompt_builder or PromptBuilder(self._subset_selector)
         self._validator = validator or PlanValidator(self._registry)
+        self.inference_timeout_s = inference_timeout_s
 
     @property
     def is_loaded(self) -> bool:
@@ -208,16 +220,28 @@ class LlamaCppAdapter(PlannerInterface):
         if active_backend is None:
             raise PlannerError("LlamaCppAdapter is not loaded. Call load() first.")
 
-        # 3. Generate structured response
+        # 3. Generate structured response with hard inference timeout
         start_t = time.perf_counter()
         try:
-            raw_output = active_backend.generate(
+            import concurrent.futures
+            from pluma.tools.registry import _GLOBAL_TOOL_EXECUTOR
+
+            future = _GLOBAL_TOOL_EXECUTOR.submit(
+                active_backend.generate,
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 max_tokens=512,
                 temperature=0.1,
                 cancellation_token=cancellation_token,
             )
+            try:
+                raw_output = future.result(timeout=self.inference_timeout_s)
+            except (TimeoutError, concurrent.futures.TimeoutError):
+                raise PlannerTimeoutError(
+                    f"LLM planning inference timed out after {self.inference_timeout_s:.1f}s."
+                )
+        except PlannerTimeoutError:
+            raise
         except TaskCancelledError as cancel_err:
             raise PlannerCancelledError(f"Planning was cancelled: {cancel_err}") from cancel_err
         except Exception as exc:

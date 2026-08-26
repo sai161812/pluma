@@ -44,6 +44,8 @@ UI_PERCEPTION_TOOLS = [
 AUDIO_TOOLS = [
     "get_volume_status",
     "set_volume",
+    "mute",
+    "unmute",
     "mute_audio",
     "unmute_audio",
 ]
@@ -62,6 +64,9 @@ SYSTEM_CLIPBOARD_TOOLS = [
     "system_status",
     "battery_status",
     "clear_clipboard",
+    "clipboard_clear",
+    "get_clipboard_text",
+    "set_clipboard_text",
     "clipboard_read",
     "clipboard_write",
     "show_activity",
@@ -96,10 +101,15 @@ class ToolSubsetSelector:
         """Return True if tool_name is permitted for execution in the given route."""
         try:
             route_enum = route if isinstance(route, RouteMode) else RouteMode(str(route).upper())
-            if route_enum == RouteMode.FAST:
+            if route_enum in (RouteMode.FAST, RouteMode.DEEP):
                 return True
             permitted = ROUTE_TOOL_MAP.get(route_enum, [])
-            return tool_name in permitted
+            if tool_name in permitted:
+                return True
+            # In SMART route, permit custom registered tools that are not restricted UI tools
+            if route_enum == RouteMode.SMART and tool_name not in UI_PERCEPTION_TOOLS:
+                return True
+            return False
         except Exception:
             return True
 

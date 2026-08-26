@@ -114,6 +114,7 @@ class TaskCapsule(BaseModel):
     # We maintain an undo stack for rollback.
     undo_stack: List[Dict[str, Any]] = Field(default_factory=list)
     steps: List[TaskStep] = Field(default_factory=list)
+    owned_resources: List[OwnedResource] = Field(default_factory=list)
 
     # Job Object wrapper for process containment (not serializable)
     job_object: Any = Field(default=None, exclude=True)
@@ -128,6 +129,26 @@ class TaskCapsule(BaseModel):
     def stop_latch_set(self) -> bool:
         return self.cancellation_token.is_cancelled
 
+    def register_owned_resource(
+        self,
+        resource_type: str,
+        ownership: ResourceOwnership,
+        external_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> OwnedResource:
+        """Register an owned resource directly on this task capsule."""
+        res = OwnedResource(
+            resource_type=resource_type,
+            ownership=ownership,
+            external_id=external_id,
+            metadata=metadata or {},
+        )
+        self.owned_resources.append(res)
+        return res
+
+
+MAX_TERMINAL_TASKS_RETAINED: int = 50
+
 
 class TaskSupervisor:
     """Highest-priority runtime authority for task lifecycle and cancellation.
@@ -141,13 +162,33 @@ class TaskSupervisor:
         ledger: Any = None,
         rollback_engine: Any = None,
         paths: Any = None,
+        max_retained_terminal_tasks: int = MAX_TERMINAL_TASKS_RETAINED,
     ) -> None:
         self._registry = ownership_registry
         self._ledger = ledger
         self._rollback_engine = rollback_engine
         self._paths = paths
+        self._max_retained_terminal_tasks = max_retained_terminal_tasks
         self._tasks: Dict[str, TaskCapsule] = {}
         self._lock = threading.RLock()
+
+    def prune_terminal_tasks(self, keep_count: Optional[int] = None) -> int:
+        """Evict oldest terminal tasks from memory to prevent memory leaks."""
+        limit = keep_count if keep_count is not None else self._max_retained_terminal_tasks
+        with self._lock:
+            terminal_ids = [
+                tid for tid, cap in self._tasks.items()
+                if cap.state in _TERMINAL_STATES
+            ]
+            if len(terminal_ids) <= limit:
+                return 0
+
+            # Evict oldest terminal tasks first
+            excess = len(terminal_ids) - limit
+            to_remove = terminal_ids[:excess]
+            for tid in to_remove:
+                del self._tasks[tid]
+            return len(to_remove)
 
     def create_task(self, request_id: str) -> TaskCapsule:
         """Create a new TaskCapsule in CREATED state."""
@@ -156,6 +197,7 @@ class TaskSupervisor:
     def create_task_capsule(self, task_id: Optional[str] = None, request_id: str = "req-default") -> TaskCapsule:
         """Create a new TaskCapsule in CREATED state, optionally with explicit task_id."""
         with self._lock:
+            self.prune_terminal_tasks()
             capsule = TaskCapsule(request_id=request_id)
             if task_id:
                 capsule.task_id = task_id
@@ -336,3 +378,4 @@ class TaskSupervisor:
                     self._registry.cleanup_task_resources(capsule.task_id)
                 except Exception:
                     pass
+            self.prune_terminal_tasks()

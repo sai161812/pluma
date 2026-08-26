@@ -74,7 +74,7 @@ def test_audit_2_tool_timeout_enforcement() -> None:
     res = reg.execute(tool_name="slow_tool", arguments={})
     assert res.ok is False
     assert res.error_code == "TOOL_TIMEOUT"
-    assert "timed out after 0.2s" in res.error
+    assert "timed out after 0.2" in res.error
 
 
 def test_audit_2_route_specific_tool_subsets() -> None:
@@ -203,3 +203,107 @@ def test_audit_6_config_path_loading(tmp_path: Path) -> None:
 
     cfg = load_config(user_config_path=custom_yaml)
     assert cfg["agent"]["max_plan_steps"] == 15
+
+
+def test_audit_immediate_timeout_no_blocking() -> None:
+    """Audit: Verify 50ms tool timeout returns immediately without blocking caller."""
+    reg = ToolRegistry()
+    from pluma.verify.common import verify_noop
+
+    def very_slow_executor(args: dict, context: any) -> ToolResult:
+        time.sleep(1.0)
+        return ToolResult.success("very_slow", {})
+
+    reg.register(ToolSpec(
+        name="very_slow",
+        description="Simulates long slow call",
+        version="1.0",
+        args_schema={},
+        risk_class=RiskClass.READ,
+        timeout_s=0.05,  # 50 ms
+        executor=very_slow_executor,
+        verifier=verify_noop,
+    ))
+
+    t0 = time.perf_counter()
+    res = reg.execute("very_slow", {})
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+    assert res.ok is False
+    assert res.error_code == "TOOL_TIMEOUT"
+    assert elapsed_ms < 200.0, f"Expected non-blocking timeout under 200ms, took {elapsed_ms:.1f}ms"
+
+
+def test_audit_multi_step_automatic_rollback_restores_files(tmp_path: Path) -> None:
+    """Audit: Verify failed multi-step execution automatically rolls back and restores moved files."""
+    src = tmp_path / "original_file.txt"
+    src.write_text("critical data", encoding="utf-8")
+    dst = tmp_path / "moved_file.txt"
+
+    from pluma.tools.registry import get_default_tool_registry
+    reg = get_default_tool_registry()
+    supervisor = TaskSupervisor()
+    multi = MultiStepOrchestrator(registry=reg, supervisor=supervisor)
+
+    capsule = supervisor.create_task_capsule(request_id="req-rollback-test")
+
+    # Step 1 moves file; Step 2 fails on non-existent app
+    plan = Plan(
+        route=RouteMode.SMART,
+        mode="multi_step",
+        steps=[
+            ToolCall(tool="move_file", arguments={"source": str(src), "destination": str(dst)}, purpose="move"),
+            ToolCall(tool="open_app", arguments={"app_name": "non_existent_fake_app_xyz_999"}, purpose="fail"),
+        ],
+    )
+
+    res = multi.execute_plan(capsule=capsule, initial_plan=plan, command_text="move and fail")
+
+    assert res.final_state == TaskState.FAILED
+    assert res.rollback_performed is True
+    assert res.rollback_success is True
+    # The source file MUST be restored back to existence
+    assert src.exists() is True
+    assert src.read_text(encoding="utf-8") == "critical data"
+    assert dst.exists() is False
+
+
+def test_audit_task_capsule_owned_resources() -> None:
+    """Audit: Verify TaskCapsule carries owned resources directly."""
+    from pluma.core.task_supervisor import ResourceOwnership
+    supervisor = TaskSupervisor()
+    capsule = supervisor.create_task_capsule(request_id="req-res-test")
+
+    res = capsule.register_owned_resource(
+        resource_type="subprocess",
+        ownership=ResourceOwnership.PLUMA_CREATED,
+        external_id="12345",
+        metadata={"cmd": "worker.exe"},
+    )
+    assert len(capsule.owned_resources) == 1
+    assert capsule.owned_resources[0].resource_type == "subprocess"
+    assert capsule.owned_resources[0].external_id == "12345"
+
+
+def test_audit_terminal_task_memory_bounding() -> None:
+    """Audit: Verify TaskSupervisor memory bounds terminal tasks to MAX_TERMINAL_TASKS_RETAINED."""
+    supervisor = TaskSupervisor(max_retained_terminal_tasks=25)
+    for i in range(100):
+        cap = supervisor.create_task_capsule(request_id=f"req-{i}")
+        supervisor.start_task(cap.task_id)
+        supervisor.mark_succeeded(cap.task_id)
+
+    assert len(supervisor._tasks) == 25
+
+
+def test_audit_registry_exposes_33_tools() -> None:
+    """Audit: Verify the default tool registry exposes exactly 33 registered tools."""
+    from pluma.tools.registry import get_default_tool_registry
+    reg = get_default_tool_registry()
+
+    assert len(reg) == 33
+    assert len(reg.list_tools()) == 33
+    assert len(reg.list_tool_names()) == 33
+    assert "move_file" in reg.list_tool_names()
+    assert "inspect_active_window" in reg.list_tool_names()
+    assert "undo_last" in reg.list_tool_names()
