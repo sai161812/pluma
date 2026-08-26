@@ -10,7 +10,7 @@ The Router is the gatekeeper that decides which path is taken. It must:
   1. Classify high-confidence commands to FAST without loading any model.
   2. Produce a fully-resolved typed Plan (list of ToolCalls) for FAST commands.
   3. Annotate the route decision with a human-readable reason for the ledger.
-  4. Treat voice and text commands identically (Spec §3, law 3).
+  4. Treat voice and text commands identically (Spec §3, non-negotiable law 3).
 
 No ML, OS-automation, or adapter code in this module.
 """
@@ -128,6 +128,7 @@ _APP_ALIASES: Dict[str, str] = {
     "vscode": "code",
     "visual studio code": "code",
     "task manager": "taskmgr",
+    "taskmgr": "taskmgr",
     "settings": "ms-settings:",
     "control panel": "control",
     "clock": "clock",
@@ -155,52 +156,66 @@ class Router:
 
     def __init__(self) -> None:
         # Pre-compile patterns in priority order for FAST classification.
-        # Each entry: (compiled_pattern, handler_method_name)
         self._fast_rules: List[Tuple[re.Pattern[str], str]] = [
             # --- STOP / UNDO (highest priority) ---
-            (re.compile(r"^\s*stop\s*$", re.I), "_fast_stop"),
-            (re.compile(r"^\s*undo\s*$", re.I), "_fast_undo"),
-            (re.compile(r"^\s*stop\s+current\s*$", re.I), "_fast_stop"),
-            (re.compile(r"^\s*undo\s+last\s*$", re.I), "_fast_undo"),
+            (re.compile(r"^\s*(?:stop\s+current\s+task|stop\s+current|stop|cancel\s+task|abort)\s*$", re.I), "_fast_stop"),
+            (re.compile(r"^\s*(?:undo\s+last|undo)\s*$", re.I), "_fast_undo"),
 
-            # --- Audio / Volume ---
-            (re.compile(r"^\s*mute\s*$", re.I), "_fast_mute"),
-            (re.compile(r"^\s*unmute\s*$", re.I), "_fast_unmute"),
-            (re.compile(
-                r"^\s*(?:set\s+)?volume\s+(?:to\s+)?(.+?)(?:\s*percent)?\s*$", re.I
-            ), "_fast_volume"),
-
-            # --- App Launch / Focus ---
-            (re.compile(
-                r"^\s*(?:open|launch|start)\s+(.+?)\s*$", re.I
-            ), "_fast_open_app"),
-            (re.compile(
-                r"^\s*(?:close|quit|exit)\s+(.+?)\s*$", re.I
-            ), "_fast_close_app"),
-            (re.compile(
-                r"^\s*focus\s+(?:on\s+)?(.+?)\s*$", re.I
-            ), "_fast_focus_app"),
+            # --- Audio / Volume (up/down and status checked before general volume) ---
+            (re.compile(r"^\s*(?:mute\s+audio|mute\s+sound|mute)\s*$", re.I), "_fast_mute"),
+            (re.compile(r"^\s*(?:unmute\s+audio|unmute\s+sound|unmute)\s*$", re.I), "_fast_unmute"),
+            (re.compile(r"^\s*(?:get\s+volume\s+status|check\s+volume|sound\s+status|volume\s+status)\s*$", re.I), "_fast_get_volume_status"),
+            (re.compile(r"^\s*volume\s+up\s*$", re.I), "_fast_volume_up"),
+            (re.compile(r"^\s*volume\s+down\s*$", re.I), "_fast_volume_down"),
+            (re.compile(r"^\s*(?:set\s+)?volume\s+(?:to\s+)?(.+?)(?:\s*percent)?\s*$", re.I), "_fast_volume"),
+            (re.compile(r"^\s*turn\s+volume\s+to\s+(.+?)(?:\s*percent)?\s*$", re.I), "_fast_volume"),
 
             # --- Window State ---
-            (re.compile(r"^\s*minimize\s*(?:window|this\s+window|current\s+window)?\s*$", re.I), "_fast_minimize"),
-            (re.compile(r"^\s*(?:maximise|maximize)\s*(?:window|this\s+window|current\s+window)?\s*$", re.I), "_fast_maximize"),
-            (re.compile(r"^\s*list\s+windows\s*$", re.I), "_fast_list_windows"),
+            (re.compile(r"^\s*minimize(?:\s+all|\s+window|\s+this\s+window|\s+current\s+window|\s+active\s+window)?\s*$", re.I), "_fast_minimize"),
+            (re.compile(r"^\s*(?:maximise|maximize)(?:\s+window|\s+this\s+window|\s+current\s+window|\s+active\s+window)?\s*$", re.I), "_fast_maximize"),
+            (re.compile(r"^\s*restore(?:\s+window|\s+this\s+window|\s+current\s+window|\s+active\s+window)?\s*$", re.I), "_fast_restore"),
+            (re.compile(r"^\s*(?:list\s+windows|show\s+open\s+windows|open\s+windows\s+list)\s*$", re.I), "_fast_list_windows"),
+            (re.compile(r"^\s*(?:focus\s+window|switch\s+window)\s*$", re.I), "_fast_focus_window_bare"),
 
             # --- System & Activity ---
-            (re.compile(r"^\s*(?:show\s+(?:activity|history)|activity|recent\s+activity)\s*$", re.I), "_fast_show_activity"),
-            (re.compile(r"^\s*(?:system\s+status|status)\s*$", re.I), "_fast_system_status"),
-            (re.compile(r"^\s*(?:battery\s+status|battery|power\s+status)\s*$", re.I), "_fast_battery_status"),
-            (re.compile(r"^\s*list\s+(?:apps|applications|running\s+apps)\s*$", re.I), "_fast_list_apps"),
+            (re.compile(r"^\s*(?:show\s+(?:activity|history)|activity|recent\s+activity|recent\s+actions|activity\s+history)\s*$", re.I), "_fast_show_activity"),
+            (re.compile(r"^\s*(?:get\s+system\s+status|system\s+status|cpu\s+memory\s+status|system\s+health|status)\s*$", re.I), "_fast_system_status"),
+            (re.compile(r"^\s*(?:battery\s+status|check\s+battery|battery|power\s+status)\s*$", re.I), "_fast_battery_status"),
+            (re.compile(r"^\s*(?:list\s+apps|list\s+applications|running\s+applications|running\s+apps)\s*$", re.I), "_fast_list_apps"),
 
             # --- Clipboard ---
-            (re.compile(r"^\s*(?:clear\s+clipboard|clipboard\s+clear)\s*$", re.I), "_fast_clear_clipboard"),
+            (re.compile(r"^\s*(?:clear\s+clipboard|clipboard\s+clear|wipe\s+clipboard|empty\s+clipboard|clean\s+clipboard|reset\s+clipboard)\s*$", re.I), "_fast_clear_clipboard"),
+            (re.compile(r"^\s*(?:get\s+clipboard(?:\s+text|\s+content)?|read\s+clipboard|show\s+clipboard|view\s+clipboard|inspect\s+clipboard|pasteboard\s+read|clipboard\s+history|copy\s+status)\s*$", re.I), "_fast_get_clipboard_text"),
+
+            # --- Files & Folders (Deterministic exact paths/globs) ---
+            (re.compile(r"^\s*(?:list\s+files(?:\s+in\s+current\s+directory)?|list\s+directory(?:\s+contents)?)\s*$", re.I), "_fast_list_files"),
+            (re.compile(r"^\s*(?:find\s+file|search\s+file|locate\s+file)\s+([^\s]+)\s*$", re.I), "_fast_find_file"),
+            (re.compile(r"^\s*find\s+([\w\.\*\?_-]+)\s*$", re.I), "_fast_find_file"),
+            (re.compile(r"^\s*(?:create\s+folder|make\s+folder|mkdir)\s+([^\s]+)\s*$", re.I), "_fast_create_folder"),
+            (re.compile(r"^\s*move\s+(?:file\s+)?([^\s]+)\s+to\s+([^\s]+)\s*$", re.I), "_fast_move_file"),
+            (re.compile(r"^\s*rename\s+(?:file\s+)?([^\s]+)\s+to\s+([^\s]+)\s*$", re.I), "_fast_rename_file"),
+
+            # --- App Launch / Focus / Close ---
+            (re.compile(r"^\s*(?:open|launch|start)\s+(.+?)\s*$", re.I), "_fast_open_app"),
+            (re.compile(r"^\s*(?:close|quit|exit)\s+(.+?)\s*$", re.I), "_fast_close_app"),
+            (re.compile(r"^\s*focus\s+(?:on\s+)?(.+?)\s*$", re.I), "_fast_focus_app"),
         ]
 
         # Deep-route indicators (combined visual perception + multi-step reasoning)
         self._deep_patterns: List[re.Pattern[str]] = [
-            re.compile(r"\b(?:look\s+at|inspect|analyze)\s+(?:this|the)\s+(?:setup|screen|window)\s+and\b", re.I),
+            re.compile(r"\b(?:look\s+at|inspect|read|analyze|locate)\s+.*?\b(?:form|table|dialog|prompt|screen|window|visual)\b.*?\b(?:and|fill|check|remedy|copy|enter)\b", re.I),
+            re.compile(r"\b(?:unlabelled\s+checkbox|visual\s+prompt|error\s+message\s+dialog)\b", re.I),
             re.compile(r"\b(?:finish|complete)\s+(?:the\s+)?(?:remaining\s+)?configuration\b", re.I),
             re.compile(r"\bmulti-?step\b", re.I),
+        ]
+
+        # Smart-route indicators (temporal/complex/destructive multi-step ops)
+        self._smart_patterns: List[re.Pattern[str]] = [
+            re.compile(r"\byesterday\b|\btoday\b|\blast\s+month\b|\blast\s+week\b", re.I),
+            re.compile(r"\blatest\b|\bnewest\b|\boldest\b", re.I),
+            re.compile(r"\bdelete\s+all\b|\bremove\s+all\b|\bclean\s+up\b|\borganize\b|\bprepare\b|\bautomate\b|\bbatch\b|\bcount\b", re.I),
+            re.compile(r"\bfind\s+all\b|\bfind\s+(?:all\s+)?(?:my|the|python|pdf)\s+\w+\b", re.I),
+            re.compile(r"\band\s+(?:archive|copy|move|report|arrange|save|delete|notify|setup)\b", re.I),
         ]
 
         # Screen-route indicators (UI interaction terms)
@@ -208,20 +223,11 @@ class Router:
             re.compile(r"\bclick\b", re.I),
             re.compile(r"\bpress\s+(?:the\s+)?button\b", re.I),
             re.compile(r"\bsubmit\b", re.I),
-            re.compile(r"\bcheck(?:box)?\b", re.I),
-            re.compile(r"\btype\s+(?:into|in)\b", re.I),
+            re.compile(r"\bcheck\s+box\b|\bcheckbox\b", re.I),
+            re.compile(r"\btype\s+(?:into|in)\b|\btype\s+.+\s+into\b", re.I),
             re.compile(r"\bfill\s+(?:in|out)\b", re.I),
+            re.compile(r"\binspect\s+(?:active\s+window|window\s+controls)\b", re.I),
             re.compile(r"\bon\s+(?:this|the)\s+screen\b", re.I),
-        ]
-
-        # Smart-route indicators (temporal/complex/destructive file ops)
-        self._smart_patterns: List[re.Pattern[str]] = [
-            re.compile(r"\byesterday\b|\btoday\b|\blast\s+week\b|\brecent(ly)?\b", re.I),
-            re.compile(r"\blatest\b|\bnewest\b|\boldest\b", re.I),
-            re.compile(r"\bdelete\s+all\b|\bremove\s+all\b", re.I),
-            re.compile(r"\bmove\s+.+\bto\b", re.I),
-            re.compile(r"\brename\s+the\b|\brename\s+my\b", re.I),
-            re.compile(r"\bfind\s+(?:all\s+)?(?:my|the)\s+\w+\s+files?\b", re.I),
         ]
 
     # ------------------------------------------------------------------
@@ -238,14 +244,7 @@ class Router:
             request = PlumaRequest.from_text(request)
         text = request.text.strip()
 
-        # 1. Try FAST rules in order
-        for pattern, handler_name in self._fast_rules:
-            m = pattern.match(text)
-            if m:
-                handler = getattr(self, handler_name)
-                return handler(request, m)
-
-        # 2. Deep route indicators (multi-step visual + reasoning)
+        # 1. Deep route indicators (multi-step visual + reasoning) checked first
         for pat in self._deep_patterns:
             if pat.search(text):
                 return RouteResult(
@@ -254,7 +253,23 @@ class Router:
                     confidence=0.85,
                 )
 
-        # 3. Screen route indicators
+        # 2. Smart route multi-step indicators checked before single-step FAST rules
+        for pat in self._smart_patterns:
+            if pat.search(text):
+                return RouteResult(
+                    route=RouteMode.SMART,
+                    reason=f"Command requires contextual multi-step interpretation; routing to local planner: '{text[:80]}'",
+                    confidence=0.75,
+                )
+
+        # 3. Try FAST rules in order
+        for pattern, handler_name in self._fast_rules:
+            m = pattern.match(text)
+            if m:
+                handler = getattr(self, handler_name)
+                return handler(request, m)
+
+        # 4. Screen route indicators
         for pat in self._screen_patterns:
             if pat.search(text):
                 return RouteResult(
@@ -263,16 +278,7 @@ class Router:
                     confidence=0.85,
                 )
 
-        # 3. Smart route indicators
-        for pat in self._smart_patterns:
-            if pat.search(text):
-                return RouteResult(
-                    route=RouteMode.SMART,
-                    reason=f"Command requires contextual interpretation; routing to local planner: '{text[:80]}'",
-                    confidence=0.75,
-                )
-
-        # 4. Default: SMART (cannot be FAST without unambiguous intent)
+        # 5. Default: SMART
         return RouteResult(
             route=RouteMode.SMART,
             reason=f"No deterministic match found; routing to local planner: '{text[:80]}'",
@@ -310,6 +316,10 @@ class Router:
         plan = self._make_fast_plan(req.request_id, "unmute", {}, "Unmute system audio.")
         return RouteResult(route=RouteMode.FAST, reason="Exact match: 'unmute'", plan=plan)
 
+    def _fast_get_volume_status(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(req.request_id, "get_volume_status", {}, "Query master audio volume status.")
+        return RouteResult(route=RouteMode.FAST, reason="Exact match: 'get_volume_status'", plan=plan)
+
     def _fast_volume(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         raw_level = m.group(1).strip()
         level = _parse_number(raw_level.split())
@@ -328,6 +338,14 @@ class Router:
             reason=f"Deterministic volume command matched; level={level}%",
             plan=plan,
         )
+
+    def _fast_volume_up(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(req.request_id, "set_volume", {"level": 60}, "Increase master volume.")
+        return RouteResult(route=RouteMode.FAST, reason="Matched 'volume up'", plan=plan)
+
+    def _fast_volume_down(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(req.request_id, "set_volume", {"level": 20}, "Decrease master volume.")
+        return RouteResult(route=RouteMode.FAST, reason="Matched 'volume down'", plan=plan)
 
     def _fast_open_app(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         app_raw = m.group(1).strip()
@@ -375,9 +393,17 @@ class Router:
         plan = self._make_fast_plan(req.request_id, "maximize_window", {}, "Maximize active window.")
         return RouteResult(route=RouteMode.FAST, reason="Exact match: 'maximize window'", plan=plan)
 
+    def _fast_restore(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(req.request_id, "restore_window", {}, "Restore active window.")
+        return RouteResult(route=RouteMode.FAST, reason="Exact match: 'restore window'", plan=plan)
+
     def _fast_list_windows(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         plan = self._make_fast_plan(req.request_id, "list_windows", {}, "List all visible windows.")
         return RouteResult(route=RouteMode.FAST, reason="Exact match: 'list windows'", plan=plan)
+
+    def _fast_focus_window_bare(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(req.request_id, "focus_window", {}, "Focus active window.")
+        return RouteResult(route=RouteMode.FAST, reason="Matched 'focus window'", plan=plan)
 
     def _fast_show_activity(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         plan = self._make_fast_plan(req.request_id, "show_activity", {}, "Show recent Activity Ledger entries.")
@@ -398,3 +424,33 @@ class Router:
     def _fast_clear_clipboard(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         plan = self._make_fast_plan(req.request_id, "clipboard_clear", {}, "Clear system clipboard.")
         return RouteResult(route=RouteMode.FAST, reason="Exact match: 'clear clipboard'", plan=plan)
+
+    def _fast_get_clipboard_text(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(req.request_id, "get_clipboard_text", {}, "Get text from system clipboard.")
+        return RouteResult(route=RouteMode.FAST, reason="Exact match: 'get_clipboard_text'", plan=plan)
+
+    def _fast_list_files(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(req.request_id, "list_files", {"path": "."}, "List directory files.")
+        return RouteResult(route=RouteMode.FAST, reason="Exact match: 'list_files'", plan=plan)
+
+    def _fast_find_file(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        pattern = m.group(1).strip()
+        plan = self._make_fast_plan(req.request_id, "find_file", {"pattern": pattern, "directory": "."}, f"Find file '{pattern}'.")
+        return RouteResult(route=RouteMode.FAST, reason=f"Matched 'find_file' for '{pattern}'", plan=plan)
+
+    def _fast_create_folder(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        folder_name = m.group(1).strip()
+        plan = self._make_fast_plan(req.request_id, "create_folder", {"path": folder_name}, f"Create folder '{folder_name}'.")
+        return RouteResult(route=RouteMode.FAST, reason=f"Matched 'create_folder' for '{folder_name}'", plan=plan)
+
+    def _fast_move_file(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        src = m.group(1).strip()
+        dst = m.group(2).strip()
+        plan = self._make_fast_plan(req.request_id, "move_file", {"source": src, "destination": dst}, f"Move file '{src}' to '{dst}'.")
+        return RouteResult(route=RouteMode.FAST, reason=f"Matched 'move_file' from '{src}' to '{dst}'", plan=plan)
+
+    def _fast_rename_file(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        path = m.group(1).strip()
+        new_name = m.group(2).strip()
+        plan = self._make_fast_plan(req.request_id, "rename_file", {"path": path, "new_name": new_name}, f"Rename file '{path}' to '{new_name}'.")
+        return RouteResult(route=RouteMode.FAST, reason=f"Matched 'rename_file' from '{path}' to '{new_name}'", plan=plan)

@@ -14,12 +14,22 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
-class AudioCapture:
-    """Microphone audio capture manager for 16-bit 16kHz mono PCM audio."""
+MAX_RECORDING_SECONDS: float = 30.0
 
-    def __init__(self, sample_rate: int = 16000, channels: int = 1) -> None:
+
+class AudioCapture:
+    """Microphone audio capture manager for 16-bit 16kHz mono PCM audio with bounded memory buffer."""
+
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        channels: int = 1,
+        max_duration_s: float = MAX_RECORDING_SECONDS,
+    ) -> None:
         self.sample_rate = sample_rate
         self.channels = channels
+        self.max_duration_s = max_duration_s
+        self.max_buffer_bytes = int(sample_rate * channels * 2 * max_duration_s)
         self._buffer = bytearray()
         self._lock = threading.Lock()
         self._stream: Any = None
@@ -48,12 +58,18 @@ class AudioCapture:
                     logger.debug("Audio capture status: %s", status)
                 with self._lock:
                     if self._is_recording:
-                        if isinstance(indata, bytes):
-                            self._buffer.extend(indata)
-                        elif hasattr(indata, "tobytes"):
-                            self._buffer.extend(indata.tobytes())
-                        elif hasattr(indata, "tobytes") or isinstance(indata, (bytearray, memoryview)):
-                            self._buffer.extend(bytes(indata))
+                        if len(self._buffer) >= self.max_buffer_bytes:
+                            # Reached maximum duration limit — auto-cap buffer
+                            return
+                        chunk = (
+                            indata
+                            if isinstance(indata, bytes)
+                            else indata.tobytes()
+                            if hasattr(indata, "tobytes")
+                            else bytes(indata)
+                        )
+                        remaining = self.max_buffer_bytes - len(self._buffer)
+                        self._buffer.extend(chunk[:remaining])
 
             self._stream = sd.RawInputStream(
                 samplerate=self.sample_rate,
@@ -75,7 +91,9 @@ class AudioCapture:
         """Feed external PCM chunk into the capture buffer (used for testing or programmatic feed)."""
         with self._lock:
             if self._is_recording:
-                self._buffer.extend(pcm_chunk)
+                remaining = self.max_buffer_bytes - len(self._buffer)
+                if remaining > 0:
+                    self._buffer.extend(pcm_chunk[:remaining])
 
     def stop_and_get(self, cancellation_token: Optional[Any] = None) -> bytes:
         """Stop capture stream, return raw PCM bytes, and clear memory buffer."""

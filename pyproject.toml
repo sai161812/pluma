@@ -1,34 +1,62 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pluma"
-version = "0.1.0.dev0"
-description = "PLUMA — fully local Windows 11 voice and screen-aware agent"
+version = "0.1.0"
+description = "PLUMA — Fully local, screen-aware, voice-driven autonomous Windows 11 assistant"
+readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
+authors = [{ name = "PLUMA Development Team" }]
+keywords = ["windows", "automation", "agent", "local-llm", "voice", "ocr"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Desktop Environment",
+]
 dependencies = [
-    "pydantic>=2.7",
-    "pyyaml>=6.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0.1",
+    "psutil>=5.9.8",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.2",
-    "pytest-timeout>=2.3",
-    "psutil>=6.0",
+windows = [
+    "pywin32>=306; platform_system=='Windows'",
+    "pycaw>=20240210; platform_system=='Windows'",
+    "comtypes>=1.4.0; platform_system=='Windows'",
 ]
+media = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.26.0",
+    "pillow>=10.2.0",
+]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-timeout>=2.3.1",
+    "pyinstaller>=6.5.0",
+    "wheel>=0.43.0",
+    "build>=1.2.0",
+]
+all = [
+    "pluma[windows,media,dev]",
+]
+
+[project.scripts]
+pluma = "pluma.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["pluma*"]
+exclude = ["tests*", "dist*", "build*", "release*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.yml", "*.json", "*.sql"]
-
-[project.scripts]
-pluma = "pluma.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

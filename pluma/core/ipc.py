@@ -5,31 +5,48 @@ Spec §25: "All local IPC must be bound to the user/local machine."
 Implemented in Phase 1.
 """
 
+from __future__ import annotations
+
 import json
 import logging
+import multiprocessing.connection
 import os
+import sys
 import threading
+import time
 from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+MAX_IPC_MESSAGE_SIZE: int = 1024 * 1024  # 1MB maximum message payload
+SERVER_READ_TIMEOUT_SECONDS: float = 5.0
+CLIENT_CONNECT_TIMEOUT_SECONDS: float = 3.0
+
 
 def get_pipe_name() -> str:
-    """Return a user-specific named pipe address."""
-    import sys
-    username = os.environ.get("USERNAME", "default")
+    """Return a secure, per-user named pipe address."""
+    username = os.environ.get("USERNAME") or os.environ.get("USER") or "default"
+    clean_user = "".join(c for c in username if c.isalnum() or c in ("-", "_"))
     if sys.platform == "win32":
-        return rf"\\.\pipe\pluma_ipc_{username}"
+        return rf"\\.\pipe\pluma_ipc_{clean_user}"
     # Fallback for non-Windows tests
-    return f"/tmp/pluma_ipc_{username}.sock"
+    return f"/tmp/pluma_ipc_{clean_user}.sock"
 
 
 class IpcServer:
-    """Named-pipe IPC server for local command dispatch."""
+    """Named-pipe IPC server for local command dispatch with timeouts and bounded messages."""
 
-    def __init__(self, command_handler: Callable[[Dict[str, Any]], Dict[str, Any]], address: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        command_handler: Callable[[Dict[str, Any]], Dict[str, Any]],
+        address: Optional[str] = None,
+        max_message_size: int = MAX_IPC_MESSAGE_SIZE,
+        read_timeout_s: float = SERVER_READ_TIMEOUT_SECONDS,
+    ) -> None:
         self.address = address or get_pipe_name()
         self._command_handler = command_handler
+        self._max_message_size = max_message_size
+        self._read_timeout_s = read_timeout_s
         self._listener: Any = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -55,7 +72,13 @@ class IpcServer:
                     break
                 conn = self._listener.accept()
                 with conn:
-                    msg_bytes = conn.recv_bytes()
+                    # Enforce server read timeout so a slow or hanging client cannot stall the server
+                    ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
+                    if not ready:
+                        logger.warning("IPC client read timed out after %0.1fs", self._read_timeout_s)
+                        continue
+
+                    msg_bytes = conn.recv_bytes(self._max_message_size)
                     try:
                         req = json.loads(msg_bytes.decode("utf-8"))
                         resp = self._command_handler(req)
@@ -84,29 +107,40 @@ class IpcServer:
 
 
 class IpcClient:
-    """Client for sending commands to the resident PLUMA core."""
+    """Client for sending commands to the resident PLUMA core with bounded timeouts."""
 
-    def __init__(self, address: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        address: Optional[str] = None,
+        max_message_size: int = MAX_IPC_MESSAGE_SIZE,
+    ) -> None:
         self.address = address or get_pipe_name()
+        self._max_message_size = max_message_size
 
-    def send_command(self, command: Dict[str, Any], timeout: float = 2.0) -> Dict[str, Any]:
-        """Send a JSON-serializable command and await a response."""
+    def send_command(self, command: Dict[str, Any], timeout: float = 3.0) -> Dict[str, Any]:
+        """Send a JSON-serializable command and await a response with timeout."""
         from multiprocessing.connection import Client
-        try:
-            # Note: The multiprocessing Client on Windows doesn't easily support timeouts on connect,
-            # but IPC is strictly local so connection should be immediate.
-            with Client(self.address) as conn:
-                conn.send_bytes(json.dumps(command).encode("utf-8"))
-                
-                # Wait for response with timeout
-                import multiprocessing.connection
-                if multiprocessing.connection.wait([conn], timeout=timeout):
-                    msg_bytes = conn.recv_bytes()
-                    return json.loads(msg_bytes.decode("utf-8"))  # type: ignore[no-any-return]
-                else:
-                    return {"status": "error", "message": "Timeout waiting for response"}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        deadline = time.perf_counter() + timeout
+        last_err: Optional[Exception] = None
+
+        while time.perf_counter() < deadline:
+            try:
+                with Client(self.address) as conn:
+                    conn.send_bytes(json.dumps(command).encode("utf-8"))
+                    
+                    remaining = max(0.1, deadline - time.perf_counter())
+                    if multiprocessing.connection.wait([conn], timeout=remaining):
+                        msg_bytes = conn.recv_bytes(self._max_message_size)
+                        return json.loads(msg_bytes.decode("utf-8"))  # type: ignore[no-any-return]
+                    else:
+                        return {"status": "error", "message": "Timeout waiting for response"}
+            except (ConnectionRefusedError, FileNotFoundError) as conn_err:
+                last_err = conn_err
+                time.sleep(0.05)
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
+
+        return {"status": "error", "message": f"Connection timeout: {last_err or 'server unreachable'}"}
 
 
 # Aliases for explicit naming

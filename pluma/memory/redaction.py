@@ -84,15 +84,20 @@ def _redact_list(items: List[Any]) -> List[Any]:
 def redact_json_str(json_str: str) -> str:
     """Parse *json_str*, redact, and re-serialise.
 
-    Returns the original string unchanged if parsing fails (safe default).
+    If parsing fails (malformed JSON or raw string), redacts secrets from the raw string
+    directly to guarantee no sensitive data is leaked.
     """
+    if not isinstance(json_str, str):
+        return json_str
     try:
         data = json.loads(json_str)
+        if isinstance(data, dict):
+            return json.dumps(redact_dict(data))
+        elif isinstance(data, list):
+            return json.dumps(_redact_list(data))
     except (json.JSONDecodeError, TypeError):
-        return json_str
-    if isinstance(data, dict):
-        return json.dumps(redact_dict(data))
-    return json_str
+        pass
+    return redact_string(json_str)
 
 
 def sanitise_args_for_ledger(tool_name: str, args: Dict[str, Any]) -> str:
@@ -112,19 +117,39 @@ _UNANCHORED_SECRET_PATTERNS: List[re.Pattern] = [
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    # Connection strings with credentials (URI format: postgres://user:pass@host:port/db)
+    re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp[s]?|mssql|oracle)://([^:\s/@]+):([^@\s/]+)@"),
+    # Connection strings key-value format (Server=...;User Id=...;Password=...;)
+    re.compile(r"(?i)(?:Password|PWD)\s*=\s*['\"]?([^;'\"]+)['\"]?"),
     re.compile(r"(?i)\b(api_key|apikey|password|passwd|secret|token)\s*[:=]\s*['\"]?([^\s'\"]+)['\"]?"),
     re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._~+/-]{20,})"),
 ]
 
 
 def redact_string(text: str) -> str:
-    """Redact known secret patterns and tokens from an arbitrary string."""
-    result = text
-    for pattern in _UNANCHORED_SECRET_PATTERNS:
-        result = pattern.sub(REDACTED_TOKEN, result)
+    """Return a copy of *text* with unanchored secrets and credentials replaced by REDACTED_TOKEN."""
+    if not isinstance(text, str) or not text:
+        return text
+
+    redacted = text
+    # 1. URI connection strings: redact the password portion
+    redacted = re.sub(
+        r"(?i)\b((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp[s]?|mssql|oracle)://[^:\s/@]+:)(?:[^@\s/]+)(@)",
+        r"\1" + REDACTED_TOKEN + r"\2",
+        redacted,
+    )
+    # 2. Key-value connection strings (Password=...;)
+    redacted = re.sub(
+        r"(?i)(\b(?:Password|PWD)\s*=\s*['\"]?)(?:[^;'\"]+)(['\"]?)",
+        r"\1" + REDACTED_TOKEN + r"\2",
+        redacted,
+    )
+    # 3. Standard unanchored patterns
+    for pat in _UNANCHORED_SECRET_PATTERNS:
+        redacted = pat.sub(REDACTED_TOKEN, redacted)
     for pattern in _SECRET_VALUE_PATTERNS:
-        result = pattern.sub(REDACTED_TOKEN, result)
-    return result
+        redacted = pattern.sub(REDACTED_TOKEN, redacted)
+    return redacted
 
 
 def redact_sensitive_data(data: Any) -> Any:

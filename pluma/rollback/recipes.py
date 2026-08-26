@@ -35,7 +35,7 @@ class RollbackStepResult:
 # ---------------------------------------------------------------------------
 
 def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
-    """Restore a moved file or directory back to its source location, restoring overwritten file if preserved."""
+    """Restore a moved file or directory back to its source location, preserving any newer conflicting content."""
     src = Path(undo_data.get("source", ""))
     dst = Path(undo_data.get("destination", ""))
     backup_path_str = undo_data.get("preserved_destination_backup")
@@ -49,6 +49,13 @@ def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
         )
 
     try:
+        # Check if a new file/directory was created at the source location
+        if src.exists() and src != dst:
+            import uuid
+            conflict_backup = src.parent / f"{src.stem}_conflict_{uuid.uuid4().hex[:8]}{src.suffix}"
+            shutil.move(str(src), str(conflict_backup))
+            logger.warning("Collision detected during rollback: Preserved newer file at '%s'", conflict_backup)
+
         # If source parent directory doesn't exist, ensure it exists
         if not src.parent.exists():
             src.parent.mkdir(parents=True, exist_ok=True)
@@ -76,7 +83,7 @@ def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
 
 
 def _recipe_rename_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
-    """Rename a file or directory back to its original name."""
+    """Rename a file or directory back to its original name, preserving any newer conflicting content."""
     orig = Path(undo_data.get("original_path", ""))
     curr = Path(undo_data.get("new_path", ""))
 
@@ -89,6 +96,12 @@ def _recipe_rename_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
         )
 
     try:
+        if orig.exists() and orig != curr:
+            import uuid
+            conflict_backup = orig.parent / f"{orig.stem}_conflict_{uuid.uuid4().hex[:8]}{orig.suffix}"
+            shutil.move(str(orig), str(conflict_backup))
+            logger.warning("Collision detected during rollback: Preserved newer file at '%s'", conflict_backup)
+
         curr.rename(orig)
         return RollbackStepResult(
             ok=True,

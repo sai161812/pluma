@@ -353,12 +353,16 @@ class TaskSupervisor:
                 })
             ]
 
-    def stop_all_active_tasks(self) -> None:
-        """Emergency stop for all non-terminal tasks."""
+    def stop_all_active_tasks(self) -> List[str]:
+        """Emergency stop for all non-terminal tasks. Returns list of stopped task IDs."""
         with self._lock:
             active_ids = [cap.task_id for cap in self.get_active_tasks()]
         for tid in active_ids:
-            self.stop_task(tid)
+            try:
+                self.stop_task(tid)
+            except Exception as e:
+                logger.error("Error stopping task %s during stop_all: %s", tid, e)
+        return active_ids
 
     def _get_task(self, task_id: str) -> TaskCapsule:
         if task_id not in self._tasks:

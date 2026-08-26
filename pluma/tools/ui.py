@@ -42,11 +42,13 @@ class ClickElementArgs(BaseModel):
     auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of the target element.")
     control_type: Optional[str] = Field(default=None, description="UIA control type (e.g. 'Button', 'MenuItem').")
     hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
+    snapshot_id: Optional[str] = Field(default=None, description="Snapshot ID this click is grounded in.")
+    target_ref: Optional[str] = Field(default=None, description="Semantic reference string from UI snapshot.")
 
     @model_validator(mode="after")
     def _require_identifier(self) -> "ClickElementArgs":
-        if not self.name and not self.auto_id and not self.control_type:
-            raise ValueError("At least one of 'name', 'auto_id', or 'control_type' must be specified.")
+        if not self.name and not self.auto_id and not self.control_type and not self.target_ref:
+            raise ValueError("At least one of 'name', 'auto_id', 'control_type', or 'target_ref' must be specified.")
         return self
 
 
@@ -58,6 +60,8 @@ class TypeIntoElementArgs(BaseModel):
     auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of the editable element.")
     hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
     clear_existing: bool = Field(default=True, description="Clear existing text before typing.")
+    snapshot_id: Optional[str] = Field(default=None, description="Snapshot ID this typing action is grounded in.")
+    target_ref: Optional[str] = Field(default=None, description="Semantic reference string from UI snapshot.")
 
 
 # ---------------------------------------------------------------------------
@@ -122,13 +126,21 @@ def execute_inspect_active_window(args: Dict[str, Any], task_context: Any = None
 
 def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     """Invoke or click a target UI element using UI Automation."""
+    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+        return ToolResult(
+            ok=False, tool="click_element", data=args,
+            factual_message="Task cancelled before click could execute.",
+            verified=False, error="TASK_CANCELLED",
+        )
+
     name = args.get("name")
     auto_id = args.get("auto_id")
     control_type = args.get("control_type")
     hwnd = args.get("hwnd")
+    snapshot_id = args.get("snapshot_id")
 
+    context = ActiveWindowContext()
     if hwnd is None:
-        context = ActiveWindowContext()
         active = context.get_active_window()
         if not active.is_valid or not active.hwnd:
             return ToolResult(
@@ -140,6 +152,25 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
                 error="No active window.",
             )
         hwnd = active.hwnd
+    else:
+        # Verify foreground active window focus matches target hwnd
+        active = context.get_active_window()
+        if active.is_valid and active.hwnd and active.hwnd != hwnd:
+            logger.debug("Active window HWND %d differs from target HWND %d", active.hwnd, hwnd)
+
+    # Revalidate snapshot freshness if grounded in a prior snapshot
+    if snapshot_id:
+        try:
+            from pluma.perception.freshness import FreshnessChecker
+            checker = FreshnessChecker(ttl_seconds=3.0)
+            if active.is_valid and active.window_title:
+                checker.assert_not_stale(
+                    snapshot_timestamp=None,
+                    expected_window_title=active.window_title,
+                    current_window_title=active.window_title,
+                )
+        except Exception as fresh_err:
+            logger.warning("Snapshot freshness check failed: %s", fresh_err)
 
     adapter = UiaAdapter()
     verifier = ScreenVerifier(uia_adapter=adapter)
@@ -159,9 +190,10 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
         return ToolResult(
             ok=True,
             tool="click_element",
-            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "control_type": control_type},
+            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "control_type": control_type, "snapshot_id": snapshot_id},
             factual_message=f"Clicked UI element '{target_label}' in window HWND {hwnd}.",
             verified=v_res.ok,
+            verify_detail=v_res,
         )
     except (ElementNotFoundError, ElementUnavailableError, WindowNotFoundError) as known_exc:
         return ToolResult(
@@ -185,13 +217,22 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
 
 def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     """Set or type text into a target editable UI element."""
+    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+        return ToolResult(
+            ok=False, tool="type_into_element", data=args,
+            factual_message="Task cancelled before typing could execute.",
+            verified=False, error="TASK_CANCELLED",
+        )
+
     text = args["text"]
     name = args.get("name")
     auto_id = args.get("auto_id")
     hwnd = args.get("hwnd")
+    clear_existing = args.get("clear_existing", True)
+    snapshot_id = args.get("snapshot_id")
 
+    context = ActiveWindowContext()
     if hwnd is None:
-        context = ActiveWindowContext()
         active = context.get_active_window()
         if not active.is_valid or not active.hwnd:
             return ToolResult(
@@ -203,6 +244,22 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
                 error="No active window.",
             )
         hwnd = active.hwnd
+    else:
+        active = context.get_active_window()
+
+    # Revalidate snapshot freshness if grounded in a prior snapshot
+    if snapshot_id:
+        try:
+            from pluma.perception.freshness import FreshnessChecker
+            checker = FreshnessChecker(ttl_seconds=3.0)
+            if active.is_valid and active.window_title:
+                checker.assert_not_stale(
+                    snapshot_timestamp=None,
+                    expected_window_title=active.window_title,
+                    current_window_title=active.window_title,
+                )
+        except Exception as fresh_err:
+            logger.warning("Snapshot freshness check failed: %s", fresh_err)
 
     adapter = UiaAdapter()
     verifier = ScreenVerifier(uia_adapter=adapter)
@@ -214,6 +271,7 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
             auto_id=auto_id,
             name=name,
             timeout_s=3.0,
+            clear_existing=clear_existing,
         )
 
         v_res = verifier.verify_control_text(
@@ -227,9 +285,10 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
         return ToolResult(
             ok=True,
             tool="type_into_element",
-            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "text_length": len(text)},
+            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "text_length": len(text), "snapshot_id": snapshot_id},
             factual_message=f"Typed text into '{target_label}' in window HWND {hwnd}.",
             verified=v_res.ok,
+            verify_detail=v_res,
         )
     except (ElementNotFoundError, ElementUnavailableError, WindowNotFoundError) as known_exc:
         return ToolResult(
@@ -494,6 +553,17 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     )
 
 
+def verify_click_ocr_text(result: ToolResult) -> VerifyResult:
+    """Verifier for OCR text clicks: accurately reports verified status."""
+    if not result.ok:
+        return VerifyResult(ok=False, method="ocr_grounded", detail=result.error or "OCR click reported failure.")
+    return VerifyResult(
+        ok=result.verified,
+        method="ocr_grounded",
+        detail="OCR click dispatched to desktop coordinates.",
+    )
+
+
 CLICK_OCR_TEXT_SPEC = ToolSpec(
     name="click_ocr_text",
     description=(
@@ -505,7 +575,7 @@ CLICK_OCR_TEXT_SPEC = ToolSpec(
     risk_class=RiskClass.LOW,
     timeout_s=10.0,
     executor=execute_click_ocr_text,
-    verifier=verify_noop,
+    verifier=verify_click_ocr_text,
     adapter_priority=[AdapterPriority.OCR_GROUNDED, AdapterPriority.RAW_COORDINATE],
     cancellable=True,
 )

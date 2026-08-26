@@ -41,11 +41,17 @@ class OcrWord:
     confidence: float
     bounds: BoundingBox
 
-    def contains_text(self, query: str, case_sensitive: bool = False) -> bool:
-        """Return True if this word contains *query* as a substring."""
+    def contains_text(self, query: str, case_sensitive: bool = False, exact_match: bool = False) -> bool:
+        """Return True if this word matches *query* as a whole word or exact token."""
+        import re
         src = self.text if case_sensitive else self.text.lower()
         q = query if case_sensitive else query.lower()
-        return q in src
+        if exact_match or len(q.strip()) <= 3:
+            return src.strip() == q.strip()
+        # Word boundary regex: "OK" will NOT match "BOOK"
+        flags = 0 if case_sensitive else re.IGNORECASE
+        pattern = r"\b" + re.escape(q.strip()) + r"\b"
+        return bool(re.search(pattern, self.text, flags=flags))
 
 
 @dataclass
@@ -64,11 +70,12 @@ class OcrResult:
         query: str,
         min_confidence: float = 0.0,
         case_sensitive: bool = False,
+        exact_match: bool = False,
     ) -> List[OcrWord]:
-        """Return all words matching *query* at or above *min_confidence*."""
+        """Return all words matching *query* at or above *min_confidence* with word-boundary protection."""
         return [
             w for w in self.words
-            if w.contains_text(query, case_sensitive=case_sensitive)
+            if w.contains_text(query, case_sensitive=case_sensitive, exact_match=exact_match)
             and w.confidence >= min_confidence
         ]
 

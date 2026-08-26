@@ -12,6 +12,7 @@ import re
 from typing import Any, Optional
 
 from pluma.core.request import InputMode, PlumaRequest
+from pluma.memory.redaction import redact_string
 from pluma.voice.lifecycle import VoiceLifecycleManager
 from pluma.voice.vad import EnergyVAD
 
@@ -114,7 +115,7 @@ class VoicePipeline:
                 "Low-confidence STT transcript (%0.2f) detected on material target: '%s'. "
                 "Rejecting guess and requiring user clarification.",
                 stt_result.confidence,
-                normalized_text,
+                redact_string(normalized_text),
             )
             return None
 
@@ -125,5 +126,5 @@ class VoicePipeline:
             original_transcript=raw_text,
         )
 
-        logger.info("Voice utterance transcribed: '%s' (confidence: %0.2f)", normalized_text, stt_result.confidence)
+        logger.info("Voice utterance transcribed: '%s' (confidence: %0.2f)", redact_string(normalized_text), stt_result.confidence)
         return request
