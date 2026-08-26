@@ -320,3 +320,17 @@ class TaskSupervisor:
             capsule.started_at = datetime.now(timezone.utc)
         if new_state in _TERMINAL_STATES:
             capsule.completed_at = datetime.now(timezone.utc)
+            try:
+                from pluma.config.paths import PlumaPaths
+                paths = PlumaPaths()
+                task_dir = paths.temp_dir / f"task_{capsule.task_id}"
+                if task_dir.exists():
+                    import shutil
+                    shutil.rmtree(task_dir, ignore_errors=True)
+            except Exception:
+                pass
+            if self._registry and hasattr(self._registry, "cleanup_task_resources"):
+                try:
+                    self._registry.cleanup_task_resources(capsule.task_id)
+                except Exception:
+                    pass

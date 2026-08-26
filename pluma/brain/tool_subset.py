@@ -41,7 +41,24 @@ UI_PERCEPTION_TOOLS = [
     "click_ocr_text",
 ]
 
+AUDIO_TOOLS = [
+    "get_volume_status",
+    "set_volume",
+    "mute_audio",
+    "unmute_audio",
+]
+
+WINDOW_MANAGEMENT_TOOLS = [
+    "minimize_window",
+    "maximize_window",
+    "restore_window",
+    "close_window",
+    "list_windows",
+    "focus_window",
+]
+
 SYSTEM_CLIPBOARD_TOOLS = [
+    "get_system_status",
     "system_status",
     "battery_status",
     "clear_clipboard",
@@ -49,17 +66,23 @@ SYSTEM_CLIPBOARD_TOOLS = [
     "clipboard_write",
     "show_activity",
     "undo_last",
+    "stop_current",
+    "list_processes",
+    "get_process_status",
+    "kill_process",
 ]
 
 # Route to standard tool name mappings
 ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
-    RouteMode.FAST: [],  # FAST route bypasses LLM entirely
-    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + SYSTEM_CLIPBOARD_TOOLS,
-    RouteMode.SCREEN: UI_PERCEPTION_TOOLS + ["focus_window", "list_windows"],
+    RouteMode.FAST: [],  # FAST route bypasses LLM planning entirely
+    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + WINDOW_MANAGEMENT_TOOLS + AUDIO_TOOLS + SYSTEM_CLIPBOARD_TOOLS,
+    RouteMode.SCREEN: UI_PERCEPTION_TOOLS + WINDOW_MANAGEMENT_TOOLS,
     RouteMode.DEEP: (
         FILE_TOOLS
         + APP_WINDOW_TOOLS
+        + WINDOW_MANAGEMENT_TOOLS
         + UI_PERCEPTION_TOOLS
+        + AUDIO_TOOLS
         + SYSTEM_CLIPBOARD_TOOLS
     ),
 }
@@ -67,6 +90,18 @@ ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
 
 class ToolSubsetSelector:
     """Selects route-appropriate tool schemas to prevent token bloat and hallucination."""
+
+    @staticmethod
+    def is_tool_permitted(tool_name: str, route: Union[RouteMode, str]) -> bool:
+        """Return True if tool_name is permitted for execution in the given route."""
+        try:
+            route_enum = route if isinstance(route, RouteMode) else RouteMode(str(route).upper())
+            if route_enum == RouteMode.FAST:
+                return True
+            permitted = ROUTE_TOOL_MAP.get(route_enum, [])
+            return tool_name in permitted
+        except Exception:
+            return True
 
     def __init__(self, registry: Optional[ToolRegistry] = None) -> None:
         self._registry = registry

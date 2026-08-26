@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pluma.memory.db import DbConnection
-from pluma.memory.redaction import sanitise_args_for_ledger
+from pluma.memory.redaction import redact_sensitive_data, redact_string, sanitise_args_for_ledger
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,7 @@ class ActivityLedger:
 
     def insert_task(self, record: TaskRecord) -> None:
         """Insert a new task row. Called when the TaskCapsule is created."""
+        redacted_cmd = redact_string(record.command_text) if record.command_text else record.command_text
         self._db.execute_write(
             """
             INSERT OR REPLACE INTO tasks
@@ -139,7 +140,7 @@ class ActivityLedger:
             """,
             (
                 record.task_id, record.request_id, record.input_mode.lower(),
-                record.command_text, record.created_at, record.started_at,
+                redacted_cmd, record.created_at, record.started_at,
                 record.completed_at, record.final_state, record.route,
                 record.active_process, record.active_window,
                 record.stop_reason, record.error_code,
@@ -174,9 +175,13 @@ class ActivityLedger:
     def insert_action(self, record: ActionRecord) -> int:
         """Insert an action row and return its integer row id."""
         sanitised_args = sanitise_args_for_ledger(record.tool, record.args_raw)
-        result_json = json.dumps(record.result_data) if record.result_data else None
-        verify_json = json.dumps(record.verification_detail) if record.verification_detail else None
-        error_json = json.dumps(record.error_detail) if record.error_detail else None
+        sanitised_result = redact_sensitive_data(record.result_data) if record.result_data else None
+        sanitised_verify = redact_sensitive_data(record.verification_detail) if record.verification_detail else None
+        sanitised_error = redact_sensitive_data(record.error_detail) if record.error_detail else None
+
+        result_json = json.dumps(sanitised_result) if sanitised_result is not None else None
+        verify_json = json.dumps(sanitised_verify) if sanitised_verify is not None else None
+        error_json = json.dumps(sanitised_error) if sanitised_error is not None else None
 
         row_id = self._db.execute_write(
             """
@@ -201,6 +206,7 @@ class ActivityLedger:
 
     def insert_undo_record(self, record: UndoRecord) -> None:
         """Insert an undo record linked to an action row."""
+        sanitised_undo = redact_sensitive_data(record.undo_data) if record.undo_data else None
         self._db.execute_write(
             """
             INSERT OR REPLACE INTO undo_records
@@ -209,7 +215,7 @@ class ActivityLedger:
             """,
             (
                 record.action_row_id,
-                json.dumps(record.undo_data),
+                json.dumps(sanitised_undo) if sanitised_undo is not None else None,
                 int(record.available),
             ),
         )

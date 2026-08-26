@@ -54,8 +54,7 @@ def redact_dict(data: Dict[str, Any], *, deep: bool = True) -> Dict[str, Any]:
     """Return a copy of *data* with sensitive values replaced by REDACTED_TOKEN.
 
     If *deep* is True, nested dicts and lists are also processed recursively.
-    String values are checked against known patterns only when the key itself
-    is not flagged (to avoid redacting benign short strings).
+    String values are sanitized against all known unanchored secret patterns.
     """
     result: Dict[str, Any] = {}
     for key, value in data.items():
@@ -65,8 +64,8 @@ def redact_dict(data: Dict[str, Any], *, deep: bool = True) -> Dict[str, Any]:
             result[key] = redact_dict(value, deep=True)
         elif deep and isinstance(value, list):
             result[key] = _redact_list(value)
-        elif isinstance(value, str) and _looks_like_secret_value(value):
-            result[key] = REDACTED_TOKEN
+        elif isinstance(value, str):
+            result[key] = redact_string(value)
         else:
             result[key] = value
     return result
@@ -76,6 +75,7 @@ def _redact_list(items: List[Any]) -> List[Any]:
     return [
         redact_dict(item, deep=True) if isinstance(item, dict)
         else _redact_list(item) if isinstance(item, list)
+        else redact_string(item) if isinstance(item, str)
         else item
         for item in items
     ]
