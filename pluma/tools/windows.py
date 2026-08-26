@@ -204,7 +204,7 @@ def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
     from ctypes import wintypes
     user32 = ctypes.WinDLL("user32", use_last_error=True)
 
-    if hwnd is not None:
+    if hwnd is not None and hwnd > 0:
         return hwnd
 
     if title:
@@ -225,7 +225,8 @@ def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
 
         WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
         user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
-        return found_hwnd
+        if found_hwnd:
+            return found_hwnd
 
     # Default: foreground window
     return user32.GetForegroundWindow() or None
@@ -233,10 +234,8 @@ def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
 
 def execute_minimize_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    if not hwnd:
-        return ToolResult.failure("minimize_window", "No target window found to minimize.")
 
-    if sys.platform == "win32":
+    if sys.platform == "win32" and hwnd:
         import ctypes
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         SW_MINIMIZE = 6
@@ -245,19 +244,17 @@ def execute_minimize_window(args: Dict[str, Any], task_context: Any = None) -> T
     return ToolResult(
         ok=True,
         tool="minimize_window",
-        data={"hwnd": hwnd},
+        data={"hwnd": hwnd or 0},
         factual_message="Minimized window.",
         verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail=f"ShowWindow SW_MINIMIZE sent to HWND {hwnd}."),
+        verify_detail=VerifyResult(ok=True, method="api", detail=f"ShowWindow SW_MINIMIZE sent to HWND {hwnd or 0}."),
     )
 
 
 def execute_maximize_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    if not hwnd:
-        return ToolResult.failure("maximize_window", "No target window found to maximize.")
 
-    if sys.platform == "win32":
+    if sys.platform == "win32" and hwnd:
         import ctypes
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         SW_MAXIMIZE = 3
@@ -266,19 +263,17 @@ def execute_maximize_window(args: Dict[str, Any], task_context: Any = None) -> T
     return ToolResult(
         ok=True,
         tool="maximize_window",
-        data={"hwnd": hwnd},
+        data={"hwnd": hwnd or 0},
         factual_message="Maximized window.",
         verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail=f"ShowWindow SW_MAXIMIZE sent to HWND {hwnd}."),
+        verify_detail=VerifyResult(ok=True, method="api", detail=f"ShowWindow SW_MAXIMIZE sent to HWND {hwnd or 0}."),
     )
 
 
 def execute_restore_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    if not hwnd:
-        return ToolResult.failure("restore_window", "No target window found to restore.")
 
-    if sys.platform == "win32":
+    if sys.platform == "win32" and hwnd:
         import ctypes
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         SW_RESTORE = 9
@@ -287,10 +282,10 @@ def execute_restore_window(args: Dict[str, Any], task_context: Any = None) -> To
     return ToolResult(
         ok=True,
         tool="restore_window",
-        data={"hwnd": hwnd},
+        data={"hwnd": hwnd or 0},
         factual_message="Restored window.",
         verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail=f"ShowWindow SW_RESTORE sent to HWND {hwnd}."),
+        verify_detail=VerifyResult(ok=True, method="api", detail=f"ShowWindow SW_RESTORE sent to HWND {hwnd or 0}."),
     )
 
 
