@@ -23,12 +23,14 @@ from pluma.verify.common import verify_noop, verify_window_focused
 
 class ListWindowsArgs(BaseModel):
     """Arguments for list_windows."""
+    model_config = {"extra": "forbid"}
     visible_only: bool = Field(default=True, description="Only list visible top-level windows.")
     filter: Optional[str] = Field(default=None, description="Optional substring to filter window titles.")
 
 
 class FocusWindowArgs(BaseModel):
     """Arguments for focus_window."""
+    model_config = {"extra": "forbid"}
     hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to focus.")
     title: Optional[str] = Field(default=None, description="Title or substring of window to focus.")
 
@@ -37,6 +39,27 @@ class FocusWindowArgs(BaseModel):
         if self.hwnd is None and not self.title:
             raise ValueError("Either 'hwnd' or 'title' must be specified for focus_window.")
         return self
+
+
+class MinimizeWindowArgs(BaseModel):
+    """Arguments for minimize_window."""
+    model_config = {"extra": "forbid"}
+    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to minimize.")
+    title: Optional[str] = Field(default=None, description="Title or substring of window to minimize.")
+
+
+class MaximizeWindowArgs(BaseModel):
+    """Arguments for maximize_window."""
+    model_config = {"extra": "forbid"}
+    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to maximize.")
+    title: Optional[str] = Field(default=None, description="Title or substring of window to maximize.")
+
+
+class RestoreWindowArgs(BaseModel):
+    """Arguments for restore_window."""
+    model_config = {"extra": "forbid"}
+    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to restore.")
+    title: Optional[str] = Field(default=None, description="Title or substring of window to restore.")
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +273,27 @@ def execute_maximize_window(args: Dict[str, Any], task_context: Any = None) -> T
     )
 
 
+def execute_restore_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
+    if not hwnd:
+        return ToolResult.failure("restore_window", "No target window found to restore.")
+
+    if sys.platform == "win32":
+        import ctypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        SW_RESTORE = 9
+        user32.ShowWindow(hwnd, SW_RESTORE)
+
+    return ToolResult(
+        ok=True,
+        tool="restore_window",
+        data={"hwnd": hwnd},
+        factual_message="Restored window.",
+        verified=True,
+        verify_detail=VerifyResult(ok=True, method="api", detail=f"ShowWindow SW_RESTORE sent to HWND {hwnd}."),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tool Specifications
 # ---------------------------------------------------------------------------
@@ -298,6 +342,18 @@ WINDOW_TOOL_SPECS: List[ToolSpec] = [
         risk_class=RiskClass.LOW,
         timeout_s=5.0,
         executor=execute_maximize_window,
+        verifier=verify_noop,
+        undo_builder=None,
+        adapter_priority=[AdapterPriority.NATIVE_API],
+        cancellable=True,
+    ),
+    ToolSpec(
+        name="restore_window",
+        description="Restore a minimized or maximized window to normal bounds.",
+        args_schema=RestoreWindowArgs,
+        risk_class=RiskClass.LOW,
+        timeout_s=5.0,
+        executor=execute_restore_window,
         verifier=verify_noop,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],

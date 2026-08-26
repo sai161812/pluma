@@ -24,16 +24,17 @@ from pluma.verify.common import verify_noop
 
 class ClearClipboardArgs(BaseModel):
     """Arguments for clear_clipboard / clipboard_clear."""
-    pass
+    model_config = {"extra": "forbid"}
 
 
 class GetClipboardArgs(BaseModel):
     """Arguments for get_clipboard_text."""
-    pass
+    model_config = {"extra": "forbid"}
 
 
 class SetClipboardArgs(BaseModel):
     """Arguments for set_clipboard_text."""
+    model_config = {"extra": "forbid"}
     text: str = Field(min_length=0, max_length=65536, description="Text to place on the clipboard.")
 
 

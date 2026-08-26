@@ -9,10 +9,10 @@ Boundary: No heavy automation libraries imported at module level.
 
 from __future__ import annotations
 
-import sys
+import re
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from pluma.core.task_supervisor import ResourceOwnership
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
@@ -24,35 +24,91 @@ from pluma.verify.common import (
 )
 
 
+_FORBIDDEN_EXECUTABLES = frozenset({
+    "cmd", "cmd.exe",
+    "powershell", "powershell.exe",
+    "pwsh", "pwsh.exe",
+    "bash", "bash.exe",
+    "sh", "sh.exe",
+    "wscript", "wscript.exe",
+    "cscript", "cscript.exe",
+    "python", "python.exe",
+    "pythonw", "pythonw.exe",
+    "mshta", "mshta.exe",
+    "rundll32", "rundll32.exe",
+    "regsvr32", "regsvr32.exe",
+    "certutil", "certutil.exe",
+    "bitsadmin", "bitsadmin.exe",
+})
+
+_SHELL_METACHAR_PATTERN = re.compile(r"[&|;><`$\n\r]")
+_DANGEROUS_ARG_PATTERNS = [
+    re.compile(r"(?i)^-(encodedcommand|enc|e|command|c|exec)$"),
+    re.compile(r"(?i)^/[ck]$"),
+]
+
+
 # ---------------------------------------------------------------------------
 # Argument Schemas
 # ---------------------------------------------------------------------------
 
 class OpenAppArgs(BaseModel):
     """Arguments for open_app."""
+    model_config = {"extra": "forbid"}
+
     app_name: str = Field(min_length=1, description="Application name or executable path (e.g. 'notepad', 'calc').")
     arguments: List[str] = Field(default_factory=list, description="Command line arguments.")
     working_dir: Optional[str] = Field(default=None, description="Working directory for the process.")
 
+    @field_validator("app_name")
+    @classmethod
+    def validate_app_name(cls, v: str) -> str:
+        clean = v.strip().lower()
+        base = clean.split("/")[-1].split("\\")[-1]
+        if base in _FORBIDDEN_EXECUTABLES or clean in _FORBIDDEN_EXECUTABLES:
+            raise ValueError(f"Execution of shell/interpreter '{v}' is forbidden through open_app.")
+        if _SHELL_METACHAR_PATTERN.search(v):
+            raise ValueError(f"Shell metacharacters are forbidden in app_name: '{v}'")
+        return v
+
+    @field_validator("arguments")
+    @classmethod
+    def validate_arguments(cls, args: List[str]) -> List[str]:
+        for a in args:
+            if _SHELL_METACHAR_PATTERN.search(a):
+                raise ValueError(f"Shell metacharacters are forbidden in argument: '{a}'")
+            for pat in _DANGEROUS_ARG_PATTERNS:
+                if pat.search(a.strip()):
+                    raise ValueError(f"Dangerous shell argument '{a}' is forbidden in open_app.")
+        return args
+
 
 class CloseAppArgs(BaseModel):
     """Arguments for close_app."""
+    model_config = {"extra": "forbid"}
+
     app_name: str = Field(min_length=1, description="Application executable name or window title to close.")
     force: bool = Field(default=False, description="Force terminate process tree (requires explicit request).")
 
 
 class FocusAppArgs(BaseModel):
     """Arguments for focus_app."""
+    model_config = {"extra": "forbid"}
+
     app_name: str = Field(min_length=1, description="Application executable or window title to bring to foreground.")
 
 
 class ListAppsArgs(BaseModel):
     """Arguments for list_apps."""
+    model_config = {"extra": "forbid"}
+
     filter: Optional[str] = Field(default=None, description="Optional substring to filter application names.")
 
 
 class AppStatusArgs(BaseModel):
     """Arguments for app_status."""
+    model_config = {"extra": "forbid"}
+
     app_name: str = Field(min_length=1, description="Application name or PID to inspect.")
 
 
@@ -65,33 +121,64 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
     import shutil
     import subprocess
     import time
-    
+
     app = args["app_name"]
     cmd_args = args.get("arguments", [])
     work_dir = args.get("working_dir")
-    
+
+    # Safety check against shell escapes
+    clean = app.strip().lower()
+    base = clean.split("/")[-1].split("\\")[-1]
+    if base in _FORBIDDEN_EXECUTABLES or clean in _FORBIDDEN_EXECUTABLES:
+        return ToolResult.failure("open_app", f"Execution of interpreter/shell '{app}' is forbidden through open_app.")
+
+    if _SHELL_METACHAR_PATTERN.search(app):
+        return ToolResult.failure("open_app", f"Shell metacharacters are forbidden in app_name: '{app}'")
+
+    for a in cmd_args:
+        if _SHELL_METACHAR_PATTERN.search(a):
+            return ToolResult.failure("open_app", f"Shell metacharacters are forbidden in argument: '{a}'")
+        for pat in _DANGEROUS_ARG_PATTERNS:
+            if pat.search(a.strip()):
+                return ToolResult.failure("open_app", f"Dangerous shell argument '{a}' is forbidden in open_app.")
+
     # Resolve executable
     exe = shutil.which(app) or app
     full_cmd = [exe] + cmd_args
-    
+
     try:
         proc = subprocess.Popen(
             full_cmd,
             cwd=work_dir,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
-        
+
         # If task context is provided, register process ownership and assign to Job Object
         if task_context and hasattr(task_context, "job_object") and task_context.job_object:
             try:
                 task_context.job_object.assign_process(proc)
             except Exception:
                 pass
-                
+
+        if task_context and hasattr(task_context, "task_id"):
+            from pluma.core.ownership import OwnershipRegistry
+            # Register in task context ownership registry if present
+            reg = getattr(task_context, "ownership_registry", None) or getattr(task_context, "_registry", None)
+            if reg and hasattr(reg, "register_subprocess"):
+                try:
+                    reg.register_subprocess(
+                        task_id=task_context.task_id,
+                        pid=proc.pid,
+                        ownership=ResourceOwnership.PLUMA_CREATED,
+                        command_class="open_app",
+                    )
+                except Exception:
+                    pass
+
         # Give process a moment to initialize
         time.sleep(0.2)
         v_res = verify_process_running(proc.pid)
-        
+
         return ToolResult(
             ok=v_res.ok,
             tool="open_app",

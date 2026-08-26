@@ -25,6 +25,7 @@ class PolicyDecision(str, Enum):
     """Outcomes of a policy evaluation."""
     ALLOW = "ALLOW"
     REQUIRE_CONFIRMATION = "REQUIRE_CONFIRMATION"
+    REQUIRE_ELEVATION = "REQUIRE_ELEVATION"
     DENY = "DENY"
 
 
@@ -69,24 +70,34 @@ class PolicyEngine:
         """Evaluate a tool invocation against policy rules and confirmation boundaries."""
         risk = self.rules.classify(tool_name, arguments, default_risk=default_risk)
 
-        # 1. RESTRICTED: Strictly forbidden
-        if risk == RiskClass.RESTRICTED:
-            logger.warning("Policy DENIED tool '%s': targets restricted system operation.", tool_name)
+        # 1. RESTRICTED & DENY: Strictly forbidden
+        if risk in (RiskClass.RESTRICTED, RiskClass.DENY):
+            logger.warning("Policy DENIED tool '%s': forbidden under %s risk tier.", tool_name, risk.value)
             return PolicyEvaluationResult(
                 decision=PolicyDecision.DENY,
                 risk_class=risk,
-                reason=f"Tool '{tool_name}' targets a protected system path or forbidden operation.",
+                reason=f"Tool '{tool_name}' is forbidden under {risk.value} risk policy.",
             )
 
-        # 2. READ & LOW: Safe to execute autonomously
-        if risk in (RiskClass.READ, RiskClass.LOW):
+        # 2. READ, LOW, MEDIUM: Safe to execute autonomously (MEDIUM captures undo)
+        if risk in (RiskClass.READ, RiskClass.LOW, RiskClass.MEDIUM):
             return PolicyEvaluationResult(
                 decision=PolicyDecision.ALLOW,
                 risk_class=risk,
-                reason=f"Operation auto-allowed under {risk.value} risk class.",
+                reason=f"Operation allowed under {risk.value} risk tier.",
             )
 
-        # 3. HIGH: Material state changes requiring confirmation
+        # 3. ADMIN: Requires single-operation elevation broker
+        if risk == RiskClass.ADMIN:
+            logger.info("Policy intercepted ADMIN tool '%s': requires elevation broker.", tool_name)
+            return PolicyEvaluationResult(
+                decision=PolicyDecision.REQUIRE_ELEVATION,
+                risk_class=risk,
+                reason=f"Tool '{tool_name}' requires single-operation elevation broker.",
+                requires_elevation=True,
+            )
+
+        # 4. HIGH: Material state changes requiring confirmation
         if risk == RiskClass.HIGH:
             if self.confirmation_contract is not None:
                 req = ConfirmationRequest(
@@ -122,9 +133,10 @@ class PolicyEngine:
                 requires_confirmation=True,
             )
 
-        # Fallback to allow if unspecified
+        # Fail-closed for any unclassified or unknown risk
+        logger.error("Policy fail-closed for unclassified risk '%s' on tool '%s'.", risk, tool_name)
         return PolicyEvaluationResult(
-            decision=PolicyDecision.ALLOW,
-            risk_class=risk,
-            reason="Allowed by default policy.",
+            decision=PolicyDecision.DENY,
+            risk_class=risk if isinstance(risk, RiskClass) else RiskClass.DENY,
+            reason=f"Operation denied under fail-closed security policy (risk={risk}).",
         )

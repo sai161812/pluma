@@ -28,6 +28,7 @@ from pluma.verify.common import (
 
 class ListFilesArgs(BaseModel):
     """Arguments for list_files."""
+    model_config = {"extra": "forbid"}
     path: str = Field(default=".", description="Directory path to inspect.")
     max_depth: int = Field(default=1, ge=1, le=5, description="Maximum recursion depth.")
     include_hidden: bool = Field(default=False, description="Whether to include hidden files.")
@@ -35,6 +36,7 @@ class ListFilesArgs(BaseModel):
 
 class FindFileArgs(BaseModel):
     """Arguments for find_file."""
+    model_config = {"extra": "forbid"}
     directory: str = Field(default=".", description="Root directory to search within.")
     pattern: str = Field(min_length=1, max_length=128, description="Glob search pattern (e.g. '*.txt').")
     max_depth: int = Field(default=5, ge=1, le=10, description="Maximum directory search depth.")
@@ -43,6 +45,7 @@ class FindFileArgs(BaseModel):
 
 class MoveFileArgs(BaseModel):
     """Arguments for move_file."""
+    model_config = {"extra": "forbid"}
     source: str = Field(min_length=1, description="Source file or folder path.")
     destination: str = Field(min_length=1, description="Destination directory or target file path.")
     overwrite: bool = Field(default=False, description="Whether to overwrite existing destination.")
@@ -50,12 +53,14 @@ class MoveFileArgs(BaseModel):
 
 class RenameFileArgs(BaseModel):
     """Arguments for rename_file."""
+    model_config = {"extra": "forbid"}
     path: str = Field(min_length=1, description="Target file or folder to rename.")
     new_name: str = Field(min_length=1, max_length=255, description="New filename or relative name.")
 
 
 class CreateFolderArgs(BaseModel):
     """Arguments for create_folder."""
+    model_config = {"extra": "forbid"}
     path: str = Field(min_length=1, description="Directory path to create.")
     exist_ok: bool = Field(default=True, description="Do not raise if directory already exists.")
 

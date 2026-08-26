@@ -24,17 +24,23 @@ from pluma.verify.common import verify_noop
 
 class SetVolumeArgs(BaseModel):
     """Arguments for set_volume."""
+    model_config = {"extra": "forbid"}
     level: int = Field(ge=0, le=100, description="Target volume percentage (0 to 100).")
 
 
 class MuteArgs(BaseModel):
     """Arguments for mute."""
-    pass
+    model_config = {"extra": "forbid"}
 
 
 class UnmuteArgs(BaseModel):
     """Arguments for unmute."""
-    pass
+    model_config = {"extra": "forbid"}
+
+
+class GetVolumeStatusArgs(BaseModel):
+    """Arguments for get_volume_status."""
+    model_config = {"extra": "forbid"}
 
 
 # ---------------------------------------------------------------------------
@@ -199,17 +205,17 @@ def execute_unmute(args: Dict[str, Any], task_context: Any = None) -> ToolResult
     success = _set_audio_endpoint_volume(mute=False)
     if not success:
         return ToolResult.failure("unmute", "Failed to unmute audio endpoint.")
-        
+
     current = _get_audio_endpoint_volume()
     is_muted = current["muted"] if current else False
     verified = not is_muted
-    
+
     v_res = VerifyResult(
         ok=verified,
         method="api",
         detail=f"Master audio is {'unmuted' if verified else 'still muted'}.",
     )
-    
+
     return ToolResult(
         ok=verified,
         tool="unmute",
@@ -217,6 +223,25 @@ def execute_unmute(args: Dict[str, Any], task_context: Any = None) -> ToolResult
         factual_message="Unmuted master audio.",
         verified=verified,
         verify_detail=v_res,
+    )
+
+
+def execute_get_volume_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    current = _get_audio_endpoint_volume()
+    if not current:
+        return ToolResult.failure("get_volume_status", "Failed to read audio endpoint status.")
+
+    vol = current.get("volume", 0)
+    muted = current.get("muted", False)
+    status_str = f"Volume is at {vol}% ({'muted' if muted else 'unmuted'})."
+
+    return ToolResult(
+        ok=True,
+        tool="get_volume_status",
+        data={"volume": vol, "muted": muted},
+        factual_message=status_str,
+        verified=True,
+        verify_detail=VerifyResult(ok=True, method="api", detail=status_str),
     )
 
 
@@ -288,6 +313,18 @@ AUDIO_TOOL_SPECS: List[ToolSpec] = [
         executor=execute_unmute,
         verifier=verify_unmute,
         undo_builder=undo_builder_unmute,
+        adapter_priority=[AdapterPriority.NATIVE_API],
+        cancellable=True,
+    ),
+    ToolSpec(
+        name="get_volume_status",
+        description="Read current system volume level and mute state.",
+        args_schema=GetVolumeStatusArgs,
+        risk_class=RiskClass.READ,
+        timeout_s=5.0,
+        executor=execute_get_volume_status,
+        verifier=verify_noop,
+        undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),
