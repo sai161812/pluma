@@ -149,9 +149,15 @@ class TaskSupervisor:
 
     def create_task(self, request_id: str) -> TaskCapsule:
         """Create a new TaskCapsule in CREATED state."""
+        return self.create_task_capsule(request_id=request_id)
+
+    def create_task_capsule(self, task_id: Optional[str] = None, request_id: str = "req-default") -> TaskCapsule:
+        """Create a new TaskCapsule in CREATED state, optionally with explicit task_id."""
         with self._lock:
             capsule = TaskCapsule(request_id=request_id)
-            
+            if task_id:
+                capsule.task_id = task_id
+
             # Create a Job Object for this task's worker tree
             try:
                 from pluma.core.job_object import WindowsJobObject
@@ -171,6 +177,10 @@ class TaskSupervisor:
     def get_task(self, task_id: str) -> TaskCapsule:
         with self._lock:
             return self._get_task(task_id)
+
+    def get_task_capsule(self, task_id: str) -> TaskCapsule:
+        """Alias for get_task."""
+        return self.get_task(task_id)
 
     def transition(self, task_id: str, new_state: TaskState) -> None:
         """Explicitly transition a task to a new state."""

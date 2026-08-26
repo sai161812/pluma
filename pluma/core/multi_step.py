@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_REPLANS: int = 3
 HARD_CAP_MAX_REPLANS: int = 5
+MAX_LIFETIME_STEPS: int = 20
 
 
 @dataclass
@@ -110,6 +111,13 @@ class MultiStepOrchestrator:
             for idx, tool_call in enumerate(current_plan.steps):
                 step_idx = step_offset + idx + 1
 
+                # Lifetime step limit check
+                if len(executed_records) >= MAX_LIFETIME_STEPS:
+                    logger.warning("Task %s: Reached maximum lifetime step limit (%d). Terminating.", task_id, MAX_LIFETIME_STEPS)
+                    overall_error = f"Exceeded maximum task lifetime limit of {MAX_LIFETIME_STEPS} steps."
+                    plan_succeeded = False
+                    break
+
                 # 1. Stop-Latch Check Before Every Step
                 if token.is_cancelled:
                     logger.info("Task %s: Stop-latch detected before step %d (%s). Aborting.", task_id, step_idx, tool_call.tool)
@@ -123,8 +131,9 @@ class MultiStepOrchestrator:
 
                 step_start = time.perf_counter()
                 logger.info(
-                    "Task %s [Step %d/%d]: Executing '%s' (purpose: %s)",
-                    task_id, step_idx, step_offset + len(current_plan.steps),
+                    "Task %s [Step %d/%d (Lifetime %d/%d)]: Executing '%s' (purpose: %s)",
+                    task_id, idx + 1, len(current_plan.steps),
+                    step_idx, MAX_LIFETIME_STEPS,
                     tool_call.tool, tool_call.purpose,
                 )
 
@@ -188,7 +197,12 @@ class MultiStepOrchestrator:
                 )
 
             # 4. Handle Replanning
-            if replan_count < self.max_replans and self.planner is not None and not token.is_cancelled:
+            if (
+                replan_count < self.max_replans
+                and len(executed_records) < MAX_LIFETIME_STEPS
+                and self.planner is not None
+                and not token.is_cancelled
+            ):
                 replan_count += 1
                 logger.info(
                     "Task %s: Attempting bounded replan (%d/%d)...",
