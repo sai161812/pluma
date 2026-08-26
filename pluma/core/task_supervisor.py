@@ -146,6 +146,16 @@ class TaskCapsule(BaseModel):
         self.owned_resources.append(res)
         return res
 
+    def close_resources(self) -> None:
+        """Close and release unmanaged OS handles such as Windows Job Objects."""
+        if self.job_object is not None:
+            try:
+                self.job_object.close()
+            except Exception as e:
+                logger.debug("Error closing job object for task %s: %s", self.task_id, e)
+            finally:
+                self.job_object = None
+
 
 MAX_TERMINAL_TASKS_RETAINED: int = 50
 
@@ -187,7 +197,9 @@ class TaskSupervisor:
             excess = len(terminal_ids) - limit
             to_remove = terminal_ids[:excess]
             for tid in to_remove:
-                del self._tasks[tid]
+                cap = self._tasks.pop(tid, None)
+                if cap is not None:
+                    cap.close_resources()
             return len(to_remove)
 
     def create_task(self, request_id: str) -> TaskCapsule:
@@ -364,6 +376,10 @@ class TaskSupervisor:
             capsule.started_at = datetime.now(timezone.utc)
         if new_state in _TERMINAL_STATES:
             capsule.completed_at = datetime.now(timezone.utc)
+            # 1. Cleanly close and release Job Object handles on terminal transition
+            capsule.close_resources()
+
+            # 2. Clean up task temp directory
             try:
                 from pluma.config.paths import get_paths
                 paths_inst = self._paths or get_paths()
@@ -373,6 +389,8 @@ class TaskSupervisor:
                     shutil.rmtree(task_dir, ignore_errors=True)
             except Exception:
                 pass
+
+            # 3. Clean up process registry tracking
             if self._registry and hasattr(self._registry, "cleanup_task_resources"):
                 try:
                     self._registry.cleanup_task_resources(capsule.task_id)

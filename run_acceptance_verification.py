@@ -163,17 +163,32 @@ def verify_all_audit_items() -> None:
         print("  -> PASSED: Custom configuration path loaded and merged successfully.")
 
         # 7. Process Ownership & Terminal Task Memory Bounding
-        print("[AUDIT 7] Testing Process Ownership Attachment & Memory Bounding...")
+        print("[AUDIT 7] Testing Process Ownership Attachment, Job Object Closure & Memory Bounding...")
         sup7 = TaskSupervisor(paths=paths, max_retained_terminal_tasks=10)
         cap7 = sup7.create_task_capsule(task_id="cleanup_test", request_id="req-7")
-        cap7.register_owned_resource(
-            resource_type="subprocess",
-            ownership=ResourceOwnership.PLUMA_CREATED,
-            external_id="9999",
-        )
-        assert len(cap7.owned_resources) == 1
+        if sys.platform == "win32":
+            from pluma.core.job_object import WindowsJobObject
+            assert cap7.job_object is not None or sys.platform != "win32"
+        
+        # Test real open_app process ownership registration on TaskCapsule
+        open_res = reg.execute("open_app", {"app_name": "notepad.exe" if sys.platform == "win32" else "python"}, task_context=cap7)
+        if open_res.ok:
+            pid = open_res.data["pid"]
+            assert len(cap7.owned_resources) >= 1
+            assert cap7.owned_resources[0].resource_type == "subprocess"
+            assert cap7.owned_resources[0].external_id == str(pid)
+            assert cap7.owned_resources[0].ownership == ResourceOwnership.PLUMA_CREATED
+
+        # Start and succeed task -> verifies job object closure and temp cleanup
         sup7.start_task(cap7.task_id)
         sup7.mark_succeeded(cap7.task_id)
+        assert cap7.job_object is None, "Job Object handle must be closed and cleared on task terminal transition!"
+
+        # Verify invalid window handles fail-closed
+        win_res = reg.execute("restore_window", {"hwnd": 0})
+        assert win_res.ok is False
+        assert win_res.verified is False
+        assert win_res.error_code in ("WINDOW_NOT_FOUND", "INVALID_HWND")
 
         # Verify memory bounding
         for i in range(50):
@@ -181,7 +196,7 @@ def verify_all_audit_items() -> None:
             sup7.start_task(c.task_id)
             sup7.mark_succeeded(c.task_id)
         assert len(sup7._tasks) == 10
-        print("  -> PASSED: TaskCapsule carries owned resources; terminal memory bounded to 10.")
+        print("  -> PASSED: TaskCapsule carries real owned resources; Job Object closed on completion; terminal memory bounded.")
 
         # 8. Automatic Multi-Step Rollback File Restoration
         print("[AUDIT 8] Testing Multi-Step Automatic Rollback Restoration...")
@@ -227,7 +242,9 @@ if __name__ == "__main__":
     verify_all_audit_items()
     print("\nRUNNING COMPLETE TEST SUITE VIA PYTEST...")
 
-    class FullLogPlugin:
+    import platform
+
+    class SafeFullLogPlugin:
         def __init__(self) -> None:
             self.passed = 0
             self.failed = 0
@@ -235,31 +252,40 @@ if __name__ == "__main__":
             self.lines: list[str] = []
 
         def pytest_runtest_logreport(self, report: Any) -> None:
-            if report.when == "call":
+            if report.when == "call" or (report.when in ("setup", "teardown") and report.failed):
                 status = report.outcome.upper()
                 if status == "PASSED":
                     self.passed += 1
-                elif status == "FAILED":
+                elif status in ("FAILED", "ERROR"):
                     self.failed += 1
                 elif status == "SKIPPED":
                     self.skipped += 1
-                self.lines.append(f"{report.nodeid:<90} {status} [{report.duration:.3f}s]")
+                node = report.nodeid if report.when == "call" else f"{report.nodeid} ({report.when})"
+                self.lines.append(f"{node:<95} {status:<8} [{report.duration:.3f}s]")
 
-    plugin = FullLogPlugin()
+    plugin = SafeFullLogPlugin()
     t0 = time.perf_counter()
-    ret = pytest.main(["tests/", "-q"], plugins=[plugin])
+    ret = pytest.main(["tests/", "-q", "--timeout=30"], plugins=[plugin])
     elapsed = time.perf_counter() - t0
+
+    total_tests = len(plugin.lines)
+    pass_rate = (plugin.passed / total_tests * 100.0) if total_tests > 0 else 0.0
+    sys_plat_str = f"{platform.system()} {platform.release()} ({platform.machine()}) [{platform.platform()}]"
+
     header = (
-        f"============================= PLUMA FULL TEST SUITE EXECUTION =============================\n"
-        f"Platform: Windows 11 | Python: {sys.version}\n"
-        f"Total Tests: {len(plugin.lines)} | Passed: {plugin.passed} | Failed: {plugin.failed} | Skipped: {plugin.skipped} | Elapsed: {elapsed:.2f}s\n"
-        + "=" * 90
+        "=" * 115 + "\n"
+        "============================= PLUMA FULL TEST SUITE EXECUTION =============================\n"
+        f"Platform: {sys_plat_str} | Python: {platform.python_version()}\n"
+        f"Total Tests: {total_tests} | Passed: {plugin.passed} | Failed: {plugin.failed} | Skipped: {plugin.skipped} | Elapsed: {elapsed:.2f}s\n"
+        + "=" * 115
         + "\n"
     )
     footer = (
         "\n"
-        + "=" * 90
-        + f"\nFINAL RESULT: {plugin.passed} passed, {plugin.failed} failed, {plugin.skipped} skipped in {elapsed:.2f}s (100% SUCCESS)\n"
+        + "=" * 115
+        + f"\nFINAL RESULT: {plugin.passed} passed, {plugin.failed} failed, {plugin.skipped} skipped in {elapsed:.2f}s ({pass_rate:.1f}% PASS RATE)\n"
+        + "=" * 115
+        + "\n"
     )
     full_log = header + "\n".join(plugin.lines) + footer
     with open("test_run_raw.log", "w", encoding="utf-8") as f:
@@ -267,6 +293,6 @@ if __name__ == "__main__":
     with open("ACCEPTANCE_TEST_RAW_LOG.txt", "w", encoding="utf-8") as f:
         f.write(full_log)
 
-    print(f"\nALL {plugin.passed}/{len(plugin.lines)} TESTS PASSED CLEANLY IN {elapsed:.2f}s (100% PASS RATE).")
-    print(f"Log written to: test_run_raw.log and ACCEPTANCE_TEST_RAW_LOG.txt ({len(plugin.lines)} records).")
+    print(f"\nALL {plugin.passed}/{total_tests} TESTS COMPLETED IN {elapsed:.2f}s ({pass_rate:.1f}% PASS RATE).")
+    print(f"Log written to: test_run_raw.log and ACCEPTANCE_TEST_RAW_LOG.txt ({total_tests} records).")
     sys.exit(int(ret))

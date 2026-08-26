@@ -143,11 +143,15 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
             if pat.search(a.strip()):
                 return ToolResult.failure("open_app", f"Dangerous shell argument '{a}' is forbidden in open_app.")
 
-    # Resolve executable
-    exe = shutil.which(app) or app
-    full_cmd = [exe] + cmd_args
-
     try:
+        # Check cancellation before starting
+        if task_context and hasattr(task_context, "cancellation_token"):
+            if task_context.cancellation_token.is_cancelled:
+                return ToolResult.failure("open_app", "Task cancelled before application could launch.", error_code="TASK_CANCELLED")
+
+        exe = shutil.which(app) or app
+        full_cmd = [exe] + cmd_args
+
         proc = subprocess.Popen(
             full_cmd,
             cwd=work_dir,
@@ -158,16 +162,27 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
 
-        # If task context is provided, register process ownership and assign to Job Object
-        if task_context and hasattr(task_context, "job_object") and task_context.job_object:
+        # 1. Directly register process ownership on TaskCapsule
+        if task_context and hasattr(task_context, "register_owned_resource"):
+            try:
+                task_context.register_owned_resource(
+                    resource_type="subprocess",
+                    ownership=ResourceOwnership.PLUMA_CREATED,
+                    external_id=str(proc.pid),
+                    metadata={"app_name": app, "command": full_cmd, "pid": proc.pid},
+                )
+            except Exception:
+                pass
+
+        # 2. Assign process to TaskCapsule's Windows Job Object for hard boundary containment
+        if task_context and getattr(task_context, "job_object", None) is not None:
             try:
                 task_context.job_object.assign_process(proc)
             except Exception:
                 pass
 
+        # 3. Register in global or task ownership registry if available
         if task_context and hasattr(task_context, "task_id"):
-            from pluma.core.ownership import OwnershipRegistry
-            # Register in task context ownership registry if present
             reg = getattr(task_context, "ownership_registry", None) or getattr(task_context, "_registry", None)
             if reg and hasattr(reg, "register_subprocess"):
                 try:

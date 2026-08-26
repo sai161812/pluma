@@ -241,7 +241,23 @@ class ToolRegistry:
             try:
                 result = future.result(timeout=timeout_s)
             except (TimeoutError, concurrent.futures.TimeoutError):
+                future.cancel()
                 duration_ms = (time.perf_counter() - start_t) * 1000.0
+
+                # Abort any further side-effects by cancelling the task token
+                if task_context and hasattr(task_context, "cancellation_token"):
+                    try:
+                        task_context.cancellation_token.cancel()
+                    except Exception:
+                        pass
+
+                # Terminate any job object processes associated with this task
+                if task_context and getattr(task_context, "job_object", None) is not None:
+                    try:
+                        task_context.job_object.terminate()
+                    except Exception:
+                        pass
+
                 result = ToolResult.failure(
                     tool_name,
                     f"Tool execution timed out after {timeout_s:.3f}s",

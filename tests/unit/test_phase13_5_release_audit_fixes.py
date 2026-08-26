@@ -307,3 +307,112 @@ def test_audit_registry_exposes_33_tools() -> None:
     assert "move_file" in reg.list_tool_names()
     assert "inspect_active_window" in reg.list_tool_names()
     assert "undo_last" in reg.list_tool_names()
+
+
+def test_audit_real_open_app_registers_process_ownership_on_task_capsule() -> None:
+    """Audit: Verify open_app directly attaches process ownership to TaskCapsule.owned_resources."""
+    from pluma.tools.apps import execute_open_app, execute_close_app
+    from pluma.core.task_supervisor import ResourceOwnership
+
+    supervisor = TaskSupervisor()
+    capsule = supervisor.create_task_capsule(request_id="req-proc-ownership-test")
+
+    if sys.platform == "win32":
+        res = execute_open_app({"app_name": "notepad.exe", "arguments": []}, task_context=capsule)
+        assert res.ok is True
+        pid = res.data["pid"]
+
+        try:
+            assert len(capsule.owned_resources) == 1
+            rec = capsule.owned_resources[0]
+            assert rec.resource_type == "subprocess"
+            assert rec.external_id == str(pid)
+            assert rec.ownership == ResourceOwnership.PLUMA_CREATED
+            assert rec.metadata["app_name"] == "notepad.exe"
+        finally:
+            execute_close_app({"app_name": "notepad", "force": True})
+    else:
+        res = execute_open_app({"app_name": "python", "arguments": ["-c", "import time; time.sleep(0.1)"]}, task_context=capsule)
+        if res.ok:
+            assert len(capsule.owned_resources) == 1
+            assert capsule.owned_resources[0].resource_type == "subprocess"
+
+
+def test_audit_terminal_task_closes_job_object_handles() -> None:
+    """Audit: Verify transitioning a task to SUCCEEDED or FAILED closes its Windows Job Object handle."""
+    supervisor = TaskSupervisor()
+    capsule = supervisor.create_task_capsule(request_id="req-job-test")
+
+    if sys.platform == "win32":
+        from pluma.core.job_object import WindowsJobObject
+        capsule.job_object = WindowsJobObject(name=f"pluma-test-job-{capsule.task_id}")
+        assert capsule.job_object is not None
+
+    supervisor.start_task(capsule.task_id)
+    supervisor.mark_succeeded(capsule.task_id)
+
+    # Job Object MUST be closed and cleared on terminal state
+    assert capsule.job_object is None
+
+
+def test_audit_invalid_window_handles_fail_closed() -> None:
+    """Audit: Verify invalid or 0 HWND handles fail closed and report verified=False."""
+    from pluma.tools.windows import execute_restore_window, execute_minimize_window, execute_maximize_window
+
+    # HWND 0 must fail
+    res0 = execute_restore_window({"hwnd": 0})
+    assert res0.ok is False
+    assert res0.verified is False
+    assert res0.error_code in ("WINDOW_NOT_FOUND", "INVALID_HWND")
+
+    # Negative HWND must fail
+    res_neg = execute_minimize_window({"hwnd": -100})
+    assert res_neg.ok is False
+    assert res_neg.verified is False
+    assert res_neg.error_code in ("WINDOW_NOT_FOUND", "INVALID_HWND")
+
+    # Non-existent HWND must fail
+    res_fake = execute_maximize_window({"hwnd": 999999999})
+    assert res_fake.ok is False
+    assert res_fake.verified is False
+    assert res_fake.error_code in ("WINDOW_NOT_FOUND", "INVALID_HWND")
+
+
+def test_audit_timeout_aborts_task_token_and_prevents_side_effects() -> None:
+    """Audit: Verify tool timeout cancels task token to prevent post-timeout side effects."""
+    from pluma.verify.common import verify_noop
+
+    reg = ToolRegistry()
+    side_effect_occurred = False
+
+    def mutating_slow_executor(args: dict, context: any) -> ToolResult:
+        nonlocal side_effect_occurred
+        time.sleep(0.3)
+        # If cancellation token was checked, side effect does not run
+        if context and hasattr(context, "cancellation_token") and context.cancellation_token.is_cancelled:
+            return ToolResult.failure("mutating_slow", "Cancelled", error_code="TASK_CANCELLED")
+        side_effect_occurred = True
+        return ToolResult.success("mutating_slow", {})
+
+    reg.register(ToolSpec(
+        name="mutating_slow",
+        description="Slow mutating tool",
+        version="1.0",
+        args_schema={},
+        risk_class=RiskClass.HIGH,
+        timeout_s=0.05,  # 50ms
+        executor=mutating_slow_executor,
+        verifier=verify_noop,
+    ))
+
+    supervisor = TaskSupervisor()
+    capsule = supervisor.create_task_capsule(request_id="req-timeout-token-test")
+
+    res = reg.execute("mutating_slow", {}, task_context=capsule)
+    assert res.ok is False
+    assert res.error_code == "TOOL_TIMEOUT"
+    assert capsule.cancellation_token.is_cancelled is True
+
+    # Give thread time to finish sleeping and verify cancellation prevented mutation
+    time.sleep(0.35)
+    assert side_effect_occurred is False, "Side-effect occurred after timeout!"
