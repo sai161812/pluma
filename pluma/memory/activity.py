@@ -233,6 +233,13 @@ class ActivityLedger:
             (int(ok), json.dumps(result) if result else None, action_row_id),
         )
 
+    def mark_undo_consumed(self, action_row_id: int) -> None:
+        """Mark an undo record as consumed (available = 0)."""
+        self._db.execute_write(
+            "UPDATE undo_records SET available = 0 WHERE action_id = ?",
+            (action_row_id,),
+        )
+
     # -- Resources --
 
     def insert_resource(self, record: ResourceRecord) -> None:
@@ -346,6 +353,20 @@ class ActivityQuery:
             (task_id,),
         )
         return [dict(r) for r in rows]
+
+    def get_latest_available_undo_record(self) -> Optional[Dict[str, Any]]:
+        """Return the most recent available undo record across all tasks, newest first."""
+        row = self._db.execute_read_one(
+            """
+            SELECT ur.*, a.task_id, a.step_index, a.tool
+            FROM undo_records ur
+            JOIN actions a ON a.id = ur.action_id
+            WHERE ur.available = 1
+            ORDER BY ur.action_id DESC
+            LIMIT 1
+            """
+        )
+        return dict(row) if row else None
 
     def resources_for_task(self, task_id: str) -> List[Dict[str, Any]]:
         """Return all tracked resources for a task."""

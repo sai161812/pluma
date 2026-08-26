@@ -197,30 +197,74 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
     
     Spec §13: Evidence-based undo.
     """
-    from pluma.rollback.engine import RollbackEngine
+    import json
+    from pluma.config.paths import get_paths
+    from pluma.memory.activity import ActivityLedger, ActivityQuery
+    from pluma.memory.db import DbConnection
     from pluma.rollback.recipes import RollbackRecipes
-    
-    # Look for undo records in task_context or memory
-    undo_data: Optional[Dict[str, Any]] = None
+
+    recipes = RollbackRecipes()
+
+    # 1. Look for in-memory undo records in task_context
     if task_context and hasattr(task_context, "undo_stack") and task_context.undo_stack:
         undo_data = task_context.undo_stack.pop()
-        
-    if not undo_data:
-        return ToolResult.failure("undo_last", "No undo records available to reverse.")
-        
-    engine = RollbackEngine()
-    step_res = engine.rollback_last_reversible(undo_data=undo_data)
-    
-    if not step_res.ok:
-        return ToolResult.failure("undo_last", step_res.message)
-        
-    return ToolResult(
-        ok=True,
-        tool="undo_last",
-        data=step_res.data or {"action": step_res.action},
-        factual_message=f"Undo: {step_res.message}",
-        verified=True,
-    )
+        action_name = undo_data.get("action", "")
+        step_res = recipes.apply(action_name, undo_data)
+        if not step_res.ok:
+            return ToolResult.failure("undo_last", step_res.message)
+        return ToolResult(
+            ok=True,
+            tool="undo_last",
+            data=step_res.data or {"action": step_res.action},
+            factual_message=f"Undo: {step_res.message}",
+            verified=True,
+        )
+
+    # 2. Check SQLite Activity Ledger for the most recent unconsumed undo record
+    db_conn = None
+    if task_context and hasattr(task_context, "db") and task_context.db:
+        db_conn = task_context.db
+    elif task_context and hasattr(task_context, "ledger") and task_context.ledger:
+        db_conn = getattr(task_context.ledger, "_db", None)
+
+    if not db_conn:
+        try:
+            paths = get_paths()
+            db_path = str(paths.db_path)
+            if os.path.exists(db_path):
+                db_conn = DbConnection(db_path)
+                if not db_conn.is_open:
+                    db_conn.open()
+        except Exception:
+            pass
+
+    if db_conn:
+        try:
+            query = ActivityQuery(db_conn)
+            latest = query.get_latest_available_undo_record()
+            if latest:
+                raw_json = latest.get("undo_json")
+                action_id = latest.get("action_id")
+                undo_dict = json.loads(raw_json) if isinstance(raw_json, str) else (raw_json or {})
+                action_name = undo_dict.get("action") or latest.get("tool", "")
+                step_res = recipes.apply(action_name, undo_dict)
+
+                if step_res.ok:
+                    ledger = ActivityLedger(db_conn)
+                    ledger.mark_undo_consumed(action_id)
+                    return ToolResult(
+                        ok=True,
+                        tool="undo_last",
+                        data=step_res.data or {"action": step_res.action},
+                        factual_message=f"Undo: {step_res.message}",
+                        verified=True,
+                    )
+                else:
+                    return ToolResult.failure("undo_last", f"Rollback failed: {step_res.message}")
+        except Exception as exc:
+            return ToolResult.failure("undo_last", f"Failed to read undo record from database: {exc}")
+
+    return ToolResult.failure("undo_last", "No undo records available to reverse.")
 
 
 # ---------------------------------------------------------------------------

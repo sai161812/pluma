@@ -35,9 +35,10 @@ class RollbackStepResult:
 # ---------------------------------------------------------------------------
 
 def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
-    """Restore a moved file or directory back to its source location."""
+    """Restore a moved file or directory back to its source location, restoring overwritten file if preserved."""
     src = Path(undo_data.get("source", ""))
     dst = Path(undo_data.get("destination", ""))
+    backup_path_str = undo_data.get("preserved_destination_backup")
 
     if not dst.exists():
         return RollbackStepResult(
@@ -52,6 +53,13 @@ def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
         if not src.parent.exists():
             src.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(dst), str(src))
+
+        # Restore preserved destination file if it was overwritten
+        if backup_path_str:
+            backup_path = Path(backup_path_str)
+            if backup_path.exists():
+                shutil.move(str(backup_path), str(dst))
+
         return RollbackStepResult(
             ok=True,
             action="move_file",
