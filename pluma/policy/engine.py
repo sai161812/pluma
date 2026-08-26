@@ -37,6 +37,16 @@ class PolicyEvaluationResult:
     requires_confirmation: bool = False
     requires_elevation: bool = False
 
+    @property
+    def is_allowed(self) -> bool:
+        """True if operation is permitted to execute without further confirmation."""
+        return self.decision == PolicyDecision.ALLOW
+
+    @property
+    def allowed(self) -> bool:
+        """Alias for is_allowed."""
+        return self.is_allowed
+
 
 class PolicyEngine:
     """Deterministic policy evaluation engine."""

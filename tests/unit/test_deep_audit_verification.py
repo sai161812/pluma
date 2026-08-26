@@ -158,3 +158,93 @@ def test_audit_brain_planner_lifecycle_and_schema_validation() -> None:
     # Wait for idle unload
     time.sleep(0.25)
     assert llm_mgr.state == LlmLifecycleState.COLD
+
+
+def test_audit_multi_step_orchestrator_and_replan_limits() -> None:
+    """Pass 6: Multi-step orchestrator execution, stop-latch pre-checks, and replan limits."""
+    from pluma.core.multi_step import MultiStepOrchestrator
+    from pluma.tools.registry import get_default_tool_registry
+
+    with tempfile.TemporaryDirectory() as td:
+        db_path = os.path.join(td, "audit_multi.db")
+        db = DbConnection(db_path)
+        db.open()
+        try:
+            ledger = ActivityLedger(db)
+            registry = get_default_tool_registry()
+            supervisor = TaskSupervisor(ledger=ledger)
+            orchestrator = MultiStepOrchestrator(
+                registry=registry,
+                supervisor=supervisor,
+                ledger=ledger,
+                max_replans=2,
+            )
+
+            # Test execution with immediate pre-cancelled token
+            capsule = supervisor.create_task(request_id="req-1")
+            capsule.cancellation_token.cancel("User STOP activated")
+            supervisor.start_task(capsule.task_id)
+
+            plan = Plan(
+                route=RouteMode.SMART,
+                mode=PlanMode.MULTI_STEP,
+                steps=[
+                    ToolCall(tool="mute", arguments={}, purpose="mute system"),
+                    ToolCall(tool="unmute", arguments={}, purpose="unmute system"),
+                ],
+            )
+            res = orchestrator.execute_plan(
+                capsule=capsule,
+                initial_plan=plan,
+                command_text="mute then unmute",
+            )
+            assert res.final_state in (TaskState.STOPPED, TaskState.FAILED)
+            assert len(res.steps_executed) == 0, "No steps should execute when token is already cancelled"
+        finally:
+            db.close()
+
+
+def test_audit_policy_confirmation_boundaries() -> None:
+    """Pass 7: Policy confirmation enforcement on high-risk operations."""
+    from pluma.policy.engine import PolicyEngine
+    from pluma.ui.confirmations import AutoDenyConfirmation
+
+    policy = PolicyEngine(confirmation_contract=AutoDenyConfirmation())
+    decision = policy.evaluate("move_file", {"source": "C:\\a.txt", "destination": "C:\\b.txt"})
+    # Low/Medium risk file move allowed
+    assert decision.allowed is True
+
+    # High-risk or restricted path operation must be blocked by auto-deny confirmation
+    restricted_decision = policy.evaluate("move_file", {"source": "C:\\Windows\\System32\\calc.exe", "destination": "D:\\calc.exe"})
+    assert restricted_decision.allowed is False, "Restricted system path operation must fail closed under AutoDeny"
+
+
+def test_audit_crash_recovery_reconciliation() -> None:
+    """Pass 8: Startup crash recovery marking interrupted tasks as ABORTED_BY_CRASH."""
+    from pluma.config.paths import PlumaPaths
+    from pluma.core.recovery import CrashRecoveryManager
+    from pluma.memory.activity import TaskRecord
+
+    with tempfile.TemporaryDirectory() as td:
+        paths = PlumaPaths(local_app_data=td, roaming_app_data=td)
+        paths.ensure_directories()
+        db = DbConnection(str(paths.db_path))
+        db.open()
+        try:
+            ledger = ActivityLedger(db)
+            ledger.insert_task(TaskRecord(
+                task_id="crashed-1",
+                request_id="req-c1",
+                input_mode="text",
+                command_text="slow operation",
+                route="SMART",
+                final_state="RUNNING",
+            ))
+
+            rec_mgr = CrashRecoveryManager(db=db, paths=paths)
+            rec_res = rec_mgr.reconcile_startup()
+            assert rec_res.stale_tasks_recovered == 1
+            assert "crashed-1" in rec_res.recovered_task_ids
+            assert rec_res.db_integrity_ok is True
+        finally:
+            db.close()

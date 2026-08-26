@@ -65,3 +65,9 @@ class CallbackConfirmationContract(ConfirmationContract):
 
     def request_confirmation(self, request: ConfirmationRequest) -> ConfirmationResponse:
         return self._callback(request)
+
+
+# Aliases for convenience
+AutoApproveConfirmation = AutoApproveConfirmationContract
+AutoDenyConfirmation = AutoDenyConfirmationContract
+CallbackConfirmation = CallbackConfirmationContract
