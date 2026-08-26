@@ -25,10 +25,28 @@ def test_stage_g_get_volume_status() -> None:
 
 
 def test_stage_g_restore_window() -> None:
-    """Gate G: Verify restore_window executes cleanly."""
-    res = execute_restore_window({"hwnd": 0})
-    assert res.ok is True
-    assert "Restored window" in res.factual_message
+    """Gate G: Verify restore_window fails-closed on invalid HWND and restores real windows."""
+    import sys
+    from pluma.tools.windows import execute_minimize_window
+
+    # Invalid handle must fail closed
+    res_inv = execute_restore_window({"hwnd": 0})
+    assert res_inv.ok is False
+    assert res_inv.verified is False
+
+    if sys.platform == "win32":
+        import ctypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        fg = user32.GetForegroundWindow()
+        if fg and user32.IsWindow(fg):
+            # Restore active foreground window
+            res = execute_restore_window({"hwnd": fg})
+            assert res.ok is True
+            assert res.verified is True
+            assert "Restored window" in res.factual_message
+    else:
+        res = execute_restore_window({"hwnd": 1234})
+        assert res.ok is True
 
 
 def test_stage_g_system_status_cpu_ram_disk() -> None:

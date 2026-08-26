@@ -198,6 +198,8 @@ class MaximizeWindowArgs(BaseModel):
 def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
     """Resolve HWND from explicit int or title search; falls back to foreground window."""
     if sys.platform != "win32":
+        if hwnd is not None:
+            return hwnd if hwnd > 0 else None
         return 999  # sentinel for test environments
 
     import ctypes
@@ -205,6 +207,10 @@ def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
 
     if hwnd is not None:
+        if hwnd <= 0:
+            return None
+        if not user32.IsWindow(hwnd):
+            return None
         return hwnd
 
     if title:
@@ -219,8 +225,9 @@ def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
                 buf = ctypes.create_unicode_buffer(length + 1)
                 user32.GetWindowTextW(h, buf, length + 1)
                 if title.lower() in buf.value.lower():
-                    found_hwnd = h
-                    return False
+                    if user32.IsWindow(h):
+                        found_hwnd = h
+                        return False
             return True
 
         WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -230,95 +237,122 @@ def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
 
     # Default: foreground window
     fg = user32.GetForegroundWindow()
-    if fg:
+    if fg and user32.IsWindow(fg):
         return fg
-    return 0
+    return None
 
 
 def execute_minimize_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    if hwnd is None:
-        return ToolResult.failure("minimize_window", f"Window '{args.get('title') or args.get('hwnd')}' not found.")
+    target_desc = args.get("title") or (f"HWND {args.get('hwnd')}" if args.get("hwnd") is not None else "active window")
+    if hwnd is None or hwnd <= 0:
+        return ToolResult.failure(
+            "minimize_window",
+            f"Valid window for '{target_desc}' not found.",
+            error_code="WINDOW_NOT_FOUND",
+        )
 
     verified = True
     detail = f"ShowWindow SW_MINIMIZE sent to HWND {hwnd}."
-    if sys.platform == "win32" and hwnd > 0:
+    if sys.platform == "win32":
         import ctypes
         import time
         user32 = ctypes.WinDLL("user32", use_last_error=True)
-        if user32.IsWindow(hwnd):
-            SW_MINIMIZE = 6
-            user32.ShowWindow(hwnd, SW_MINIMIZE)
-            time.sleep(0.05)
-            is_minimized = bool(user32.IsIconic(hwnd))
-            verified = is_minimized
-            detail = f"Window HWND {hwnd} is {'minimized' if is_minimized else 'not minimized'}."
+        if not user32.IsWindow(hwnd):
+            return ToolResult.failure("minimize_window", f"Invalid or destroyed HWND: {hwnd}", error_code="INVALID_HWND")
+        SW_MINIMIZE = 6
+        user32.ShowWindow(hwnd, SW_MINIMIZE)
+        time.sleep(0.05)
+        is_minimized = bool(user32.IsIconic(hwnd))
+        verified = is_minimized
+        detail = f"Window HWND {hwnd} is {'minimized' if is_minimized else 'not minimized'}."
+
+    if not verified:
+        return ToolResult.failure("minimize_window", detail, error_code="VERIFICATION_FAILED")
 
     return ToolResult(
-        ok=verified,
+        ok=True,
         tool="minimize_window",
         data={"hwnd": hwnd},
-        factual_message="Minimized window." if verified else "Failed to verify minimized window state.",
-        verified=verified,
-        verify_detail=VerifyResult(ok=verified, method="api", detail=detail),
+        factual_message=f"Minimized window ({target_desc}).",
+        verified=True,
+        verify_detail=VerifyResult(ok=True, method="api", detail=detail),
     )
 
 
 def execute_maximize_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    if hwnd is None:
-        return ToolResult.failure("maximize_window", f"Window '{args.get('title') or args.get('hwnd')}' not found.")
+    target_desc = args.get("title") or (f"HWND {args.get('hwnd')}" if args.get("hwnd") is not None else "active window")
+    if hwnd is None or hwnd <= 0:
+        return ToolResult.failure(
+            "maximize_window",
+            f"Valid window for '{target_desc}' not found.",
+            error_code="WINDOW_NOT_FOUND",
+        )
 
     verified = True
     detail = f"ShowWindow SW_MAXIMIZE sent to HWND {hwnd}."
-    if sys.platform == "win32" and hwnd > 0:
+    if sys.platform == "win32":
         import ctypes
         import time
         user32 = ctypes.WinDLL("user32", use_last_error=True)
-        if user32.IsWindow(hwnd):
-            SW_MAXIMIZE = 3
-            user32.ShowWindow(hwnd, SW_MAXIMIZE)
-            time.sleep(0.05)
-            is_maximized = bool(user32.IsZoomed(hwnd))
-            verified = is_maximized
-            detail = f"Window HWND {hwnd} is {'maximized' if is_maximized else 'not maximized'}."
+        if not user32.IsWindow(hwnd):
+            return ToolResult.failure("maximize_window", f"Invalid or destroyed HWND: {hwnd}", error_code="INVALID_HWND")
+        SW_MAXIMIZE = 3
+        user32.ShowWindow(hwnd, SW_MAXIMIZE)
+        time.sleep(0.05)
+        is_maximized = bool(user32.IsZoomed(hwnd))
+        verified = is_maximized
+        detail = f"Window HWND {hwnd} is {'maximized' if is_maximized else 'not maximized'}."
+
+    if not verified:
+        return ToolResult.failure("maximize_window", detail, error_code="VERIFICATION_FAILED")
 
     return ToolResult(
-        ok=verified,
+        ok=True,
         tool="maximize_window",
         data={"hwnd": hwnd},
-        factual_message="Maximized window." if verified else "Failed to verify maximized window state.",
-        verified=verified,
-        verify_detail=VerifyResult(ok=verified, method="api", detail=detail),
+        factual_message=f"Maximized window ({target_desc}).",
+        verified=True,
+        verify_detail=VerifyResult(ok=True, method="api", detail=detail),
     )
 
 
 def execute_restore_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    if hwnd is None:
-        return ToolResult.failure("restore_window", f"Window '{args.get('title') or args.get('hwnd')}' not found.")
+    target_desc = args.get("title") or (f"HWND {args.get('hwnd')}" if args.get("hwnd") is not None else "active window")
+    if hwnd is None or hwnd <= 0:
+        return ToolResult.failure(
+            "restore_window",
+            f"Valid window for '{target_desc}' not found.",
+            error_code="WINDOW_NOT_FOUND",
+        )
 
     verified = True
     detail = f"ShowWindow SW_RESTORE sent to HWND {hwnd}."
-    if sys.platform == "win32" and hwnd > 0:
+    if sys.platform == "win32":
         import ctypes
         import time
         user32 = ctypes.WinDLL("user32", use_last_error=True)
-        if user32.IsWindow(hwnd):
-            SW_RESTORE = 9
-            user32.ShowWindow(hwnd, SW_RESTORE)
-            time.sleep(0.05)
-            is_iconic = bool(user32.IsIconic(hwnd))
-            verified = not is_iconic
-            detail = f"Window HWND {hwnd} is {'restored' if verified else 'still minimized'}."
+        if not user32.IsWindow(hwnd):
+            return ToolResult.failure("restore_window", f"Invalid or destroyed HWND: {hwnd}", error_code="INVALID_HWND")
+        SW_RESTORE = 9
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        time.sleep(0.05)
+        is_iconic = bool(user32.IsIconic(hwnd))
+        verified = not is_iconic
+        detail = f"Window HWND {hwnd} is {'restored' if verified else 'still minimized'}."
+
+    if not verified:
+        return ToolResult.failure("restore_window", detail, error_code="VERIFICATION_FAILED")
 
     return ToolResult(
-        ok=verified,
+        ok=True,
         tool="restore_window",
         data={"hwnd": hwnd},
-        factual_message="Restored window." if verified else "Failed to verify restored window state.",
-        verified=verified,
-        verify_detail=VerifyResult(ok=verified, method="api", detail=detail),
+        factual_message=f"Restored window ({target_desc}).",
+        verified=True,
+        verify_detail=VerifyResult(ok=True, method="api", detail=detail),
     )
 
 

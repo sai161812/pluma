@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import gc
 import os
+from pathlib import Path
 import psutil
 import pytest
 
@@ -33,28 +34,61 @@ def _get_process_rss_mb() -> float:
 
 
 def test_resident_core_idle_memory_footprint() -> None:
-    """Verify that resident core idle memory footprint is well within the <30MB budget (Spec §4)."""
-    db = DbConnection(":memory:")
-    db.open()
-    ledger = ActivityLedger(db=db)
-    registry = get_default_tool_registry()
-    supervisor = TaskSupervisor(ledger=ledger)
-    router = Router()
-    orch = Orchestrator(
-        router=router,
-        registry=registry,
-        supervisor=supervisor,
-        ledger=ledger,
+    """Verify that resident core idle memory footprint is strictly within the <30MB budget (Spec §4)."""
+    import subprocess
+    import sys
+
+    # Measure memory of isolated ResidentCore process to eliminate pytest runner overhead
+    code = (
+        "import gc, sys\n"
+        "from pluma.core.resident import ResidentCore\n"
+        "core = ResidentCore()\n"
+        "gc.collect()\n"
+        "if sys.platform == 'win32':\n"
+        "    import ctypes\n"
+        "    from ctypes import wintypes\n"
+        "    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):\n"
+        "        _fields_ = [\n"
+        "            ('cb', wintypes.DWORD),\n"
+        "            ('PageFaultCount', wintypes.DWORD),\n"
+        "            ('PeakWorkingSetSize', ctypes.c_size_t),\n"
+        "            ('WorkingSetSize', ctypes.c_size_t),\n"
+        "            ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),\n"
+        "            ('QuotaPagedPoolUsage', ctypes.c_size_t),\n"
+        "            ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),\n"
+        "            ('QuotaNonPagedPoolUsage', ctypes.c_size_t),\n"
+        "            ('PagefileUsage', ctypes.c_size_t),\n"
+        "            ('PeakPagefileUsage', ctypes.c_size_t),\n"
+        "        ]\n"
+        "    psapi = ctypes.WinDLL('psapi')\n"
+        "    psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), wintypes.DWORD]\n"
+        "    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL\n"
+        "    pmc = PROCESS_MEMORY_COUNTERS()\n"
+        "    pmc.cb = ctypes.sizeof(pmc)\n"
+        "    psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(pmc), ctypes.sizeof(pmc))\n"
+        "    private_mb = pmc.PagefileUsage / (1024.0 * 1024.0)\n"
+        "    print(f'{private_mb:.2f}')\n"
+        "else:\n"
+        "    import os, psutil\n"
+        "    rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024.0 * 1024.0)\n"
+        "    print(f'{rss_mb:.2f}')\n"
     )
+    env = os.environ.copy()
+    project_root = str(Path(__file__).parent.parent.parent.resolve())
+    env["PYTHONPATH"] = project_root + (os.pathsep + env["PYTHONPATH"] if "PYTHONPATH" in env else "")
 
-    gc.collect()
-    rss_mb = _get_process_rss_mb()
-    print(f"\n[BENCHMARK] Resident Core Idle Memory: {rss_mb:.2f} MB")
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+    )
+    mem_mb = float(res.stdout.strip())
+    print(f"\n[BENCHMARK] Resident Core Idle Memory: {mem_mb:.2f} MB")
 
-    # In Python with standard libraries, process RSS is typically 20-28MB
-    # Spec §4 budget: < 30MB resident core idle law
-    assert rss_mb < 60.0, f"Resident memory {rss_mb:.2f}MB exceeded limit!"
-    db.close()
+    # Spec §4 target: < 30MB resident core idle memory
+    assert mem_mb < 30.0, f"Resident core idle memory {mem_mb:.2f}MB exceeded strict <30MB target!"
 
 
 def test_soak_1000_fast_tasks_no_memory_leak() -> None:
