@@ -152,3 +152,11 @@ def redact_sensitive_data(data: Any) -> Any:
     elif isinstance(data, str):
         return redact_string(data)
     return data
+
+
+class RedactionEngine:
+    """Convenience wrapper providing static redaction methods."""
+    redact_string = staticmethod(redact_string)
+    redact_dict = staticmethod(redact_dict)
+    redact_sensitive_data = staticmethod(redact_sensitive_data)
+    sanitise_args = staticmethod(sanitise_args_for_ledger)

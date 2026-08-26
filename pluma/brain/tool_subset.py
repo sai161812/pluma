@@ -113,8 +113,9 @@ class ToolSubsetSelector:
         available_names = [n for n in tool_names if target_registry.contains(n)]
         return target_registry.schema_for_planner(available_names)
 
-    # Alias for caller compatibility
+    # Aliases for caller compatibility
     select_schemas_for_route = select_schemas
+    get_schemas_for_route = select_schemas
 
     @staticmethod
     def format_tools_for_prompt(schemas: List[Dict[str, Any]]) -> str:

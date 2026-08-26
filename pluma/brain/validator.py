@@ -114,3 +114,6 @@ class PlanValidator:
             raise PlanValidationError(f"Plan structure invalid: {pydantic_err}") from pydantic_err
 
         return self.validate_plan(plan, registry=registry, max_steps=max_steps)
+
+    # Alias for convenience
+    validate = parse_and_validate_json

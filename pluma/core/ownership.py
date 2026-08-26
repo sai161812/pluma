@@ -157,6 +157,11 @@ class OwnershipRegistry:
             return [r for r in resources if r.ownership == ownership_filter]
         return resources
 
+    def is_owned_resource(self, task_id: str, resource_type: str, external_id: str) -> bool:
+        """Check if a specific resource is recorded as owned by a task."""
+        resources = self._resources_by_task.get(task_id, [])
+        return any(r.resource_type == resource_type and r.external_id == external_id for r in resources)
+
     def verify_pid_identity(self, pid: int, expected_creation_time: Optional[int]) -> bool:
         """Verify that a PID hasn't been recycled since we registered it.
         

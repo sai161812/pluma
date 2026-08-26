@@ -59,6 +59,15 @@ class BoundingBox(BaseModel):
     def center_y(self) -> int:
         return (self.top + self.bottom) // 2
 
+    @property
+    def center(self) -> tuple[int, int]:
+        """Return (center_x, center_y) tuple."""
+        return (self.center_x, self.center_y)
+
+    def contains(self, x: int, y: int) -> bool:
+        """Return True if (x, y) coordinate is within this bounding box."""
+        return self.left <= x <= self.right and self.top <= y <= self.bottom
+
 
 class ScreenElement(BaseModel):
     """One addressable element discovered on screen.
@@ -150,6 +159,16 @@ class ScreenSnapshot(BaseModel):
             if el.element_id == element_id:
                 return el
         return None
+
+    def find_elements_by_label(self, label: str, case_sensitive: bool = False) -> List[ScreenElement]:
+        """Find elements matching label in controls or OCR words."""
+        target = label if case_sensitive else label.lower()
+        results = []
+        for el in self.controls + self.ocr_words:
+            val = el.label if case_sensitive else el.label.lower()
+            if target in val:
+                results.append(el)
+        return results
 
     def ledger_metadata(self) -> Dict[str, Any]:
         """Return the minimal metadata suitable for storing in the Activity Ledger.
