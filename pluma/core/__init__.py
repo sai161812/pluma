@@ -11,6 +11,7 @@ from pluma.core.multi_step import (
 )
 from pluma.core.orchestrator import Orchestrator, StepRecord, TaskExecutionResult
 from pluma.core.ownership import OwnershipRegistry, get_process_creation_time
+from pluma.core.recovery import CrashRecoveryManager, CrashRecoveryResult
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.resident import ResidentCore
 from pluma.core.router import RouteResult, Router
@@ -50,9 +51,11 @@ __all__ = [
     "StepExecutionRecord",
     "DEFAULT_MAX_REPLANS",
     "HARD_CAP_MAX_REPLANS",
-    # Native Ownership & Resident Core
+    # Native Ownership, Recovery & Resident Core
     "WindowsJobObject",
     "OwnershipRegistry",
     "get_process_creation_time",
+    "CrashRecoveryManager",
+    "CrashRecoveryResult",
     "ResidentCore",
 ]

@@ -114,6 +114,11 @@ class DbConnection:
         self._writer_thread: Optional[threading.Thread] = None
         self._open = False
 
+    @property
+    def is_open(self) -> bool:
+        """True if the database connection is currently open."""
+        return self._open
+
     # ------------------------------------------------------------------
     # Open / close
     # ------------------------------------------------------------------

@@ -138,7 +138,7 @@ class ActivityLedger:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                record.task_id, record.request_id, record.input_mode,
+                record.task_id, record.request_id, record.input_mode.lower(),
                 record.command_text, record.created_at, record.started_at,
                 record.completed_at, record.final_state, record.route,
                 record.active_process, record.active_window,

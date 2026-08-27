@@ -85,8 +85,8 @@
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **COMPLETED** | 365 (cumul.) |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | **COMPLETED** | 384 (cumul.) |
 | **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | **COMPLETED** | 399 (cumul.) |
-| **Phase 12** | Latency and quality benchmark tuning, leak testing | **COMPLETED** | **405 (cumul.)** |
-| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | **NEXT UP** | Pending |
+| **Phase 12** | Latency and quality benchmark tuning, leak testing | **COMPLETED** | 405 (cumul.) |
+| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | **COMPLETED** | **414 (cumul.)** |
 | **Phase 14** | Owner-directed UI implementation | Blocked on Owner Design | Pending |
 
 ---
@@ -213,32 +213,20 @@ python -m pytest tests/unit/ -v
 
 ## 8. Current Objective & Exact Next Steps
 
-### Next Phase: **Phase 13 — Packaging, `%LOCALAPPDATA%` Isolation & Crash Recovery**
-Reference: `PLUMA_BUILD_PLAN.md` Phase 13 & `PLUMA_MASTER_SPEC.md` §20, §25.
+### Next Phase: **Phase 14 — Creator-Directed UI Implementation**
+Reference: `PLUMA_BUILD_PLAN.md` Phase 14 & `PLUMA_MASTER_SPEC.md` §16, §17, §18, §19.
 
-### Objectives for Phase 13:
-1. **Directory Isolation & `%LOCALAPPDATA%` Structure (Spec §20)**:
-   - Config directory: `%LOCALAPPDATA%\Pluma\config\`
-   - Database directory: `%LOCALAPPDATA%\Pluma\data\pluma.db`
-   - Log directory: `%LOCALAPPDATA%\Pluma\logs\`
-   - Models directory: `%LOCALAPPDATA%\Pluma\models\`
-2. **Crash Recovery & Startup Reconciliation (Spec §20.3)**:
-   - Mark incomplete tasks as `ABORTED_BY_CRASH` upon restart.
-   - Clean up orphaned temporary directories and IPC handles.
-   - Validate SQLite WAL integrity and execute pending migrations.
-3. **Application Entry Point & Packaging (`pluma/app.py`)**:
-   - Production entry point launching Resident Core with graceful signal handling (`SIGINT`, `SIGTERM`).
-   - PyInstaller / Windows packaging script & specification.
-4. **Write Unit & Integration Tests**:
-   - `tests/unit/test_app_lifecycle.py`
-   - `tests/unit/test_crash_recovery.py`
+### Notes for Phase 14:
+- All non-visual functional UI contracts (`ConfirmationContract`, `ActivityViewContract`, `SettingsContract`) are in place.
+- Per `PLUMA_BUILD_PLAN.md` §Phase 14 and `AGENTS.md`, Phase 14 is **blocked on user/owner direction** for visual styling.
+- Do not invent colors, typography, cards, gradients, waveforms, or AI dashboard aesthetics until the user specifies the UI design.
 
-### Exact Instructions for the Next Agent:
-1. Review `PLUMA_BUILD_PLAN.md` (Phase 13 section) and `PLUMA_MASTER_SPEC.md` (§20, §25).
-2. Prepare and present the Phase 13 Implementation Plan to the user for approval.
-3. Upon approval, implement `pluma/app.py`, crash recovery reconciliation, and packaging config.
-4. Verify all tests pass (`pytest tests/unit/ tests/benchmarks/ -v`).
-5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 14.
+### Summary of Completed Work (Phases 0–13):
+- **414 automated unit and benchmark tests passing with 0 failures and 0 warnings**.
+- Standalone packaging configuration in `packaging/pluma.spec`.
+- Full production entry point in `pluma/app.py`.
+- Windows storage hierarchy under `%LOCALAPPDATA%\Pluma\` and `%APPDATA%\Pluma\`.
+- Automatic crash recovery and state reconciliation in `pluma/core/recovery.py`.
 
 ### Phase 0: Schema Contracts & Storage Foundation
 - [`pluma/brain/schemas.py`](file:///D:/Workspace/DEVEL/PLUMA/pluma/brain/schemas.py): `RouteMode` (`FAST`, `SCREEN`, `SMART`, `DEEP`), `PlanMode`, `ToolCall`, `Plan` with hard cap step validation ($N \le 20$).
