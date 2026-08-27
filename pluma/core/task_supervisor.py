@@ -276,16 +276,21 @@ class TaskSupervisor:
             except Exception as e:
                 logger.error("Failed to update task %s final state in ledger: %s", task_id, e)
 
-    def stop_all_active_tasks(self) -> None:
-        """Emergency stop for all non-terminal tasks."""
+    def get_active_tasks(self) -> List[TaskCapsule]:
+        """Return all tasks in non-terminal states."""
         with self._lock:
-            active_ids = [
-                task_id for task_id, cap in self._tasks.items()
+            return [
+                cap for cap in self._tasks.values()
                 if cap.state not in frozenset({
                     TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL, 
                     TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ABORTED_BY_CRASH
                 })
             ]
+
+    def stop_all_active_tasks(self) -> None:
+        """Emergency stop for all non-terminal tasks."""
+        with self._lock:
+            active_ids = [cap.task_id for cap in self.get_active_tasks()]
         for tid in active_ids:
             self.stop_task(tid)
 

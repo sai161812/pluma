@@ -27,6 +27,9 @@ HOTKEY_ID_STOP = 2
 HOTKEY_ID_VOICE = 3
 
 
+from pluma.core.request import InputMode, PlumaRequest
+
+
 class ResidentCore:
     """Resident process coordinating IPC, Task Supervisor, Voice, and global hotkeys."""
 
@@ -35,18 +38,24 @@ class ResidentCore:
         config: Optional[Dict[str, Any]] = None,
         voice_pipeline: Optional[VoicePipeline] = None,
         on_request_callback: Optional[Callable[[Any], Any]] = None,
+        supervisor: Optional[TaskSupervisor] = None,
+        orchestrator: Optional[Any] = None,
+        ledger: Optional[Any] = None,
+        ownership_registry: Optional[OwnershipRegistry] = None,
+        ipc_address: Optional[str] = None,
     ) -> None:
         self.config = config or load_config()
-        self.registry = OwnershipRegistry()
-        self.supervisor = TaskSupervisor(ownership_registry=self.registry)
-        self.ipc = IpcServer(command_handler=self.handle_ipc_command)
-        
-        self.on_request_callback = on_request_callback
+        self.registry = ownership_registry or OwnershipRegistry()
+        self.ledger = ledger
+        self.supervisor = supervisor or TaskSupervisor(ownership_registry=self.registry, ledger=self.ledger)
+        self.orchestrator = orchestrator
+        self.on_request_callback = on_request_callback or (self.orchestrator.execute if self.orchestrator else None)
+        self.ipc = IpcServer(command_handler=self.handle_ipc_command, address=ipc_address)
 
         # Voice subsystem components (zero-ML at idle)
         self.voice_enabled = get(self.config, "voice", "required", default=True)
         self.voice_hotkey_str = get(self.config, "agent", "voice_hotkey", default="ctrl+alt+v")
-        
+
         self.audio_capture = AudioCapture()
         self.voice_pipeline = voice_pipeline or VoicePipeline()
         self.voice_activation = VoiceActivation(
@@ -75,7 +84,9 @@ class ResidentCore:
             request = self.voice_pipeline.process_audio(raw_audio)
             if request is not None:
                 logger.info("Voice command produced PlumaRequest(%s): '%s'", request.input_mode.value, request.text)
-                if self.on_request_callback:
+                if self.orchestrator:
+                    self.orchestrator.execute(request)
+                elif self.on_request_callback:
                     self.on_request_callback(request)
             else:
                 logger.info("Voice processing produced no executable command (silence or clarification needed).")
@@ -85,18 +96,54 @@ class ResidentCore:
     def handle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming IPC commands."""
         cmd = req.get("command")
-        if cmd == "stop_all":
+
+        # 1. Execute text command
+        if cmd in ("execute", "request", "submit"):
+            text = req.get("text") or req.get("command_text") or req.get("query")
+            if not text:
+                return {"status": "error", "message": "Missing 'text' in command payload."}
+
+            pluma_req = PlumaRequest(input_mode=InputMode.TEXT, text=str(text))
+            if self.orchestrator:
+                res = self.orchestrator.execute(pluma_req)
+                return {
+                    "status": "ok",
+                    "task_id": res.task_id,
+                    "request_id": res.request_id,
+                    "final_state": res.final_state,
+                    "success": res.success,
+                    "route": res.route.value if hasattr(res.route, "value") else str(res.route),
+                    "message": res.user_message,
+                    "duration_ms": res.duration_ms,
+                }
+            elif self.on_request_callback:
+                callback_res = self.on_request_callback(pluma_req)
+                return {"status": "ok", "message": "Request dispatched via callback.", "result": str(callback_res)}
+            else:
+                return {"status": "error", "message": "No orchestrator or callback configured."}
+
+        # 2. Stop all active tasks
+        elif cmd == "stop_all":
             self.supervisor.stop_all_active_tasks()
             return {"status": "ok", "message": "All active tasks stopped."}
+
+        # 3. Stop specific task
         elif cmd == "stop_task":
             tid = req.get("task_id")
             if tid:
                 self.supervisor.stop_task(tid)
                 return {"status": "ok", "message": f"Task {tid} stopped."}
             return {"status": "error", "message": "Missing task_id"}
+
+        # 4. Status query
         elif cmd == "status":
-            return {"status": "ok", "message": "Resident core running"}
-        
+            return {
+                "status": "ok",
+                "message": "Resident core running",
+                "active_tasks": len(self.supervisor.get_active_tasks()),
+                "voice_enabled": self.voice_enabled,
+            }
+
         return {"status": "error", "message": f"Unknown command: {cmd}"}
 
     def _run_crash_recovery(self) -> None:
