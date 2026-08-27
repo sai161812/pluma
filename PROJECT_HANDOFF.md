@@ -84,7 +84,7 @@
 | **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | **COMPLETED** | 339 (cumul.) |
 | **Phase 9** | Replaceable local planner (llama.cpp on-demand manager, grammar constraints) | **COMPLETED** | 365 (cumul.) |
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | **COMPLETED** | 384 (cumul.) |
-| **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | **COMPLETED** | **393 (cumul.)** |
+| **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | **COMPLETED** | **399 (cumul.)** |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | **NEXT UP** | Pending |
 | **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Planned | Pending |
 | **Phase 14** | Owner-directed UI implementation | Blocked on Owner Design | Pending |

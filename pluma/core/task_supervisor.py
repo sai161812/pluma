@@ -177,16 +177,21 @@ class TaskSupervisor:
         with self._lock:
             capsule = self._get_task(task_id)
             self._transition(capsule, new_state)
+            if new_state in _TERMINAL_STATES and self._ledger:
+                try:
+                    self._ledger.update_task(
+                        task_id,
+                        final_state=new_state.value,
+                        completed_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                except Exception as e:
+                    logger.error("Failed to update task %s final state in ledger: %s", task_id, e)
 
     def mark_succeeded(self, task_id: str) -> None:
-        with self._lock:
-            capsule = self._get_task(task_id)
-            self._transition(capsule, TaskState.SUCCEEDED)
+        self.transition(task_id, TaskState.SUCCEEDED)
 
     def mark_failed(self, task_id: str) -> None:
-        with self._lock:
-            capsule = self._get_task(task_id)
-            self._transition(capsule, TaskState.FAILED)
+        self.transition(task_id, TaskState.FAILED)
 
     def stop_task(self, task_id: str, reason: StopReason = StopReason.USER_STOP) -> None:
         """Execute the deterministic STOP sequence (Spec §12.2)."""

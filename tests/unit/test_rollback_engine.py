@@ -1,4 +1,4 @@
-﻿"""Unit tests for RollbackEngine (Spec §13, §17)."""
+"""Unit tests for RollbackEngine (Spec §13, §17)."""
 import json
 import pytest
 from pathlib import Path
