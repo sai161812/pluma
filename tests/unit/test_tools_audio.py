@@ -1,5 +1,7 @@
 """tests.unit.test_tools_audio — Unit and verification tests for Audio tools."""
 
+import os
+
 import pytest
 
 from pluma.tools.audio import (
@@ -10,6 +12,12 @@ from pluma.tools.audio import (
     undo_builder_set_volume,
 )
 from pluma.tools.registry import ToolRegistry, register_default_tools
+
+
+@pytest.fixture(autouse=True)
+def enable_audio_emulation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Activate mock audio backend for all tests in this module via explicit env flag."""
+    monkeypatch.setenv("PLUMA_EMULATE_AUDIO", "1")
 
 
 @pytest.fixture

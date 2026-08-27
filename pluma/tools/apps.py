@@ -117,6 +117,45 @@ class AppStatusArgs(BaseModel):
 # Executors
 # ---------------------------------------------------------------------------
 
+def _get_process_creation_time_ns(pid: int) -> Optional[int]:
+    """Return process creation time as a 64-bit integer (100ns intervals from epoch).
+
+    Returns None if the process cannot be queried (not our process, already exited, etc.).
+    This is used to verify process identity before termination: a recycled PID with a
+    different creation time proves it is not our process.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return None
+        try:
+            class FILETIME(ctypes.Structure):
+                _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
+
+            create_time = FILETIME()
+            exit_time = FILETIME()
+            kernel_time = FILETIME()
+            user_time = FILETIME()
+            ok = kernel32.GetProcessTimes(
+                h, ctypes.byref(create_time), ctypes.byref(exit_time),
+                ctypes.byref(kernel_time), ctypes.byref(user_time)
+            )
+            if not ok:
+                return None
+            return (create_time.dwHighDateTime << 32) | create_time.dwLowDateTime
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:
+        return None
+
+
 def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     import os
     import shutil
@@ -162,26 +201,54 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
 
-        # 1. Directly register process ownership on TaskCapsule
+        pid = proc.pid
+        # Record 64-bit creation timestamp for identity verification before later termination
+        creation_time_ns = _get_process_creation_time_ns(pid)
+
+        # Create a persistent Job Object (kill_on_close=False) for STOP semantics.
+        # Successful task completion closes the handle WITHOUT killing the application.
+        # STOP explicitly calls TerminateJobObject to kill the tree.
+        persistent_job: Any = None
+        if sys.platform == "win32":
+            try:
+                from pluma.core.job_object import WindowsJobObject
+                persistent_job = WindowsJobObject(
+                    name=f"pluma-app-{pid}",
+                    kill_on_close=False,  # Do NOT kill app when task succeeds
+                )
+                persistent_job.assign_process(pid)
+            except Exception as job_err:
+                # Job Object creation is best-effort — non-fatal
+                import logging as _logging
+                _logging.getLogger(__name__).debug("Could not create persistent Job Object for PID %d: %s", pid, job_err)
+                persistent_job = None
+
+        # Register process ownership on TaskCapsule with full identity metadata
         if task_context and hasattr(task_context, "register_owned_resource"):
             try:
                 task_context.register_owned_resource(
                     resource_type="subprocess",
                     ownership=ResourceOwnership.PLUMA_CREATED,
-                    external_id=str(proc.pid),
-                    metadata={"app_name": app, "command": full_cmd, "pid": proc.pid},
+                    external_id=str(pid),
+                    metadata={
+                        "app_name": app,
+                        "command": full_cmd,
+                        "pid": pid,
+                        "creation_time_ns": creation_time_ns,
+                        "persistent_job": persistent_job,  # Handle stored for STOP use
+                    },
                 )
             except Exception:
                 pass
 
-        # 2. Register in global or task ownership registry if available
+        # Register in global or task ownership registry if available
         if task_context and hasattr(task_context, "task_id"):
             reg = getattr(task_context, "ownership_registry", None) or getattr(task_context, "_registry", None)
             if reg and hasattr(reg, "register_subprocess"):
                 try:
                     reg.register_subprocess(
                         task_id=task_context.task_id,
-                        pid=proc.pid,
+                        pid=pid,
                         ownership=ResourceOwnership.PLUMA_CREATED,
                         command_class="open_app",
                     )
@@ -190,13 +257,16 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
 
         # Give process a moment to initialize
         time.sleep(0.2)
-        v_res = verify_process_running(proc.pid)
+        v_res = verify_process_running(pid)
 
         return ToolResult(
             ok=v_res.ok,
             tool="open_app",
-            data={"app_name": app, "pid": proc.pid, "command": full_cmd},
-            factual_message=f"Opened '{app}' (PID {proc.pid}).",
+            data={
+                "app_name": app, "pid": pid, "command": full_cmd,
+                "creation_time_ns": creation_time_ns,
+            },
+            factual_message=f"Opened '{app}' (PID {pid}).",
             verified=v_res.ok,
             verify_detail=v_res,
         )
