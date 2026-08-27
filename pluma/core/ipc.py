@@ -107,3 +107,8 @@ class IpcClient:
                     return {"status": "error", "message": "Timeout waiting for response"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+
+# Aliases for explicit naming
+NamedPipeIpcServer = IpcServer
+NamedPipeIpcClient = IpcClient

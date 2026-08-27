@@ -43,7 +43,7 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Complete | 384 |
 | **Phase 11** | Policy engine, risk classifications, elevation broker | Complete | 399 |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | Complete | 405 |
-| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Complete | **417** |
+| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Complete | **430** |
 | **Phase 14** | Creator-directed UI implementation | Blocked on Owner Design | — |
 
 ---

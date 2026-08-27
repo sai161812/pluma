@@ -84,6 +84,16 @@ class TaskExecutionResult:
     factual_summary: str = ""
     replan_count: int = 0
 
+    @property
+    def success(self) -> bool:
+        """True if the task reached a SUCCEEDED terminal state."""
+        return self.final_state == "SUCCEEDED"
+
+    @property
+    def user_message(self) -> str:
+        """User-visible factual response message."""
+        return self.factual_summary or (self.error or "")
+
 
 # ---------------------------------------------------------------------------
 # Orchestrator
