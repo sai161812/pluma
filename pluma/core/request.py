@@ -58,8 +58,15 @@ class PlumaRequest(BaseModel):
         description="Raw STT output before normalization. Set only for voice input.",
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="UTC timestamp when the request entered the pipeline.",
     )
+
+    @classmethod
+    def from_text(cls, text: str) -> "PlumaRequest":
+        """Create a text-mode request from a string."""
+        return cls(input_mode=InputMode.TEXT, text=text)
+
     active_process: Optional[str] = Field(
         default=None,
         description="Name of the foreground process at request creation time.",

@@ -86,7 +86,7 @@
 | **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop, replan limits) | **COMPLETED** | 384 (cumul.) |
 | **Phase 11** | Policy engine, risk classifications, single-operation elevation broker | **COMPLETED** | 399 (cumul.) |
 | **Phase 12** | Latency and quality benchmark tuning, leak testing | **COMPLETED** | 405 (cumul.) |
-| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | **COMPLETED** | **414 (cumul.)** |
+| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | **COMPLETED** | **417 (cumul.)** |
 | **Phase 14** | Owner-directed UI implementation | Blocked on Owner Design | Pending |
 
 ---

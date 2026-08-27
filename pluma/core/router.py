@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from pluma.brain.schemas import Plan, PlanMode, RouteMode, ToolCall
 from pluma.core.request import PlumaRequest
@@ -228,12 +228,14 @@ class Router:
     # Public API
     # ------------------------------------------------------------------
 
-    def route(self, request: PlumaRequest) -> RouteResult:
+    def route(self, request: Union[PlumaRequest, str]) -> RouteResult:
         """Classify *request* into a route and produce a Plan for FAST routes.
 
         Voice and text produce the same RouteResult for matching commands
         (Spec §3, non-negotiable law 3).
         """
+        if isinstance(request, str):
+            request = PlumaRequest.from_text(request)
         text = request.text.strip()
 
         # 1. Try FAST rules in order
