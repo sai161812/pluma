@@ -38,6 +38,11 @@ class VoiceLifecycleManager:
         with self._lock:
             return self._state
 
+    @property
+    def is_warm(self) -> bool:
+        """Check if model is currently warm in memory."""
+        return self.state == "WARM"
+
     def _cancel_unload_timer(self) -> None:
         """Cancel any scheduled idle unload timer."""
         if self._unload_timer is not None:
