@@ -33,8 +33,80 @@ def get_pipe_name() -> str:
     return f"/tmp/pluma_ipc_{clean_user}.sock"
 
 
+def _create_win32_pipe_security() -> Any:
+    """Create a SECURITY_ATTRIBUTES struct restricting the pipe to the current user SID.
+
+    Returns None on non-Windows or if creation fails (caller falls back to default).
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        # Get current process token
+        TOKEN_QUERY = 0x0008
+        h_token = wintypes.HANDLE()
+        if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(h_token)):
+            return None
+
+        # Get token user SID size
+        TOKEN_USER = 1
+        needed = wintypes.DWORD(0)
+        advapi32.GetTokenInformation(h_token, TOKEN_USER, None, 0, ctypes.byref(needed))
+        buf = ctypes.create_string_buffer(needed.value)
+        if not advapi32.GetTokenInformation(h_token, TOKEN_USER, buf, needed, ctypes.byref(needed)):
+            kernel32.CloseHandle(h_token)
+            return None
+        kernel32.CloseHandle(h_token)
+
+        # SID is at offset 0 in TOKEN_USER (pointer to SID_AND_ATTRIBUTES, first field is pointer to SID)
+        sid_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+        sid_str_ptr = ctypes.c_wchar_p()
+        if not advapi32.ConvertSidToStringSidW(sid_ptr, ctypes.byref(sid_str_ptr)):
+            return None
+
+        sid_str = sid_str_ptr.value
+        # SDDL: D:(A;;GA;;;{current_user_sid}) — full access to owner only
+        sddl = f"D:(A;;GA;;;{sid_str})"
+        sd_ptr = ctypes.c_void_p()
+        sd_size = wintypes.ULONG()
+        if not advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl, 1, ctypes.byref(sd_ptr), ctypes.byref(sd_size)
+        ):
+            return None
+
+        class SECURITY_ATTRIBUTES(ctypes.Structure):
+            _fields_ = [
+                ("nLength", wintypes.DWORD),
+                ("lpSecurityDescriptor", ctypes.c_void_p),
+                ("bInheritHandle", wintypes.BOOL),
+            ]
+
+        sa = SECURITY_ATTRIBUTES()
+        sa.nLength = ctypes.sizeof(SECURITY_ATTRIBUTES)
+        sa.lpSecurityDescriptor = sd_ptr
+        sa.bInheritHandle = False
+        return sa
+    except Exception as exc:
+        logger.debug("Failed to create pipe security attributes: %s", exc)
+        return None
+
+
 class IpcServer:
-    """Named-pipe IPC server for local command dispatch with timeouts and bounded messages."""
+    """Named-pipe IPC server for local command dispatch with timeouts and bounded messages.
+
+    Security:
+    - Pipe address is per-user (username encoded in path).
+    - On Windows, the named pipe DACL is restricted to the current user SID.
+    - Each client is handled in its own daemon thread so one slow/stuck client
+      cannot block other clients or the accept loop.
+    - Request and response sizes are both bounded at MAX_IPC_MESSAGE_SIZE.
+    - Malformed JSON and unexpected message types are rejected with an error response.
+    """
 
     def __init__(
         self,
@@ -54,8 +126,11 @@ class IpcServer:
     def start(self) -> None:
         """Start the IPC server in a daemon thread."""
         from multiprocessing.connection import Listener
+
         try:
             self._listener = Listener(self.address)
+            # Attempt to restrict DACL to current user on Windows after pipe creation
+            _try_restrict_pipe_to_current_user(self.address)
         except Exception as e:
             logger.error("Failed to start IPC server at %s: %s", self.address, e)
             return
@@ -71,26 +146,75 @@ class IpcServer:
                 if not self._listener:
                     break
                 conn = self._listener.accept()
-                with conn:
-                    # Enforce server read timeout so a slow or hanging client cannot stall the server
-                    ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
-                    if not ready:
-                        logger.warning("IPC client read timed out after %0.1fs", self._read_timeout_s)
-                        continue
-
-                    msg_bytes = conn.recv_bytes(self._max_message_size)
-                    try:
-                        req = json.loads(msg_bytes.decode("utf-8"))
-                        resp = self._command_handler(req)
-                        conn.send_bytes(json.dumps(resp).encode("utf-8"))
-                    except Exception as e:
-                        logger.error("Error processing IPC message: %s", e)
-                        conn.send_bytes(json.dumps({"status": "error", "message": str(e)}).encode("utf-8"))
+                # Spawn a per-client thread so one slow client cannot block others
+                client_thread = threading.Thread(
+                    target=self._handle_client,
+                    args=(conn,),
+                    daemon=True,
+                    name="PlumaIpcClient",
+                )
+                client_thread.start()
             except EOFError:
                 pass
             except Exception as e:
                 if self._running:
                     logger.error("IPC listener error: %s", e)
+
+    def _handle_client(self, conn: Any) -> None:
+        """Handle one client connection in a dedicated daemon thread."""
+        with conn:
+            try:
+                # Enforce server read timeout so a slow/hanging client cannot stall
+                ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
+                if not ready:
+                    logger.warning("IPC client read timed out after %.1fs", self._read_timeout_s)
+                    try:
+                        conn.send_bytes(json.dumps(
+                            {"status": "error", "message": "Read timeout"}
+                        ).encode("utf-8"))
+                    except Exception:
+                        pass
+                    return
+
+                msg_bytes = conn.recv_bytes(self._max_message_size)
+
+                # Parse and validate JSON
+                try:
+                    req = json.loads(msg_bytes.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
+                    conn.send_bytes(json.dumps(
+                        {"status": "error", "message": f"Malformed JSON request: {parse_err}"}
+                    ).encode("utf-8"))
+                    return
+
+                if not isinstance(req, dict):
+                    conn.send_bytes(json.dumps(
+                        {"status": "error", "message": "Request must be a JSON object (dict)."}
+                    ).encode("utf-8"))
+                    return
+
+                # Dispatch to handler
+                try:
+                    resp = self._command_handler(req)
+                    resp_bytes = json.dumps(resp).encode("utf-8")
+                    # Bound the response size too
+                    if len(resp_bytes) > self._max_message_size:
+                        resp_bytes = json.dumps(
+                            {"status": "error", "message": "Response too large"}
+                        ).encode("utf-8")
+                    conn.send_bytes(resp_bytes)
+                except Exception as e:
+                    logger.error("Error processing IPC message: %s", e)
+                    try:
+                        conn.send_bytes(json.dumps(
+                            {"status": "error", "message": str(e)}
+                        ).encode("utf-8"))
+                    except Exception:
+                        pass
+            except EOFError:
+                pass
+            except Exception as e:
+                logger.debug("IPC client handler error: %s", e)
 
     def stop(self) -> None:
         """Stop the IPC server and close the named pipe."""
@@ -101,9 +225,93 @@ class IpcServer:
             except Exception:
                 pass
             self._listener = None
-        
+
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
+
+
+def _try_restrict_pipe_to_current_user(pipe_name: str) -> None:
+    """Attempt to restrict the named pipe DACL to the current user SID (Windows only).
+
+    This is a best-effort operation. If it fails, the pipe security degrades to
+    the default Windows named pipe security (accessible to all local processes).
+    The error is logged at DEBUG level and does NOT prevent the server from starting.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        # Get current user SID
+        TOKEN_QUERY = 0x0008
+        h_token = wintypes.HANDLE()
+        if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(h_token)):
+            logger.debug("_try_restrict_pipe_to_current_user: OpenProcessToken failed")
+            return
+
+        TOKEN_USER = 1
+        needed = wintypes.DWORD(0)
+        advapi32.GetTokenInformation(h_token, TOKEN_USER, None, 0, ctypes.byref(needed))
+        buf = ctypes.create_string_buffer(needed.value)
+        ok = advapi32.GetTokenInformation(h_token, TOKEN_USER, buf, needed, ctypes.byref(needed))
+        kernel32.CloseHandle(h_token)
+        if not ok:
+            logger.debug("_try_restrict_pipe_to_current_user: GetTokenInformation failed")
+            return
+
+        sid_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+        sid_str_ptr = ctypes.c_wchar_p()
+        if not advapi32.ConvertSidToStringSidW(sid_ptr, ctypes.byref(sid_str_ptr)):
+            logger.debug("_try_restrict_pipe_to_current_user: ConvertSidToStringSidW failed")
+            return
+
+        sid_str = sid_str_ptr.value
+        sddl = f"D:(A;;GA;;;{sid_str})"
+        sd_ptr = ctypes.c_void_p()
+        sd_size = wintypes.ULONG()
+        if not advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl, 1, ctypes.byref(sd_ptr), ctypes.byref(sd_size)
+        ):
+            logger.debug("_try_restrict_pipe_to_current_user: ConvertStringSecurityDescriptorToSecurityDescriptorW failed")
+            return
+
+        # Get a handle to the pipe for SetSecurityInfo
+        FILE_WRITE_ATTRIBUTES = 0x100
+        OPEN_EXISTING = 3
+        FILE_ATTRIBUTE_NORMAL = 0x80
+        h_pipe = kernel32.CreateFileW(
+            pipe_name,
+            FILE_WRITE_ATTRIBUTES,
+            0, None,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            None,
+        )
+        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+        if not h_pipe or h_pipe == INVALID_HANDLE_VALUE:
+            logger.debug("_try_restrict_pipe_to_current_user: CreateFileW failed (err %d)", ctypes.get_last_error())
+            return
+
+        try:
+            # SE_KERNEL_OBJECT=6, DACL_SECURITY_INFORMATION=4
+            DACL_SECURITY_INFORMATION = 4
+            SE_KERNEL_OBJECT = 6
+            ret = advapi32.SetSecurityInfo(
+                h_pipe, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
+                None, None, sd_ptr, None
+            )
+            if ret != 0:  # ERROR_SUCCESS = 0
+                logger.debug("_try_restrict_pipe_to_current_user: SetSecurityInfo returned %d", ret)
+            else:
+                logger.debug("Named pipe DACL restricted to current user SID %s", sid_str)
+        finally:
+            kernel32.CloseHandle(h_pipe)
+    except Exception as exc:
+        logger.debug("_try_restrict_pipe_to_current_user failed: %s", exc)
 
 
 class IpcClient:

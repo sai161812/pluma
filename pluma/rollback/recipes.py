@@ -49,12 +49,24 @@ def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
         )
 
     try:
-        # Check if a new file/directory was created at the source location
+        # FAIL-CLOSED: If new content exists at source, refuse to touch either file
         if src.exists() and src != dst:
-            import uuid
-            conflict_backup = src.parent / f"{src.stem}_conflict_{uuid.uuid4().hex[:8]}{src.suffix}"
-            shutil.move(str(src), str(conflict_backup))
-            logger.warning("Collision detected during rollback: Preserved newer file at '%s'", conflict_backup)
+            return RollbackStepResult(
+                ok=False,
+                action="move_file",
+                message=(
+                    f"Rollback conflict: cannot restore '{dst}' to '{src}' because "
+                    f"'{src}' already contains new user content. Both files preserved "
+                    f"unchanged. Manual resolution required."
+                ),
+                error="ROLLBACK_CONFLICT",
+                data={
+                    "conflict": True,
+                    "current_path": str(dst),
+                    "conflict_path": str(src),
+                    "action_required": "manual",
+                },
+            )
 
         # If source parent directory doesn't exist, ensure it exists
         if not src.parent.exists():
@@ -96,11 +108,24 @@ def _recipe_rename_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
         )
 
     try:
+        # FAIL-CLOSED: If new content exists at original path, refuse to touch either file
         if orig.exists() and orig != curr:
-            import uuid
-            conflict_backup = orig.parent / f"{orig.stem}_conflict_{uuid.uuid4().hex[:8]}{orig.suffix}"
-            shutil.move(str(orig), str(conflict_backup))
-            logger.warning("Collision detected during rollback: Preserved newer file at '%s'", conflict_backup)
+            return RollbackStepResult(
+                ok=False,
+                action="rename_file",
+                message=(
+                    f"Rollback conflict: cannot restore '{curr}' to '{orig}' because "
+                    f"'{orig}' already contains new user content. Both files preserved "
+                    f"unchanged. Manual resolution required."
+                ),
+                error="ROLLBACK_CONFLICT",
+                data={
+                    "conflict": True,
+                    "current_path": str(curr),
+                    "conflict_path": str(orig),
+                    "action_required": "manual",
+                },
+            )
 
         curr.rename(orig)
         return RollbackStepResult(

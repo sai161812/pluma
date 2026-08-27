@@ -139,6 +139,38 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
     hwnd = args.get("hwnd")
     snapshot_id = args.get("snapshot_id")
 
+    # --- Snapshot grounding FIRST (before any window/hardware access) ---
+    # Reject invented, expired, or unverifiable snapshot references immediately.
+    if snapshot_id:
+        snapshot_registry = getattr(task_context, "snapshot_registry", None)
+        if snapshot_registry is not None:
+            from pluma.perception.snapshot_registry import SnapshotNotFoundError
+            from pluma.perception.element_refs import StaleSnapshotError
+            try:
+                snapshot_registry.resolve(snapshot_id)
+            except SnapshotNotFoundError as e:
+                return ToolResult(
+                    ok=False, tool="click_element", data=args,
+                    factual_message=f"Snapshot grounding failed: {e}",
+                    verified=False, error=str(e),
+                )
+            except StaleSnapshotError as e:
+                return ToolResult(
+                    ok=False, tool="click_element", data=args,
+                    factual_message=f"Snapshot grounding failed: {e}",
+                    verified=False, error=str(e),
+                )
+        else:
+            # No registry on task_context — cannot verify provenance of snapshot_id
+            return ToolResult(
+                ok=False, tool="click_element", data=args,
+                factual_message=(
+                    f"Snapshot grounding rejected: no snapshot registry on task_context. "
+                    f"snapshot_id={snapshot_id!r} cannot be verified."
+                ),
+                verified=False, error="NO_SNAPSHOT_REGISTRY",
+            )
+
     context = ActiveWindowContext()
     if hwnd is None:
         active = context.get_active_window()
@@ -158,19 +190,6 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
         if active.is_valid and active.hwnd and active.hwnd != hwnd:
             logger.debug("Active window HWND %d differs from target HWND %d", active.hwnd, hwnd)
 
-    # Revalidate snapshot freshness if grounded in a prior snapshot
-    if snapshot_id:
-        try:
-            from pluma.perception.freshness import FreshnessChecker
-            checker = FreshnessChecker(ttl_seconds=3.0)
-            if active.is_valid and active.window_title:
-                checker.assert_not_stale(
-                    snapshot_timestamp=None,
-                    expected_window_title=active.window_title,
-                    current_window_title=active.window_title,
-                )
-        except Exception as fresh_err:
-            logger.warning("Snapshot freshness check failed: %s", fresh_err)
 
     adapter = UiaAdapter()
     verifier = ScreenVerifier(uia_adapter=adapter)
@@ -231,6 +250,36 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
     clear_existing = args.get("clear_existing", True)
     snapshot_id = args.get("snapshot_id")
 
+    # --- Snapshot grounding FIRST (before any window/hardware access) ---
+    if snapshot_id:
+        snapshot_registry = getattr(task_context, "snapshot_registry", None)
+        if snapshot_registry is not None:
+            from pluma.perception.snapshot_registry import SnapshotNotFoundError
+            from pluma.perception.element_refs import StaleSnapshotError
+            try:
+                snapshot_registry.resolve(snapshot_id)
+            except SnapshotNotFoundError as e:
+                return ToolResult(
+                    ok=False, tool="type_into_element", data=args,
+                    factual_message=f"Snapshot grounding failed: {e}",
+                    verified=False, error=str(e),
+                )
+            except StaleSnapshotError as e:
+                return ToolResult(
+                    ok=False, tool="type_into_element", data=args,
+                    factual_message=f"Snapshot grounding failed: {e}",
+                    verified=False, error=str(e),
+                )
+        else:
+            return ToolResult(
+                ok=False, tool="type_into_element", data=args,
+                factual_message=(
+                    f"Snapshot grounding rejected: no snapshot registry on task_context. "
+                    f"snapshot_id={snapshot_id!r} cannot be verified."
+                ),
+                verified=False, error="NO_SNAPSHOT_REGISTRY",
+            )
+
     context = ActiveWindowContext()
     if hwnd is None:
         active = context.get_active_window()
@@ -246,20 +295,6 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
         hwnd = active.hwnd
     else:
         active = context.get_active_window()
-
-    # Revalidate snapshot freshness if grounded in a prior snapshot
-    if snapshot_id:
-        try:
-            from pluma.perception.freshness import FreshnessChecker
-            checker = FreshnessChecker(ttl_seconds=3.0)
-            if active.is_valid and active.window_title:
-                checker.assert_not_stale(
-                    snapshot_timestamp=None,
-                    expected_window_title=active.window_title,
-                    current_window_title=active.window_title,
-                )
-        except Exception as fresh_err:
-            logger.warning("Snapshot freshness check failed: %s", fresh_err)
 
     adapter = UiaAdapter()
     verifier = ScreenVerifier(uia_adapter=adapter)
