@@ -28,27 +28,29 @@ from pluma.verify.common import verify_noop
 
 class GetSystemStatusArgs(BaseModel):
     """Arguments for get_system_status."""
-    pass
+    model_config = {"extra": "forbid"}
 
 
 class StopCurrentArgs(BaseModel):
     """Arguments for stop_current."""
+    model_config = {"extra": "forbid"}
     reason: str = Field(default="user_stop", description="Reason for stopping the task.")
 
 
 class ShowActivityArgs(BaseModel):
     """Arguments for show_activity."""
+    model_config = {"extra": "forbid"}
     limit: int = Field(default=10, ge=1, le=100, description="Maximum number of activity records to return.")
 
 
 class UndoLastArgs(BaseModel):
     """Arguments for undo_last."""
-    pass
+    model_config = {"extra": "forbid"}
 
 
 class BatteryStatusArgs(BaseModel):
     """Arguments for battery_status."""
-    pass
+    model_config = {"extra": "forbid"}
 
 
 # ---------------------------------------------------------------------------

@@ -30,12 +30,14 @@ logger = logging.getLogger(__name__)
 
 class InspectActiveWindowArgs(BaseModel):
     """Arguments for inspect_active_window."""
+    model_config = {"extra": "forbid"}
     include_controls: bool = Field(default=True, description="Whether to include semantic controls.")
     max_controls: int = Field(default=50, description="Maximum number of controls to return.")
 
 
 class ClickElementArgs(BaseModel):
     """Arguments for click_element."""
+    model_config = {"extra": "forbid"}
     name: Optional[str] = Field(default=None, description="Name or title text of the target UI element.")
     auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of the target element.")
     control_type: Optional[str] = Field(default=None, description="UIA control type (e.g. 'Button', 'MenuItem').")
@@ -50,6 +52,7 @@ class ClickElementArgs(BaseModel):
 
 class TypeIntoElementArgs(BaseModel):
     """Arguments for type_into_element."""
+    model_config = {"extra": "forbid"}
     text: str = Field(description="Text to type or set into the target element.")
     name: Optional[str] = Field(default=None, description="Name or label of the target editable element.")
     auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of the editable element.")
@@ -295,6 +298,7 @@ TYPE_INTO_ELEMENT_SPEC = ToolSpec(
 
 class ClickOcrTextArgs(BaseModel):
     """Arguments for click_ocr_text."""
+    model_config = {"extra": "forbid"}
     text: str = Field(description="Visible text string to locate and click on screen via OCR.")
     hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
     min_confidence: float = Field(

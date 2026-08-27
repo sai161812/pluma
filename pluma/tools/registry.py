@@ -113,33 +113,31 @@ class ToolRegistry:
     # Argument validation
     # ------------------------------------------------------------------
 
-    def validate_call(self, tool_name: str, arguments: Dict[str, Any]) -> None:
+    def validate_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Validate *arguments* against the registered ToolSpec's args_schema.
 
+        Returns normalized arguments dictionary.
         Raises:
             UnknownToolError   — tool name is not registered.
             ToolArgumentError  — arguments fail schema validation.
-
-        This is the gating check that runs before policy and before execution.
-        Spec §20.2: "arguments must validate" and "tool must exist in registry".
         """
         spec = self.lookup(tool_name)  # Raises UnknownToolError if absent.
-        self._validate_args(spec, arguments)
+        return self._validate_args(spec, arguments)
 
     @staticmethod
-    def _validate_args(spec: ToolSpec, arguments: Dict[str, Any]) -> None:
-        """Run the args_schema validator for *spec* against *arguments*."""
+    def _validate_args(spec: ToolSpec, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Run the args_schema validator for *spec* against *arguments* and return normalized dict."""
         schema = spec.args_schema
 
         # Pydantic model class
         if isinstance(schema, type) and issubclass(schema, BaseModel):
             try:
-                schema.model_validate(arguments)
+                model = schema.model_validate(arguments)
+                return model.model_dump()
             except ValidationError as exc:
                 raise ToolArgumentError(
                     f"Invalid arguments for tool {spec.name!r}: {exc}"
                 ) from exc
-            return
 
         # JSON Schema dict
         if isinstance(schema, dict):
@@ -159,7 +157,7 @@ class ToolRegistry:
                         raise ToolArgumentError(
                             f"Missing required argument {req!r} for tool {spec.name!r}."
                         )
-            return
+            return dict(arguments)
 
         # Unknown schema type
         raise ToolArgumentError(
@@ -182,7 +180,7 @@ class ToolRegistry:
     ) -> ToolResult:
         """Execute a tool call with validation, policy check, cancellation check, verification, and undo capture."""
         spec = self.lookup(tool_name)
-        self._validate_args(spec, arguments)
+        validated_args = self._validate_args(spec, arguments)
 
         # 1. Policy check
         active_policy = policy_engine or self._policy_engine
@@ -190,11 +188,10 @@ class ToolRegistry:
             task_id = getattr(task_context, "task_id", None) if task_context else None
             policy_eval = active_policy.evaluate(
                 tool_name=tool_name,
-                arguments=arguments,
+                arguments=validated_args,
                 default_risk=spec.risk_class,
                 task_id=task_id,
             )
-            # If policy explicitly denies or requires unfulfilled confirmation
             decision_val = getattr(policy_eval, "decision", None)
             if decision_val != "ALLOW" and str(decision_val) not in ("ALLOW", "PolicyDecision.ALLOW"):
                 return ToolResult.failure(
@@ -207,21 +204,10 @@ class ToolRegistry:
         if spec.cancellable and task_context and hasattr(task_context, "cancellation_token"):
             task_context.cancellation_token.raise_if_cancelled()
 
-        # 2. Pre-state capture for reversible tools
-        undo_record = None
-        if spec.undo_builder:
-            try:
-                undo_record = spec.undo_builder(arguments)
-                if undo_record and task_context and hasattr(task_context, "undo_stack"):
-                    task_context.undo_stack.append(undo_record)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning("Failed to build undo record for %s: %s", tool_name, e)
-
         # 3. Execution with duration measurement
         start_t = time.perf_counter()
         try:
-            result = spec.executor(arguments, task_context)
+            result = spec.executor(validated_args, task_context)
         except Exception as e:
             duration_ms = (time.perf_counter() - start_t) * 1000.0
             result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
@@ -240,7 +226,18 @@ class ToolRegistry:
                 verified = False
                 verify_detail = VerifyResult(ok=False, method="verifier_exception", detail=str(e))
 
-        # 5. Build final consolidated result
+        # 5. Build undo record only on verified success
+        undo_record = None
+        if result.ok and verified and spec.undo_builder:
+            try:
+                undo_record = spec.undo_builder(validated_args)
+                if undo_record and task_context and hasattr(task_context, "undo_stack"):
+                    task_context.undo_stack.append(undo_record)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to build undo record for %s: %s", tool_name, e)
+
+        # 6. Build final consolidated result
         final_result = ToolResult(
             ok=result.ok and verified,
             tool=tool_name,
@@ -255,7 +252,7 @@ class ToolRegistry:
             undo_record=undo_record,
         )
 
-        # 6. Record to Activity Ledger if provided
+        # 7. Record to Activity Ledger if provided
         if ledger and task_context and hasattr(task_context, "task_id"):
             try:
                 from pluma.memory.activity import ActionRecord, UndoRecord
@@ -263,7 +260,7 @@ class ToolRegistry:
                     task_id=task_context.task_id,
                     step_index=step_index,
                     tool=tool_name,
-                    args_raw=arguments,
+                    args_raw=validated_args,
                     risk=spec.risk_class.value,
                     adapter=final_result.adapter_used,
                     duration_ms=duration_ms,

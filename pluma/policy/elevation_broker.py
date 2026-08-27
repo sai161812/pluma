@@ -58,54 +58,69 @@ class ElevationBroker:
             )
 
         try:
-            # Launch elevated powershell runner with hidden window and RunAs verb
-            cmd = [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy", "Bypass",
-                "-Command",
-                f"Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{script}\"' -Verb RunAs -Wait",
-            ]
+            import os
+            import tempfile
+            from pathlib import Path
 
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-
+            # Write script to temporary .ps1 file to eliminate command-line injection
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".ps1", prefix="pluma_elev_")
             try:
-                stdout, stderr = proc.communicate(timeout=effective_timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.communicate()
+                with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                    f.write(script)
+
+                cmd = [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    f"Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{temp_path}\"' -Verb RunAs -Wait",
+                ]
+
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+
+                try:
+                    stdout, stderr = proc.communicate(timeout=effective_timeout)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()
+                    duration_ms = (time.perf_counter() - t0) * 1000.0
+                    return ToolResult.failure(
+                        tool="elevate",
+                        error=f"Elevated operation timed out after {effective_timeout:.1f}s.",
+                        duration_ms=duration_ms,
+                        adapter_used="elevation_broker",
+                    )
+
                 duration_ms = (time.perf_counter() - t0) * 1000.0
-                return ToolResult.failure(
+                if proc.returncode != 0:
+                    err_msg = stderr.strip() or stdout.strip() or f"Process returned exit code {proc.returncode}"
+                    return ToolResult.failure(
+                        tool="elevate",
+                        error=f"Elevated execution failed: {err_msg}",
+                        duration_ms=duration_ms,
+                        adapter_used="elevation_broker",
+                    )
+
+                return ToolResult(
+                    ok=True,
                     tool="elevate",
-                    error=f"Elevated operation timed out after {effective_timeout:.1f}s.",
+                    factual_message="Single-operation elevated command executed successfully.",
                     duration_ms=duration_ms,
                     adapter_used="elevation_broker",
                 )
-
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            if proc.returncode != 0:
-                err_msg = stderr.strip() or stdout.strip() or f"Process returned exit code {proc.returncode}"
-                return ToolResult.failure(
-                    tool="elevate",
-                    error=f"Elevated execution failed: {err_msg}",
-                    duration_ms=duration_ms,
-                    adapter_used="elevation_broker",
-                )
-
-            return ToolResult(
-                ok=True,
-                tool="elevate",
-                factual_message="Single-operation elevated command executed successfully.",
-                duration_ms=duration_ms,
-                adapter_used="elevation_broker",
-            )
+            finally:
+                if os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except Exception:
+                        pass
 
         except Exception as exc:
             duration_ms = (time.perf_counter() - t0) * 1000.0
