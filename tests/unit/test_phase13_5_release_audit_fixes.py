@@ -330,7 +330,7 @@ def test_audit_real_open_app_registers_process_ownership_on_task_capsule() -> No
             assert rec.ownership == ResourceOwnership.PLUMA_CREATED
             assert rec.metadata["app_name"] == "notepad.exe"
         finally:
-            execute_close_app({"app_name": "notepad", "force": True})
+            execute_close_app({"app_name": str(pid), "force": True})
     else:
         res = execute_open_app({"app_name": "python", "arguments": ["-c", "import time; time.sleep(0.1)"]}, task_context=capsule)
         if res.ok:

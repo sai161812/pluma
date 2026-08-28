@@ -62,6 +62,7 @@ def test_multi_step_successful_execution_chain() -> None:
         ],
     )
 
+    supervisor.start_task(capsule.task_id)
     res = multi_step.execute_plan(capsule, plan, command_text="Run test plan")
     assert res.final_state == TaskState.SUCCEEDED
     assert len(res.steps_executed) == 2
@@ -114,6 +115,7 @@ def test_multi_step_stop_latch_aborts_immediately() -> None:
         ],
     )
 
+    supervisor.start_task(capsule.task_id)
     res = multi_step.execute_plan(capsule, plan, command_text="Run cancel plan")
     assert res.final_state in (TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL)
     assert len(step1_called) == 1
@@ -165,6 +167,7 @@ def test_multi_step_replan_on_step_failure() -> None:
         steps=[ToolCall(tool="failing_tool", arguments={}, purpose="Initial attempt")],
     )
 
+    supervisor.start_task(capsule.task_id)
     res = multi_step.execute_plan(capsule, initial_plan, command_text="Try operation")
     assert res.final_state == TaskState.SUCCEEDED
     assert res.replan_count == 1
@@ -204,6 +207,7 @@ def test_multi_step_replan_limit_halts_loop() -> None:
         steps=[ToolCall(tool="fail_tool", arguments={}, purpose="Attempt 1")],
     )
 
+    supervisor.start_task(capsule.task_id)
     res = multi_step.execute_plan(capsule, initial_plan, command_text="Fail repeatedly")
     assert res.final_state == TaskState.FAILED
     assert res.replan_count == 2

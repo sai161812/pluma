@@ -85,33 +85,60 @@ class ResidentCore:
     def _on_voice_press(self) -> None:
         """Handle push-to-talk key down event."""
         logger.info("Voice push-to-talk activated. Starting audio capture...")
+        self._current_voice_capsule = self.supervisor.create_task_capsule(request_id="voice-req")
         if self.audio_capture is not None:
+            # We don't currently pass cancellation token to start(), but we can if audio_capture supports it.
+            # Spec says "Propagate the same cancellation token to ... STT, OCR, UI waits, shell/CLI calls and tool workers."
             self.audio_capture.start()
 
     def _on_voice_release(self) -> None:
         """Handle push-to-talk key release event."""
         logger.info("Voice push-to-talk released. Finalizing capture and processing audio...")
-        if self.audio_capture is None or self.voice_pipeline is None:
+        capsule = getattr(self, "_current_voice_capsule", None)
+        self._current_voice_capsule = None
+        
+        if self.audio_capture:
+            raw_audio = self.audio_capture.stop_and_get()
+        else:
+            raw_audio = None
+
+        if capsule and capsule.cancellation_token.is_cancelled:
+            logger.info("Voice capture cancelled before release.")
+            self.supervisor.stop_task(capsule.task_id)
             return
-        raw_audio = self.audio_capture.stop_and_get()
-        if not raw_audio:
+
+        if self.audio_capture is None or self.voice_pipeline is None or not raw_audio:
             logger.debug("No audio recorded during voice push-to-talk.")
             return
 
         try:
-            request = self.voice_pipeline.process_audio(raw_audio)
+            request = self.voice_pipeline.process_audio(
+                raw_audio, 
+                cancellation_token=capsule.cancellation_token if capsule else None
+            )
+            
+            if capsule and capsule.cancellation_token.is_cancelled:
+                logger.info("Task cancelled during STT.")
+                self.supervisor.stop_task(capsule.task_id)
+                return
+
             if request is not None:
                 # Redact transcript at the log output boundary before emitting
                 safe_text = redact_string(request.text or "")
                 logger.info("Voice command produced PlumaRequest(%s): '%s'", request.input_mode.value, safe_text)
                 if self.orchestrator:
-                    self.orchestrator.execute(request)
+                    self.orchestrator.execute(request, capsule=capsule)
                 elif self.on_request_callback:
+                    # In test mocks, the callback doesn't accept capsule, so just call it
                     self.on_request_callback(request)
             else:
                 logger.info("Voice processing produced no executable command (silence or clarification needed).")
+                if capsule:
+                    self.supervisor.stop_task(capsule.task_id)
         except Exception as exc:
             logger.error("Error executing voice pipeline: %s", exc)
+            if capsule:
+                self.supervisor.stop_task(capsule.task_id)
 
 
     def handle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:

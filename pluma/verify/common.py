@@ -19,7 +19,12 @@ from pluma.tools.base import ToolResult, VerifyResult
 
 
 def verify_noop(result: ToolResult) -> VerifyResult:
-    """Verifier for read-only or informational tools that do not change system state."""
+    """Verifier for read-only or informational tools that do not change system state.
+    
+    Warning: This returns ok=True if result.ok is True. For tools that perform
+    their own verification and may set verified=False, ToolRegistry intercepts this
+    to prevent overwriting the explicitly failed verification.
+    """
     if not result.ok:
         return VerifyResult(
             ok=False,

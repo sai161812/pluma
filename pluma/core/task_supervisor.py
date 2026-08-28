@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -44,7 +45,7 @@ _TERMINAL_STATES: frozenset[TaskState] = frozenset({
 })
 
 _TRANSITIONS: Dict[TaskState, frozenset[TaskState]] = {
-    TaskState.CREATED: frozenset({TaskState.RUNNING, TaskState.FAILED, TaskState.ABORTED_BY_CRASH}),
+    TaskState.CREATED: frozenset({TaskState.RUNNING, TaskState.FAILED, TaskState.ABORTED_BY_CRASH, TaskState.STOPPING}),
     TaskState.RUNNING: frozenset({
         TaskState.STOPPING, TaskState.SUCCEEDED, TaskState.FAILED,
         TaskState.ABORTED_BY_CRASH,
@@ -291,7 +292,7 @@ class TaskSupervisor:
     def mark_failed(self, task_id: str) -> None:
         self.transition(task_id, TaskState.FAILED)
 
-    def stop_task(self, task_id: str, reason: StopReason = StopReason.USER_STOP) -> None:
+    def stop_task(self, task_id: str, reason: StopReason = StopReason.USER_STOP, grace_s: float = 0.5) -> None:
         """Execute the deterministic STOP sequence (Spec §12.2)."""
         with self._lock:
             capsule = self._get_task(task_id)
@@ -312,6 +313,9 @@ class TaskSupervisor:
             
         # The following steps are executed outside the lock to avoid deadlocks 
         # during cleanup or rollback.
+        
+        if grace_s > 0:
+            time.sleep(grace_s)
         
         # 3. Terminate unresponsive PLUMA-owned Job Object workers and launched applications
         if capsule.job_object:

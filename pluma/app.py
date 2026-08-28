@@ -59,9 +59,11 @@ class PlumaApplicationRuntime:
 
         self.ledger = ActivityLedger(db=self.db)
         self.ownership_registry = OwnershipRegistry(db_conn=self.db)
+        self.rollback_engine = RollbackEngine(ledger=self.ledger)
         self.supervisor = TaskSupervisor(
             ledger=self.ledger,
             ownership_registry=self.ownership_registry,
+            rollback_engine=self.rollback_engine,
         )
         self.policy_rules = PolicyRules()
         self.policy_engine = PolicyEngine(
@@ -71,7 +73,6 @@ class PlumaApplicationRuntime:
         self.tool_registry = ToolRegistry(policy_engine=self.policy_engine)
         register_default_tools(self.tool_registry)
 
-        self.rollback_engine = RollbackEngine(ledger=self.ledger)
         self.router = Router()
 
         # Model & Planner Lifecycles (Zero-ML at startup; auto-unloaded on idle)
