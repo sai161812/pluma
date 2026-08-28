@@ -52,10 +52,26 @@ def build_wheel() -> Path:
 
 
 def create_release_zip(wheel_path: Path) -> Path:
-    """Create a pristine release ZIP containing the wheel, installer scripts, configs, and docs."""
+    """Create a pristine release ZIP containing the wheel, installer scripts, configs, docs, and SHA-256 manifest."""
     print("[3/4] Packaging pristine release ZIP archive...")
     RELEASE_DIR.mkdir(parents=True, exist_ok=True)
     zip_path = RELEASE_DIR / "pluma-0.1.0-windows-x64-release.zip"
+
+    # Compute wheel SHA-256
+    import hashlib
+    h = hashlib.sha256()
+    with open(wheel_path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    wheel_sha = h.hexdigest()
+
+    manifest_lines = [
+        f"{wheel_sha}  packages/{wheel_path.name}",
+    ]
+
+    manifest_path = RELEASE_DIR / "SHA256SUMS.txt"
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(manifest_lines) + "\n")
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         # Include wheel
@@ -67,14 +83,24 @@ def create_release_zip(wheel_path: Path) -> Path:
             if script_path.exists():
                 zf.write(script_path, arcname=script_name)
 
-        # Include configs and core documentation
-        for doc_name in ["README.md", "pyproject.toml", "PHASE_13_5_COMPLETION_REPORT.md"]:
+        # Include configs
+        cfg_dir = ROOT_DIR / "pluma" / "config"
+        for cfg in ["default_config.yaml", "tool_policy.yaml"]:
+            cp = cfg_dir / cfg
+            if cp.exists():
+                zf.write(cp, arcname=f"config/{cfg}")
+
+        # Include documentation and manifest
+        for doc_name in ["README.md", "pyproject.toml", "PHASE_13_5_COMPLETION_REPORT.md", "pluma.spec"]:
             doc_path = ROOT_DIR / doc_name
             if doc_path.exists():
                 zf.write(doc_path, arcname=doc_name)
 
+        zf.write(manifest_path, arcname="SHA256SUMS.txt")
+
     print(f"  -> Pristine release archive created: {zip_path.name} ({zip_path.stat().st_size / 1024:.1f} KB)")
     return zip_path
+
 
 
 def verify_zip_cleanliness(zip_path: Path) -> None:

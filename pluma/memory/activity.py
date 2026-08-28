@@ -246,6 +246,31 @@ class ActivityLedger:
             (action_row_id,),
         )
 
+    def consume_undo_and_mark_result_atomic(
+        self,
+        action_row_id: int,
+        ok: bool,
+        result: Dict[str, Any],
+    ) -> None:
+        """Atomically mark rollback result and consume undo record in one SQLite transaction."""
+        stmts = [
+            (
+                """
+                UPDATE undo_records
+                SET rollback_attempted = 1, rollback_ok = ?, rollback_result_json = ?
+                WHERE action_id = ?
+                """,
+                (int(ok), json.dumps(result) if result else None, action_row_id),
+            ),
+        ]
+        if ok:
+            stmts.append((
+                "UPDATE undo_records SET available = 0 WHERE action_id = ?",
+                (action_row_id,),
+            ))
+        self._db.execute_transaction(stmts, wait=True)
+
+
     # -- Resources --
 
     def insert_resource(self, record: ResourceRecord) -> None:

@@ -73,9 +73,13 @@ def test_execute_inspect_active_window(mock_builder_cls: MagicMock, mock_context
     assert result.data["controls"][0]["label"] == "File"
 
 
+@patch("pluma.tools.ui.ActiveWindowContext")
 @patch("pluma.tools.ui.UiaAdapter")
 @patch("pluma.tools.ui.ScreenVerifier")
-def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock) -> None:
+def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
+    from datetime import datetime, timedelta, timezone
+    from pluma.perception.snapshot_registry import SnapshotRegistry
+
     mock_adapter = MagicMock()
     mock_adapter_cls.return_value = mock_adapter
 
@@ -83,28 +87,114 @@ def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapte
     mock_verifier.verify_control_invoked.return_value = MagicMock(ok=True)
     mock_verifier_cls.return_value = mock_verifier
 
-    result = execute_click_element({"name": "Save", "hwnd": 456})
+    mock_ctx = MagicMock()
+    active_win = MagicMock()
+    active_win.is_valid = True
+    active_win.hwnd = 456
+    active_win.pid = 1000
+    active_win.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
+    active_win.dpi_scale = 1.0
+    mock_ctx.get_active_window.return_value = active_win
+    mock_ctx.get_process_creation_time_ns.return_value = 123456789
+    mock_active_ctx_cls.return_value = mock_ctx
+
+    reg = SnapshotRegistry()
+    btn = ScreenElement(
+        element_id="btn_save",
+        snapshot_id="snap-1",
+        source=ElementSource.UIA,
+        label="Save",
+        control_type="Button",
+        bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+        confidence=1.0,
+    )
+    snap = ScreenSnapshot(
+        snapshot_id="snap-1",
+        hwnd=456,
+        pid=1000,
+        process_creation_time_ns=123456789,
+        active_process="notepad.exe",
+        active_window_title="Untitled - Notepad",
+        window_rect=BoundingBox(left=0, top=0, right=800, bottom=600),
+        dpi_scale=1.0,
+        controls=[btn],
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=10),
+    )
+    reg.register(snap)
+
+    task_ctx = MagicMock()
+    task_ctx.snapshot_registry = reg
+    task_ctx.cancellation_token = MagicMock(is_cancelled=False)
+
+    result = execute_click_element({"snapshot_id": "snap-1", "target_ref": "snap-1::btn_save"}, task_context=task_ctx)
     assert result.ok
     assert result.verified
     assert mock_adapter.invoke_control.called
     assert "Save" in result.factual_message
 
 
+@patch("pluma.tools.ui.ActiveWindowContext")
 @patch("pluma.tools.ui.UiaAdapter")
-def test_execute_click_element_not_found(mock_adapter_cls: MagicMock) -> None:
+def test_execute_click_element_not_found(mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
+    from datetime import datetime, timedelta, timezone
+    from pluma.perception.snapshot_registry import SnapshotRegistry
+
     mock_adapter = MagicMock()
     mock_adapter.invoke_control.side_effect = ElementNotFoundError("Control not found")
     mock_adapter_cls.return_value = mock_adapter
 
-    result = execute_click_element({"name": "NonExistentButton", "hwnd": 456})
+    mock_ctx = MagicMock()
+    active_win = MagicMock()
+    active_win.is_valid = True
+    active_win.hwnd = 456
+    active_win.pid = 1000
+    active_win.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
+    active_win.dpi_scale = 1.0
+    mock_ctx.get_active_window.return_value = active_win
+    mock_ctx.get_process_creation_time_ns.return_value = 123456789
+    mock_active_ctx_cls.return_value = mock_ctx
+
+    reg = SnapshotRegistry()
+    btn = ScreenElement(
+        element_id="btn_missing",
+        snapshot_id="snap-1",
+        source=ElementSource.UIA,
+        label="NonExistentButton",
+        control_type="Button",
+        bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+        confidence=1.0,
+    )
+    snap = ScreenSnapshot(
+        snapshot_id="snap-1",
+        hwnd=456,
+        pid=1000,
+        process_creation_time_ns=123456789,
+        active_process="notepad.exe",
+        active_window_title="Untitled - Notepad",
+        window_rect=BoundingBox(left=0, top=0, right=800, bottom=600),
+        dpi_scale=1.0,
+        controls=[btn],
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=10),
+    )
+    reg.register(snap)
+
+    task_ctx = MagicMock()
+    task_ctx.snapshot_registry = reg
+    task_ctx.cancellation_token = MagicMock(is_cancelled=False)
+
+    result = execute_click_element({"snapshot_id": "snap-1", "target_ref": "snap-1::btn_missing"}, task_context=task_ctx)
     assert not result.ok
     assert not result.verified
     assert "Failed to click" in result.factual_message
 
 
+@patch("pluma.tools.ui.ActiveWindowContext")
 @patch("pluma.tools.ui.UiaAdapter")
 @patch("pluma.tools.ui.ScreenVerifier")
-def test_execute_type_into_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock) -> None:
+def test_execute_type_into_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
+    from datetime import datetime, timedelta, timezone
+    from pluma.perception.snapshot_registry import SnapshotRegistry
+
     mock_adapter = MagicMock()
     mock_adapter_cls.return_value = mock_adapter
 
@@ -112,8 +202,50 @@ def test_execute_type_into_element_success(mock_verifier_cls: MagicMock, mock_ad
     mock_verifier.verify_control_text.return_value = MagicMock(ok=True)
     mock_verifier_cls.return_value = mock_verifier
 
-    result = execute_type_into_element({"text": "Hello World", "auto_id": "txtInput", "hwnd": 789})
+    mock_ctx = MagicMock()
+    active_win = MagicMock()
+    active_win.is_valid = True
+    active_win.hwnd = 789
+    active_win.pid = 1000
+    active_win.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
+    active_win.dpi_scale = 1.0
+    mock_ctx.get_active_window.return_value = active_win
+    mock_ctx.get_process_creation_time_ns.return_value = 123456789
+    mock_active_ctx_cls.return_value = mock_ctx
+
+    reg = SnapshotRegistry()
+    inp = ScreenElement(
+        element_id="txtInput",
+        snapshot_id="snap-2",
+        source=ElementSource.UIA,
+        label="InputBox",
+        control_type="Edit",
+        bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+        confidence=1.0,
+        uia_automation_id="txtInput",
+    )
+    snap = ScreenSnapshot(
+        snapshot_id="snap-2",
+        hwnd=789,
+        pid=1000,
+        process_creation_time_ns=123456789,
+        active_process="notepad.exe",
+        active_window_title="Untitled - Notepad",
+        window_rect=BoundingBox(left=0, top=0, right=800, bottom=600),
+        dpi_scale=1.0,
+        controls=[inp],
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=10),
+    )
+    reg.register(snap)
+
+    task_ctx = MagicMock()
+    task_ctx.snapshot_registry = reg
+    task_ctx.cancellation_token = MagicMock(is_cancelled=False)
+
+    result = execute_type_into_element({"text": "Hello World", "snapshot_id": "snap-2", "target_ref": "snap-2::txtInput"}, task_context=task_ctx)
+
     assert result.ok
     assert result.verified
     assert mock_adapter.set_control_text.called
-    assert "txtInput" in result.factual_message
+    assert "InputBox" in result.factual_message or "txtInput" in result.factual_message
+

@@ -41,11 +41,12 @@ def test_multi_step_successful_execution_chain() -> None:
 
     registry.register(ToolSpec(
         name="step1_tool", description="Step 1", args_schema={"type": "object"},
-        risk_class=RiskClass.LOW, timeout_s=5.0, executor=exec_step1, verifier=verify_noop,
+        risk_class=RiskClass.READ, timeout_s=5.0, executor=exec_step1, verifier=verify_noop,
+
     ))
     registry.register(ToolSpec(
         name="step2_tool", description="Step 2", args_schema={"type": "object"},
-        risk_class=RiskClass.LOW, timeout_s=5.0, executor=exec_step2, verifier=verify_noop,
+        risk_class=RiskClass.READ, timeout_s=5.0, executor=exec_step2, verifier=verify_noop,
     ))
 
     supervisor = TaskSupervisor()
@@ -90,11 +91,12 @@ def test_multi_step_stop_latch_aborts_immediately() -> None:
 
     registry.register(ToolSpec(
         name="step1_tool", description="Step 1", args_schema={"type": "object"},
-        risk_class=RiskClass.LOW, timeout_s=5.0, executor=exec_step1, verifier=verify_noop,
+        risk_class=RiskClass.READ, timeout_s=5.0, executor=exec_step1, verifier=verify_noop,
+
     ))
     registry.register(ToolSpec(
         name="step2_tool", description="Step 2", args_schema={"type": "object"},
-        risk_class=RiskClass.LOW, timeout_s=5.0, executor=exec_step2, verifier=verify_noop,
+        risk_class=RiskClass.READ, timeout_s=5.0, executor=exec_step2, verifier=verify_noop,
     ))
 
     supervisor = TaskSupervisor()
@@ -135,12 +137,13 @@ def test_multi_step_replan_on_step_failure() -> None:
 
     registry.register(ToolSpec(
         name="failing_tool", description="Fails", args_schema={"type": "object"},
-        risk_class=RiskClass.LOW, timeout_s=5.0, executor=exec_failing, verifier=verify_noop,
+        risk_class=RiskClass.READ, timeout_s=5.0, executor=exec_failing, verifier=verify_noop,
     ))
     registry.register(ToolSpec(
         name="recovery_tool", description="Recovers", args_schema={"type": "object"},
-        risk_class=RiskClass.LOW, timeout_s=5.0, executor=exec_recovery, verifier=verify_noop,
+        risk_class=RiskClass.READ, timeout_s=5.0, executor=exec_recovery, verifier=verify_noop,
     ))
+
 
     # Mock planner that produces recovery plan when given prior failure
     mock_planner = MagicMock()
@@ -178,8 +181,9 @@ def test_multi_step_replan_limit_halts_loop() -> None:
 
     registry.register(ToolSpec(
         name="fail_tool", description="Always fails", args_schema={"type": "object"},
-        risk_class=RiskClass.LOW, timeout_s=5.0, executor=exec_always_fail, verifier=verify_noop,
+        risk_class=RiskClass.READ, timeout_s=5.0, executor=exec_always_fail, verifier=verify_noop,
     ))
+
 
     mock_planner = MagicMock()
     mock_planner.plan.return_value = Plan(

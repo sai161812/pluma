@@ -51,7 +51,8 @@ class ResidentCore:
         self.supervisor = supervisor or TaskSupervisor(ownership_registry=self.registry, ledger=self.ledger)
         self.orchestrator = orchestrator
         self.on_request_callback = on_request_callback or (self.orchestrator.execute if self.orchestrator else None)
-        self.ipc = IpcServer(command_handler=self.handle_ipc_command, address=ipc_address)
+        self.ipc = IpcServer(command_handler=self.handle_ipc_command, address=ipc_address, require_auth=True)
+
 
         # Voice subsystem components (zero-ML at idle; lazily initialized if voice_enabled)
         self.voice_enabled = get(self.config, "voice", "required", default=True)

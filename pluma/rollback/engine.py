@@ -92,29 +92,31 @@ class RollbackEngine:
                 action_name = undo_data.get("action", tool_name)
 
                 step_res = self._recipes.apply(action_name, undo_data)
-                step_results.append(step_res)
 
-                if step_res.ok:
-                    succeeded += 1
-                    # Consume the undo record so it cannot be replayed (idempotent)
-                    if self._ledger and action_id is not None:
-                        try:
-                            self._ledger.mark_undo_consumed(action_id)
-                        except Exception as e:
-                            logger.warning("Failed to mark undo record %s as consumed: %s", action_id, e)
-                else:
-                    failed += 1
-
-                # Update database record with rollback result
+                # Atomically record rollback result and consume undo record in one transaction
                 if self._ledger and action_id is not None:
                     try:
-                        self._ledger.mark_rollback_result(
+                        self._ledger.consume_undo_and_mark_result_atomic(
                             action_row_id=action_id,
                             ok=step_res.ok,
                             result=step_res.data or {"message": step_res.message, "error": step_res.error},
                         )
                     except Exception as e:
-                        logger.error("Failed to mark rollback result for action %s: %s", action_id, e)
+                        logger.error("Failed to atomically record rollback for action %s: %s", action_id, e)
+                        # Failure in atomic ledger update must never report false success
+                        step_res = RollbackStepResult(
+                            ok=False,
+                            action=action_name,
+                            message=f"Rollback succeeded locally but atomic ledger consumption failed: {e}",
+                            error="UNDO_CONSUMPTION_FAILED",
+                        )
+
+                step_results.append(step_res)
+                if step_res.ok:
+                    succeeded += 1
+                else:
+                    failed += 1
+
 
 
         elif memory_undo_stack:
@@ -179,18 +181,22 @@ class RollbackEngine:
                     action_name = parsed.get("action", rec.get("tool", ""))
                     res = self._recipes.apply(action_name, parsed)
                     if self._ledger and action_id is not None:
-                        self._ledger.mark_rollback_result(
-                            action_row_id=action_id,
-                            ok=res.ok,
-                            result=res.data or {"message": res.message, "error": res.error},
-                        )
-                        # Consume the record on success so it cannot be replayed
-                        if res.ok:
-                            try:
-                                self._ledger.mark_undo_consumed(action_id)
-                            except Exception as consume_err:
-                                logger.warning("Failed to mark undo consumed after rollback: %s", consume_err)
+                        try:
+                            self._ledger.consume_undo_and_mark_result_atomic(
+                                action_row_id=action_id,
+                                ok=res.ok,
+                                result=res.data or {"message": res.message, "error": res.error},
+                            )
+                        except Exception as consume_err:
+                            logger.error("Failed to atomically record rollback for action %s: %s", action_id, consume_err)
+                            res = RollbackStepResult(
+                                ok=False,
+                                action=action_name,
+                                message=f"Rollback succeeded locally but atomic ledger consumption failed: {consume_err}",
+                                error="UNDO_CONSUMPTION_FAILED",
+                            )
                     return res
+
             except Exception as e:
                 logger.error("Failed to rollback last reversible action for %s: %s", task_id, e)
 

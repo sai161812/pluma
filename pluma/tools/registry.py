@@ -14,18 +14,20 @@ from __future__ import annotations
 
 import concurrent.futures
 import multiprocessing
+import os
 import threading
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
+
+from dataclasses import dataclass, field
 from pydantic import BaseModel, ValidationError
 
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 
-# Bounded thread pool — ensures 20 simultaneous timeouts do not exhaust capacity
-# beyond max_workers; threads stay alive but the pool reuses slots after timeout.
+# Bounded thread pool — used only for read-only tools when process isolation is unavailable
 _GLOBAL_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=16,
+    max_workers=32,
     thread_name_prefix="pluma_tool_exec",
 )
 
@@ -33,16 +35,188 @@ _GLOBAL_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 _MP_CONTEXT = multiprocessing.get_context("spawn")
 
 
-def _mp_worker_runner(conn: Any, executor_fn: Callable[..., Any], args: Dict[str, Any], task_context: Any) -> None:
-    """Entry point for process-isolated tool execution."""
-    try:
+@dataclass
+class WorkerRequest:
+    """Serializable request sent to the isolated worker process."""
+    task_id: str
+    tool_name: str
+    validated_args: Dict[str, Any]
+    timeout_s: float
+    cancellation_metadata: Dict[str, Any] = field(default_factory=dict)
+    undo_stack: List[Dict[str, Any]] = field(default_factory=list)
+    env_overrides: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class WorkerResource:
+    """Serializable record of a resource created by a tool in worker."""
+    resource_type: str
+    ownership: str
+    external_id: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class WorkerResponse:
+    """Serializable response returned from the worker process."""
+    result: ToolResult
+    owned_resources: List[WorkerResource] = field(default_factory=list)
+    undo_data: Optional[Dict[str, Any]] = None
+    final_undo_stack: Optional[List[Dict[str, Any]]] = None
+    error: Optional[str] = None
+
+
+class WorkerTaskContext:
+    """Lightweight serializable task context passed into the isolated worker process."""
+    def __init__(self, task_id: Optional[str] = None) -> None:
+        self.task_id = task_id
+        self.owned_resources: List[WorkerResource] = []
+        self.undo_stack: List[Dict[str, Any]] = []
+
+    def register_owned_resource(
+        self,
+        resource_type: str,
+        ownership: Any,
+        external_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        ownership_val = getattr(ownership, "value", str(ownership))
+        safe_meta: Dict[str, Any] = {}
+        if metadata:
+            for k, v in metadata.items():
+                if k == "persistent_job":
+                    continue
+                try:
+                    import pickle
+                    pickle.dumps(v)
+                    safe_meta[k] = v
+                except Exception:
+                    safe_meta[k] = str(v)
+        self.owned_resources.append(
+            WorkerResource(
+                resource_type=resource_type,
+                ownership=ownership_val,
+                external_id=external_id,
+                metadata=safe_meta,
+            )
+        )
+
+
+def _persistent_worker_loop(conn: Any) -> None:
+    """Worker process loop that executes tool requests."""
+    while True:
         try:
-            res = executor_fn(args, task_context)
-        except TypeError:
-            res = executor_fn(args)
-        conn.send(("ok", res))
-    except Exception as exc:
-        conn.send(("error", str(exc)))
+            item = conn.recv()
+            if item == "STOP":
+                break
+            executor_fn, args, worker_req = item
+            if getattr(worker_req, "env_overrides", None):
+                os.environ.update(worker_req.env_overrides)
+            worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
+            worker_ctx.undo_stack = list(worker_req.undo_stack)
+            try:
+                res = executor_fn(args, worker_ctx)
+            except TypeError:
+                res = executor_fn(args)
+            undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
+            resp = WorkerResponse(
+                result=res,
+                owned_resources=worker_ctx.owned_resources,
+                undo_data=undo_data,
+                final_undo_stack=worker_ctx.undo_stack,
+            )
+            conn.send(("ok", resp))
+        except (EOFError, KeyboardInterrupt):
+            break
+        except Exception as exc:
+            try:
+                conn.send(("error", str(exc)))
+            except Exception:
+                break
+
+
+class _IsolatedWorkerProcess:
+    """Manages an isolated killable worker process for tool execution."""
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._proc: Optional[multiprocessing.Process] = None
+        self._conn: Optional[Any] = None
+
+    def _ensure_started(self) -> None:
+        if self._proc is not None and self._proc.is_alive() and self._conn is not None:
+            return
+        self._terminate_internal()
+        parent_conn, child_conn = multiprocessing.Pipe()
+        proc = multiprocessing.Process(
+            target=_persistent_worker_loop,
+            args=(child_conn,),
+            daemon=True,
+        )
+        proc.start()
+        child_conn.close()
+        self._proc = proc
+        self._conn = parent_conn
+
+    def _terminate_internal(self) -> None:
+        if self._conn:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+        if self._proc:
+            try:
+                self._proc.kill()
+            except Exception:
+                pass
+            try:
+                self._proc.join(timeout=0.5)
+            except Exception:
+                pass
+            self._proc = None
+
+    def execute(
+        self,
+        executor_fn: Callable[..., Any],
+        validated_args: Dict[str, Any],
+        worker_req: WorkerRequest,
+        timeout_s: float,
+        task_context: Any = None,
+    ) -> Tuple[str, Any]:
+        with self._lock:
+            self._ensure_started()
+            assert self._conn is not None
+            assert self._proc is not None
+
+            try:
+                self._conn.send((executor_fn, validated_args, worker_req))
+            except Exception:
+                # Pipe broken because previous worker process died — restart and retry once
+                self._terminate_internal()
+                self._ensure_started()
+                try:
+                    self._conn.send((executor_fn, validated_args, worker_req))
+                except Exception as send_err:
+                    self._terminate_internal()
+                    return ("error", f"Failed to send request to worker: {send_err}")
+
+            if self._conn.poll(timeout_s):
+                try:
+                    status, payload = self._conn.recv()
+                    return (status, payload)
+                except Exception as recv_err:
+                    self._terminate_internal()
+                    return ("error", f"Worker communication error: {recv_err}")
+            else:
+                # Hard timeout: forcefully terminate worker process and all children
+                self._terminate_internal()
+                return ("timeout", f"Tool execution timed out after {timeout_s:.3f}s")
+
+
+
+_GLOBAL_WORKER_POOL = _IsolatedWorkerProcess()
+
+
 
 
 class UnknownToolError(KeyError):
@@ -256,99 +430,141 @@ class ToolRegistry:
         timeout_s = spec.timeout_s if spec.timeout_s and spec.timeout_s > 0 else 30.0
         result: Optional[ToolResult] = None
 
-        # Attempt killable process isolation first for non-cooperative side-effect containment
+        task_id = getattr(task_context, "task_id", None) if task_context else None
+        ctx_undo_stack: List[Dict[str, Any]] = []
+        if task_context and hasattr(task_context, "undo_stack"):
+            for u in task_context.undo_stack:
+                try:
+                    import pickle
+                    pickle.dumps(u)
+                    ctx_undo_stack.append(dict(u))
+                except Exception:
+                    pass
+
+        env_flags = {
+            k: v for k, v in os.environ.items()
+            if k.startswith("PLUMA_")
+        }
+        worker_req = WorkerRequest(
+            task_id=task_id,
+            tool_name=tool_name,
+            validated_args=validated_args,
+            timeout_s=timeout_s,
+            undo_stack=ctx_undo_stack,
+            env_overrides=env_flags,
+        )
+
+
         use_process_isolation = False
         try:
-            # Check if executor and args can be serialized
             import pickle
             pickle.dumps(spec.executor)
             pickle.dumps(validated_args)
-            # If task_context is present, check if it can be serialized or if proxy is needed
-            if task_context is not None:
-                pickle.dumps(task_context)
+            pickle.dumps(worker_req)
             use_process_isolation = True
         except Exception:
             use_process_isolation = False
 
         if use_process_isolation:
             try:
-                parent_conn, child_conn = multiprocessing.Pipe()
-                proc = multiprocessing.Process(
-                    target=_mp_worker_runner,
-                    args=(child_conn, spec.executor, validated_args, task_context),
+                status, payload = _GLOBAL_WORKER_POOL.execute(
+                    spec.executor,
+                    validated_args,
+                    worker_req,
+                    timeout_s,
+                    task_context=task_context,
                 )
-                proc.daemon = True
-                proc.start()
-                child_conn.close()
-
-                if parent_conn.poll(timeout_s):
-                    status, payload = parent_conn.recv()
-                    proc.join(timeout=1.0)
-                    if status == "ok":
-                        result = payload
-                    else:
-                        result = ToolResult.failure(tool_name, payload)
-                else:
-                    # Hard timeout: forcefully kill the worker process so NO delayed side effect can run
-                    proc.kill()
-                    proc.join(timeout=1.0)
+                if status == "ok" and isinstance(payload, WorkerResponse):
+                    result = payload.result
+                    # Propagate resources created by worker into parent TaskCapsule
+                    if task_context and hasattr(task_context, "register_owned_resource"):
+                        for wr in payload.owned_resources:
+                            try:
+                                task_context.register_owned_resource(
+                                    resource_type=wr.resource_type,
+                                    ownership=wr.ownership,
+                                    external_id=wr.external_id,
+                                    metadata=wr.metadata,
+                                )
+                            except Exception:
+                                pass
+                    # Propagate worker undo stack sync
+                    if payload.final_undo_stack is not None and task_context and hasattr(task_context, "undo_stack"):
+                        task_context.undo_stack.clear()
+                        task_context.undo_stack.extend(payload.final_undo_stack)
+                    elif payload.undo_data and task_context and hasattr(task_context, "undo_stack") and payload.undo_data not in task_context.undo_stack:
+                        task_context.undo_stack.append(payload.undo_data)
+                elif status == "ok" and isinstance(payload, ToolResult):
+                    result = payload
+                elif status == "timeout":
                     duration_ms = (time.perf_counter() - start_t) * 1000.0
-
                     if task_context and hasattr(task_context, "cancellation_token"):
                         try:
                             task_context.cancellation_token.cancel()
                         except Exception:
                             pass
-
                     if task_context and getattr(task_context, "job_object", None) is not None:
                         try:
                             task_context.job_object.terminate()
                         except Exception:
                             pass
-
                     result = ToolResult.failure(
                         tool_name,
                         f"Tool execution timed out after {timeout_s:.3f}s",
                         error_code="TOOL_TIMEOUT",
                         duration_ms=duration_ms,
                     )
-                parent_conn.close()
+                else:
+                    result = ToolResult.failure(tool_name, str(payload))
             except Exception as mp_exc:
                 result = None
 
+
         if result is None:
-            # In-process execution with thread pool
-            try:
-                future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args, task_context)
-                try:
-                    result = future.result(timeout=timeout_s)
-                except (TimeoutError, concurrent.futures.TimeoutError):
-                    future.cancel()
-                    duration_ms = (time.perf_counter() - start_t) * 1000.0
-
-                    if task_context and hasattr(task_context, "cancellation_token"):
-                        try:
-                            task_context.cancellation_token.cancel()
-                        except Exception:
-                            pass
-
-                    if task_context and getattr(task_context, "job_object", None) is not None:
-                        try:
-                            task_context.job_object.terminate()
-                        except Exception:
-                            pass
-
-                    result = ToolResult.failure(
-                        tool_name,
-                        f"Tool execution timed out after {timeout_s:.3f}s",
-                        error_code="TOOL_TIMEOUT",
-                        duration_ms=duration_ms,
-                    )
-            except Exception as e:
+            # If process isolation could not be used (e.g. non-pickleable test mock):
+            # State-changing / external tools must NEVER run in uncontrolled threads (fail-closed)
+            if spec.risk_class != RiskClass.READ:
                 duration_ms = (time.perf_counter() - start_t) * 1000.0
-                result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
+                result = ToolResult.failure(
+                    tool_name,
+                    f"Process isolation failed for state-changing tool '{tool_name}'. Fail-closed.",
+                    error_code="PROCESS_ISOLATION_FAILED",
+                    duration_ms=duration_ms,
+                )
+            else:
+                # In-process execution with thread pool allowed ONLY for pure read-only tools
+                try:
+                    future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args, task_context)
+                    try:
+                        result = future.result(timeout=timeout_s)
+                    except (TimeoutError, concurrent.futures.TimeoutError):
+                        future.cancel()
+                        duration_ms = (time.perf_counter() - start_t) * 1000.0
+
+                        if task_context and hasattr(task_context, "cancellation_token"):
+                            try:
+                                task_context.cancellation_token.cancel()
+                            except Exception:
+                                pass
+
+                        if task_context and getattr(task_context, "job_object", None) is not None:
+                            try:
+                                task_context.job_object.terminate()
+                            except Exception:
+                                pass
+
+                        result = ToolResult.failure(
+                            tool_name,
+                            f"Tool execution timed out after {timeout_s:.3f}s",
+                            error_code="TOOL_TIMEOUT",
+                            duration_ms=duration_ms,
+                        )
+                except Exception as e:
+                    duration_ms = (time.perf_counter() - start_t) * 1000.0
+                    result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
 
         duration_ms = (time.perf_counter() - start_t) * 1000.0
+
 
 
         # 5. Postcondition verification
