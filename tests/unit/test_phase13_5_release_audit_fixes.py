@@ -378,21 +378,21 @@ def test_audit_invalid_window_handles_fail_closed() -> None:
     assert res_fake.error_code in ("WINDOW_NOT_FOUND", "INVALID_HWND")
 
 
-def test_audit_timeout_aborts_task_token_and_prevents_side_effects() -> None:
+def _audit_mutating_slow_executor(args: dict, context: any = None) -> ToolResult:
+    time.sleep(1.0)
+    side_effect_file = args.get("side_effect_file")
+    if side_effect_file:
+        with open(side_effect_file, "w") as f:
+            f.write("UNEXPECTED_MUTATION")
+    return ToolResult.success("mutating_slow", {})
+
+
+def test_audit_timeout_aborts_task_token_and_prevents_side_effects(tmp_path: Path) -> None:
     """Audit: Verify tool timeout cancels task token to prevent post-timeout side effects."""
     from pluma.verify.common import verify_noop
 
     reg = ToolRegistry()
-    side_effect_occurred = False
-
-    def mutating_slow_executor(args: dict, context: any) -> ToolResult:
-        nonlocal side_effect_occurred
-        time.sleep(0.3)
-        # If cancellation token was checked, side effect does not run
-        if context and hasattr(context, "cancellation_token") and context.cancellation_token.is_cancelled:
-            return ToolResult.failure("mutating_slow", "Cancelled", error_code="TASK_CANCELLED")
-        side_effect_occurred = True
-        return ToolResult.success("mutating_slow", {})
+    side_file = str(tmp_path / "side_effect.txt")
 
     reg.register(ToolSpec(
         name="mutating_slow",
@@ -401,18 +401,19 @@ def test_audit_timeout_aborts_task_token_and_prevents_side_effects() -> None:
         args_schema={},
         risk_class=RiskClass.HIGH,
         timeout_s=0.05,  # 50ms
-        executor=mutating_slow_executor,
+        executor=_audit_mutating_slow_executor,
         verifier=verify_noop,
     ))
 
     supervisor = TaskSupervisor()
     capsule = supervisor.create_task_capsule(request_id="req-timeout-token-test")
 
-    res = reg.execute("mutating_slow", {}, task_context=capsule)
+    res = reg.execute("mutating_slow", {"side_effect_file": side_file}, task_context=capsule)
     assert res.ok is False
     assert res.error_code == "TOOL_TIMEOUT"
     assert capsule.cancellation_token.is_cancelled is True
 
-    # Give thread time to finish sleeping and verify cancellation prevented mutation
-    time.sleep(0.35)
-    assert side_effect_occurred is False, "Side-effect occurred after timeout!"
+    # Give process time to ensure it was killed
+    time.sleep(1.1)
+    assert not os.path.exists(side_file), "Side-effect occurred after timeout!"
+

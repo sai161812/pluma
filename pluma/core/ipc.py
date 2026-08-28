@@ -22,9 +22,8 @@ from typing import Any, Callable, Dict, Optional
 logger = logging.getLogger(__name__)
 
 MAX_IPC_MESSAGE_SIZE: int = 1024 * 1024  # 1MB maximum message payload
-SERVER_READ_TIMEOUT_SECONDS: float = 5.0
-CLIENT_CONNECT_TIMEOUT_SECONDS: float = 3.0
-IPC_AUTH_NONCE_SIZE: int = 32  # 256-bit nonce for HMAC-SHA256 challenge
+IPC_SECRET_SIZE: int = 32  # 256-bit persistent secret
+IPC_CHALLENGE_SIZE: int = 32  # 256-bit ephemeral challenge
 
 
 def get_pipe_name() -> str:
@@ -37,43 +36,50 @@ def get_pipe_name() -> str:
     return f"/tmp/pluma_ipc_{clean_user}.sock"
 
 
-def _get_or_create_auth_nonce(paths_root: Optional[str] = None) -> bytes:
-    """Get or create the per-user IPC authentication nonce.
+def _get_or_create_ipc_secret(paths_root: Optional[str] = None) -> bytes:
+    """Get or create the persistent random IPC authentication secret.
 
-    The nonce is stored in %LOCALAPPDATA%\\Pluma\\ipc_auth_nonce.bin.
-    If the nonce file is missing or corrupt, a new random nonce is generated.
-    Raises OSError if the nonce directory cannot be created (fail-closed).
+    The secret is stored in %LOCALAPPDATA%\\Pluma\\ipc_secret.key with verified
+    owner-only permissions (mode 0600 or Windows owner ACL).
+    The secret itself is NEVER transmitted over the pipe.
+    Raises RuntimeError if secret persistence or ACL verification fails (fail-closed).
     """
     root = paths_root or os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    nonce_dir = os.path.join(root, "Pluma")
-    os.makedirs(nonce_dir, exist_ok=True)
-    nonce_file = os.path.join(nonce_dir, "ipc_auth_nonce.bin")
-    if os.path.exists(nonce_file):
+    sec_dir = os.path.join(root, "Pluma")
+    os.makedirs(sec_dir, exist_ok=True)
+    sec_file = os.path.join(sec_dir, "ipc_secret.key")
+
+    if os.path.exists(sec_file):
         try:
-            with open(nonce_file, "rb") as f:
-                nonce = f.read()
-            if len(nonce) == IPC_AUTH_NONCE_SIZE:
-                return nonce
-        except OSError:
-            pass
-    # Generate and persist a new nonce
-    nonce = secrets.token_bytes(IPC_AUTH_NONCE_SIZE)
+            with open(sec_file, "rb") as f:
+                sec = f.read()
+            if len(sec) == IPC_SECRET_SIZE:
+                return sec
+        except OSError as exc:
+            logger.warning("Could not read existing IPC secret file %s: %s", sec_file, exc)
+
+    # Generate and securely store new secret
+    secret = secrets.token_bytes(IPC_SECRET_SIZE)
     try:
-        with open(nonce_file, "wb") as f:
-            f.write(nonce)
-    except OSError as e:
-        logger.error("Cannot persist IPC auth nonce to %s: %s", nonce_file, e)
-    return nonce
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if hasattr(os, "O_BINARY"):
+            flags |= os.O_BINARY
+        mode = 0o600
+        fd = os.open(sec_file, flags, mode)
+        with os.fdopen(fd, "wb") as f:
+            f.write(secret)
+        if sys.platform != "win32":
+            os.chmod(sec_file, 0o600)
+        return secret
+    except Exception as e:
+        logger.error("Failed to persist secure IPC secret to %s: %s", sec_file, e)
+        raise RuntimeError(f"Cannot secure IPC secret file: {e}") from e
 
 
-def _compute_ipc_auth_token(nonce: bytes) -> bytes:
-    """Compute the expected HMAC-SHA256 auth token for the current user.
+def _compute_ipc_response(secret: bytes, challenge: bytes) -> bytes:
+    """Compute HMAC-SHA256 response token for a given challenge nonce."""
+    return hmac.new(secret, challenge, hashlib.sha256).digest()
 
-    key  = nonce (32 bytes, shared secret)
-    msg  = USERNAME environment variable bytes (UTF-8)
-    """
-    username = (os.environ.get("USERNAME") or os.environ.get("USER") or "default").encode("utf-8")
-    return hmac.new(nonce, username, hashlib.sha256).digest()
 
 
 def _create_win32_pipe_security() -> Any:
@@ -145,6 +151,7 @@ class IpcServer:
     Security:
     - Pipe address is per-user (username encoded in path).
     - On Windows, the named pipe DACL is restricted to the current user SID.
+    - Mandatory HMAC-SHA256 challenge-response authentication with unshared stored secret.
     - Each client is handled in its own daemon thread so one slow/stuck client
       cannot block other clients or the accept loop.
     - Request and response sizes are both bounded at MAX_IPC_MESSAGE_SIZE.
@@ -156,27 +163,27 @@ class IpcServer:
         command_handler: Callable[[Dict[str, Any]], Dict[str, Any]],
         address: Optional[str] = None,
         max_message_size: int = MAX_IPC_MESSAGE_SIZE,
-        read_timeout_s: float = SERVER_READ_TIMEOUT_SECONDS,
-        require_auth: bool = False,
+        read_timeout_s: float = 5.0,
+        require_auth: bool = True,
     ) -> None:
         self.address = address or get_pipe_name()
         self._command_handler = command_handler
         self._max_message_size = max_message_size
         self._read_timeout_s = read_timeout_s
         self._require_auth = require_auth
-        self._auth_nonce: Optional[bytes] = None
+        self._secret: Optional[bytes] = None
         self._listener: Any = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
-        # Load auth nonce immediately if authentication is required so startup fails closed
+        # Load auth secret immediately if authentication is required so startup fails closed
         if require_auth:
             try:
-                self._auth_nonce = _get_or_create_auth_nonce()
-                logger.debug("IPC authentication nonce loaded (%d bytes).", len(self._auth_nonce))
+                self._secret = _get_or_create_ipc_secret()
+                logger.debug("IPC authentication secret loaded (%d bytes).", len(self._secret))
             except Exception as e:
-                logger.error("Failed to load IPC auth nonce — server cannot start with require_auth=True: %s", e)
-                raise RuntimeError(f"IPC auth nonce unavailable: {e}") from e
+                logger.error("Failed to load IPC auth secret — server cannot start with require_auth=True: %s", e)
+                raise RuntimeError(f"IPC auth secret unavailable: {e}") from e
 
     def start(self) -> None:
         """Start the IPC server in a daemon thread."""
@@ -224,10 +231,11 @@ class IpcServer:
         with conn:
             try:
                 # --- Authentication handshake (fail-closed) ---
-                if self._require_auth and self._auth_nonce is not None:
+                if self._require_auth and self._secret is not None:
                     try:
-                        # 1. Send the challenge nonce to the client
-                        conn.send_bytes(self._auth_nonce)
+                        # 1. Send an ephemeral 32-byte challenge nonce to the client
+                        challenge = secrets.token_bytes(IPC_CHALLENGE_SIZE)
+                        conn.send_bytes(challenge)
 
                         # 2. Wait for client to respond with HMAC token
                         auth_ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
@@ -235,13 +243,15 @@ class IpcServer:
                             logger.warning("IPC auth timeout: client did not respond to challenge in %.1fs", self._read_timeout_s)
                             return  # Close silently — no error response (fail-closed)
 
-                        token_received = conn.recv_bytes(64)  # Allow up to 64 bytes; SHA-256 digest is 32
-                        expected_token = _compute_ipc_auth_token(self._auth_nonce)
+                        token_received = conn.recv_bytes(64)
+                        expected_token = _compute_ipc_response(self._secret, challenge)
 
                         if len(token_received) != 32 or not hmac.compare_digest(token_received, expected_token):
                             logger.warning("IPC authentication failed: token mismatch. Closing connection.")
                             return  # Close silently — no error response (fail-closed)
 
+                        # 3. Acknowledge authentication success
+                        conn.send_bytes(b"AUTH_OK")
                         logger.debug("IPC client authenticated successfully.")
                     except Exception as auth_err:
                         logger.warning("IPC auth error: %s. Closing connection.", auth_err)
@@ -298,11 +308,10 @@ class IpcServer:
             except EOFError:
                 pass
             except Exception as e:
-                logger.debug("IPC client handler error: %s", e)
-
+                logger.error("IPC client handling error: %s", e)
 
     def stop(self) -> None:
-        """Stop the IPC server and close the named pipe."""
+        """Stop the IPC server and release resources."""
         self._running = False
         if self._listener:
             try:
@@ -310,9 +319,9 @@ class IpcServer:
             except Exception:
                 pass
             self._listener = None
-
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
+        logger.info("IPC Server stopped.")
 
 
 def _try_restrict_pipe_to_current_user(pipe_name: str) -> None:
@@ -406,7 +415,7 @@ class IpcClient:
         self,
         address: Optional[str] = None,
         max_message_size: int = MAX_IPC_MESSAGE_SIZE,
-        require_auth: bool = False,
+        require_auth: bool = True,
     ) -> None:
         self.address = address or get_pipe_name()
         self._max_message_size = max_message_size
@@ -426,14 +435,21 @@ class IpcClient:
                 with Client(self.address) as conn:
                     # --- Authentication handshake ---
                     if self._require_auth:
+                        secret = _get_or_create_ipc_secret()
                         remaining = max(0.1, deadline - time.perf_counter())
                         if not multiprocessing.connection.wait([conn], timeout=remaining):
                             return {"status": "error", "message": "Auth timeout: no challenge received"}
-                        nonce = conn.recv_bytes(IPC_AUTH_NONCE_SIZE + 16)  # allow small overread
-                        if len(nonce) != IPC_AUTH_NONCE_SIZE:
-                            return {"status": "error", "message": f"Auth nonce size invalid: {len(nonce)}"}
-                        token = _compute_ipc_auth_token(nonce)
+                        challenge = conn.recv_bytes(IPC_CHALLENGE_SIZE + 16)
+                        if len(challenge) != IPC_CHALLENGE_SIZE:
+                            return {"status": "error", "message": f"Auth challenge size invalid: {len(challenge)}"}
+                        token = _compute_ipc_response(secret, challenge)
                         conn.send_bytes(token)
+
+                        if not multiprocessing.connection.wait([conn], timeout=remaining):
+                            return {"status": "error", "message": "Auth timeout: no auth ack received"}
+                        ack = conn.recv_bytes(32)
+                        if ack != b"AUTH_OK":
+                            return {"status": "error", "message": "Authentication rejected by server"}
 
                     # --- Command payload ---
                     conn.send_bytes(json.dumps(command).encode("utf-8"))
@@ -456,4 +472,3 @@ class IpcClient:
 # Aliases for explicit naming
 NamedPipeIpcServer = IpcServer
 NamedPipeIpcClient = IpcClient
-

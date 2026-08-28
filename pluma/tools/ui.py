@@ -38,30 +38,25 @@ class InspectActiveWindowArgs(BaseModel):
 class ClickElementArgs(BaseModel):
     """Arguments for click_element."""
     model_config = {"extra": "forbid"}
-    name: Optional[str] = Field(default=None, description="Name or title text of the target UI element.")
-    auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of the target element.")
-    control_type: Optional[str] = Field(default=None, description="UIA control type (e.g. 'Button', 'MenuItem').")
-    hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
-    snapshot_id: Optional[str] = Field(default=None, description="Snapshot ID this click is grounded in.")
-    target_ref: Optional[str] = Field(default=None, description="Semantic reference string from UI snapshot.")
-
-    @model_validator(mode="after")
-    def _require_identifier(self) -> "ClickElementArgs":
-        if not self.name and not self.auto_id and not self.control_type and not self.target_ref:
-            raise ValueError("At least one of 'name', 'auto_id', 'control_type', or 'target_ref' must be specified.")
-        return self
+    snapshot_id: str = Field(description="Mandatory snapshot ID this click is grounded in.")
+    target_ref: str = Field(description="Mandatory semantic reference string from UI snapshot (snapshot_id::element_id).")
+    hwnd: Optional[int] = Field(default=None, description="Target window HWND.")
+    name: Optional[str] = Field(default=None, description="Name or title text of target element.")
+    auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of target element.")
+    control_type: Optional[str] = Field(default=None, description="UIA control type.")
 
 
 class TypeIntoElementArgs(BaseModel):
     """Arguments for type_into_element."""
     model_config = {"extra": "forbid"}
     text: str = Field(description="Text to type or set into the target element.")
-    name: Optional[str] = Field(default=None, description="Name or label of the target editable element.")
-    auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of the editable element.")
-    hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
+    snapshot_id: str = Field(description="Mandatory snapshot ID this typing action is grounded in.")
+    target_ref: str = Field(description="Mandatory semantic reference string from UI snapshot (snapshot_id::element_id).")
+    hwnd: Optional[int] = Field(default=None, description="Target window HWND.")
+    name: Optional[str] = Field(default=None, description="Name or label of target editable element.")
+    auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of editable element.")
     clear_existing: bool = Field(default=True, description="Clear existing text before typing.")
-    snapshot_id: Optional[str] = Field(default=None, description="Snapshot ID this typing action is grounded in.")
-    target_ref: Optional[str] = Field(default=None, description="Semantic reference string from UI snapshot.")
+
 
 
 # ---------------------------------------------------------------------------
@@ -106,16 +101,18 @@ def execute_inspect_active_window(args: Dict[str, Any], task_context: Any = None
                     logger.warning("Failed to register snapshot in registry: %s", reg_err)
 
         # Build controls summary; include target_ref values anchored to snapshot_id
+        # Build controls summary; include target_ref values anchored to snapshot_id and element_id
         controls_summary = [
             {
+                "element_id": c.element_id,
                 "label": c.label,
                 "control_type": c.control_type,
                 "auto_id": c.uia_automation_id,
                 "bounds": c.bounds.model_dump(),
                 "capability": c.invocation_capability,
-                # target_ref encodes snapshot + element identity for grounded UI actions
+                # target_ref encodes snapshot + exact element_id for grounded UI actions
                 "target_ref": (
-                    f"{snapshot_id}::{c.uia_automation_id or c.label or c.control_type}"
+                    f"{snapshot_id}::{c.element_id}"
                     if snapshot_id else None
                 ),
             }
@@ -163,63 +160,81 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
             verified=False, error="TASK_CANCELLED",
         )
 
-    name = args.get("name")
-    auto_id = args.get("auto_id")
-    control_type = args.get("control_type")
-    hwnd = args.get("hwnd")
     snapshot_id = args.get("snapshot_id")
+    target_ref = args.get("target_ref")
 
-    # --- Snapshot grounding FIRST (before any window/hardware access) ---
-    # Reject invented, expired, or unverifiable snapshot references immediately.
-    if snapshot_id:
-        snapshot_registry = getattr(task_context, "snapshot_registry", None)
-        if snapshot_registry is not None:
-            from pluma.perception.snapshot_registry import SnapshotNotFoundError
-            from pluma.perception.element_refs import StaleSnapshotError
-            try:
-                snapshot_registry.resolve(snapshot_id)
-            except SnapshotNotFoundError as e:
-                return ToolResult(
-                    ok=False, tool="click_element", data=args,
-                    factual_message=f"Snapshot grounding failed: {e}",
-                    verified=False, error=str(e),
-                )
-            except StaleSnapshotError as e:
-                return ToolResult(
-                    ok=False, tool="click_element", data=args,
-                    factual_message=f"Snapshot grounding failed: {e}",
-                    verified=False, error=str(e),
-                )
-        else:
-            # No registry on task_context — cannot verify provenance of snapshot_id
-            return ToolResult(
-                ok=False, tool="click_element", data=args,
-                factual_message=(
-                    f"Snapshot grounding rejected: no snapshot registry on task_context. "
-                    f"snapshot_id={snapshot_id!r} cannot be verified."
-                ),
-                verified=False, error="NO_SNAPSHOT_REGISTRY",
-            )
+    if not snapshot_id or not target_ref:
+        return ToolResult(
+            ok=False, tool="click_element", data=args,
+            factual_message="UI grounding rejected: snapshot_id and target_ref are mandatory for click_element.",
+            verified=False, error="UNGROUNDED_UI_ACTION",
+        )
+
+    snapshot_registry = getattr(task_context, "snapshot_registry", None)
+    if snapshot_registry is None:
+        return ToolResult(
+            ok=False, tool="click_element", data=args,
+            factual_message="Snapshot grounding rejected: no snapshot registry on task_context.",
+            verified=False, error="NO_SNAPSHOT_REGISTRY",
+        )
+
+    from pluma.perception.snapshot_registry import SnapshotNotFoundError, ElementNotFoundInSnapshotError
+    from pluma.perception.element_refs import StaleSnapshotError
+
+    try:
+        snapshot = snapshot_registry.resolve(snapshot_id)
+    except SnapshotNotFoundError as e:
+        return ToolResult(ok=False, tool="click_element", data=args, factual_message=f"Snapshot grounding failed: {e}", verified=False, error=str(e))
+    except StaleSnapshotError as e:
+        return ToolResult(ok=False, tool="click_element", data=args, factual_message=f"Snapshot grounding failed: {e}", verified=False, error=str(e))
+
+    element_id = target_ref.split("::")[-1]
+    try:
+        element = snapshot_registry.resolve_element(snapshot_id, element_id)
+    except (ElementNotFoundInSnapshotError, Exception) as e:
+        return ToolResult(ok=False, tool="click_element", data=args, factual_message=f"Element target_ref resolution failed: {e}", verified=False, error=str(e))
 
     context = ActiveWindowContext()
-    if hwnd is None:
-        active = context.get_active_window()
-        if not active.is_valid or not active.hwnd:
-            return ToolResult(
-                ok=False,
-                tool="click_element",
-                data=args,
-                factual_message="Cannot click element: no active foreground window found.",
-                verified=False,
-                error="No active window.",
-            )
-        hwnd = active.hwnd
-    else:
-        # Verify foreground active window focus matches target hwnd
-        active = context.get_active_window()
-        if active.is_valid and active.hwnd and active.hwnd != hwnd:
-            logger.debug("Active window HWND %d differs from target HWND %d", active.hwnd, hwnd)
+    active = context.get_active_window()
+    if not active.is_valid or not active.hwnd:
+        return ToolResult(
+            ok=False, tool="click_element", data=args,
+            factual_message="Cannot click element: no active foreground window found.",
+            verified=False, error="NO_ACTIVE_WINDOW",
+        )
 
+    # Revalidate active window identity against snapshot
+    if snapshot.hwnd and active.hwnd != snapshot.hwnd:
+        return ToolResult(
+            ok=False, tool="click_element", data=args,
+            factual_message=f"Active window HWND changed from {snapshot.hwnd} to {active.hwnd}",
+            verified=False, error="WINDOW_MISMATCH", error_code="WINDOW_MISMATCH",
+        )
+    if snapshot.pid and active.pid and active.pid != snapshot.pid:
+        return ToolResult(
+            ok=False, tool="click_element", data=args,
+            factual_message=f"Active window PID changed from {snapshot.pid} to {active.pid}",
+            verified=False, error="PROCESS_MISMATCH", error_code="PROCESS_MISMATCH",
+        )
+    if snapshot.process_creation_time_ns and active.pid:
+        cur_t = context.get_process_creation_time_ns(active.pid)
+        if cur_t and cur_t != snapshot.process_creation_time_ns:
+            return ToolResult(
+                ok=False, tool="click_element", data=args,
+                factual_message="Process creation timestamp mismatch (recycled PID).",
+                verified=False, error="PROCESS_IDENTITY_MISMATCH", error_code="PROCESS_IDENTITY_MISMATCH",
+            )
+    if snapshot.dpi_scale and abs(active.dpi_scale - snapshot.dpi_scale) > 0.05:
+        return ToolResult(
+            ok=False, tool="click_element", data=args,
+            factual_message=f"DPI scaling changed from {snapshot.dpi_scale} to {active.dpi_scale}",
+            verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
+        )
+
+    hwnd = active.hwnd
+    auto_id = element.uia_automation_id or args.get("auto_id")
+    name = element.label or args.get("name")
+    control_type = element.control_type or args.get("control_type")
 
     adapter = UiaAdapter()
     verifier = ScreenVerifier(uia_adapter=adapter)
@@ -239,28 +254,22 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
         return ToolResult(
             ok=True,
             tool="click_element",
-            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "control_type": control_type, "snapshot_id": snapshot_id},
+            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "control_type": control_type, "snapshot_id": snapshot_id, "target_ref": target_ref},
             factual_message=f"Clicked UI element '{target_label}' in window HWND {hwnd}.",
             verified=v_res.ok,
             verify_detail=v_res,
         )
     except (ElementNotFoundError, ElementUnavailableError, WindowNotFoundError) as known_exc:
         return ToolResult(
-            ok=False,
-            tool="click_element",
-            data=args,
+            ok=False, tool="click_element", data=args,
             factual_message=f"Failed to click element: {known_exc}",
-            verified=False,
-            error=str(known_exc),
+            verified=False, error=str(known_exc), error_code="ELEMENT_NOT_FOUND",
         )
     except Exception as exc:
         return ToolResult(
-            ok=False,
-            tool="click_element",
-            data=args,
+            ok=False, tool="click_element", data=args,
             factual_message=f"Error clicking UI element: {exc}",
-            verified=False,
-            error=str(exc),
+            verified=False, error=str(exc), error_code="CLICK_FAILED",
         )
 
 
@@ -270,61 +279,86 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
         return ToolResult(
             ok=False, tool="type_into_element", data=args,
             factual_message="Task cancelled before typing could execute.",
-            verified=False, error="TASK_CANCELLED",
+            verified=False, error="TASK_CANCELLED", error_code="TASK_CANCELLED",
         )
 
     text = args["text"]
-    name = args.get("name")
-    auto_id = args.get("auto_id")
-    hwnd = args.get("hwnd")
     clear_existing = args.get("clear_existing", True)
     snapshot_id = args.get("snapshot_id")
+    target_ref = args.get("target_ref")
 
-    # --- Snapshot grounding FIRST (before any window/hardware access) ---
-    if snapshot_id:
-        snapshot_registry = getattr(task_context, "snapshot_registry", None)
-        if snapshot_registry is not None:
-            from pluma.perception.snapshot_registry import SnapshotNotFoundError
-            from pluma.perception.element_refs import StaleSnapshotError
-            try:
-                snapshot_registry.resolve(snapshot_id)
-            except SnapshotNotFoundError as e:
-                return ToolResult(
-                    ok=False, tool="type_into_element", data=args,
-                    factual_message=f"Snapshot grounding failed: {e}",
-                    verified=False, error=str(e),
-                )
-            except StaleSnapshotError as e:
-                return ToolResult(
-                    ok=False, tool="type_into_element", data=args,
-                    factual_message=f"Snapshot grounding failed: {e}",
-                    verified=False, error=str(e),
-                )
-        else:
-            return ToolResult(
-                ok=False, tool="type_into_element", data=args,
-                factual_message=(
-                    f"Snapshot grounding rejected: no snapshot registry on task_context. "
-                    f"snapshot_id={snapshot_id!r} cannot be verified."
-                ),
-                verified=False, error="NO_SNAPSHOT_REGISTRY",
-            )
+    if not snapshot_id or not target_ref:
+        return ToolResult(
+            ok=False, tool="type_into_element", data=args,
+            factual_message="UI grounding rejected: snapshot_id and target_ref are mandatory for type_into_element.",
+            verified=False, error="UNGROUNDED_UI_ACTION", error_code="UNGROUNDED_UI_ACTION",
+        )
+
+    snapshot_registry = getattr(task_context, "snapshot_registry", None)
+    if snapshot_registry is None:
+        return ToolResult(
+            ok=False, tool="type_into_element", data=args,
+            factual_message="Snapshot grounding rejected: no snapshot registry on task_context.",
+            verified=False, error="NO_SNAPSHOT_REGISTRY", error_code="NO_SNAPSHOT_REGISTRY",
+        )
+
+    from pluma.perception.snapshot_registry import SnapshotNotFoundError, ElementNotFoundInSnapshotError
+    from pluma.perception.element_refs import StaleSnapshotError
+
+    try:
+        snapshot = snapshot_registry.resolve(snapshot_id)
+    except SnapshotNotFoundError as e:
+        return ToolResult(ok=False, tool="type_into_element", data=args, factual_message=f"Snapshot grounding failed: {e}", verified=False, error=str(e), error_code="SNAPSHOT_NOT_FOUND")
+    except StaleSnapshotError as e:
+        return ToolResult(ok=False, tool="type_into_element", data=args, factual_message=f"Snapshot grounding failed: {e}", verified=False, error=str(e), error_code="STALE_SNAPSHOT")
+
+    element_id = target_ref.split("::")[-1]
+    try:
+        element = snapshot_registry.resolve_element(snapshot_id, element_id)
+    except (ElementNotFoundInSnapshotError, Exception) as e:
+        return ToolResult(ok=False, tool="type_into_element", data=args, factual_message=f"Element target_ref resolution failed: {e}", verified=False, error=str(e), error_code="ELEMENT_NOT_FOUND")
 
     context = ActiveWindowContext()
-    if hwnd is None:
-        active = context.get_active_window()
-        if not active.is_valid or not active.hwnd:
+    active = context.get_active_window()
+    if not active.is_valid or not active.hwnd:
+        return ToolResult(
+            ok=False, tool="type_into_element", data=args,
+            factual_message="Cannot type: no active foreground window found.",
+            verified=False, error="NO_ACTIVE_WINDOW", error_code="NO_ACTIVE_WINDOW",
+        )
+
+    # Revalidate active window identity against snapshot
+    if snapshot.hwnd and active.hwnd != snapshot.hwnd:
+        return ToolResult(
+            ok=False, tool="type_into_element", data=args,
+            factual_message=f"Active window HWND changed from {snapshot.hwnd} to {active.hwnd}",
+            verified=False, error="WINDOW_MISMATCH", error_code="WINDOW_MISMATCH",
+        )
+    if snapshot.pid and active.pid and active.pid != snapshot.pid:
+        return ToolResult(
+            ok=False, tool="type_into_element", data=args,
+            factual_message=f"Active window PID changed from {snapshot.pid} to {active.pid}",
+            verified=False, error="PROCESS_MISMATCH", error_code="PROCESS_MISMATCH",
+        )
+    if snapshot.process_creation_time_ns and active.pid:
+        cur_t = context.get_process_creation_time_ns(active.pid)
+        if cur_t and cur_t != snapshot.process_creation_time_ns:
             return ToolResult(
-                ok=False,
-                tool="type_into_element",
-                data={"name": name, "auto_id": auto_id},
-                factual_message="Cannot type: no active foreground window found.",
-                verified=False,
-                error="No active window.",
+                ok=False, tool="type_into_element", data=args,
+                factual_message="Process creation timestamp mismatch (recycled PID).",
+                verified=False, error="PROCESS_IDENTITY_MISMATCH", error_code="PROCESS_IDENTITY_MISMATCH",
             )
-        hwnd = active.hwnd
-    else:
-        active = context.get_active_window()
+    if snapshot.dpi_scale and abs(active.dpi_scale - snapshot.dpi_scale) > 0.05:
+        return ToolResult(
+            ok=False, tool="type_into_element", data=args,
+            factual_message=f"DPI scaling changed from {snapshot.dpi_scale} to {active.dpi_scale}",
+            verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
+        )
+
+
+    hwnd = active.hwnd
+    auto_id = element.uia_automation_id or args.get("auto_id")
+    name = element.label or args.get("name")
 
     adapter = UiaAdapter()
     verifier = ScreenVerifier(uia_adapter=adapter)
@@ -350,29 +384,24 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
         return ToolResult(
             ok=True,
             tool="type_into_element",
-            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "text_length": len(text), "snapshot_id": snapshot_id},
+            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "text_length": len(text), "snapshot_id": snapshot_id, "target_ref": target_ref},
             factual_message=f"Typed text into '{target_label}' in window HWND {hwnd}.",
             verified=v_res.ok,
             verify_detail=v_res,
         )
     except (ElementNotFoundError, ElementUnavailableError, WindowNotFoundError) as known_exc:
         return ToolResult(
-            ok=False,
-            tool="type_into_element",
-            data={"name": name, "auto_id": auto_id},
+            ok=False, tool="type_into_element", data=args,
             factual_message=f"Failed to type into element: {known_exc}",
-            verified=False,
-            error=str(known_exc),
+            verified=False, error=str(known_exc),
         )
     except Exception as exc:
         return ToolResult(
-            ok=False,
-            tool="type_into_element",
-            data={"name": name, "auto_id": auto_id},
+            ok=False, tool="type_into_element", data=args,
             factual_message=f"Error typing into UI element: {exc}",
-            verified=False,
-            error=str(exc),
+            verified=False, error=str(exc),
         )
+
 
 
 # ---------------------------------------------------------------------------

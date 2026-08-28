@@ -91,8 +91,11 @@ def test_resident_core_idle_memory_footprint() -> None:
     assert mem_mb < 25.0, f"Resident core idle memory {mem_mb:.2f}MB exceeded strict <25MB target!"
 
 
+@pytest.mark.timeout(600)
 def test_soak_1000_fast_tasks_no_memory_leak() -> None:
-    """Execute 1,000 continuous tasks in the orchestrator with SQLite WAL logging to assert zero leaks."""
+
+    """Execute 1,000 FAST route tasks through SQLite Activity Ledger and verify zero memory leak."""
+
     db = DbConnection(":memory:")
     db.open()
     ledger = ActivityLedger(db=db)

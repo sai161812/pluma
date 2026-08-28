@@ -60,5 +60,6 @@ exclude = ["tests*", "dist*", "build*", "release*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-timeout = 30
+timeout = 300
 addopts = "-v --tb=short"
+

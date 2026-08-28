@@ -1,4 +1,4 @@
-﻿"""tests/unit/test_phase135_adversarial.py — Adversarial tests for Phase 13.5.
+"""tests/unit/test_phase135_adversarial.py — Adversarial tests for Phase 13.5.
 
 Covers all 11 audited requirements with rigorous reproduction and verification:
 1. Killable process isolation on timeout (no delayed side effects, no capacity exhaustion across 20 timeouts)
@@ -180,19 +180,32 @@ class TestSnapshotRegistryWiring:
 
     def test_inspect_active_window_registers_and_returns_snapshot_id(self) -> None:
         from datetime import datetime, timedelta, timezone
-        from pluma.perception.element_refs import BoundingBox, ScreenSnapshot
+        from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement, ScreenSnapshot
         from pluma.tools.ui import execute_inspect_active_window
 
         supervisor = TaskSupervisor()
         capsule = supervisor.create_task_capsule()
 
+        btn = ScreenElement(
+            element_id="btn_1",
+            snapshot_id="",
+            source=ElementSource.UIA,
+            label="Save",
+            control_type="Button",
+            bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+            confidence=1.0,
+            uia_automation_id="save_btn",
+        )
+
+
         fake_snap = ScreenSnapshot(
             hwnd=1234,
+            pid=5678,
             active_process="notepad.exe",
             active_window_title="Untitled - Notepad",
             window_rect=BoundingBox(left=0, top=0, right=800, bottom=600),
             dpi_scale=1.0,
-            controls=[],
+            controls=[btn],
             ocr_words=[],
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=5),
         )
@@ -217,7 +230,6 @@ class TestSnapshotRegistryWiring:
         assert res.ok is True
         assert "snapshot_id" in res.data
         assert res.data["snapshot_id"] == fake_snap.snapshot_id
-        # Verify snapshot is registered in the task capsule
         assert len(capsule.snapshot_registry) == 1
         resolved = capsule.snapshot_registry.resolve(fake_snap.snapshot_id)
         assert resolved.active_process == "notepad.exe"
@@ -228,11 +240,116 @@ class TestSnapshotRegistryWiring:
         capsule = supervisor.create_task_capsule()
 
         res = execute_click_element(
-            {"name": "Save", "snapshot_id": "invented-snapshot-id-999"},
+            {"snapshot_id": "invented-snap-id", "target_ref": "invented-snap-id::elem_1"},
             task_context=capsule,
         )
         assert res.ok is False
-        assert "Snapshot grounding failed" in res.factual_message or "NO_SNAPSHOT_REGISTRY" in str(res.error)
+        assert res.error_code in ("SNAPSHOT_NOT_FOUND", "NO_SNAPSHOT_REGISTRY") or "Snapshot grounding failed" in res.factual_message
+
+    def test_click_element_rejects_mismatched_hwnd(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement, ScreenSnapshot
+        from pluma.tools.ui import execute_click_element
+
+        supervisor = TaskSupervisor()
+        capsule = supervisor.create_task_capsule()
+
+        btn = ScreenElement(
+            element_id="btn_1",
+            snapshot_id="snap-123",
+            source=ElementSource.UIA,
+            label="Save",
+            control_type="Button",
+            bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+            confidence=1.0,
+            uia_automation_id="save_btn",
+        )
+
+
+        snap = ScreenSnapshot(
+            snapshot_id="snap-123",
+            hwnd=1234,
+            pid=5678,
+            active_process="notepad.exe",
+            active_window_title="Untitled - Notepad",
+            window_rect=BoundingBox(left=0, top=0, right=800, bottom=600),
+            dpi_scale=1.0,
+            controls=[btn],
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=5),
+        )
+        capsule.snapshot_registry.register(snap)
+
+        with patch("pluma.tools.ui.ActiveWindowContext") as mock_ctx_cls:
+            mock_ctx = MagicMock()
+            mock_ctx_cls.return_value = mock_ctx
+            active_win = MagicMock()
+            active_win.is_valid = True
+            active_win.hwnd = 9999  # Changed window!
+            active_win.pid = 5678
+            active_win.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
+            active_win.dpi_scale = 1.0
+            mock_ctx.get_active_window.return_value = active_win
+
+            res = execute_click_element(
+                {"snapshot_id": "snap-123", "target_ref": "snap-123::btn_1"},
+                task_context=capsule,
+            )
+
+        assert res.ok is False
+        assert res.error_code == "WINDOW_MISMATCH"
+
+    def test_click_element_rejects_mismatched_dpi(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement, ScreenSnapshot
+        from pluma.tools.ui import execute_click_element
+
+        supervisor = TaskSupervisor()
+        capsule = supervisor.create_task_capsule()
+
+        btn = ScreenElement(
+            element_id="btn_1",
+            snapshot_id="snap-dpi",
+            source=ElementSource.UIA,
+            label="Save",
+            control_type="Button",
+            bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+            confidence=1.0,
+            uia_automation_id="save_btn",
+        )
+
+
+        snap = ScreenSnapshot(
+            snapshot_id="snap-dpi",
+            hwnd=1234,
+            pid=5678,
+            active_process="notepad.exe",
+            active_window_title="Untitled - Notepad",
+            window_rect=BoundingBox(left=0, top=0, right=800, bottom=600),
+            dpi_scale=1.0,
+            controls=[btn],
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=5),
+        )
+        capsule.snapshot_registry.register(snap)
+
+        with patch("pluma.tools.ui.ActiveWindowContext") as mock_ctx_cls:
+            mock_ctx = MagicMock()
+            mock_ctx_cls.return_value = mock_ctx
+            active_win = MagicMock()
+            active_win.is_valid = True
+            active_win.hwnd = 1234
+            active_win.pid = 5678
+            active_win.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
+            active_win.dpi_scale = 1.5  # Changed DPI!
+            mock_ctx.get_active_window.return_value = active_win
+
+            res = execute_click_element(
+                {"snapshot_id": "snap-dpi", "target_ref": "snap-dpi::btn_1"},
+                task_context=capsule,
+            )
+
+        assert res.ok is False
+        assert res.error_code == "DPI_MISMATCH"
+
 
 
 # ===========================================================================
@@ -243,15 +360,20 @@ class TestPersistentAppJobObject:
     """Req 3: STOP terminates app tree; SUCCEEDED leaves app open and closes all handles."""
 
     def test_open_app_registers_persistent_job_on_task_capsule(self) -> None:
+        from pluma.tools.apps import execute_close_app
         supervisor = TaskSupervisor()
         capsule = supervisor.create_task_capsule()
 
-        res = execute_open_app({"app_name": "notepad"}, task_context=capsule)
-        assert res.ok is True
-        assert len(capsule.owned_resources) >= 1
-        app_res = capsule.owned_resources[0]
-        assert app_res.resource_type == "subprocess"
-        assert "pid" in app_res.metadata
+        try:
+            res = execute_open_app({"app_name": "notepad"}, task_context=capsule)
+            assert res.ok is True
+            assert len(capsule.owned_resources) >= 1
+            app_res = capsule.owned_resources[0]
+            assert app_res.resource_type == "subprocess"
+            assert "pid" in app_res.metadata
+        finally:
+            execute_close_app({"app_name": "notepad", "force": True})
+
 
     def test_task_supervisor_stop_terminates_persistent_app_job(self) -> None:
         supervisor = TaskSupervisor()
@@ -317,7 +439,10 @@ class TestUndoSingleConsumption:
 
         assert res.all_ok is True
         assert res.steps_succeeded == 1
-        mock_ledger.mark_undo_consumed.assert_called_once_with(101)
+        assert mock_ledger.consume_undo_and_mark_result_atomic.called
+        args, kwargs = mock_ledger.consume_undo_and_mark_result_atomic.call_args
+        assert kwargs.get("action_row_id") == 101 or args[0] == 101
+        assert kwargs.get("ok") is True or args[1] is True
 
     def test_failed_undo_not_consumed_in_database(self) -> None:
         from pluma.rollback.engine import RollbackEngine
@@ -337,7 +462,10 @@ class TestUndoSingleConsumption:
 
         assert res.all_ok is False
         assert res.steps_failed == 1
-        mock_ledger.mark_undo_consumed.assert_not_called()
+        assert mock_ledger.consume_undo_and_mark_result_atomic.called
+        args, kwargs = mock_ledger.consume_undo_and_mark_result_atomic.call_args
+        assert kwargs.get("ok") is False or args[1] is False
+
 
     def test_in_memory_undo_stack_consumed_on_success(self) -> None:
         from pluma.rollback.engine import RollbackEngine
@@ -426,20 +554,20 @@ class TestTypedElevationOperations:
 # ===========================================================================
 
 class TestIpcAuthentication:
-    """Req 7: IPC challenge-response authentication is fail-closed."""
+    """Req 7: IPC challenge-response authentication is fail-closed with unshared secret."""
 
-    def test_ipc_auth_nonce_generation_and_storage(self) -> None:
-        from pluma.core.ipc import _get_or_create_auth_nonce, IPC_AUTH_NONCE_SIZE
+    def test_ipc_secret_generation_and_storage(self) -> None:
+        from pluma.core.ipc import _get_or_create_ipc_secret, IPC_SECRET_SIZE
         with tempfile.TemporaryDirectory() as td:
-            nonce = _get_or_create_auth_nonce(paths_root=td)
-            assert len(nonce) == IPC_AUTH_NONCE_SIZE
+            sec = _get_or_create_ipc_secret(paths_root=td)
+            assert len(sec) == IPC_SECRET_SIZE
             # Idempotent
-            nonce2 = _get_or_create_auth_nonce(paths_root=td)
-            assert nonce == nonce2
+            sec2 = _get_or_create_ipc_secret(paths_root=td)
+            assert sec == sec2
 
     def test_ipc_server_require_auth_fails_closed_on_unauthenticated_connection(self) -> None:
         from pluma.core.ipc import IpcServer, IpcClient
-        pipe_address = rf"\\.\pipe\pluma_test_auth_{os.getpid()}_{time.time_ns()}" if os.name == "nt" else f"/tmp/pluma_test_auth_{os.getpid()}.sock"
+        pipe_address = rf"\\.\pipe\pluma_test_auth_{os.getpid()}_{time.time_ns()}" if os.name == "nt" else f"/tmp/pluma_test_auth_{os.getpid()}_{time.time_ns()}.sock"
 
         server = IpcServer(command_handler=lambda req: {"status": "ok"}, address=pipe_address, require_auth=True)
         server.start()
@@ -451,6 +579,21 @@ class TestIpcAuthentication:
             assert res.get("status") == "error"
         finally:
             server.stop()
+
+    def test_ipc_client_with_correct_auth_succeeds(self) -> None:
+        from pluma.core.ipc import IpcServer, IpcClient
+        pipe_address = rf"\\.\pipe\pluma_test_auth_ok_{os.getpid()}_{time.time_ns()}" if os.name == "nt" else f"/tmp/pluma_test_auth_ok_{os.getpid()}_{time.time_ns()}.sock"
+
+        server = IpcServer(command_handler=lambda req: {"status": "ok", "echo": req.get("payload")}, address=pipe_address, require_auth=True)
+        server.start()
+        try:
+            client = IpcClient(address=pipe_address, require_auth=True)
+            res = client.send_command({"command": "echo", "payload": "auth_verified"}, timeout=2.0)
+            assert res.get("status") == "ok"
+            assert res.get("echo") == "auth_verified"
+        finally:
+            server.stop()
+
 
 
 # ===========================================================================

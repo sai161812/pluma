@@ -27,6 +27,9 @@ def enable_audio_emulation_for_tests() -> None:
     use monkeypatch to unset PLUMA_EMULATE_AUDIO within their own scope.
     """
     os.environ["PLUMA_EMULATE_AUDIO"] = "1"
+    os.environ["PLUMA_TEST_MODE"] = "1"
     yield
     # Restore: remove the flag after the test session
     os.environ.pop("PLUMA_EMULATE_AUDIO", None)
+    os.environ.pop("PLUMA_TEST_MODE", None)
+

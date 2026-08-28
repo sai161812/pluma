@@ -164,15 +164,16 @@ def test_policy_engine_integrated_in_registry_execution() -> None:
 
 
 def test_elevation_broker_execution() -> None:
-    """Verify that ElevationBroker runs isolated single-operation commands."""
+    """Verify that ElevationBroker runs isolated typed operations."""
+    from pluma.policy.elevation_broker import ElevationOpType, ElevationOperation
     broker = ElevationBroker(timeout_s=5.0)
 
-    # Safe lightweight command (e.g. echo)
-    res = broker.execute_elevated_script(
-        script="Write-Output 'PLUMA_ELEVATION_TEST'",
+    res = broker.execute_operation(
+        operation=ElevationOperation(op_type=ElevationOpType.FLUSH_DNS),
         task_id="task-elev-test",
     )
 
     assert isinstance(res, ToolResult)
     assert res.tool == "elevate"
     assert res.adapter_used in ("elevation_broker", "elevation_broker_mock")
+

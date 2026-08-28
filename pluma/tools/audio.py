@@ -52,10 +52,46 @@ class GetVolumeStatusArgs(BaseModel):
 _MOCK_AUDIO_STATE = {"volume": 50, "muted": False}
 
 
+def _get_mock_audio_path() -> str:
+    import tempfile
+    username = os.environ.get("USERNAME") or os.environ.get("USER") or "default"
+    clean_user = "".join(c for c in username if c.isalnum() or c in ("-", "_"))
+    return os.path.join(tempfile.gettempdir(), f"pluma_mock_audio_{clean_user}.json")
+
+
+def _load_mock_audio() -> Dict[str, Any]:
+    import json
+    p = _get_mock_audio_path()
+    if os.path.exists(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "volume" in data and "muted" in data:
+                    _MOCK_AUDIO_STATE.update(data)
+                    return dict(_MOCK_AUDIO_STATE)
+        except Exception:
+            pass
+    return dict(_MOCK_AUDIO_STATE)
+
+
+def _save_mock_audio(level: Optional[int] = None, mute: Optional[bool] = None) -> None:
+    import json
+    if level is not None:
+        _MOCK_AUDIO_STATE["volume"] = level
+    if mute is not None:
+        _MOCK_AUDIO_STATE["muted"] = mute
+    p = _get_mock_audio_path()
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(_MOCK_AUDIO_STATE, f)
+    except Exception:
+        pass
+
+
 def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
     """Query current master volume level (0-100) and mute status."""
     if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
-        state = dict(_MOCK_AUDIO_STATE)
+        state = _load_mock_audio()
         state["is_mock"] = True
         return state
 
@@ -70,15 +106,15 @@ def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
         muted = bool(volume_obj.GetMute())
         return {"volume": vol, "muted": muted, "is_mock": False}
     except ImportError:
-        if os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
-            state = dict(_MOCK_AUDIO_STATE)
+        if os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
+            state = _load_mock_audio()
             state["is_mock"] = True
             return state
         # pycaw not installed and not in emulation mode — fail closed in production
         return None
     except Exception:
         if os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
-            state = dict(_MOCK_AUDIO_STATE)
+            state = _load_mock_audio()
             state["is_mock"] = True
             return state
         return None
@@ -87,10 +123,7 @@ def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
 def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool] = None) -> bool:
     """Set master volume or mute status."""
     if sys.platform != "win32" or os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
-        if level is not None:
-            _MOCK_AUDIO_STATE["volume"] = level
-        if mute is not None:
-            _MOCK_AUDIO_STATE["muted"] = mute
+        _save_mock_audio(level=level, mute=mute)
         return True
 
     try:
@@ -103,28 +136,24 @@ def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool]
 
         if level is not None:
             volume_obj.SetMasterVolumeLevelScalar(level / 100.0, None)
-            _MOCK_AUDIO_STATE["volume"] = level
+            _save_mock_audio(level=level)
         if mute is not None:
             volume_obj.SetMute(int(mute), None)
-            _MOCK_AUDIO_STATE["muted"] = mute
+            _save_mock_audio(mute=mute)
         return True
     except ImportError:
-        if os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
-            if level is not None:
-                _MOCK_AUDIO_STATE["volume"] = level
-            if mute is not None:
-                _MOCK_AUDIO_STATE["muted"] = mute
+        if os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
+            _save_mock_audio(level=level, mute=mute)
             return True
         # pycaw not installed and not in emulation mode — fail closed
         return False
     except Exception:
         if os.environ.get("PLUMA_EMULATE_AUDIO") == "1" or os.environ.get("PLUMA_TEST_MODE") == "1":
-            if level is not None:
-                _MOCK_AUDIO_STATE["volume"] = level
-            if mute is not None:
-                _MOCK_AUDIO_STATE["muted"] = mute
+            _save_mock_audio(level=level, mute=mute)
             return True
         return False
+
+
 
 
 # ---------------------------------------------------------------------------

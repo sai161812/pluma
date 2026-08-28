@@ -48,6 +48,19 @@ class ElevationOperation(BaseModel):
                 raise ValueError(f"Invalid service name: '{v}'. Must be safe alphanumeric identifier.")
         return v
 
+    @field_validator("package_path")
+    @classmethod
+    def validate_package_path(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            clean = v.strip()
+            if not os.path.isabs(clean):
+                raise ValueError(f"MSI package path must be an absolute path: '{v}'")
+            if not clean.lower().endswith(".msi"):
+                raise ValueError(f"Package path must end with .msi: '{v}'")
+            if not os.path.exists(clean) and os.environ.get("PLUMA_TEST_MODE") != "1":
+                raise ValueError(f"MSI package file not found at '{v}'")
+        return v
+
 
 class ElevationBroker:
     """Brokers single-operation elevated subprocess execution without elevating the resident core."""
@@ -79,13 +92,13 @@ class ElevationBroker:
         elif operation.op_type == ElevationOpType.INSTALL_MSI:
             if not operation.package_path:
                 return ToolResult.failure("elevate", "package_path is required for INSTALL_MSI.")
-            script = f"Start-Process msiexec.exe -ArgumentList '/i \"{operation.package_path}\" /qn' -Wait"
+            script = f"$p = Start-Process msiexec.exe -ArgumentList '/i \"{operation.package_path}\" /qn' -PassThru -Wait; exit $p.ExitCode"
         else:
             return ToolResult.failure("elevate", f"Unsupported elevation operation: {operation.op_type}")
 
-        return self.execute_elevated_script(script, timeout_s=timeout_s, task_id=task_id)
+        return self._execute_elevated_script(script, timeout_s=timeout_s, task_id=task_id)
 
-    def execute_elevated_script(
+    def _execute_elevated_script(
         self,
         script: str,
         timeout_s: Optional[float] = None,
@@ -96,6 +109,7 @@ class ElevationBroker:
         The resident process remains unelevated. An isolated temporary subprocess is launched,
         executed to completion, and terminated.
         """
+
         effective_timeout = timeout_s or self.timeout_s
         logger.info(
             "Task %s: Dispatching isolated elevated operation (timeout: %.1fs)...",

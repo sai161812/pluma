@@ -61,6 +61,18 @@ class ActiveWindowContext:
         except Exception:
             return "unknown"
 
+    def get_process_creation_time_ns(self, pid: int) -> Optional[int]:
+        """Resolve 64-bit creation timestamp of process from PID."""
+        if not pid:
+            return None
+        try:
+            import psutil
+            proc = psutil.Process(pid)
+            return int(proc.create_time() * 1_000_000_000)
+        except Exception:
+            return None
+
+
     def get_active_window(self) -> ActiveWindowInfo:
         """Retrieve full context for the current foreground window."""
         try:

@@ -283,6 +283,12 @@ class DbConnection:
                     conn.execute("COMMIT")
                     if item.result_queue is not None:
                         item.result_queue.put(None)
+                elif isinstance(item, _TransactionTask):
+                    for stmt_sql, stmt_params in item.statements:
+                        conn.execute(stmt_sql, stmt_params)
+                    conn.execute("COMMIT")
+                    if item.result_queue is not None:
+                        item.result_queue.put(True)
                 else:
                     cursor = conn.execute(item.sql, item.params)
                     conn.execute("COMMIT")
@@ -293,11 +299,12 @@ class DbConnection:
                     conn.execute("ROLLBACK")
                 except Exception:
                     pass
-                sql_str = getattr(item, "sql", "<unknown>")
+                sql_str = getattr(item, "sql", "<transaction>")
                 logger.error("DB write failed: %s - %s", exc, sql_str)
-                if isinstance(item, (_WriteTask, _WriteManyTask)):
+                if isinstance(item, (_WriteTask, _WriteManyTask, _TransactionTask)):
                     if item.result_queue is not None:
                         item.result_queue.put(exc)
+
 
 
     # ------------------------------------------------------------------
@@ -326,10 +333,26 @@ class DbConnection:
         assert self._read_conn is not None
         return self._read_conn.execute(sql, params).fetchone()
 
+    def execute_transaction(
+        self,
+        statements: List[Tuple[str, Sequence[Any]]],
+        *,
+        wait: bool = True,
+    ) -> None:
+        """Execute a list of (sql, params) tuples in a single transaction."""
+        if not self._open:
+            raise RuntimeError("DbConnection is not open.")
+        result_q: Optional[queue.SimpleQueue] = queue.SimpleQueue() if wait else None
+        task = _TransactionTask(statements, result_q)
+        self._write_queue.put(task)
+        if wait and result_q is not None:
+            outcome = result_q.get()
+            if isinstance(outcome, Exception):
+                raise outcome
+
 
 class _WriteManyTask:
-    """Batch write task submitted to the background writer thread."""
-
+    """A batch of executions of one SQL statement for executemany."""
     __slots__ = ("sql", "params_list", "result_queue")
 
     def __init__(
@@ -340,4 +363,17 @@ class _WriteManyTask:
     ) -> None:
         self.sql = sql
         self.params_list = params_list
+        self.result_queue = result_queue
+
+
+class _TransactionTask:
+    """A batch of distinct SQL statements executed inside one atomic transaction."""
+    __slots__ = ("statements", "result_queue")
+
+    def __init__(
+        self,
+        statements: List[Tuple[str, Sequence[Any]]],
+        result_queue: Optional[queue.SimpleQueue],
+    ) -> None:
+        self.statements = statements
         self.result_queue = result_queue

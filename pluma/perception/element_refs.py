@@ -130,6 +130,11 @@ class ScreenSnapshot(BaseModel):
     active_window_title: str
     window_rect: BoundingBox  # Desktop-absolute window rectangle at capture time.
     dpi_scale: float = Field(gt=0.0, description="DPI scale factor, e.g. 1.25 for 125%.")
+    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) at capture time.")
+    pid: Optional[int] = Field(default=None, description="Target process PID at capture time.")
+    process_creation_time_ns: Optional[int] = Field(default=None, description="64-bit creation timestamp of process.")
+    window_class: Optional[str] = Field(default=None, description="Win32 window class name.")
+
 
     # Discovered elements
     controls: List[ScreenElement] = Field(default_factory=list)
@@ -154,11 +159,12 @@ class ScreenSnapshot(BaseModel):
         return datetime.now(timezone.utc) >= self.expires_at
 
     def find_element(self, element_id: str) -> Optional[ScreenElement]:
-        """Return the element with *element_id*, or None."""
+        """Return the element with matching element_id or uia_automation_id, or None."""
         for el in self.controls + self.ocr_words:
-            if el.element_id == element_id:
+            if el.element_id == element_id or (el.uia_automation_id and el.uia_automation_id == element_id):
                 return el
         return None
+
 
     def find_elements_by_label(self, label: str, case_sensitive: bool = False) -> List[ScreenElement]:
         """Find elements matching label in controls or OCR words."""

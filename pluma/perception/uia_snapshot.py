@@ -211,6 +211,21 @@ class UiaSnapshotBuilder:
             except Exception as ocr_exc:
                 logger.debug("OCR fallback pass failed for window %d: %s", hwnd, ocr_exc)
 
+        pid = None
+        window_class = None
+        creation_time_ns = None
+        if active_info is not None:
+            pid = active_info.pid or None
+            window_class = active_info.class_name or None
+            if pid:
+                creation_time_ns = self._context.get_process_creation_time_ns(pid)
+        elif hwnd is not None:
+            w_info = self._context.get_window_info(hwnd)
+            pid = w_info.pid if w_info.is_valid else None
+            window_class = w_info.class_name if w_info.is_valid else None
+            if pid:
+                creation_time_ns = self._context.get_process_creation_time_ns(pid)
+
         return ScreenSnapshot(
             snapshot_id=snapshot_id,
             created_at=now,
@@ -219,10 +234,15 @@ class UiaSnapshotBuilder:
             active_window_title=window_title,
             window_rect=win_rect,
             dpi_scale=dpi_scale,
+            hwnd=hwnd,
+            pid=pid,
+            process_creation_time_ns=creation_time_ns,
+            window_class=window_class,
             controls=raw_elements,
             ocr_words=ocr_elements,
             image_ref=None,
         )
+
 
 
 # Alias for backward compatibility
