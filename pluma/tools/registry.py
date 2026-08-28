@@ -108,35 +108,43 @@ class WorkerTaskContext:
         )
 
 
-def _single_call_worker(conn: Any, executor_fn: Callable[..., Any], args: Dict[str, Any], worker_req: WorkerRequest) -> None:
-    """Worker process entrypoint that executes a single tool request."""
-    try:
-        if getattr(worker_req, "env_overrides", None):
-            os.environ.update(worker_req.env_overrides)
-        worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
-        worker_ctx.undo_stack = list(worker_req.undo_stack)
-        worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
-        
-        import inspect
-        sig = inspect.signature(executor_fn)
-        if len(sig.parameters) > 1:
-            res = executor_fn(args, worker_ctx)
-        else:
-            res = executor_fn(args)
-            
-        undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
-        resp = WorkerResponse(
-            result=res,
-            owned_resources=worker_ctx.owned_resources,
-            undo_data=undo_data,
-            final_undo_stack=worker_ctx.undo_stack,
-        )
-        conn.send(("ok", resp))
-    except Exception as exc:
+def _worker_process_loop(conn: Any) -> None:
+    """Persistent worker process loop that executes tool requests."""
+    while True:
         try:
-            conn.send(("error", str(exc)))
-        except Exception:
-            pass
+            if not conn.poll(None):
+                break
+            msg = conn.recv()
+            if msg == "STOP" or msg is None:
+                break
+            executor_fn, args, worker_req = msg
+            if getattr(worker_req, "env_overrides", None):
+                os.environ.update(worker_req.env_overrides)
+            worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
+            worker_ctx.undo_stack = list(worker_req.undo_stack)
+            worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
+            
+            import inspect
+            sig = inspect.signature(executor_fn)
+            if len(sig.parameters) > 1:
+                res = executor_fn(args, worker_ctx)
+            else:
+                res = executor_fn(args)
+                
+            undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
+            resp = WorkerResponse(
+                result=res,
+                owned_resources=worker_ctx.owned_resources,
+                undo_data=undo_data,
+                final_undo_stack=worker_ctx.undo_stack,
+            )
+            conn.send(("ok", resp))
+        except Exception as exc:
+            try:
+                conn.send(("error", str(exc)))
+            except Exception:
+                break
+
 
 class TaskWorkerController:
     """Manages a strictly task-owned killable worker process."""
@@ -146,8 +154,27 @@ class TaskWorkerController:
         self._proc: Optional[multiprocessing.Process] = None
         self._conn: Optional[Any] = None
 
+    def _ensure_worker_started(self) -> None:
+        if self._proc is not None and self._proc.is_alive() and self._conn is not None:
+            return
+        self._terminate_internal()
+        parent_conn, child_conn = multiprocessing.Pipe()
+        proc = _MP_CONTEXT.Process(
+            target=_worker_process_loop,
+            args=(child_conn,),
+            daemon=True,
+        )
+        proc.start()
+        child_conn.close()
+        self._proc = proc
+        self._conn = parent_conn
+
     def _terminate_internal(self) -> None:
         if self._conn:
+            try:
+                self._conn.send("STOP")
+            except Exception:
+                pass
             try:
                 self._conn.close()
             except Exception:
@@ -159,7 +186,7 @@ class TaskWorkerController:
             except Exception:
                 pass
             try:
-                self._proc.join(timeout=0.5)
+                self._proc.join(timeout=0.2)
             except Exception:
                 pass
             self._proc = None
@@ -173,33 +200,22 @@ class TaskWorkerController:
         job_object: Any = None,
     ) -> Tuple[str, Any]:
         with self._lock:
-            self._terminate_internal()
-            parent_conn, child_conn = multiprocessing.Pipe()
-            proc = _MP_CONTEXT.Process(
-                target=_single_call_worker,
-                args=(child_conn, executor_fn, validated_args, worker_req),
-                daemon=True,
-            )
-            proc.start()
-            child_conn.close()
-            self._proc = proc
-            self._conn = parent_conn
-
-            if job_object is not None and proc.pid is not None:
-                try:
-                    job_object.assign_process(proc.pid)
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).error("Failed to assign worker to Job Object: %s", e)
+            self._ensure_worker_started()
+            try:
+                self._conn.send((executor_fn, validated_args, worker_req))
+            except Exception as send_err:
+                self._terminate_internal()
+                return ("error", f"Worker send failure: {send_err}")
 
             if self._conn.poll(timeout_s):
                 try:
                     status, payload = self._conn.recv()
                 except Exception as recv_err:
-                    status, payload = ("error", f"Worker communication error: {recv_err}")
-                self._terminate_internal()
+                    self._terminate_internal()
+                    return ("error", f"Worker communication error: {recv_err}")
                 return (status, payload)
             else:
+                # Timeout occurred: hard kill worker to prevent any delayed side effects
                 self._terminate_internal()
                 return ("timeout", f"Tool execution timed out after {timeout_s:.3f}s")
 
@@ -233,6 +249,24 @@ class ToolRegistry:
         self._specs: Dict[str, ToolSpec] = {}
         self._lock = threading.RLock()
         self._policy_engine = policy_engine
+        self._worker_controllers: Dict[str, TaskWorkerController] = {}
+
+    def cleanup_task(self, task_id: str) -> None:
+        """Terminate and clean up worker process associated with task_id."""
+        with self._lock:
+            ctrl = self._worker_controllers.pop(task_id, None)
+            if ctrl is not None:
+                ctrl.terminate_and_join()
+
+    def close(self) -> None:
+        """Terminate all worker processes and release resources."""
+        with self._lock:
+            for ctrl in list(self._worker_controllers.values()):
+                try:
+                    ctrl.terminate_and_join()
+                except Exception:
+                    pass
+            self._worker_controllers.clear()
 
     def __len__(self) -> int:
         with self._lock:
@@ -487,13 +521,17 @@ class ToolRegistry:
             pickle.dumps(validated_args)
             pickle.dumps(worker_req)
             use_process_isolation = True
-        except Exception as e:
-            print("REGISTRY.PY: PICKLE FAILED:", e)
+        except Exception:
             use_process_isolation = False
 
         if use_process_isolation:
             try:
-                worker_controller = TaskWorkerController(task_id=task_id or "global")
+                controller_key = "default_worker"
+                with self._lock:
+                    if controller_key not in self._worker_controllers:
+                        self._worker_controllers[controller_key] = TaskWorkerController(task_id=controller_key)
+                    worker_controller = self._worker_controllers[controller_key]
+
                 status, payload = worker_controller.execute_call(
                     spec.executor,
                     validated_args,
@@ -516,7 +554,6 @@ class ToolRegistry:
                                 # Item 1: Establish persistent job object in parent
                                 if wr.resource_type == "subprocess" and sys.platform == "win32":
                                     pid = wr.metadata.get("pid")
-                                    print("REGISTRY.PY: pid is", pid)
                                     if pid:
                                         try:
                                             from pluma.core.job_object import WindowsJobObject
@@ -526,9 +563,7 @@ class ToolRegistry:
                                             )
                                             persistent_job.assign_process(pid)
                                             res_obj.metadata["persistent_job"] = persistent_job
-                                            print("REGISTRY.PY: persistent_job assigned successfully")
                                         except Exception as job_err:
-                                            print("REGISTRY.PY: job error:", job_err)
                                             # Containment failed: kill process and fail closed
                                             import subprocess
                                             subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
