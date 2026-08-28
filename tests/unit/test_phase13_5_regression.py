@@ -63,41 +63,47 @@ class TestUISnapshotGrounding:
 
     def test_invented_snapshot_id_is_rejected(self):
         """click_element with unknown snapshot_id must return ok=False, not continue."""
-        from pluma.tools.ui import execute_click_element
-
+        from pluma.tools.registry import get_default_tool_registry
+        
         ctx = self._make_task_context_with_registry(register_snapshot=False)
+        reg = get_default_tool_registry()
 
-        result = execute_click_element(
+        result = reg.execute(
+            "click_element",
             {"name": "OK", "snapshot_id": "invented-id-does-not-exist", "target_ref": "invented-id-does-not-exist::elem_1"},
             task_context=ctx,
         )
         assert result.ok is False, "Invented snapshot_id must be rejected"
         assert result.verified is False
-        assert "NO_SNAPSHOT_REGISTRY" in result.error or "not registered" in result.error.lower() or "SnapshotNotFoundError" in str(result) or "not found" in result.error.lower()
+        assert "not registered" in result.error.lower() or "not found" in result.error.lower() or "grounding" in result.error.lower()
 
     def test_invented_snapshot_id_rejected_when_registry_absent(self):
         """click_element with snapshot_id but no registry on ctx must return ok=False."""
-        from pluma.tools.ui import execute_click_element
-
+        from pluma.tools.registry import get_default_tool_registry
+        
         ctx = MagicMock()
         ctx.snapshot_registry = None  # No registry
         ctx.cancellation_token = MagicMock()
         ctx.cancellation_token.is_cancelled = False
 
-        result = execute_click_element(
+        reg = get_default_tool_registry()
+        result = reg.execute(
+            "click_element",
             {"name": "OK", "snapshot_id": "any-id", "target_ref": "any-id::elem_1"},
             task_context=ctx,
         )
         assert result.ok is False
-        assert "NO_SNAPSHOT_REGISTRY" in (result.error or "")
+        assert "Parent UI Grounding rejected" in (result.error or "")
 
     def test_expired_snapshot_is_rejected(self):
         """click_element with an expired snapshot must return ok=False — never continue."""
-        from pluma.tools.ui import execute_click_element
-
+        from pluma.tools.registry import get_default_tool_registry
+        
         ctx = self._make_task_context_with_registry(register_snapshot=True, expired=True)
+        reg = get_default_tool_registry()
 
-        result = execute_click_element(
+        result = reg.execute(
+            "click_element",
             {"name": "OK", "snapshot_id": "snap-test-001", "target_ref": "snap-test-001::elem_1"},
             task_context=ctx,
         )
@@ -106,7 +112,7 @@ class TestUISnapshotGrounding:
 
     def test_valid_registered_snapshot_id_does_not_error(self):
         """click_element with a valid snapshot_id proceeds past grounding (may fail for other reasons)."""
-        from pluma.tools.ui import execute_click_element
+        from pluma.tools.registry import get_default_tool_registry
         from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement
 
         ctx = self._make_task_context_with_registry(register_snapshot=True, expired=False)
@@ -122,16 +128,15 @@ class TestUISnapshotGrounding:
         snap = ctx.snapshot_registry.resolve("snap-test-001")
         snap.controls.append(btn)
 
-        # This may fail because there's no real window — but it must NOT fail due to grounding
-        result = execute_click_element(
+        reg = get_default_tool_registry()
+        result = reg.execute(
+            "click_element",
             {"name": "SomeButton", "snapshot_id": "snap-test-001", "target_ref": "snap-test-001::elem_1"},
             task_context=ctx,
         )
-        # Acceptable failures: window not found, element not found, etc.
-        # NOT acceptable: grounding rejection (NO_SNAPSHOT_REGISTRY, not registered, expired)
-        grounding_errors = {"no_snapshot_registry", "not registered", "expired", "stale"}
+        grounding_errors = {"no_snapshot_registry", "not registered", "expired", "stale", "Parent UI Grounding failed"}
         if result.error:
-            assert not any(ge in result.error.lower() for ge in ["no_snapshot_registry", "not registered", "expired", "stale"]), \
+            assert not any(ge in result.error.lower() for ge in grounding_errors), \
                 f"Valid snapshot should not cause grounding error: {result.error}"
 
 
@@ -188,12 +193,14 @@ class TestSnapshotRegistry:
     def test_duplicate_snapshots_use_latest(self):
         from pluma.perception.snapshot_registry import SnapshotRegistry
         from pluma.perception.element_refs import BoundingBox, ScreenSnapshot
+        from datetime import datetime, timedelta, timezone
+        import pytest
         reg = SnapshotRegistry()
         now = datetime.now(timezone.utc)
         snap1 = ScreenSnapshot(
             snapshot_id="dup",
             created_at=now,
-            expires_at=now + timedelta(seconds=-1.0),  # expired
+            expires_at=now + timedelta(seconds=-1.0),
             active_process="a", active_window_title="a",
             window_rect=BoundingBox(left=0, top=0, right=100, bottom=100),
             dpi_scale=1.0,
@@ -201,15 +208,14 @@ class TestSnapshotRegistry:
         snap2 = ScreenSnapshot(
             snapshot_id="dup",
             created_at=now,
-            expires_at=now + timedelta(seconds=10.0),  # fresh
+            expires_at=now + timedelta(seconds=10.0),
             active_process="b", active_window_title="b",
             window_rect=BoundingBox(left=0, top=0, right=100, bottom=100),
             dpi_scale=1.0,
         )
         reg.register(snap1)
-        reg.register(snap2)
-        resolved = reg.resolve("dup")
-        assert resolved.active_process == "b"
+        with pytest.raises(ValueError):
+            reg.register(snap2)
 
     def test_clear_removes_all_snapshots(self):
         from pluma.perception.snapshot_registry import SnapshotRegistry, SnapshotNotFoundError

@@ -59,14 +59,27 @@ def create_release_zip(wheel_path: Path) -> Path:
 
     # Compute wheel SHA-256
     import hashlib
-    h = hashlib.sha256()
-    with open(wheel_path, "rb") as f:
-        while chunk := f.read(65536):
-            h.update(chunk)
-    wheel_sha = h.hexdigest()
+    def hash_file(p: Path) -> str:
+        h = hashlib.sha256()
+        with open(p, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        return h.hexdigest()
+        
+    # Build EXE with PyInstaller
+    print("[3/5] Building EXE with PyInstaller...")
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", "pluma.spec"], check=True)
+    exe_path = ROOT_DIR / "dist" / "pluma.exe"
+    if not exe_path.exists():
+        raise RuntimeError("pluma.exe was not built!")
+
+    print("[4/5] Packaging pristine release ZIP archive...")
+    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
+    zip_path = RELEASE_DIR / "pluma-0.1.0-windows-x64-release.zip"
 
     manifest_lines = [
-        f"{wheel_sha}  packages/{wheel_path.name}",
+        f"{hash_file(wheel_path)}  packages/{wheel_path.name}",
+        f"{hash_file(exe_path)}  pluma.exe",
     ]
 
     manifest_path = RELEASE_DIR / "SHA256SUMS.txt"
@@ -74,8 +87,9 @@ def create_release_zip(wheel_path: Path) -> Path:
         f.write("\n".join(manifest_lines) + "\n")
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Include wheel
+        # Include wheel and exe
         zf.write(wheel_path, arcname=f"packages/{wheel_path.name}")
+        zf.write(exe_path, arcname="pluma.exe")
         
         # Include install and uninstall scripts
         for script_name in ["install.ps1", "uninstall.ps1"]:
@@ -85,7 +99,7 @@ def create_release_zip(wheel_path: Path) -> Path:
 
         # Include configs
         cfg_dir = ROOT_DIR / "pluma" / "config"
-        for cfg in ["default_config.yaml", "tool_policy.yaml"]:
+        for cfg in ["defaults.yaml", "tool_policy.yaml"]:
             cp = cfg_dir / cfg
             if cp.exists():
                 zf.write(cp, arcname=f"config/{cfg}")

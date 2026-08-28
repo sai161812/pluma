@@ -1,0 +1,123 @@
+Work directly on PLUMA(8). Do not return another plan and do not begin Phase 14. The current 716-test report is not sufficient because production-path probes still fail.
+
+ROOT CAUSE: ToolRegistry’s global isolated worker removes the real TaskCapsule context. It also kills only the worker process—not its descendants.
+
+1. REBUILD TOOL EXECUTION AND STOP
+
+Replace _GLOBAL_WORKER_POOL with a per-task execution controller keyed by task_id.
+
+Requirements:
+- Use multiprocessing.get_context("spawn") consistently; do not use global multiprocessing.Process/Pipe directly.
+- Create a fresh killable worker for each state-changing ToolCall, or a strictly task-owned worker.
+- Assign the worker and every descendant to the TaskCapsule’s kill-on-close Windows Job Object.
+- Store the worker process, pipe and Job handle in the parent execution controller.
+- STOP must locate the active worker by task_id, terminate its complete Job Object, join it, close handles, and only then start rollback.
+- Timeout must perform the identical termination sequence.
+- Never fall back to a thread for state-changing or external tools.
+- Remove `except TypeError: executor(args)`; an internal TypeError must not cause the operation to execute twice.
+- If an undo builder for a reversible mutation raises or cannot capture required pre-state, abort before mutation.
+- After the worker returns, reject success if the real capsule’s cancellation latch is set.
+
+Acceptance test: a worker spawns a child that waits and writes a file. Both timeout and STOP must prevent the file from appearing. Repeat 20 times and prove zero workers, children, threads or handles remain.
+
+2. PRESERVE PARENT-OWNED APPLICATION JOB HANDLES
+
+WorkerTaskContext currently removes `persistent_job`, so STOP cannot terminate applications launched through ToolRegistry.
+
+Do not serialize OS handles.
+
+Implement open_app through a parent-owned application launch controller:
+- Resolve only an approved application alias.
+- Create the process suspended.
+- Create a parent-owned WindowsJobObject(kill_on_close=False).
+- Assign the suspended process to it, record PID plus 64-bit creation time, then resume.
+- On containment failure, terminate the process and fail.
+- Store the real Job handle in TaskCapsule.owned_resources.
+- Successful completion closes handles without terminating the application.
+- STOP verifies PID identity, calls TerminateJobObject once, waits for exit and closes every handle.
+
+Test through PlumaApplicationRuntime and ToolRegistry—not by calling execute_open_app directly. Prove Notepad survives SUCCEEDED and dies during STOP.
+
+3. FIX UI GROUNDING ACROSS THE WORKER BOUNDARY
+
+The worker context has no SnapshotRegistry. Therefore inspect/click/type cannot work through production ToolRegistry.
+
+Implement this flow:
+- The inspection worker returns a serialized ScreenSnapshot.
+- The parent registers it in the real task SnapshotRegistry and creates exact `snapshot_id::element_id` references.
+- Before dispatching click/type, the parent resolves the snapshot and exact element and constructs a serializable GroundedUiTarget.
+- The action worker receives GroundedUiTarget and immediately revalidates HWND, PID, process creation time, process name, title, class, window rectangle, DPI, foreground state and element geometry before input.
+- Require target_ref to contain exactly two components and require its snapshot prefix to equal snapshot_id.
+- SnapshotRegistry.register must reject duplicate IDs instead of overwriting them.
+- Resolve only exact unique element_id values; do not accept labels, automation IDs or user-supplied selector fallbacks.
+- Reject changed, ambiguous, expired or missing state without performing input.
+- Use action-specific postconditions.
+
+Add production-registry tests for inspection followed by click/type, cross-task references, altered target_ref prefixes, duplicate IDs and every changed window field.
+
+4. MAKE IPC PERMISSIONS ACTUALLY FAIL CLOSED
+
+Authentication now defaults to enabled, but filesystem and pipe permissions are still best-effort.
+
+Fix:
+- On every secret load, verify current-user ownership and exact permissions.
+- Linux: require owner UID and mode 0600.
+- Windows: create and verify a DACL containing only the current user SID.
+- Reject an existing insecure secret; do not silently accept it.
+- Create the named pipe with the restricted security descriptor. If creation or verification fails, abort server startup.
+- Make the DACL function return success/failure instead of only logging.
+- Add real bounded connect/read/write deadlines and a bounded client semaphore. One client must not create unlimited threads or block shutdown.
+- Keep the authentication secret separate and never transmit it.
+
+5. FINISH ELEVATION AND ROLLBACK SAFETY
+
+Elevation:
+- Keep only typed operations.
+- Do not interpolate service names or MSI paths into PowerShell.
+- Use a small typed elevation helper invoked through ShellExecuteExW(runas), with an ACL-protected JSON request.
+- Validate the operation again inside the elevated helper.
+- Wait on the elevated process handle, propagate its real exit code, and support STOP/timeout through a Job Object.
+- Reject MSI paths containing control/shell characters and verify the file/signature/hash as required.
+
+Rollback:
+- Add an undo state machine: AVAILABLE → APPLYING → CONSUMED.
+- Reserve the record transactionally before filesystem work.
+- Make rollback recipes idempotent.
+- After mutation, verify the postcondition and transactionally consume the record.
+- On crash/restart, reconcile APPLYING records by inspecting actual filesystem state.
+- Test using real SQLite and real temporary files, including forced database failure—not MagicMock.
+
+6. BUILD THE ACTUAL WINDOWS RELEASE
+
+Current release ZIP has no executable and build_release.py never invokes PyInstaller.
+
+Fix:
+- Change all `default_config.yaml` references to the real `defaults.yaml`.
+- Add `pywinauto` and all advertised Windows/media dependencies.
+- Run PyInstaller from build_release.py and fail the build if pluma.exe is absent.
+- Install into `$TargetDir\venv`, installing `pluma[windows,media]`; do not install globally.
+- Implement and test startup registration and uninstall.
+- Package the current EXE, wheel, installer, uninstaller, configuration and documentation.
+- Generate SHA-256 entries for every release artifact.
+- Verify the exact archive on a clean Windows VM.
+
+7. REPLACE SHALLOW EVIDENCE
+
+- Every one of the 125 golden commands must define and verify normalized arguments, policy decision, execution result and postcondition—not only route/tool/risk.
+- Run UI, application, timeout and STOP tests through the real PlumaApplicationRuntime and ToolRegistry.
+- Run a native-Windows 1000-task soak measuring private memory, handle count, threads, child processes, Job Objects, temporary files, active capsules and SQLite `PRAGMA integrity_check`.
+- Generate report category totals automatically; they must equal pytest’s collected total.
+- Remove stale logs and provide all five raw runs if claiming five runs.
+- Clearly label mocked versus native tests.
+
+Do not weaken tests or thresholds. Continue implementing and rerunning failures until every production-path acceptance test passes.
+
+Final deliverables:
+- exact commit SHA;
+- complete raw logs;
+- native-versus-mock table;
+- clean EXE/wheel/release ZIP with SHA-256;
+- clean-Windows installation evidence;
+- PASS/FAIL/UNVERIFIED gate table.
+
+If any mandatory gate remains unverified, report `PHASE 13.5 INCOMPLETE`. Do not approve Phase 14.

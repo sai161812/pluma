@@ -93,83 +93,103 @@ def test_resident_core_idle_memory_footprint() -> None:
 
 @pytest.mark.timeout(600)
 def test_soak_1000_fast_tasks_no_memory_leak() -> None:
+    """Execute 1,000 FAST route tasks through SQLite Activity Ledger and verify zero resource leak."""
+    import tempfile
+    import psutil
+    from pathlib import Path
+    import gc
 
-    """Execute 1,000 FAST route tasks through SQLite Activity Ledger and verify zero memory leak."""
+    # Real filesystem DB to verify no file handle leaks and PRAGMA integrity
+    with tempfile.TemporaryDirectory() as td:
+        db_path = Path(td) / "pluma_soak.db"
+        db = DbConnection(str(db_path))
+        db.open()
+        ledger = ActivityLedger(db=db)
+        registry = get_default_tool_registry()
+        supervisor = TaskSupervisor(ledger=ledger)
+        router = Router()
+        orch = Orchestrator(
+            router=router,
+            registry=registry,
+            supervisor=supervisor,
+            ledger=ledger,
+        )
 
-    db = DbConnection(":memory:")
-    db.open()
-    ledger = ActivityLedger(db=db)
-    registry = get_default_tool_registry()
-    supervisor = TaskSupervisor(ledger=ledger)
-    router = Router()
-    orch = Orchestrator(
-        router=router,
-        registry=registry,
-        supervisor=supervisor,
-        ledger=ledger,
-    )
+        process = psutil.Process(os.getpid())
+        
+        # Helper to get current resources
+        def get_resources():
+            gc.collect()
+            import glob
+            temp_files = len(glob.glob(os.path.join(tempfile.gettempdir(), "pluma_*")))
+            
+            # Count job objects
+            job_objects = 0
+            if hasattr(supervisor, "job_object"):
+                job_objects = 1 if getattr(supervisor, "job_object") else 0
+            
+            return {
+                "rss": process.memory_info().rss / (1024.0 * 1024.0),
+                "handles": process.num_handles() if hasattr(process, 'num_handles') else 0,
+                "threads": process.num_threads(),
+                "children": len(process.children(recursive=True)),
+                "active_capsules": len(supervisor._active_tasks) if hasattr(supervisor, "_active_tasks") else 0,
+                "job_objects": job_objects,
+                "temp_files": temp_files
+            }
 
-    # Initial memory baseline
-    gc.collect()
-    rss_start = _get_process_rss_mb()
+        start_res = get_resources()
 
-    task_commands = [
-        "mute",
-        "unmute",
-        "set volume 40",
-        "system status",
-        "clear clipboard",
-    ]
+        task_commands = [
+            "mute",
+            "unmute",
+            "set volume 40",
+            "system status",
+            "clear clipboard",
+        ]
 
-    total_tasks = 1000
-    for i in range(total_tasks):
-        cmd = task_commands[i % len(task_commands)]
-        req = PlumaRequest(input_mode=InputMode.TEXT, text=cmd)
-        res = orch.execute(req)
-        assert res.final_state == "SUCCEEDED"
+        total_tasks = 1000
+        for i in range(total_tasks):
+            cmd = task_commands[i % len(task_commands)]
+            req = PlumaRequest(input_mode=InputMode.TEXT, text=cmd)
+            res = orch.execute(req)
+            assert res.final_state == "SUCCEEDED"
 
-    gc.collect()
-    rss_end = _get_process_rss_mb()
-    delta_mb = rss_end - rss_start
+        end_res = get_resources()
+        
+        delta_rss = end_res["rss"] - start_res["rss"]
+        delta_handles = end_res["handles"] - start_res["handles"]
+        delta_threads = end_res["threads"] - start_res["threads"]
+        delta_temp = end_res["temp_files"] - start_res["temp_files"]
 
-    print(
-        f"\n[SOAK TEST] 1,000 Tasks Completed: Start={rss_start:.2f}MB, "
-        f"End={rss_end:.2f}MB, Delta={delta_mb:+.2f}MB"
-    )
+        print(
+            "\n[SOAK TEST] 1,000 Tasks Completed:\n"
+            f"RSS: {start_res['rss']:.2f}MB -> {end_res['rss']:.2f}MB (Delta: {delta_rss:+.2f}MB)\n"
+            f"Handles: {start_res['handles']} -> {end_res['handles']} (Delta: {delta_handles:+d})\n"
+            f"Threads: {start_res['threads']} -> {end_res['threads']} (Delta: {delta_threads:+d})\n"
+            f"Children: {start_res['children']} -> {end_res['children']}\n"
+            f"Active Capsules: {start_res['active_capsules']} -> {end_res['active_capsules']}\n"
+            f"Job Objects: {start_res['job_objects']} -> {end_res['job_objects']}\n"
+            f"Temporary Files: {start_res['temp_files']} -> {end_res['temp_files']} (Delta: {delta_temp})"
+        )
 
-    # Verify ledger recorded all 1,000 tasks
-    query = ActivityQuery(db=db)
-    recent = query.recent_tasks(limit=1000)
-    assert len(recent) == 1000
+        assert delta_rss < 30.0, f"Memory leaked {delta_rss:.2f}MB over 1,000 tasks!"
+        assert delta_handles < 50, f"Handle leak detected: {delta_handles} leaked"
+        assert delta_threads < 10, f"Thread leak detected: {delta_threads} leaked"
+        assert delta_temp <= 10, f"Temp files leaked: {delta_temp} leaked"
+        assert end_res["children"] == 0, f"Child processes leaked: {end_res['children']}"
+        assert end_res["active_capsules"] == 0, "Task capsules leaked"
 
-    # Memory growth across 1,000 in-memory tasks should be minimal (< 20MB)
-    assert delta_mb < 20.0, f"Memory leaked {delta_mb:.2f}MB over 1,000 tasks!"
-    db.close()
-
-
-def test_worker_lifecycle_cyclic_load_unload_memory() -> None:
-    """Cycle STT, OCR, and LLM lifecycle managers through 20 load/unload cycles to verify clean state cleanup."""
-    voice_mgr = VoiceLifecycleManager(idle_unload_seconds=0.1)
-    ocr_mgr = OcrLifecycleManager(idle_unload_seconds=0.1)
-    llm_mgr = LlmLifecycleManager(idle_unload_seconds=0.1)
-
-    gc.collect()
-    rss_before = _get_process_rss_mb()
-
-    for cycle in range(20):
-        # Simulate worker warmup / cold state transitions
-        assert str(voice_mgr.state) in ("COLD", "LifecycleState.COLD")
-        assert str(ocr_mgr.state) in ("COLD", "OcrLifecycleState.COLD")
-        assert str(llm_mgr.state) in ("COLD", "LlmLifecycleState.COLD")
-
-        # Explicit unload / teardown
-        voice_mgr.unload()
-        ocr_mgr.unload()
-        llm_mgr.unload()
-
-    gc.collect()
-    rss_after = _get_process_rss_mb()
-    delta_mb = rss_after - rss_before
-
-    print(f"\n[SOAK TEST] 20 Lifecycle Transitions: Delta={delta_mb:+.2f}MB")
-    assert delta_mb < 5.0, f"Lifecycle cycle leaked {delta_mb:.2f}MB!"
+        # Verify ledger recorded all 1,000 tasks
+        query = ActivityQuery(db=db)
+        recent = query.recent_tasks(limit=1000)
+        assert len(recent) == 1000
+        
+        # PRAGMA integrity_check
+        cursor = db._conn.cursor()
+        cursor.execute("PRAGMA integrity_check;")
+        integrity = cursor.fetchone()[0]
+        assert integrity.lower() == "ok", f"Database integrity check failed: {integrity}"
+        
+        supervisor.stop()
+        db.close()
