@@ -1,2 +1,2 @@
-da2b8cd8bf257fc64e3e1fc7e8efa5679ae48c47e5b1376fc8e47e7244251c2f  packages/pluma-0.1.0-py3-none-any.whl
-e41b2aee2f4bddd4f0ce95bacd048f0d20cf343738d9428eb32b2115430f09eb  pluma.exe
+8b2333949e83a019a489228470c86c3e892b4bdb8da2304b70b6f0d72437f55c  packages/pluma-0.1.0-py3-none-any.whl
+d04bb6dd8d8244ec339079c960cf35b77e7a672ba76ec90fe22929286850e0e0  pluma.exe
