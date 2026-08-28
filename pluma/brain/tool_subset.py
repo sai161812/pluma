@@ -101,22 +101,8 @@ class ToolSubsetSelector:
         """Return True if tool_name is permitted for execution in the given route."""
         try:
             route_enum = route if isinstance(route, RouteMode) else RouteMode(str(route).upper())
-            
-            # FAST route never allows arbitrary LLM tool execution
-            if route_enum == RouteMode.FAST:
-                return False
-
             permitted = ROUTE_TOOL_MAP.get(route_enum, [])
-            if tool_name in permitted:
-                return True
-                
-            # Permit custom registered tools in SMART/DEEP unless explicitly restricted
-            if route_enum == RouteMode.SMART and tool_name not in UI_PERCEPTION_TOOLS:
-                return True
-            if route_enum == RouteMode.DEEP:
-                return True
-                
-            return False
+            return tool_name in permitted
         except Exception:
             return False
 

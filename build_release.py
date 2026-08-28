@@ -105,7 +105,15 @@ def create_release_zip(wheel_path: Path) -> Path:
                 zf.write(cp, arcname=f"config/{cfg}")
 
         # Include documentation and manifest
-        for doc_name in ["README.md", "pyproject.toml", "PHASE_13_5_COMPLETION_REPORT.md", "pluma.spec"]:
+        for doc_name in [
+            "README.md",
+            "pyproject.toml",
+            "PHASE_13_5_COMPLETION_REPORT.md",
+            "PHASE_13_6_COMPLETION_REPORT.md",
+            "PHASE_13_7_COMPLETION_REPORT.md",
+            "FINAL_RELEASE_REPORT.md",
+            "pluma.spec",
+        ]:
             doc_path = ROOT_DIR / doc_name
             if doc_path.exists():
                 zf.write(doc_path, arcname=doc_name)

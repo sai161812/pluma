@@ -123,6 +123,9 @@ class TaskCapsule(BaseModel):
     # Snapshot registry for UI grounding — not serializable, cleared on terminal transition
     snapshot_registry: Any = Field(default=None, exclude=True)
 
+    # Active task-owned ToolRegistry worker controller (not serializable)
+    worker_controller: Any = Field(default=None, exclude=True)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     started_at: Optional[datetime] = None
@@ -171,6 +174,19 @@ class TaskCapsule(BaseModel):
                     logger.debug("Error closing persistent app job for task %s: %s", self.task_id, e)
                 finally:
                     res.metadata["persistent_job"] = None
+
+        # Clean up or recycle task-owned worker controller
+        if getattr(self, "worker_controller", None) is not None:
+            try:
+                registry = getattr(self, "_tool_registry", None)
+                if registry is not None:
+                    registry.cleanup_task(self.task_id, recycle=True)
+                else:
+                    self.worker_controller.terminate_and_join()
+            except Exception as e:
+                logger.debug("Error cleaning up worker controller for task %s: %s", self.task_id, e)
+            finally:
+                self.worker_controller = None
 
         # Clear task-scoped snapshot registry to free memory and invalidate stale refs
         if self.snapshot_registry is not None:
@@ -318,6 +334,14 @@ class TaskSupervisor:
             time.sleep(grace_s)
         
         # 3. Terminate unresponsive PLUMA-owned Job Object workers and launched applications
+        if getattr(capsule, "worker_controller", None) is not None:
+            try:
+                capsule.worker_controller.terminate_and_join()
+            except Exception as e:
+                logger.error("Failed to terminate worker controller for %s: %s", task_id, e)
+            finally:
+                capsule.worker_controller = None
+
         if capsule.job_object:
             try:
                 capsule.job_object.terminate(exit_code=1)

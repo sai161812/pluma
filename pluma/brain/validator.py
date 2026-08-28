@@ -33,6 +33,7 @@ class PlanValidator:
         self,
         plan: Plan,
         registry: Optional[ToolRegistry] = None,
+        permitted_tool_specs: Optional[List[Dict[str, Any]]] = None,
         max_steps: int = MAX_PLAN_STEPS_HARD_CAP,
     ) -> Plan:
         """Validate an instantiated Plan against registry tools and schemas.
@@ -53,12 +54,25 @@ class PlanValidator:
                 f"Plan step count ({len(plan.steps)}) exceeds maximum allowed ({effective_max})."
             )
 
+        # Permitted tools whitelist check
+        allowed_names: Optional[set[str]] = None
+        if permitted_tool_specs is not None:
+            allowed_names = {
+                spec.get("name") if isinstance(spec, dict) else getattr(spec, "name", str(spec))
+                for spec in permitted_tool_specs
+            }
+
         # 2. Per-step tool & argument checks
         for idx, step in enumerate(plan.steps):
             tool_name = step.tool
             if not target_registry.contains(tool_name):
                 raise PlanValidationError(
                     f"Step {idx + 1}: Unknown or unpermitted tool '{tool_name}' proposed by planner."
+                )
+
+            if allowed_names is not None and tool_name not in allowed_names:
+                raise PlanValidationError(
+                    f"Step {idx + 1}: Tool '{tool_name}' is not in permitted_tool_specs for this planning call."
                 )
 
             tool_spec = target_registry.lookup(tool_name)
@@ -87,6 +101,7 @@ class PlanValidator:
         self,
         raw_text: str,
         registry: Optional[ToolRegistry] = None,
+        permitted_tool_specs: Optional[List[Dict[str, Any]]] = None,
         max_steps: int = MAX_PLAN_STEPS_HARD_CAP,
     ) -> Plan:
         """Parse raw JSON output from the model, handling markdown fences, and validate.
@@ -98,22 +113,32 @@ class PlanValidator:
         # Strip markdown code blocks if the model wrapped output in ```json ... ```
         if cleaned.startswith("```"):
             cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
-            cleaned = re.sub(r"\n?```$", "", cleaned).strip()
+            cleaned = re.sub(r"\n?```$", "", cleaned)
+            cleaned = cleaned.strip()
 
         try:
-            data = json.loads(cleaned)
-        except json.JSONDecodeError as dec_err:
-            raise PlanValidationError(f"Failed to parse planner output as JSON: {dec_err}") from dec_err
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError as json_err:
+            raise PlanValidationError(
+                f"Model output is not valid JSON: {json_err}. Raw text: {raw_text[:200]!r}"
+            ) from json_err
 
-        if not isinstance(data, dict):
-            raise PlanValidationError("Planner output must be a JSON object.")
+        if not isinstance(payload, dict):
+            raise PlanValidationError(
+                f"Expected JSON object with 'steps', got {type(payload).__name__}."
+            )
 
         try:
-            plan = Plan.model_validate(data)
-        except ValidationError as pydantic_err:
-            raise PlanValidationError(f"Plan structure invalid: {pydantic_err}") from pydantic_err
+            plan = Plan.model_validate(payload)
+        except ValidationError as val_err:
+            raise PlanValidationError(f"Plan structure invalid: Schema validation failed: {val_err}") from val_err
 
-        return self.validate_plan(plan, registry=registry, max_steps=max_steps)
+        return self.validate_plan(
+            plan,
+            registry=registry,
+            permitted_tool_specs=permitted_tool_specs,
+            max_steps=max_steps,
+        )
 
     # Alias for convenience
     validate = parse_and_validate_json
