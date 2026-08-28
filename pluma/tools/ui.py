@@ -657,6 +657,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
         )
 
     # 7.5. Re-check target identity/freshness IMMEDIATELY before physical click
+    context = ActiveWindowContext()
     current_active = context.get_active_window()
     if not current_active.is_valid or current_active.hwnd != target_hwnd:
         return ToolResult(
@@ -664,16 +665,35 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             factual_message=f"Pre-click safety abort: Active window changed right before click. Expected HWND {target_hwnd}.",
             verified=False, error="WINDOW_CHANGED_BEFORE_CLICK", error_code="WINDOW_CHANGED_BEFORE_CLICK",
         )
-    # Check if window moved since we captured it
-    if current_active.rect and window_rect and (
-        abs(current_active.rect.left - window_rect.left) > 20 or
-        abs(current_active.rect.top - window_rect.top) > 20
-    ):
-        return ToolResult(
-            ok=False, tool="click_ocr_text", data=args,
-            factual_message=f"Pre-click safety abort: Window moved right before click.",
-            verified=False, error="WINDOW_MOVED_BEFORE_CLICK", error_code="WINDOW_MOVED_BEFORE_CLICK",
-        )
+
+    # If snapshot was provided, completely revalidate against it right before the click
+    if snapshot_id:
+        snapshot_registry = getattr(task_context, "snapshot_registry", None)
+        if snapshot_registry:
+            try:
+                # resolve() inherently checks TTL/expiration
+                final_snap = snapshot_registry.resolve(snapshot_id)
+                if final_snap.hwnd and final_snap.hwnd != current_active.hwnd:
+                     return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: HWND mismatch", verified=False, error="WINDOW_MISMATCH")
+                if final_snap.pid and current_active.pid and final_snap.pid != current_active.pid:
+                     return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: PID mismatch", verified=False, error="PROCESS_MISMATCH")
+                if final_snap.dpi_scale and abs(current_active.dpi_scale - final_snap.dpi_scale) > 0.05:
+                     return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: DPI mismatch", verified=False, error="DPI_MISMATCH")
+                
+                # Check FULL window geometry/resize
+                if final_snap.window_rect and current_active.rect:
+                    dx = abs(current_active.rect.left - final_snap.window_rect.left)
+                    dy = abs(current_active.rect.top - final_snap.window_rect.top)
+                    dw = abs((current_active.rect.right - current_active.rect.left) - (final_snap.window_rect.right - final_snap.window_rect.left))
+                    dh = abs((current_active.rect.bottom - current_active.rect.top) - (final_snap.window_rect.bottom - final_snap.window_rect.top))
+                    if max(dx, dy, dw, dh) > 20:
+                        return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: Window moved or resized", verified=False, error="WINDOW_MOVED")
+            except Exception as fresh_err:
+                return ToolResult(
+                    ok=False, tool="click_ocr_text", data=args,
+                    factual_message=f"Pre-click safety abort: Snapshot freshness check failed: {fresh_err}",
+                    verified=False, error=str(fresh_err), error_code="STALE_SNAPSHOT",
+                )
 
     # 8. Click via InputAdapter
     try:
@@ -712,9 +732,8 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             verified = True
             v_res = VerifyResult(ok=True, method="ocr_rescan", detail=f"Target word count changed from {len(matches)} to {len(post_matches)}")
         else:
-            # Maybe the word is still there (like a tab).
-            verified = True
-            v_res = VerifyResult(ok=True, method="ocr_rescan", detail="Target clicked and UI verified active.")
+            verified = False
+            v_res = VerifyResult(ok=False, method="ocr_rescan", detail="Target clicked but no visible UI change detected.")
     except Exception as verify_exc:
         v_res = VerifyResult(ok=False, method="ocr_rescan", detail=f"Post-click verification failed: {verify_exc}")
 
