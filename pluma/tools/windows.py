@@ -179,18 +179,6 @@ def verify_focus_window(result: ToolResult) -> VerifyResult:
     return verify_window_focused(result.data["hwnd"])
 
 
-class MinimizeWindowArgs(BaseModel):
-    """Arguments for minimize_window."""
-    hwnd: Optional[int] = Field(default=None, description="Window HWND to minimize. Defaults to foreground window.")
-    title: Optional[str] = Field(default=None, description="Window title substring to minimize.")
-
-
-class MaximizeWindowArgs(BaseModel):
-    """Arguments for maximize_window."""
-    hwnd: Optional[int] = Field(default=None, description="Window HWND to maximize. Defaults to foreground window.")
-    title: Optional[str] = Field(default=None, description="Window title substring to maximize.")
-
-
 # ---------------------------------------------------------------------------
 # Minimize / Maximize Executors
 # ---------------------------------------------------------------------------

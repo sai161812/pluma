@@ -26,6 +26,7 @@ from pluma.verify.common import (
 
 
 _FORBIDDEN_EXECUTABLES = frozenset({
+    # Shells and interpreters
     "cmd", "cmd.exe",
     "powershell", "powershell.exe",
     "pwsh", "pwsh.exe",
@@ -40,7 +41,63 @@ _FORBIDDEN_EXECUTABLES = frozenset({
     "regsvr32", "regsvr32.exe",
     "certutil", "certutil.exe",
     "bitsadmin", "bitsadmin.exe",
+    # Registry and scheduled task manipulation
+    "reg", "reg.exe",
+    "schtasks", "schtasks.exe",
+    "at", "at.exe",
+    # Service control and network configuration
+    "sc", "sc.exe",
+    "net", "net.exe",
+    "net1", "net1.exe",
+    "netsh", "netsh.exe",
+    # Process and ACL manipulation
+    "taskkill", "taskkill.exe",
+    "icacls", "icacls.exe",
+    "takeown", "takeown.exe",
+    "cacls", "cacls.exe",
+    # WMI - arbitrary system queries/exec
+    "wmic", "wmic.exe",
+    # Download utilities used in LOLBins
+    "curl", "curl.exe",
+    "wget", "wget.exe",
+    "ftp", "ftp.exe",
+    # Additional dangerous utilities
+    "forfiles", "forfiles.exe",
+    "msiexec", "msiexec.exe",
+    "regasm", "regasm.exe",
+    "regsvcs", "regsvcs.exe",
+    "installutil", "installutil.exe",
+    "cmstp", "cmstp.exe",
+    "msbuild", "msbuild.exe",
+    "xwizard", "xwizard.exe",
 })
+
+# Controlled allowlist of named application aliases.
+# Only these aliases are explicitly blessed. Non-alias names are still permitted
+# (shutil.which resolves them), but a WARNING is emitted so operators can audit.
+_ALLOWED_APP_ALIASES: Dict[str, str] = {
+    # Productivity and utilities
+    "notepad": "notepad.exe",
+    "calculator": "calc.exe",
+    "calc": "calc.exe",
+    "paint": "mspaint.exe",
+    "mspaint": "mspaint.exe",
+    "wordpad": "wordpad.exe",
+    "explorer": "explorer.exe",
+    "snippingtool": "SnippingTool.exe",
+    "charmap": "charmap.exe",
+    "taskmgr": "taskmgr.exe",
+    # Media
+    "wmplayer": "wmplayer.exe",
+    # Browsers
+    "msedge": "msedge.exe",
+    "chrome": "chrome.exe",
+    "firefox": "firefox.exe",
+    # Office (not scripted)
+    "winword": "winword.exe",
+    "excel": "excel.exe",
+    "powerpnt": "powerpnt.exe",
+}
 
 _SHELL_METACHAR_PATTERN = re.compile(r"[&|;><`$\n\r]")
 _DANGEROUS_ARG_PATTERNS = [
@@ -183,12 +240,27 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
                 return ToolResult.failure("open_app", f"Dangerous shell argument '{a}' is forbidden in open_app.")
 
     try:
+        import logging as _logging
+        _app_logger = _logging.getLogger(__name__)
+
         # Check cancellation before starting
         if task_context and hasattr(task_context, "cancellation_token"):
             if task_context.cancellation_token.is_cancelled:
                 return ToolResult.failure("open_app", "Task cancelled before application could launch.", error_code="TASK_CANCELLED")
 
-        exe = shutil.which(app) or app
+        # Resolve through controlled alias map first; fall back to shutil.which for unlisted names
+        clean_app = app.strip().lower()
+        if clean_app in _ALLOWED_APP_ALIASES:
+            resolved_name = _ALLOWED_APP_ALIASES[clean_app]
+            exe = shutil.which(resolved_name) or resolved_name
+        else:
+            # Non-alias name: warn but still resolve to let operators audit
+            _app_logger.warning(
+                "open_app: '%s' is not in the controlled alias allowlist. "
+                "Using shutil.which fallback. Consider adding an alias for audit traceability.",
+                app,
+            )
+            exe = shutil.which(app) or app
         full_cmd = [exe] + cmd_args
 
         proc = subprocess.Popen(
