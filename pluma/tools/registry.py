@@ -13,8 +13,12 @@ No OS-automation, ML, or adapter code in this module.
 from __future__ import annotations
 
 import concurrent.futures
+import inspect
+import json
+import logging
 import multiprocessing
 import os
+import sys
 import threading
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional
@@ -451,6 +455,10 @@ class ToolRegistry:
                             "snapshot_pid": snapshot.pid,
                             "snapshot_creation_time_ns": snapshot.process_creation_time_ns,
                             "snapshot_dpi_scale": snapshot.dpi_scale,
+                            "snapshot_rect_left": snapshot.window_rect.left if snapshot.window_rect else 0,
+                            "snapshot_rect_top": snapshot.window_rect.top if snapshot.window_rect else 0,
+                            "snapshot_rect_right": snapshot.window_rect.right if snapshot.window_rect else 0,
+                            "snapshot_rect_bottom": snapshot.window_rect.bottom if snapshot.window_rect else 0,
                             "auto_id": element.uia_automation_id,
                             "name": element.label,
                             "control_type": element.control_type,
@@ -479,7 +487,8 @@ class ToolRegistry:
             pickle.dumps(validated_args)
             pickle.dumps(worker_req)
             use_process_isolation = True
-        except Exception:
+        except Exception as e:
+            print("REGISTRY.PY: PICKLE FAILED:", e)
             use_process_isolation = False
 
         if use_process_isolation:
@@ -498,12 +507,36 @@ class ToolRegistry:
                     if task_context and hasattr(task_context, "register_owned_resource"):
                         for wr in payload.owned_resources:
                             try:
-                                task_context.register_owned_resource(
+                                res_obj = task_context.register_owned_resource(
                                     resource_type=wr.resource_type,
                                     ownership=wr.ownership,
                                     external_id=wr.external_id,
                                     metadata=wr.metadata,
                                 )
+                                # Item 1: Establish persistent job object in parent
+                                if wr.resource_type == "subprocess" and sys.platform == "win32":
+                                    pid = wr.metadata.get("pid")
+                                    print("REGISTRY.PY: pid is", pid)
+                                    if pid:
+                                        try:
+                                            from pluma.core.job_object import WindowsJobObject
+                                            persistent_job = WindowsJobObject(
+                                                name=f"pluma-app-{pid}",
+                                                kill_on_close=False,
+                                            )
+                                            persistent_job.assign_process(pid)
+                                            res_obj.metadata["persistent_job"] = persistent_job
+                                            print("REGISTRY.PY: persistent_job assigned successfully")
+                                        except Exception as job_err:
+                                            print("REGISTRY.PY: job error:", job_err)
+                                            # Containment failed: kill process and fail closed
+                                            import subprocess
+                                            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                            result = ToolResult.failure(
+                                                tool_name,
+                                                f"Mandatory Job Object containment failed for PID {pid} in parent: {job_err}",
+                                                error_code="JOB_CONTAINMENT_FAILED",
+                                            )
                             except Exception:
                                 pass
                     # Propagate snapshot
@@ -599,13 +632,17 @@ class ToolRegistry:
         verified = result.verified
         verify_detail = result.verify_detail
         if result.ok and spec.verifier:
-            try:
-                v_res = spec.verifier(result)
-                verified = v_res.ok
-                verify_detail = v_res
-            except Exception as e:
-                verified = False
-                verify_detail = VerifyResult(ok=False, method="verifier_exception", detail=str(e))
+            from pluma.verify.common import verify_noop
+            if verified is False and spec.verifier is verify_noop:
+                pass
+            else:
+                try:
+                    v_res = spec.verifier(result)
+                    verified = v_res.ok
+                    verify_detail = v_res
+                except Exception as e:
+                    verified = False
+                    verify_detail = VerifyResult(ok=False, method="verifier_exception", detail=str(e))
 
         # 6. Finalize undo record only on verified success
         undo_record = None

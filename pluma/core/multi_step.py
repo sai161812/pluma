@@ -21,7 +21,6 @@ from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelled
 from pluma.core.task_supervisor import TaskCapsule, TaskState, TaskStep, TaskSupervisor
 from pluma.memory.activity import ActionRecord, ActivityLedger, UndoRecord
 from pluma.rollback.engine import RollbackEngine
-from pluma.rollback.recipes import RollbackRecipes
 from pluma.tools.base import RiskClass, ToolResult
 from pluma.tools.registry import ToolRegistry
 
@@ -94,9 +93,7 @@ class MultiStepOrchestrator:
         task_id = capsule.task_id
         token = capsule.cancellation_token
 
-        # Transition to RUNNING
-        if capsule.state == TaskState.CREATED:
-            self.supervisor.transition(task_id, TaskState.RUNNING)
+        capsule = self.supervisor.get_task(task_id)
 
         executed_records: List[StepExecutionRecord] = []
         prior_results_for_replan: List[Dict[str, Any]] = []

@@ -183,6 +183,10 @@ def verify_all_audit_items() -> None:
         sup7.start_task(cap7.task_id)
         sup7.mark_succeeded(cap7.task_id)
         assert cap7.job_object is None, "Job Object handle must be closed and cleared on task terminal transition!"
+        
+        # Cleanup the app we opened (since mark_succeeded does not kill persistent apps)
+        if open_res.ok:
+            reg.execute("close_app", {"app_name": str(pid), "force": True})
 
         # Verify invalid window handles fail-closed
         win_res = reg.execute("restore_window", {"hwnd": 0})

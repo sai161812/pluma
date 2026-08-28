@@ -203,6 +203,19 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
             factual_message=f"DPI scaling changed from {grounded_ui_target['snapshot_dpi_scale']} to {active.dpi_scale}",
             verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
         )
+    
+    # Check window bounds with 20px tolerance for slight shifts
+    if "snapshot_rect_left" in grounded_ui_target and active.rect:
+        dx = abs(active.rect.left - grounded_ui_target["snapshot_rect_left"])
+        dy = abs(active.rect.top - grounded_ui_target["snapshot_rect_top"])
+        dw = abs((active.rect.right - active.rect.left) - (grounded_ui_target["snapshot_rect_right"] - grounded_ui_target["snapshot_rect_left"]))
+        dh = abs((active.rect.bottom - active.rect.top) - (grounded_ui_target["snapshot_rect_bottom"] - grounded_ui_target["snapshot_rect_top"]))
+        if max(dx, dy, dw, dh) > 20:
+            return ToolResult(
+                ok=False, tool="click_element", data=args,
+                factual_message="Active window moved or resized significantly since snapshot. Action aborted for safety.",
+                verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
+            )
 
     hwnd = active.hwnd
     auto_id = grounded_ui_target["auto_id"]
@@ -311,6 +324,19 @@ def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) ->
             factual_message=f"DPI scaling changed from {grounded_ui_target['snapshot_dpi_scale']} to {active.dpi_scale}",
             verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
         )
+        
+    # Check window bounds with 20px tolerance for slight shifts
+    if "snapshot_rect_left" in grounded_ui_target and active.rect:
+        dx = abs(active.rect.left - grounded_ui_target["snapshot_rect_left"])
+        dy = abs(active.rect.top - grounded_ui_target["snapshot_rect_top"])
+        dw = abs((active.rect.right - active.rect.left) - (grounded_ui_target["snapshot_rect_right"] - grounded_ui_target["snapshot_rect_left"]))
+        dh = abs((active.rect.bottom - active.rect.top) - (grounded_ui_target["snapshot_rect_bottom"] - grounded_ui_target["snapshot_rect_top"]))
+        if max(dx, dy, dw, dh) > 20:
+            return ToolResult(
+                ok=False, tool="type_into_element", data=args,
+                factual_message="Active window moved or resized significantly since snapshot. Action aborted for safety.",
+                verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
+            )
 
     hwnd = active.hwnd
     auto_id = grounded_ui_target["auto_id"]

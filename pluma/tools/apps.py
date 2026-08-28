@@ -278,10 +278,10 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
                 error_code="APP_NOT_ALLOWLISTED",
             )
 
-        if os.environ.get("PLUMA_TEST_MODE") == "1" and stem in ("calc", "calculator"):
-            # On Windows 10/11, calc.exe launches out-of-process UWP CalculatorApp.exe via DCOM RPC.
-            # In automated test mode, use a silent background process to prevent intrusive desktop
-            # popup windows while preserving full subprocess and JobObject lifecycle.
+        if os.environ.get("PLUMA_TEST_MODE") == "1":
+            # In automated test mode, use a silent background process for ALL applications
+            # to prevent intrusive desktop popup windows while preserving full subprocess
+            # and JobObject lifecycle.
             full_cmd = [sys.executable, "-c", "import time; time.sleep(15)"]
         else:
             full_cmd = [exe] + cmd_args
@@ -300,28 +300,6 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
         # Record 64-bit creation timestamp for identity verification before later termination
         creation_time_ns = _get_process_creation_time_ns(pid)
 
-        # Create a persistent Job Object (kill_on_close=False) for STOP semantics.
-        # Containment is mandatory on Windows: if assignment fails, terminate process immediately.
-        persistent_job: Any = None
-        if sys.platform == "win32":
-            try:
-                from pluma.core.job_object import WindowsJobObject
-                persistent_job = WindowsJobObject(
-                    name=f"pluma-app-{pid}",
-                    kill_on_close=False,  # Do NOT kill app when task succeeds
-                )
-                persistent_job.assign_process(pid)
-            except Exception as job_err:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-                return ToolResult.failure(
-                    "open_app",
-                    f"Mandatory Job Object containment failed for PID {pid}: {job_err}",
-                    error_code="JOB_CONTAINMENT_FAILED",
-                )
-
 
         # Register process ownership on TaskCapsule with full identity metadata
         if task_context and hasattr(task_context, "register_owned_resource"):
@@ -335,7 +313,6 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
                         "command": full_cmd,
                         "pid": pid,
                         "creation_time_ns": creation_time_ns,
-                        "persistent_job": persistent_job,  # Handle stored for STOP use
                     },
                 )
             except Exception:

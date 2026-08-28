@@ -114,8 +114,8 @@ def test_stage_j_command_matrix_coverage() -> None:
             class MockBackend(LlamaCppBackend):
                 def generate(self, prompt: str, grammar: str = None, max_tokens: int = 512, temperature: float = 0.0, **kwargs) -> str:
                     if "volume" in prompt.lower():
-                        return '{"route": "FAST", "mode": "direct", "steps": [{"tool": "get_volume_status", "arguments": {}, "purpose": "check volume"}]}'
-                    return '{"route": "FAST", "mode": "direct", "steps": [{"tool": "get_system_status", "arguments": {}, "purpose": "check status"}]}'
+                        return '{"route": "SMART", "mode": "direct", "steps": [{"tool": "get_volume_status", "arguments": {}, "purpose": "check volume"}]}'
+                    return '{"route": "SMART", "mode": "direct", "steps": [{"tool": "get_system_status", "arguments": {}, "purpose": "check status"}]}'
 
             runtime.orchestrator._llm_manager = LlmLifecycleManager(custom_backend=MockBackend(), registry=runtime.tool_registry)
 

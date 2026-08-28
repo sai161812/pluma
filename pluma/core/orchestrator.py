@@ -114,7 +114,7 @@ class Orchestrator:
         rollback_engine: Optional[RollbackEngine] = None,
     ) -> None:
         self._registry = registry or _build_default_registry()
-        self._supervisor = supervisor or TaskSupervisor(ledger=ledger)
+        self._supervisor = supervisor or TaskSupervisor(ledger=ledger, rollback_engine=rollback_engine)
         self._ledger = ledger
         self._router = router or Router()
         self._llm_manager = llm_manager
@@ -131,13 +131,28 @@ class Orchestrator:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def execute(self, request: PlumaRequest) -> TaskExecutionResult:
+    def execute(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None) -> TaskExecutionResult:
         """Execute *request* through the full command lifecycle across all routes."""
         wall_start = time.perf_counter()
 
-        # 1. Create Task Capsule
-        capsule = self._supervisor.create_task(request.request_id)
+        # 1. Use provided Task Capsule or create one
+        if capsule is None:
+            capsule = self._supervisor.create_task_capsule(request_id=request.request_id)
         task_id = capsule.task_id
+        
+        # Start the task immediately before any routing/planning/perception
+        self._supervisor.start_task(task_id)
+        if capsule.cancellation_token.is_cancelled:
+            self._supervisor.stop_task(task_id)
+            return TaskExecutionResult(
+                task_id=task_id,
+                request_id=request.request_id,
+                route=RouteMode.FAST,
+                route_reason="Cancelled before routing",
+                final_state="STOPPED",
+                error="Task was stopped before routing began.",
+            )
+
         logger.info(
             "task=%s request=%s mode=%s text=%r",
             task_id, request.request_id, request.input_mode.value, redact_string(request.text[:120]),
@@ -205,7 +220,6 @@ class Orchestrator:
                 duration_ms=duration_ms,
             )
 
-        self._supervisor.start_task(task_id)
         steps_executed: List[StepRecord] = []
         final_state = "SUCCEEDED"
         last_error: Optional[str] = None

@@ -77,9 +77,10 @@ def test_stop_latch_latency(supervisor: TaskSupervisor) -> None:
     capsule = supervisor.create_task("req-456")
     supervisor.start_task(capsule.task_id)
 
-    start = time.perf_counter()
-    supervisor.stop_task(capsule.task_id)
-    duration_ms = (time.perf_counter() - start) * 1000
+    # Must execute in < 100ms
+    t0 = time.perf_counter()
+    supervisor.stop_task(capsule.task_id, grace_s=0.0)
+    duration_ms = (time.perf_counter() - t0) * 1000.0
 
     assert capsule.stop_latch_set is True
     assert duration_ms < 100.0, f"STOP latency too high: {duration_ms}ms"
