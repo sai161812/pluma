@@ -357,6 +357,89 @@ class TestOcrFreshnessAndVerification:
         v_res2 = verify_click_ocr_text(verified_result)
         assert v_res2.ok is True
 
+    def test_click_ocr_unchanged_postcondition_yields_unverified_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pluma.tools.ui import execute_click_ocr_text
+        from pluma.perception.element_refs import BoundingBox, ScreenSnapshot
+        from pluma.perception.ocr_adapter import OcrWord
+        from pluma.perception.snapshot_registry import SnapshotRegistry
+
+        class DummyActiveWindow:
+            is_valid = True
+            hwnd = 12345
+            pid = 999
+            rect = BoundingBox(left=0, top=0, right=1000, bottom=1000)
+            dpi_scale = 1.0
+
+        class DummyContext:
+            def get_active_window(self):
+                return DummyActiveWindow()
+            def get_process_creation_time_ns(self, pid):
+                return 123456789
+
+        class DummyCapture:
+            def capture_window(self, hwnd):
+                return b"fake_image_bytes"
+
+        class DummyOcrResult:
+            def find_words(self, text, min_confidence):
+                return [OcrWord(text=text, confidence=0.99, bounds=BoundingBox(left=10, top=10, right=50, bottom=20))]
+
+        class DummyOcrManager:
+            def run_ocr(self, image_bytes):
+                return DummyOcrResult()
+
+        monkeypatch.setattr("pluma.tools.ui.ActiveWindowContext", lambda: DummyContext())
+        monkeypatch.setattr("pluma.perception.capture.WindowCapture", lambda: DummyCapture())
+        monkeypatch.setattr("pluma.perception.ocr_lifecycle.get_default_ocr_lifecycle_manager", lambda: DummyOcrManager())
+        
+        class DummyInputAdapter:
+            def mouse_click(self, x, y):
+                pass
+        monkeypatch.setattr("pluma.adapters.input.InputAdapter", lambda: DummyInputAdapter())
+
+        # We also need to bypass Win32Adapter check
+        class DummyWin32:
+            def is_window(self, hwnd): return True
+            def get_window_rect(self, hwnd):
+                class R:
+                    left, top, right, bottom = 0, 0, 1000, 1000
+                return R()
+        monkeypatch.setattr("pluma.adapters.win32.Win32Adapter", lambda: DummyWin32())
+        
+        # We need to bypass get_process_creation_time_ns in get_active_window? No, mock context handles it.
+        # But wait, execute_click_ocr_text calls ActiveWindowContext() at the beginning?
+        
+        snap_registry = SnapshotRegistry()
+        snap = ScreenSnapshot(
+            hwnd=12345,
+            pid=999,
+            active_process="test.exe",
+            active_window_title="Test Window",
+            window_rect=BoundingBox(left=0, top=0, right=1000, bottom=1000),
+            dpi_scale=1.0,
+            controls=[],
+            ocr_words=[],
+            expires_at=time.time() + 60,
+        )
+        snap_registry.register(snap)
+
+        supervisor = TaskSupervisor()
+        capsule = supervisor.create_task("req-ocr")
+        capsule.snapshot_registry = snap_registry
+
+        res = execute_click_ocr_text(
+            {"text": "Save", "hwnd": 12345, "snapshot_id": snap.snapshot_id},
+            task_context=capsule,
+        )
+        
+        # Click occurs, but post-OCR result is unchanged (same 1 word found)
+        # So it must return ok=True but verified=False
+        assert res.ok is True
+        assert res.verified is False
+        assert res.verify_detail is not None
+        assert res.verify_detail.ok is False
+        assert "postcondition not confirmed visually" in str(res.verify_detail.detail)
+
 
 # ===========================================================================
 # 4. Golden Corpus Real Router & Argument Alignment
