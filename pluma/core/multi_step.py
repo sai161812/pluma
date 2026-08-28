@@ -126,15 +126,37 @@ class MultiStepOrchestrator:
                         reason="Stopped by user request",
                     )
 
-                # Route-specific tool subset check
-                from pluma.brain.tool_subset import ToolSubsetSelector
-                plan_route = getattr(current_plan, "route", None) or (context.get("route") if context else None)
-                if plan_route and not ToolSubsetSelector.is_tool_permitted(tool_call.tool, plan_route):
-                    logger.warning("Task %s: Tool '%s' not permitted for route '%s'.", task_id, tool_call.tool, plan_route)
+                # Route-specific and permitted_tool_specs check
+                if permitted_tool_specs is not None:
+                    allowed_tool_names = {
+                        spec.get("name") if isinstance(spec, dict) else getattr(spec, "name", str(spec))
+                        for spec in permitted_tool_specs
+                    }
+                    if tool_call.tool not in allowed_tool_names:
+                        logger.warning("Task %s: Tool '%s' not in permitted_tool_specs.", task_id, tool_call.tool)
+                        tool_result = ToolResult.failure(
+                            tool_call.tool,
+                            f"Tool '{tool_call.tool}' is not in permitted_tool_specs for this task.",
+                            error_code="TOOL_NOT_IN_PERMITTED_SPECS",
+                        )
+                        record = StepExecutionRecord(
+                            step_index=step_idx,
+                            tool=tool_call.tool,
+                            arguments=tool_call.arguments,
+                            purpose=tool_call.purpose,
+                            result=tool_result,
+                            duration_ms=0.0,
+                            replan_iteration=replan_count,
+                        )
+                        executed_records.append(record)
+                        plan_succeeded = False
+                        overall_error = tool_result.error
+                        break
+                elif not self.registry.contains(tool_call.tool):
                     tool_result = ToolResult.failure(
                         tool_call.tool,
-                        f"Tool '{tool_call.tool}' is not permitted in {plan_route} route.",
-                        error_code="TOOL_NOT_PERMITTED_FOR_ROUTE",
+                        f"Tool '{tool_call.tool}' is not registered.",
+                        error_code="TOOL_NOT_REGISTERED",
                     )
                     record = StepExecutionRecord(
                         step_index=step_idx,

@@ -255,6 +255,7 @@ class LlamaCppAdapter(PlannerInterface):
             plan = self._validator.parse_and_validate_json(
                 raw_text=raw_output,
                 registry=self._registry,
+                permitted_tool_specs=permitted_tool_specs,
             )
         except PlanValidationError as val_err:
             raise PlannerError(f"Planner output validation failed: {val_err}") from val_err

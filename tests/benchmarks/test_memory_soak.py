@@ -136,8 +136,12 @@ def test_soak_1000_fast_tasks_no_memory_leak() -> None:
                     "children": len(process.children(recursive=True)),
                     "active_capsules": len(supervisor._active_tasks) if hasattr(supervisor, "_active_tasks") else 0,
                     "job_objects": job_objects,
-                    "temp_files": temp_files
+                    "temp_files": temp_files,
                 }
+
+            # Warmup to initialize thread pools and OS structures before recording baseline
+            for cmd in ["mute", "unmute", "system status"]:
+                orch.execute(PlumaRequest(input_mode=InputMode.TEXT, text=cmd))
 
             start_res = get_resources()
 

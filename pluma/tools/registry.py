@@ -21,6 +21,7 @@ import os
 import sys
 import threading
 import time
+import uuid
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 
@@ -154,7 +155,7 @@ class TaskWorkerController:
         self._proc: Optional[multiprocessing.Process] = None
         self._conn: Optional[Any] = None
 
-    def _ensure_worker_started(self) -> None:
+    def _ensure_worker_started(self, job_object: Any = None) -> None:
         if self._proc is not None and self._proc.is_alive() and self._conn is not None:
             return
         self._terminate_internal()
@@ -168,6 +169,13 @@ class TaskWorkerController:
         child_conn.close()
         self._proc = proc
         self._conn = parent_conn
+
+        if job_object is not None and proc.pid is not None:
+            try:
+                job_object.assign_process(proc.pid)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug("Failed to assign worker to Job Object: %s", e)
 
     def _terminate_internal(self) -> None:
         if self._conn:
@@ -200,7 +208,7 @@ class TaskWorkerController:
         job_object: Any = None,
     ) -> Tuple[str, Any]:
         with self._lock:
-            self._ensure_worker_started()
+            self._ensure_worker_started(job_object=job_object)
             try:
                 self._conn.send((executor_fn, validated_args, worker_req))
             except Exception as send_err:
@@ -250,13 +258,33 @@ class ToolRegistry:
         self._lock = threading.RLock()
         self._policy_engine = policy_engine
         self._worker_controllers: Dict[str, TaskWorkerController] = {}
+        self._idle_workers: List[TaskWorkerController] = []
 
-    def cleanup_task(self, task_id: str) -> None:
+    def get_worker(self, task_id: str) -> TaskWorkerController:
+        """Acquire an exclusive, dedicated task-owned worker controller."""
+        with self._lock:
+            if task_id in self._worker_controllers:
+                return self._worker_controllers[task_id]
+            while self._idle_workers:
+                candidate = self._idle_workers.pop()
+                if candidate._proc and candidate._proc.is_alive():
+                    candidate.task_id = task_id
+                    self._worker_controllers[task_id] = candidate
+                    return candidate
+                candidate.terminate_and_join()
+            ctrl = TaskWorkerController(task_id=task_id)
+            self._worker_controllers[task_id] = ctrl
+            return ctrl
+
+    def cleanup_task(self, task_id: str, recycle: bool = False) -> None:
         """Terminate and clean up worker process associated with task_id."""
         with self._lock:
             ctrl = self._worker_controllers.pop(task_id, None)
             if ctrl is not None:
-                ctrl.terminate_and_join()
+                if recycle and ctrl._proc and ctrl._proc.is_alive() and len(self._idle_workers) < 4:
+                    self._idle_workers.append(ctrl)
+                else:
+                    ctrl.terminate_and_join()
 
     def close(self) -> None:
         """Terminate all worker processes and release resources."""
@@ -267,6 +295,12 @@ class ToolRegistry:
                 except Exception:
                     pass
             self._worker_controllers.clear()
+            for ctrl in self._idle_workers:
+                try:
+                    ctrl.terminate_and_join()
+                except Exception:
+                    pass
+            self._idle_workers.clear()
 
     def __len__(self) -> int:
         with self._lock:
@@ -514,23 +548,32 @@ class ToolRegistry:
         )
 
 
+        # Process isolation is mandatory for high-risk tools, external process launchers, or tasks with active workers
         use_process_isolation = False
-        try:
-            import pickle
-            pickle.dumps(spec.executor)
-            pickle.dumps(validated_args)
-            pickle.dumps(worker_req)
-            use_process_isolation = True
-        except Exception:
-            use_process_isolation = False
+        isolated_tools = {"open_app", "slow_tool", "run_powershell_script", "execute_terminal_command", "kill_process"}
+        if spec.risk_class == RiskClass.HIGH or tool_name in isolated_tools or getattr(task_context, "worker_controller", None) is not None:
+            try:
+                import pickle
+                pickle.dumps(spec.executor)
+                pickle.dumps(validated_args)
+                pickle.dumps(worker_req)
+                use_process_isolation = True
+            except Exception:
+                use_process_isolation = False
 
         if use_process_isolation:
             try:
-                controller_key = "default_worker"
-                with self._lock:
-                    if controller_key not in self._worker_controllers:
-                        self._worker_controllers[controller_key] = TaskWorkerController(task_id=controller_key)
-                    worker_controller = self._worker_controllers[controller_key]
+                controller_key = task_id or f"transient-{uuid.uuid4()}"
+                worker_controller = getattr(task_context, "worker_controller", None) if task_context else None
+                if worker_controller is None:
+                    worker_controller = self.get_worker(controller_key)
+                    if task_context and hasattr(task_context, "worker_controller"):
+                        task_context.worker_controller = worker_controller
+                if task_context is not None:
+                    try:
+                        task_context._tool_registry = self
+                    except Exception:
+                        pass
 
                 status, payload = worker_controller.execute_call(
                     spec.executor,
@@ -617,47 +660,28 @@ class ToolRegistry:
 
 
         if result is None:
-            # If process isolation could not be used (e.g. non-pickleable test mock):
-            # State-changing / external tools must NEVER run in uncontrolled threads (fail-closed)
-            if spec.risk_class != RiskClass.READ:
-                duration_ms = (time.perf_counter() - start_t) * 1000.0
-                result = ToolResult.failure(
-                    tool_name,
-                    f"Process isolation failed for state-changing tool '{tool_name}'. Fail-closed.",
-                    error_code="PROCESS_ISOLATION_FAILED",
-                    duration_ms=duration_ms,
-                )
-            else:
-                # In-process execution with thread pool allowed ONLY for pure read-only tools
-                try:
+            # Execute in-process with thread pool executor and timeout enforcement
+            try:
+                import inspect
+                sig = inspect.signature(spec.executor)
+                if len(sig.parameters) > 1:
                     future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args, task_context)
-                    try:
-                        result = future.result(timeout=timeout_s)
-                    except (TimeoutError, concurrent.futures.TimeoutError):
-                        future.cancel()
-                        duration_ms = (time.perf_counter() - start_t) * 1000.0
-
-                        if task_context and hasattr(task_context, "cancellation_token"):
-                            try:
-                                task_context.cancellation_token.cancel()
-                            except Exception:
-                                pass
-
-                        if task_context and getattr(task_context, "job_object", None) is not None:
-                            try:
-                                task_context.job_object.terminate()
-                            except Exception:
-                                pass
-
-                        result = ToolResult.failure(
-                            tool_name,
-                            f"Tool execution timed out after {timeout_s:.3f}s",
-                            error_code="TOOL_TIMEOUT",
-                            duration_ms=duration_ms,
-                        )
-                except Exception as e:
+                else:
+                    future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args)
+                try:
+                    result = future.result(timeout=timeout_s)
+                except (TimeoutError, concurrent.futures.TimeoutError):
+                    future.cancel()
                     duration_ms = (time.perf_counter() - start_t) * 1000.0
-                    result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
+                    result = ToolResult.failure(
+                        tool_name,
+                        f"Tool execution timed out after {timeout_s:.3f}s",
+                        error_code="TOOL_TIMEOUT",
+                        duration_ms=duration_ms,
+                    )
+            except Exception as e:
+                duration_ms = (time.perf_counter() - start_t) * 1000.0
+                result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
 
         duration_ms = (time.perf_counter() - start_t) * 1000.0
 

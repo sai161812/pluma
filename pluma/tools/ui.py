@@ -436,6 +436,7 @@ class ClickOcrTextArgs(BaseModel):
     model_config = {"extra": "forbid"}
     text: str = Field(description="Visible text string to locate and click on screen via OCR.")
     hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
+    snapshot_id: Optional[str] = Field(default=None, description="Optional snapshot ID to verify target window freshness.")
     min_confidence: float = Field(
         default=0.5,
         ge=0.0,
@@ -458,31 +459,38 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     """Locate visible text via OCR and click the matched screen coordinate.
 
     Flow:
-    1. Resolve active window HWND and verify foreground focus.
-    2. Capture window/region image (ephemeral bytes — discarded immediately).
-    3. Run OCR via OcrLifecycleManager.
-    4. Find matching text words at or above min_confidence.
-    5. Reject if zero or multiple ambiguous matches (Spec §E-03, §E-08).
-    6. Translate window-relative center coordinates to desktop absolute.
-    7. Click via InputAdapter.
-    8. Discard image bytes; return ToolResult.
+    1. Check cancellation token.
+    2. Re-check target window identity, geometry, and DPI.
+    3. If snapshot_id provided, revalidate snapshot freshness.
+    4. Capture window/region image (ephemeral bytes — discarded immediately).
+    5. Run OCR via OcrLifecycleManager.
+    6. Reject if zero or multiple ambiguous matches (Spec §E-03, §E-08).
+    7. Translate window-relative center coordinates to desktop absolute and verify within bounds.
+    8. Click via InputAdapter.
+    9. Perform postcondition verification.
     """
-    from pluma.adapters.base import WindowNotFoundError
+    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message="Task cancelled before OCR click could execute.",
+            verified=False, error="TASK_CANCELLED", error_code="TASK_CANCELLED",
+        )
+
     from pluma.adapters.input import InputAdapter
-    from pluma.perception.capture import WindowCapture, CaptureError
+    from pluma.perception.capture import WindowCapture
     from pluma.perception.element_refs import BoundingBox
-    from pluma.perception.freshness import FreshnessChecker, WindowMismatchError
-    from pluma.perception.ocr_lifecycle import OcrLifecycleManager
+    from pluma.verify.screen import ScreenVerifier
 
     text_query = args["text"]
     hwnd = args.get("hwnd")
     min_confidence = args.get("min_confidence", 0.5)
     raw_region = args.get("region")
+    snapshot_id = args.get("snapshot_id")
 
-    # 1. Resolve active window
+    # 1. Resolve and re-check target window identity
     context = ActiveWindowContext()
+    active_info = context.get_active_window()
     if hwnd is None:
-        active_info = context.get_active_window()
         if not active_info.is_valid or not active_info.hwnd:
             return ToolResult(
                 ok=False,
@@ -491,23 +499,62 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                 factual_message="Cannot perform OCR click: no active foreground window found.",
                 verified=False,
                 error="No active window.",
+                error_code="NO_ACTIVE_WINDOW",
             )
-        hwnd = active_info.hwnd
-        window_rect = active_info.rect
+        target_hwnd = active_info.hwnd
+        window_rect = active_info.rect or BoundingBox(left=0, top=0, right=1920, bottom=1080)
     else:
-        try:
-            from pluma.adapters.win32 import Win32Adapter
-            w32 = Win32Adapter()
-            if w32.is_window(hwnd):
-                r = w32.get_window_rect(hwnd)
+        target_hwnd = hwnd
+        if active_info.is_valid and active_info.hwnd == target_hwnd:
+            window_rect = active_info.rect or BoundingBox(left=0, top=0, right=1920, bottom=1080)
+        else:
+            try:
+                from pluma.adapters.win32 import Win32Adapter
+                w32 = Win32Adapter()
+                if not w32.is_window(target_hwnd):
+                    return ToolResult(
+                        ok=False, tool="click_ocr_text", data=args,
+                        factual_message=f"Target window HWND {target_hwnd} does not exist.",
+                        verified=False, error="WINDOW_NOT_FOUND", error_code="WINDOW_NOT_FOUND",
+                    )
+                r = w32.get_window_rect(target_hwnd)
                 window_rect = BoundingBox(left=r.left, top=r.top, right=r.right, bottom=r.bottom)
-            else:
-                active_info = context.get_active_window()
-                window_rect = active_info.rect if active_info.is_valid else BoundingBox(left=0, top=0, right=1920, bottom=1080)
-        except Exception:
-            window_rect = BoundingBox(left=0, top=0, right=1920, bottom=1080)
+            except Exception as win_err:
+                return ToolResult(
+                    ok=False, tool="click_ocr_text", data=args,
+                    factual_message=f"Failed to query target window HWND {target_hwnd}: {win_err}",
+                    verified=False, error=str(win_err), error_code="WINDOW_QUERY_FAILED",
+                )
 
-    # 2. Parse optional region
+    # 2. Re-check snapshot freshness if snapshot_id provided
+    if snapshot_id:
+        snapshot_registry = getattr(task_context, "snapshot_registry", None)
+        if snapshot_registry:
+            try:
+                snap = snapshot_registry.resolve(snapshot_id)
+                if snap.hwnd and snap.hwnd != target_hwnd:
+                    return ToolResult(
+                        ok=False, tool="click_ocr_text", data=args,
+                        factual_message=f"Snapshot HWND {snap.hwnd} mismatch with target HWND {target_hwnd}.",
+                        verified=False, error="WINDOW_MISMATCH", error_code="WINDOW_MISMATCH",
+                    )
+                if snap.window_rect and window_rect:
+                    dx = abs(window_rect.left - snap.window_rect.left)
+                    dy = abs(window_rect.top - snap.window_rect.top)
+                    if max(dx, dy) > 20:
+                        return ToolResult(
+                            ok=False, tool="click_ocr_text", data=args,
+                            factual_message="Target window moved or resized significantly (>20px) since snapshot.",
+                            verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
+                        )
+            except Exception as fresh_err:
+                return ToolResult(
+                    ok=False, tool="click_ocr_text", data=args,
+                    factual_message=f"Snapshot freshness check failed: {fresh_err}",
+                    verified=False, error=str(fresh_err), error_code="STALE_SNAPSHOT",
+                )
+
+    # 3. Parse optional region
     region: Optional[BoundingBox] = None
     if raw_region:
         try:
@@ -521,40 +568,39 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             return ToolResult(
                 ok=False, tool="click_ocr_text", data=args,
                 factual_message=f"Invalid region specification: {e}",
-                verified=False, error=str(e),
+                verified=False, error=str(e), error_code="INVALID_REGION",
             )
 
-    # 3. Capture ephemeral image bytes
+    # 4. Capture ephemeral image bytes
     image_bytes: Optional[bytes] = None
     try:
         capture = WindowCapture()
         if region is not None:
-            image_bytes = capture.capture_region(region, hwnd=hwnd)
+            image_bytes = capture.capture_region(region, hwnd=target_hwnd)
         else:
-            image_bytes = capture.capture_window(hwnd)
+            image_bytes = capture.capture_window(target_hwnd)
     except Exception as cap_exc:
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
             factual_message=f"Screen capture failed: {cap_exc}",
-            verified=False, error=str(cap_exc),
+            verified=False, error=str(cap_exc), error_code="CAPTURE_FAILED",
         )
 
-    # 4. Run OCR (image_bytes discarded after recognition)
+    # 5. Run OCR (image_bytes discarded after recognition)
     try:
         from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
         ocr_manager = get_default_ocr_lifecycle_manager()
         ocr_result = ocr_manager.run_ocr(image_bytes)
     except Exception as ocr_exc:
-        image_bytes = None  # Discard on error
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
             factual_message=f"OCR recognition failed: {ocr_exc}",
-            verified=False, error=str(ocr_exc),
+            verified=False, error=str(ocr_exc), error_code="OCR_FAILED",
         )
     finally:
         image_bytes = None  # Explicitly discard ephemeral bytes
 
-    # 5. Find matching words
+    # 6. Find matching words
     matches = ocr_result.find_words(text_query, min_confidence=min_confidence)
 
     if len(matches) == 0:
@@ -562,23 +608,24 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             ok=False, tool="click_ocr_text", data=args,
             factual_message=(
                 f"OCR found no text matching '{text_query}' "
-                f"(min_confidence={min_confidence:.2f}) in window HWND {hwnd}."
+                f"(min_confidence={min_confidence:.2f}) in window HWND {target_hwnd}."
             ),
             verified=False,
             error="OCR_NO_MATCH",
+            error_code="OCR_NO_MATCH",
         )
 
     if len(matches) > 1:
-        # Ambiguous duplicate labels — refuse to guess (Acceptance Test E-03)
         labels = [m.text for m in matches]
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
             factual_message=(
                 f"Ambiguous OCR result: {len(matches)} matches for '{text_query}': "
-                f"{labels}. Clarify which target to click."
+                f"{labels}. Refusing to guess ambiguous target."
             ),
             verified=False,
             error="OCR_AMBIGUOUS",
+            error_code="OCR_AMBIGUOUS",
         )
 
     target_word = matches[0]
@@ -596,7 +643,20 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     desktop_abs_x = window_rect.left + center_x_window_rel
     desktop_abs_y = window_rect.top + center_y_window_rel
 
-    # 6. Click via InputAdapter
+    # 7. Coordinate bounds validation
+    if (
+        desktop_abs_x < window_rect.left
+        or desktop_abs_x > window_rect.right
+        or desktop_abs_y < window_rect.top
+        or desktop_abs_y > window_rect.bottom
+    ):
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"Computed click coordinates ({desktop_abs_x}, {desktop_abs_y}) lie outside window bounds.",
+            verified=False, error="COORDINATES_OUT_OF_BOUNDS", error_code="COORDINATES_OUT_OF_BOUNDS",
+        )
+
+    # 8. Click via InputAdapter
     try:
         input_adapter = InputAdapter()
         input_adapter.mouse_click(desktop_abs_x, desktop_abs_y)
@@ -604,14 +664,19 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
             factual_message=f"Mouse click failed at ({desktop_abs_x}, {desktop_abs_y}): {click_exc}",
-            verified=False, error=str(click_exc),
+            verified=False, error=str(click_exc), error_code="CLICK_FAILED",
         )
+
+    # 9. Real postcondition verification
+    verifier = ScreenVerifier()
+    v_res = verifier.verify_window_active(target_hwnd)
+    verified = bool(v_res and v_res.ok)
 
     return ToolResult(
         ok=True,
         tool="click_ocr_text",
         data={
-            "hwnd": hwnd,
+            "hwnd": target_hwnd,
             "text": text_query,
             "matched_text": target_word.text,
             "confidence": round(target_word.confidence, 3),
@@ -619,24 +684,28 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             "window_rel_y": center_y_window_rel,
             "desktop_x": desktop_abs_x,
             "desktop_y": desktop_abs_y,
+            "snapshot_id": snapshot_id,
         },
         factual_message=(
             f"Clicked OCR-matched text '{target_word.text}' "
             f"(confidence={target_word.confidence:.2f}) at desktop "
-            f"({desktop_abs_x}, {desktop_abs_y}) in window HWND {hwnd}."
+            f"({desktop_abs_x}, {desktop_abs_y}) in window HWND {target_hwnd}."
         ),
-        verified=False,  # Postcondition verified by caller or ScreenVerifier
+        verified=verified,
+        verify_detail=v_res if verified else VerifyResult(ok=False, method="ocr_grounded", detail="OCR click dispatched to desktop coordinates without verified postcondition proof."),
     )
 
 
 def verify_click_ocr_text(result: ToolResult) -> VerifyResult:
-    """Verifier for OCR text clicks: accurately reports verified status."""
+    """Verifier for OCR text clicks: accurately reports verified status with proof."""
     if not result.ok:
         return VerifyResult(ok=False, method="ocr_grounded", detail=result.error or "OCR click reported failure.")
+    if not result.verified:
+        return VerifyResult(ok=False, method="ocr_grounded", detail="OCR click completed without verified postcondition proof.")
     return VerifyResult(
-        ok=result.verified,
+        ok=True,
         method="ocr_grounded",
-        detail="OCR click dispatched to desktop coordinates.",
+        detail=result.verify_detail.detail if result.verify_detail else "OCR click postcondition verified.",
     )
 
 

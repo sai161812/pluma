@@ -295,6 +295,10 @@ class TestGoldenCorpus:
             assert actual_first_tool == expected_tools[0], (
                 f"{gc_id}: expected first tool {expected_tools[0]!r}, got {actual_first_tool!r}"
             )
+            if "normalized_args" in entry and entry["normalized_args"] is not None:
+                assert result.plan.steps[0].arguments == entry["normalized_args"], (
+                    f"{gc_id}: expected normalized args {entry['normalized_args']!r}, got {result.plan.steps[0].arguments!r}"
+                )
 
         if no_llm:
             _assert_no_ml_loaded()
