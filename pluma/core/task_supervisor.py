@@ -119,7 +119,11 @@ class TaskCapsule(BaseModel):
     # Job Object wrapper for process containment (not serializable)
     job_object: Any = Field(default=None, exclude=True)
 
+    # Snapshot registry for UI grounding — not serializable, cleared on terminal transition
+    snapshot_registry: Any = Field(default=None, exclude=True)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
@@ -155,6 +159,26 @@ class TaskCapsule(BaseModel):
                 logger.debug("Error closing job object for task %s: %s", self.task_id, e)
             finally:
                 self.job_object = None
+
+        # Cleanly close handles of any persistent application Job Objects (kill_on_close=False, app stays open)
+        for res in self.owned_resources:
+            persistent_job = res.metadata.get("persistent_job")
+            if persistent_job is not None:
+                try:
+                    persistent_job.close()
+                except Exception as e:
+                    logger.debug("Error closing persistent app job for task %s: %s", self.task_id, e)
+                finally:
+                    res.metadata["persistent_job"] = None
+
+        # Clear task-scoped snapshot registry to free memory and invalidate stale refs
+        if self.snapshot_registry is not None:
+            try:
+                self.snapshot_registry.clear()
+            except Exception:
+                pass
+            self.snapshot_registry = None
+
 
 
 MAX_TERMINAL_TASKS_RETAINED: int = 50
@@ -221,8 +245,16 @@ class TaskSupervisor:
             except Exception as e:
                 logger.warning("Failed to create Job Object for task %s: %s", capsule.task_id, e)
 
+            # Create a task-scoped snapshot registry for UI grounding
+            try:
+                from pluma.perception.snapshot_registry import SnapshotRegistry
+                capsule.snapshot_registry = SnapshotRegistry()
+            except Exception as e:
+                logger.debug("Failed to create SnapshotRegistry for task %s: %s", capsule.task_id, e)
+
             self._tasks[capsule.task_id] = capsule
             return capsule
+
 
     def start_task(self, task_id: str) -> None:
         """Transition task from CREATED to RUNNING."""
@@ -281,7 +313,7 @@ class TaskSupervisor:
         # The following steps are executed outside the lock to avoid deadlocks 
         # during cleanup or rollback.
         
-        # 3. Terminate unresponsive PLUMA-owned Job Object workers
+        # 3. Terminate unresponsive PLUMA-owned Job Object workers and launched applications
         if capsule.job_object:
             try:
                 capsule.job_object.terminate(exit_code=1)
@@ -289,6 +321,19 @@ class TaskSupervisor:
                 capsule.job_object = None
             except Exception as e:
                 logger.error("Failed to terminate job object for %s: %s", task_id, e)
+
+        # Terminate any persistent application Job Objects launched by this task
+        for res in capsule.owned_resources:
+            persistent_job = res.metadata.get("persistent_job")
+            if persistent_job is not None:
+                try:
+                    persistent_job.terminate(exit_code=1)
+                    persistent_job.close()
+                except Exception as e:
+                    logger.error("Failed to terminate persistent app job for %s: %s", task_id, e)
+                finally:
+                    res.metadata["persistent_job"] = None
+
 
         # 4. Rollback safe reversible actions in reverse order (Spec §13)
         has_residual = any(u.get("non_undoable", False) for u in capsule.undo_stack)

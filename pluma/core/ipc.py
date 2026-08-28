@@ -14,6 +14,9 @@ import os
 import sys
 import threading
 import time
+import hashlib
+import hmac
+import secrets
 from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -21,6 +24,7 @@ logger = logging.getLogger(__name__)
 MAX_IPC_MESSAGE_SIZE: int = 1024 * 1024  # 1MB maximum message payload
 SERVER_READ_TIMEOUT_SECONDS: float = 5.0
 CLIENT_CONNECT_TIMEOUT_SECONDS: float = 3.0
+IPC_AUTH_NONCE_SIZE: int = 32  # 256-bit nonce for HMAC-SHA256 challenge
 
 
 def get_pipe_name() -> str:
@@ -31,6 +35,45 @@ def get_pipe_name() -> str:
         return rf"\\.\pipe\pluma_ipc_{clean_user}"
     # Fallback for non-Windows tests
     return f"/tmp/pluma_ipc_{clean_user}.sock"
+
+
+def _get_or_create_auth_nonce(paths_root: Optional[str] = None) -> bytes:
+    """Get or create the per-user IPC authentication nonce.
+
+    The nonce is stored in %LOCALAPPDATA%\\Pluma\\ipc_auth_nonce.bin.
+    If the nonce file is missing or corrupt, a new random nonce is generated.
+    Raises OSError if the nonce directory cannot be created (fail-closed).
+    """
+    root = paths_root or os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    nonce_dir = os.path.join(root, "Pluma")
+    os.makedirs(nonce_dir, exist_ok=True)
+    nonce_file = os.path.join(nonce_dir, "ipc_auth_nonce.bin")
+    if os.path.exists(nonce_file):
+        try:
+            with open(nonce_file, "rb") as f:
+                nonce = f.read()
+            if len(nonce) == IPC_AUTH_NONCE_SIZE:
+                return nonce
+        except OSError:
+            pass
+    # Generate and persist a new nonce
+    nonce = secrets.token_bytes(IPC_AUTH_NONCE_SIZE)
+    try:
+        with open(nonce_file, "wb") as f:
+            f.write(nonce)
+    except OSError as e:
+        logger.error("Cannot persist IPC auth nonce to %s: %s", nonce_file, e)
+    return nonce
+
+
+def _compute_ipc_auth_token(nonce: bytes) -> bytes:
+    """Compute the expected HMAC-SHA256 auth token for the current user.
+
+    key  = nonce (32 bytes, shared secret)
+    msg  = USERNAME environment variable bytes (UTF-8)
+    """
+    username = (os.environ.get("USERNAME") or os.environ.get("USER") or "default").encode("utf-8")
+    return hmac.new(nonce, username, hashlib.sha256).digest()
 
 
 def _create_win32_pipe_security() -> Any:
@@ -114,14 +157,26 @@ class IpcServer:
         address: Optional[str] = None,
         max_message_size: int = MAX_IPC_MESSAGE_SIZE,
         read_timeout_s: float = SERVER_READ_TIMEOUT_SECONDS,
+        require_auth: bool = False,
     ) -> None:
         self.address = address or get_pipe_name()
         self._command_handler = command_handler
         self._max_message_size = max_message_size
         self._read_timeout_s = read_timeout_s
+        self._require_auth = require_auth
+        self._auth_nonce: Optional[bytes] = None
         self._listener: Any = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+
+        # Load auth nonce immediately if authentication is required so startup fails closed
+        if require_auth:
+            try:
+                self._auth_nonce = _get_or_create_auth_nonce()
+                logger.debug("IPC authentication nonce loaded (%d bytes).", len(self._auth_nonce))
+            except Exception as e:
+                logger.error("Failed to load IPC auth nonce — server cannot start with require_auth=True: %s", e)
+                raise RuntimeError(f"IPC auth nonce unavailable: {e}") from e
 
     def start(self) -> None:
         """Start the IPC server in a daemon thread."""
@@ -161,9 +216,38 @@ class IpcServer:
                     logger.error("IPC listener error: %s", e)
 
     def _handle_client(self, conn: Any) -> None:
-        """Handle one client connection in a dedicated daemon thread."""
+        """Handle one client connection in a dedicated daemon thread.
+
+        If require_auth is True, performs HMAC challenge-response before accepting any command.
+        Authentication failure closes the connection silently (fail-closed).
+        """
         with conn:
             try:
+                # --- Authentication handshake (fail-closed) ---
+                if self._require_auth and self._auth_nonce is not None:
+                    try:
+                        # 1. Send the challenge nonce to the client
+                        conn.send_bytes(self._auth_nonce)
+
+                        # 2. Wait for client to respond with HMAC token
+                        auth_ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
+                        if not auth_ready:
+                            logger.warning("IPC auth timeout: client did not respond to challenge in %.1fs", self._read_timeout_s)
+                            return  # Close silently — no error response (fail-closed)
+
+                        token_received = conn.recv_bytes(64)  # Allow up to 64 bytes; SHA-256 digest is 32
+                        expected_token = _compute_ipc_auth_token(self._auth_nonce)
+
+                        if len(token_received) != 32 or not hmac.compare_digest(token_received, expected_token):
+                            logger.warning("IPC authentication failed: token mismatch. Closing connection.")
+                            return  # Close silently — no error response (fail-closed)
+
+                        logger.debug("IPC client authenticated successfully.")
+                    except Exception as auth_err:
+                        logger.warning("IPC auth error: %s. Closing connection.", auth_err)
+                        return  # Close silently
+
+                # --- Normal request processing ---
                 # Enforce server read timeout so a slow/hanging client cannot stall
                 ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
                 if not ready:
@@ -215,6 +299,7 @@ class IpcServer:
                 pass
             except Exception as e:
                 logger.debug("IPC client handler error: %s", e)
+
 
     def stop(self) -> None:
         """Stop the IPC server and close the named pipe."""
@@ -321,12 +406,17 @@ class IpcClient:
         self,
         address: Optional[str] = None,
         max_message_size: int = MAX_IPC_MESSAGE_SIZE,
+        require_auth: bool = False,
     ) -> None:
         self.address = address or get_pipe_name()
         self._max_message_size = max_message_size
+        self._require_auth = require_auth
 
     def send_command(self, command: Dict[str, Any], timeout: float = 3.0) -> Dict[str, Any]:
-        """Send a JSON-serializable command and await a response with timeout."""
+        """Send a JSON-serializable command and await a response with timeout.
+
+        If require_auth is True, performs HMAC challenge-response handshake after connecting.
+        """
         from multiprocessing.connection import Client
         deadline = time.perf_counter() + timeout
         last_err: Optional[Exception] = None
@@ -334,8 +424,20 @@ class IpcClient:
         while time.perf_counter() < deadline:
             try:
                 with Client(self.address) as conn:
+                    # --- Authentication handshake ---
+                    if self._require_auth:
+                        remaining = max(0.1, deadline - time.perf_counter())
+                        if not multiprocessing.connection.wait([conn], timeout=remaining):
+                            return {"status": "error", "message": "Auth timeout: no challenge received"}
+                        nonce = conn.recv_bytes(IPC_AUTH_NONCE_SIZE + 16)  # allow small overread
+                        if len(nonce) != IPC_AUTH_NONCE_SIZE:
+                            return {"status": "error", "message": f"Auth nonce size invalid: {len(nonce)}"}
+                        token = _compute_ipc_auth_token(nonce)
+                        conn.send_bytes(token)
+
+                    # --- Command payload ---
                     conn.send_bytes(json.dumps(command).encode("utf-8"))
-                    
+
                     remaining = max(0.1, deadline - time.perf_counter())
                     if multiprocessing.connection.wait([conn], timeout=remaining):
                         msg_bytes = conn.recv_bytes(self._max_message_size)
@@ -354,3 +456,4 @@ class IpcClient:
 # Aliases for explicit naming
 NamedPipeIpcServer = IpcServer
 NamedPipeIpcClient = IpcClient
+

@@ -16,6 +16,7 @@ from pluma.core.ipc import IpcServer
 from pluma.core.ownership import OwnershipRegistry
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.task_supervisor import TaskSupervisor
+from pluma.memory.redaction import redact_string
 
 if TYPE_CHECKING:
     from pluma.voice.activation import VoiceActivation
@@ -99,7 +100,9 @@ class ResidentCore:
         try:
             request = self.voice_pipeline.process_audio(raw_audio)
             if request is not None:
-                logger.info("Voice command produced PlumaRequest(%s): '%s'", request.input_mode.value, request.text)
+                # Redact transcript at the log output boundary before emitting
+                safe_text = redact_string(request.text or "")
+                logger.info("Voice command produced PlumaRequest(%s): '%s'", request.input_mode.value, safe_text)
                 if self.orchestrator:
                     self.orchestrator.execute(request)
                 elif self.on_request_callback:
@@ -108,6 +111,7 @@ class ResidentCore:
                 logger.info("Voice processing produced no executable command (silence or clarification needed).")
         except Exception as exc:
             logger.error("Error executing voice pipeline: %s", exc)
+
 
     def handle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming IPC commands."""

@@ -96,6 +96,12 @@ class RollbackEngine:
 
                 if step_res.ok:
                     succeeded += 1
+                    # Consume the undo record so it cannot be replayed (idempotent)
+                    if self._ledger and action_id is not None:
+                        try:
+                            self._ledger.mark_undo_consumed(action_id)
+                        except Exception as e:
+                            logger.warning("Failed to mark undo record %s as consumed: %s", action_id, e)
                 else:
                     failed += 1
 
@@ -110,19 +116,26 @@ class RollbackEngine:
                     except Exception as e:
                         logger.error("Failed to mark rollback result for action %s: %s", action_id, e)
 
+
         elif memory_undo_stack:
             # Fallback to in-memory undo stack if DB was not queried or returned no rows
-            # Pop/iterate in reverse order
-            reversed_stack = list(reversed(memory_undo_stack))
-            for item in reversed_stack:
+            # Pop/iterate in reverse order; consumed records are removed from memory_undo_stack
+            to_remove = []
+            for item in list(reversed(memory_undo_stack)):
                 attempted += 1
                 action_name = item.get("action", "")
                 step_res = self._recipes.apply(action_name, item)
                 step_results.append(step_res)
                 if step_res.ok:
                     succeeded += 1
+                    to_remove.append(item)
                 else:
                     failed += 1
+
+            for itm in to_remove:
+                if itm in memory_undo_stack:
+                    memory_undo_stack.remove(itm)
+
 
         all_ok = (failed == 0)
         has_residual = (failed > 0)
@@ -171,9 +184,16 @@ class RollbackEngine:
                             ok=res.ok,
                             result=res.data or {"message": res.message, "error": res.error},
                         )
+                        # Consume the record on success so it cannot be replayed
+                        if res.ok:
+                            try:
+                                self._ledger.mark_undo_consumed(action_id)
+                            except Exception as consume_err:
+                                logger.warning("Failed to mark undo consumed after rollback: %s", consume_err)
                     return res
             except Exception as e:
                 logger.error("Failed to rollback last reversible action for %s: %s", task_id, e)
+
 
         return RollbackStepResult(
             ok=False,

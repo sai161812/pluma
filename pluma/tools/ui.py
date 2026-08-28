@@ -69,7 +69,12 @@ class TypeIntoElementArgs(BaseModel):
 # ---------------------------------------------------------------------------
 
 def execute_inspect_active_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    """Inspect the active foreground window and return its semantic controls."""
+    """Inspect the active foreground window and return its semantic controls.
+
+    When task_context has a snapshot_registry, the captured snapshot is registered
+    and snapshot_id is returned. Callers should pass this snapshot_id to subsequent
+    click_element/type_into_element calls to ground them in verified state.
+    """
     context = ActiveWindowContext()
     active_info = context.get_active_window()
 
@@ -86,6 +91,21 @@ def execute_inspect_active_window(args: Dict[str, Any], task_context: Any = None
     builder = UiaSnapshotBuilder(context=context)
     try:
         snapshot = builder.capture(hwnd=active_info.hwnd, ttl_seconds=5.0)
+
+        # Register snapshot in task-scoped registry for downstream UI action grounding
+        snapshot_id: Optional[str] = None
+        if task_context is not None:
+            registry = getattr(task_context, "snapshot_registry", None)
+            if registry is not None:
+                try:
+                    from pluma.perception.snapshot_registry import SnapshotRegistry
+                    if isinstance(registry, SnapshotRegistry):
+                        registry.register(snapshot)
+                        snapshot_id = snapshot.snapshot_id
+                except Exception as reg_err:
+                    logger.warning("Failed to register snapshot in registry: %s", reg_err)
+
+        # Build controls summary; include target_ref values anchored to snapshot_id
         controls_summary = [
             {
                 "label": c.label,
@@ -93,23 +113,33 @@ def execute_inspect_active_window(args: Dict[str, Any], task_context: Any = None
                 "auto_id": c.uia_automation_id,
                 "bounds": c.bounds.model_dump(),
                 "capability": c.invocation_capability,
+                # target_ref encodes snapshot + element identity for grounded UI actions
+                "target_ref": (
+                    f"{snapshot_id}::{c.uia_automation_id or c.label or c.control_type}"
+                    if snapshot_id else None
+                ),
             }
             for c in snapshot.controls[: args.get("max_controls", 50)]
         ]
 
+        result_data: Dict[str, Any] = {
+            "hwnd": active_info.hwnd,
+            "process_name": active_info.process_name,
+            "window_title": active_info.window_title,
+            "control_count": len(snapshot.controls),
+            "controls": controls_summary,
+        }
+        if snapshot_id:
+            result_data["snapshot_id"] = snapshot_id
+
         return ToolResult(
             ok=True,
             tool="inspect_active_window",
-            data={
-                "hwnd": active_info.hwnd,
-                "process_name": active_info.process_name,
-                "window_title": active_info.window_title,
-                "control_count": len(snapshot.controls),
-                "controls": controls_summary,
-            },
+            data=result_data,
             factual_message=(
                 f"Active window: '{active_info.window_title}' ({active_info.process_name}, "
                 f"HWND {active_info.hwnd}), {len(snapshot.controls)} controls discovered."
+                + (f" snapshot_id={snapshot_id}" if snapshot_id else "")
             ),
             verified=True,
         )

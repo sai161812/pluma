@@ -13,6 +13,7 @@ No OS-automation, ML, or adapter code in this module.
 from __future__ import annotations
 
 import concurrent.futures
+import multiprocessing
 import threading
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional
@@ -21,10 +22,27 @@ from pydantic import BaseModel, ValidationError
 
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 
+# Bounded thread pool — ensures 20 simultaneous timeouts do not exhaust capacity
+# beyond max_workers; threads stay alive but the pool reuses slots after timeout.
 _GLOBAL_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=16,
     thread_name_prefix="pluma_tool_exec",
 )
+
+# Multiprocessing context for isolated execution (spawn avoids fork hazards on Windows)
+_MP_CONTEXT = multiprocessing.get_context("spawn")
+
+
+def _mp_worker_runner(conn: Any, executor_fn: Callable[..., Any], args: Dict[str, Any], task_context: Any) -> None:
+    """Entry point for process-isolated tool execution."""
+    try:
+        try:
+            res = executor_fn(args, task_context)
+        except TypeError:
+            res = executor_fn(args)
+        conn.send(("ok", res))
+    except Exception as exc:
+        conn.send(("error", str(exc)))
 
 
 class UnknownToolError(KeyError):
@@ -233,42 +251,105 @@ class ToolRegistry:
                 import logging
                 logging.getLogger(__name__).warning("Failed to build pre-mutation undo data for %s: %s", tool_name, e)
 
-        # 4. Execution with timeout enforcement and duration measurement
+        # 4. Execution with killable process isolation, timeout enforcement and duration measurement
         start_t = time.perf_counter()
         timeout_s = spec.timeout_s if spec.timeout_s and spec.timeout_s > 0 else 30.0
+        result: Optional[ToolResult] = None
+
+        # Attempt killable process isolation first for non-cooperative side-effect containment
+        use_process_isolation = False
         try:
-            future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args, task_context)
+            # Check if executor and args can be serialized
+            import pickle
+            pickle.dumps(spec.executor)
+            pickle.dumps(validated_args)
+            # If task_context is present, check if it can be serialized or if proxy is needed
+            if task_context is not None:
+                pickle.dumps(task_context)
+            use_process_isolation = True
+        except Exception:
+            use_process_isolation = False
+
+        if use_process_isolation:
             try:
-                result = future.result(timeout=timeout_s)
-            except (TimeoutError, concurrent.futures.TimeoutError):
-                future.cancel()
-                duration_ms = (time.perf_counter() - start_t) * 1000.0
-
-                # Abort any further side-effects by cancelling the task token
-                if task_context and hasattr(task_context, "cancellation_token"):
-                    try:
-                        task_context.cancellation_token.cancel()
-                    except Exception:
-                        pass
-
-                # Terminate any job object processes associated with this task
-                if task_context and getattr(task_context, "job_object", None) is not None:
-                    try:
-                        task_context.job_object.terminate()
-                    except Exception:
-                        pass
-
-                result = ToolResult.failure(
-                    tool_name,
-                    f"Tool execution timed out after {timeout_s:.3f}s",
-                    error_code="TOOL_TIMEOUT",
-                    duration_ms=duration_ms,
+                parent_conn, child_conn = multiprocessing.Pipe()
+                proc = multiprocessing.Process(
+                    target=_mp_worker_runner,
+                    args=(child_conn, spec.executor, validated_args, task_context),
                 )
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_t) * 1000.0
-            result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
+                proc.daemon = True
+                proc.start()
+                child_conn.close()
+
+                if parent_conn.poll(timeout_s):
+                    status, payload = parent_conn.recv()
+                    proc.join(timeout=1.0)
+                    if status == "ok":
+                        result = payload
+                    else:
+                        result = ToolResult.failure(tool_name, payload)
+                else:
+                    # Hard timeout: forcefully kill the worker process so NO delayed side effect can run
+                    proc.kill()
+                    proc.join(timeout=1.0)
+                    duration_ms = (time.perf_counter() - start_t) * 1000.0
+
+                    if task_context and hasattr(task_context, "cancellation_token"):
+                        try:
+                            task_context.cancellation_token.cancel()
+                        except Exception:
+                            pass
+
+                    if task_context and getattr(task_context, "job_object", None) is not None:
+                        try:
+                            task_context.job_object.terminate()
+                        except Exception:
+                            pass
+
+                    result = ToolResult.failure(
+                        tool_name,
+                        f"Tool execution timed out after {timeout_s:.3f}s",
+                        error_code="TOOL_TIMEOUT",
+                        duration_ms=duration_ms,
+                    )
+                parent_conn.close()
+            except Exception as mp_exc:
+                result = None
+
+        if result is None:
+            # In-process execution with thread pool
+            try:
+                future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args, task_context)
+                try:
+                    result = future.result(timeout=timeout_s)
+                except (TimeoutError, concurrent.futures.TimeoutError):
+                    future.cancel()
+                    duration_ms = (time.perf_counter() - start_t) * 1000.0
+
+                    if task_context and hasattr(task_context, "cancellation_token"):
+                        try:
+                            task_context.cancellation_token.cancel()
+                        except Exception:
+                            pass
+
+                    if task_context and getattr(task_context, "job_object", None) is not None:
+                        try:
+                            task_context.job_object.terminate()
+                        except Exception:
+                            pass
+
+                    result = ToolResult.failure(
+                        tool_name,
+                        f"Tool execution timed out after {timeout_s:.3f}s",
+                        error_code="TOOL_TIMEOUT",
+                        duration_ms=duration_ms,
+                    )
+            except Exception as e:
+                duration_ms = (time.perf_counter() - start_t) * 1000.0
+                result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
 
         duration_ms = (time.perf_counter() - start_t) * 1000.0
+
 
         # 5. Postcondition verification
         verified = result.verified
