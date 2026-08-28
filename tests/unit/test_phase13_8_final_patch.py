@@ -35,6 +35,11 @@ class NoopArgs(BaseModel):
 def _noop_tool(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     return ToolResult(ok=True, tool="worker_noop", data=args, factual_message="ok", verified=True)
 
+def _blocking_tool(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    import time
+    time.sleep(9999) # Deliberately blocking
+    return ToolResult(ok=True, tool="blocking", data={}, factual_message="done", verified=True)
+
 
 # ===========================================================================
 # 1. Task-Owned Worker Containment
@@ -104,6 +109,86 @@ class TestTaskOwnedWorkerContainment:
         supervisor.mark_succeeded(task_b.task_id)
         task_b.close_resources()
         assert task_b.worker_controller is None
+
+    def test_blocking_tool_job_object_containment_and_termination(self) -> None:
+        from pluma.verify.common import verify_noop
+        import threading
+        
+        registry = ToolRegistry()
+        register_default_tools(registry)
+
+        spec_noop = ToolSpec(
+            name="worker_noop",
+            description="Isolated tool",
+            args_schema=NoopArgs,
+            risk_class=RiskClass.HIGH,
+            cancellable=True,
+            timeout_s=5.0,
+            executor=_noop_tool,
+            verifier=verify_noop,
+        )
+        registry.register(spec_noop)
+
+        spec = ToolSpec(
+            name="blocking_tool",
+            description="Blocks forever",
+            args_schema=NoopArgs,
+            risk_class=RiskClass.HIGH,
+            cancellable=True,
+            timeout_s=5.0,
+            executor=_blocking_tool,
+            verifier=verify_noop,
+        )
+        registry.register(spec)
+
+        supervisor = TaskSupervisor()
+        task_a = supervisor.create_task("req-a")
+        task_b = supervisor.create_task("req-b")
+
+        supervisor.start_task(task_a.task_id)
+        supervisor.start_task(task_b.task_id)
+
+        # Start blocking tool in Task A on a background thread so we can STOP it concurrently
+        thread_res: list[Any] = []
+        def run_a() -> None:
+            thread_res.append(registry.execute("blocking_tool", {}, task_context=task_a))
+        t = threading.Thread(target=run_a, daemon=True)
+        t.start()
+
+        # Wait for worker to spawn and block
+        time.sleep(1.0)
+        worker_a = task_a.worker_controller
+        print(f"thread_res so far: {thread_res}")
+        assert worker_a is not None
+        assert worker_a._proc is not None
+        assert worker_a._proc.is_alive()
+        pid_a = worker_a._proc.pid
+
+        # Start non-blocking tool in Task B
+        res_b = registry.execute("worker_noop", {}, task_context=task_b)
+        assert res_b.ok is True
+        worker_b = task_b.worker_controller
+        assert worker_b is not None
+        assert worker_b._proc is not None
+        assert worker_b._proc.is_alive()
+        pid_b = worker_b._proc.pid
+        
+        assert pid_a != pid_b
+
+        # STOP Task A
+        supervisor.stop_task(task_a.task_id, grace_s=0.0)
+        t.join(timeout=2.0)
+        
+        # Verify worker A is terminated (fail closed)
+        assert worker_a._proc is None or not worker_a._proc.is_alive()
+        assert task_a.worker_controller is None
+        
+        # Verify worker B remains untouched
+        assert worker_b._proc.is_alive()
+        
+        # Clean up
+        supervisor.mark_succeeded(task_b.task_id)
+        task_b.close_resources()
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Object specific test")
     def test_launched_app_job_object_ownership_preserved(self) -> None:

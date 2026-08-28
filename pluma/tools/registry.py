@@ -175,7 +175,9 @@ class TaskWorkerController:
                 job_object.assign_process(proc.pid)
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).debug("Failed to assign worker to Job Object: %s", e)
+                logging.getLogger(__name__).error("Failed to assign worker %s to Job Object: %s. Terminating worker to ensure containment.", proc.pid, e)
+                self._terminate_internal()
+                raise RuntimeError(f"Job Object containment failed: {e}") from e
 
     def _terminate_internal(self) -> None:
         if self._conn:
@@ -656,10 +658,13 @@ class ToolRegistry:
                 else:
                     result = ToolResult.failure(tool_name, str(payload))
             except Exception as mp_exc:
-                result = None
+                result = ToolResult.failure(
+                    tool_name,
+                    f"Process isolation failed: {mp_exc}",
+                    error_code="PROCESS_ISOLATION_FAILED",
+                )
 
-
-        if result is None:
+        if result is None and not use_process_isolation:
             # Execute in-process with thread pool executor and timeout enforcement
             try:
                 import inspect
