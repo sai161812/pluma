@@ -34,16 +34,33 @@ $wheel = Get-ChildItem -Path "$PSScriptRoot\packages\*.whl" -ErrorAction Silentl
 if (-not $wheel) {
     $wheel = Get-ChildItem -Path "$PSScriptRoot\dist\*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1
 }
+
+Write-Host "[3/4] Creating virtual environment and installing PLUMA..." -ForegroundColor Green
+& $pythonExe -m venv "$TargetDir\venv"
+$venvPython = "$TargetDir\venv\Scripts\python.exe"
+$venvPip = "$TargetDir\venv\Scripts\pip.exe"
+
 if ($wheel) {
-    Write-Host "[3/4] Installing PLUMA wheel package: $($wheel.FullName)" -ForegroundColor Green
-    & $pythonExe -m pip install --upgrade --no-warn-script-location $wheel.FullName
+    Write-Host "      Installing wheel package: $($wheel.FullName)"
+    & $venvPip install --upgrade "$($wheel.FullName)[windows,media]"
 } else {
-    Write-Host "[3/4] Installing PLUMA in editable mode from source..." -ForegroundColor Green
-    & $pythonExe -m pip install -e $PSScriptRoot
+    Write-Host "      Installing in editable mode from source..."
+    & $venvPip install -e "$PSScriptRoot[windows,media]"
 }
 
-# 4. Verify installation
-Write-Host "[4/4] Verifying resident core imports..." -ForegroundColor Green
-& $pythonExe -c "from pluma.core.resident import ResidentCore; core = ResidentCore(); print('PLUMA Resident Core verified successfully.')"
+# 4. Verify installation and setup startup shortcut
+Write-Host "[4/4] Verifying installation and creating startup shortcut..." -ForegroundColor Green
+& $venvPython -c "from pluma.core.resident import ResidentCore; print('PLUMA Resident Core verified successfully.')"
+
+# Create shortcut in Startup folder
+$WshShell = New-Object -ComObject WScript.Shell
+$StartupFolder = [Environment]::GetFolderPath("Startup")
+$Shortcut = $WshShell.CreateShortcut("$StartupFolder\PLUMA.lnk")
+$Shortcut.TargetPath = "$TargetDir\venv\Scripts\pluma.exe"
+$Shortcut.WorkingDirectory = "$TargetDir"
+$Shortcut.IconLocation = "$TargetDir\venv\Scripts\pluma.exe"
+$Shortcut.WindowStyle = 7 # Minimized
+$Shortcut.Save()
+Write-Host "      Added PLUMA to Windows Startup."
 
 Write-Host "`nPLUMA Installation Complete." -ForegroundColor Cyan

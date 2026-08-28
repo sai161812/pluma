@@ -9,10 +9,10 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
-project_dir = Path(__file__).parent.resolve()
+project_dir = Path(SPECPATH).resolve()
 
 datas = [
-    (str(project_dir / "pluma" / "config" / "default_config.yaml"), "pluma/config"),
+    (str(project_dir / "pluma" / "config" / "defaults.yaml"), "pluma/config"),
     (str(project_dir / "pluma" / "config" / "tool_policy.yaml"), "pluma/config"),
     (str(project_dir / "pluma" / "memory" / "migrations" / "*.sql"), "pluma/memory/migrations"),
 ]

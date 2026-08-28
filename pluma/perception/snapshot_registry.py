@@ -43,8 +43,10 @@ class SnapshotRegistry:
         self._lock = threading.RLock()
 
     def register(self, snapshot: ScreenSnapshot) -> None:
-        """Register a freshly-captured snapshot. Overwrites a prior snapshot with the same ID."""
+        """Register a freshly-captured snapshot. Rejects duplicate IDs."""
         with self._lock:
+            if snapshot.snapshot_id in self._snapshots:
+                raise ValueError(f"Snapshot with ID {snapshot.snapshot_id} is already registered.")
             self._snapshots[snapshot.snapshot_id] = snapshot
             logger.debug(
                 "Snapshot %s registered (window=%r, pid=%r, expires=%s)",

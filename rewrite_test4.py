@@ -1,84 +1,22 @@
-"""tests/unit/test_tools_ui.py — Phase 7: UI interaction tools unit tests."""
+import os
+import re
 
-from __future__ import annotations
+with open('tests/unit/test_tools_ui.py', 'r', encoding='utf-8') as f:
+    code = f.read()
 
-from unittest.mock import MagicMock, patch
-import pytest
+def replace_body(func_name, new_body, code_str):
+    pattern = r'def ' + func_name + r'\(.*?\)(?: -> None)?:.*?(?=\n\n@|\Z)'
+    match = re.search(pattern, code_str, re.DOTALL)
+    if not match:
+        print(f"Could not find {func_name}")
+        return code_str
+    
+    # We replace everything from 'def ...' to the end of the function with our new body
+    # Wait, new_body should just be the entire function definition
+    return code_str[:match.start()] + new_body + code_str[match.end():]
 
-from pluma.adapters.base import ControlInfo, ElementNotFoundError, Rect
-from pluma.perception.context import ActiveWindowInfo
-from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement, ScreenSnapshot
-from pluma.tools.base import RiskClass, ToolResult
-from pluma.tools.ui import (
-    ALL_UI_TOOLS,
-    CLICK_ELEMENT_SPEC,
-    CLICK_OCR_TEXT_SPEC,
-    INSPECT_ACTIVE_WINDOW_SPEC,
-    TYPE_INTO_ELEMENT_SPEC,
-    execute_click_element,
-    execute_inspect_active_window,
-    execute_type_into_element,
-)
-
-
-def test_ui_tool_specs_metadata() -> None:
-    assert len(ALL_UI_TOOLS) == 4
-
-    assert INSPECT_ACTIVE_WINDOW_SPEC.name == "inspect_active_window"
-    assert INSPECT_ACTIVE_WINDOW_SPEC.risk_class == RiskClass.READ
-
-    assert CLICK_ELEMENT_SPEC.name == "click_element"
-    assert CLICK_ELEMENT_SPEC.risk_class == RiskClass.LOW
-
-    assert TYPE_INTO_ELEMENT_SPEC.name == "type_into_element"
-    assert TYPE_INTO_ELEMENT_SPEC.risk_class == RiskClass.LOW
-
-    assert CLICK_OCR_TEXT_SPEC.name == "click_ocr_text"
-    assert CLICK_OCR_TEXT_SPEC.risk_class == RiskClass.LOW
-
-
-@patch("pluma.tools.ui.ActiveWindowContext")
-@patch("pluma.tools.ui.UiaSnapshotBuilder")
-def test_execute_inspect_active_window(mock_builder_cls: MagicMock, mock_context_cls: MagicMock) -> None:
-    mock_context = MagicMock()
-    mock_context.get_active_window.return_value = ActiveWindowInfo(
-        hwnd=123,
-        process_name="notepad.exe",
-        window_title="Untitled - Notepad",
-        is_valid=True,
-    )
-    mock_context_cls.return_value = mock_context
-
-    mock_builder = MagicMock()
-    mock_snapshot = MagicMock(spec=ScreenSnapshot)
-    mock_snapshot.snapshot_id = "mock-snap-id"
-    mock_snapshot.model_dump.return_value = {}
-    mock_snapshot.controls = [
-        ScreenElement(
-            snapshot_id="snap-1",
-            source=ElementSource.UIA,
-            label="File",
-            control_type="MenuItem",
-            bounds=BoundingBox(left=0, top=0, right=50, bottom=25),
-            confidence=1.0,
-            invocation_capability="invoke",
-        )
-    ]
-    mock_builder.capture.return_value = mock_snapshot
-    mock_builder_cls.return_value = mock_builder
-
-    result = execute_inspect_active_window({"include_controls": True, "max_controls": 10})
-    assert result.ok
-    assert result.verified
-    assert result.data["hwnd"] == 123
-    assert result.data["control_count"] == 1
-    assert result.data["controls"][0]["label"] == "File"
-
-
-@patch("pluma.tools.ui.ActiveWindowContext")
-@patch("pluma.tools.ui.UiaAdapter")
-@patch("pluma.tools.ui.ScreenVerifier")
-def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
+# 1. test_execute_click_element_success
+new_click_success = '''def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
     mock_adapter = MagicMock()
     mock_adapter_cls.return_value = mock_adapter
 
@@ -113,11 +51,12 @@ def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapte
     assert result.ok
     assert result.verified
     assert mock_adapter.invoke_control.called
-    assert "Save" in result.factual_message
+    assert "Save" in result.factual_message'''
 
-@patch("pluma.tools.ui.ActiveWindowContext")
-@patch("pluma.tools.ui.UiaAdapter")
-def test_execute_click_element_not_found(mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
+code = replace_body('test_execute_click_element_success', new_click_success, code)
+
+# 2. test_execute_click_element_not_found
+new_click_not_found = '''def test_execute_click_element_not_found(mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
     mock_adapter = MagicMock()
     mock_adapter.invoke_control.side_effect = Exception("Not found")
     mock_adapter_cls.return_value = mock_adapter
@@ -147,12 +86,13 @@ def test_execute_click_element_not_found(mock_adapter_cls: MagicMock, mock_activ
 
     result = execute_click_element({"snapshot_id": "snap-1", "target_ref": "snap-1::btn_missing"}, task_context=task_ctx)
     assert not result.ok
-    pass
+    assert "Failed to click" in result.factual_message'''
 
-@patch("pluma.tools.ui.ActiveWindowContext")
-@patch("pluma.tools.ui.UiaAdapter")
-@patch("pluma.tools.ui.ScreenVerifier")
-def test_execute_type_into_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
+code = replace_body('test_execute_click_element_not_found', new_click_not_found, code)
+
+
+# 3. test_execute_type_into_element_success
+new_type_success = '''def test_execute_type_into_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
     mock_adapter = MagicMock()
     mock_adapter_cls.return_value = mock_adapter
 
@@ -186,4 +126,11 @@ def test_execute_type_into_element_success(mock_verifier_cls: MagicMock, mock_ad
     result = execute_type_into_element({"text": "Hello World", "snapshot_id": "snap-2", "target_ref": "snap-2::txt_input"}, task_context=task_ctx)
     assert result.ok
     assert result.verified
-    assert mock_adapter.set_control_text.called
+    assert mock_adapter.set_control_text.called'''
+
+code = replace_body('test_execute_type_into_element_success', new_type_success, code)
+
+
+with open('tests/unit/test_tools_ui.py', 'w', encoding='utf-8') as f:
+    f.write(code)
+print('UI test rewrite 4 done')

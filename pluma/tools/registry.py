@@ -45,6 +45,7 @@ class WorkerRequest:
     cancellation_metadata: Dict[str, Any] = field(default_factory=dict)
     undo_stack: List[Dict[str, Any]] = field(default_factory=list)
     env_overrides: Dict[str, str] = field(default_factory=dict)
+    grounded_ui_target: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -72,6 +73,7 @@ class WorkerTaskContext:
         self.task_id = task_id
         self.owned_resources: List[WorkerResource] = []
         self.undo_stack: List[Dict[str, Any]] = []
+        self.grounded_ui_target: Optional[Dict[str, Any]] = None
 
     def register_owned_resource(
         self,
@@ -102,60 +104,43 @@ class WorkerTaskContext:
         )
 
 
-def _persistent_worker_loop(conn: Any) -> None:
-    """Worker process loop that executes tool requests."""
-    while True:
+def _single_call_worker(conn: Any, executor_fn: Callable[..., Any], args: Dict[str, Any], worker_req: WorkerRequest) -> None:
+    """Worker process entrypoint that executes a single tool request."""
+    try:
+        if getattr(worker_req, "env_overrides", None):
+            os.environ.update(worker_req.env_overrides)
+        worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
+        worker_ctx.undo_stack = list(worker_req.undo_stack)
+        worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
+        
+        import inspect
+        sig = inspect.signature(executor_fn)
+        if len(sig.parameters) > 1:
+            res = executor_fn(args, worker_ctx)
+        else:
+            res = executor_fn(args)
+            
+        undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
+        resp = WorkerResponse(
+            result=res,
+            owned_resources=worker_ctx.owned_resources,
+            undo_data=undo_data,
+            final_undo_stack=worker_ctx.undo_stack,
+        )
+        conn.send(("ok", resp))
+    except Exception as exc:
         try:
-            item = conn.recv()
-            if item == "STOP":
-                break
-            executor_fn, args, worker_req = item
-            if getattr(worker_req, "env_overrides", None):
-                os.environ.update(worker_req.env_overrides)
-            worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
-            worker_ctx.undo_stack = list(worker_req.undo_stack)
-            try:
-                res = executor_fn(args, worker_ctx)
-            except TypeError:
-                res = executor_fn(args)
-            undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
-            resp = WorkerResponse(
-                result=res,
-                owned_resources=worker_ctx.owned_resources,
-                undo_data=undo_data,
-                final_undo_stack=worker_ctx.undo_stack,
-            )
-            conn.send(("ok", resp))
-        except (EOFError, KeyboardInterrupt):
-            break
-        except Exception as exc:
-            try:
-                conn.send(("error", str(exc)))
-            except Exception:
-                break
+            conn.send(("error", str(exc)))
+        except Exception:
+            pass
 
-
-class _IsolatedWorkerProcess:
-    """Manages an isolated killable worker process for tool execution."""
-    def __init__(self) -> None:
+class TaskWorkerController:
+    """Manages a strictly task-owned killable worker process."""
+    def __init__(self, task_id: str) -> None:
+        self.task_id = task_id
         self._lock = threading.Lock()
         self._proc: Optional[multiprocessing.Process] = None
         self._conn: Optional[Any] = None
-
-    def _ensure_started(self) -> None:
-        if self._proc is not None and self._proc.is_alive() and self._conn is not None:
-            return
-        self._terminate_internal()
-        parent_conn, child_conn = multiprocessing.Pipe()
-        proc = multiprocessing.Process(
-            target=_persistent_worker_loop,
-            args=(child_conn,),
-            daemon=True,
-        )
-        proc.start()
-        child_conn.close()
-        self._proc = proc
-        self._conn = parent_conn
 
     def _terminate_internal(self) -> None:
         if self._conn:
@@ -175,46 +160,49 @@ class _IsolatedWorkerProcess:
                 pass
             self._proc = None
 
-    def execute(
+    def execute_call(
         self,
         executor_fn: Callable[..., Any],
         validated_args: Dict[str, Any],
         worker_req: WorkerRequest,
         timeout_s: float,
-        task_context: Any = None,
+        job_object: Any = None,
     ) -> Tuple[str, Any]:
         with self._lock:
-            self._ensure_started()
-            assert self._conn is not None
-            assert self._proc is not None
+            self._terminate_internal()
+            parent_conn, child_conn = multiprocessing.Pipe()
+            proc = _MP_CONTEXT.Process(
+                target=_single_call_worker,
+                args=(child_conn, executor_fn, validated_args, worker_req),
+                daemon=True,
+            )
+            proc.start()
+            child_conn.close()
+            self._proc = proc
+            self._conn = parent_conn
 
-            try:
-                self._conn.send((executor_fn, validated_args, worker_req))
-            except Exception:
-                # Pipe broken because previous worker process died — restart and retry once
-                self._terminate_internal()
-                self._ensure_started()
+            if job_object is not None and proc.pid is not None:
                 try:
-                    self._conn.send((executor_fn, validated_args, worker_req))
-                except Exception as send_err:
-                    self._terminate_internal()
-                    return ("error", f"Failed to send request to worker: {send_err}")
+                    job_object.assign_process(proc.pid)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error("Failed to assign worker to Job Object: %s", e)
 
             if self._conn.poll(timeout_s):
                 try:
                     status, payload = self._conn.recv()
-                    return (status, payload)
                 except Exception as recv_err:
-                    self._terminate_internal()
-                    return ("error", f"Worker communication error: {recv_err}")
+                    status, payload = ("error", f"Worker communication error: {recv_err}")
+                self._terminate_internal()
+                return (status, payload)
             else:
-                # Hard timeout: forcefully terminate worker process and all children
                 self._terminate_internal()
                 return ("timeout", f"Tool execution timed out after {timeout_s:.3f}s")
 
+    def terminate_and_join(self) -> None:
+        with self._lock:
+            self._terminate_internal()
 
-
-_GLOBAL_WORKER_POOL = _IsolatedWorkerProcess()
 
 
 
@@ -445,6 +433,34 @@ class ToolRegistry:
             k: v for k, v in os.environ.items()
             if k.startswith("PLUMA_")
         }
+        
+        # Parent UI Grounding for action workers
+        grounded_ui_target = None
+        if tool_name in ("click_element", "type_into_element") and task_context:
+            snapshot_id = validated_args.get("snapshot_id")
+            target_ref = validated_args.get("target_ref")
+            if snapshot_id and target_ref:
+                snapshot_registry = getattr(task_context, "snapshot_registry", None)
+                if snapshot_registry:
+                    try:
+                        snapshot = snapshot_registry.resolve(snapshot_id)
+                        element_id = target_ref.split("::")[-1]
+                        element = snapshot_registry.resolve_element(snapshot_id, element_id)
+                        grounded_ui_target = {
+                            "snapshot_hwnd": snapshot.hwnd,
+                            "snapshot_pid": snapshot.pid,
+                            "snapshot_creation_time_ns": snapshot.process_creation_time_ns,
+                            "snapshot_dpi_scale": snapshot.dpi_scale,
+                            "auto_id": element.uia_automation_id,
+                            "name": element.label,
+                            "control_type": element.control_type,
+                        }
+                    except Exception as e:
+                        # Fail early in parent
+                        return ToolResult.failure(tool_name, f"Parent UI Grounding failed: {e}")
+                else:
+                    return ToolResult.failure(tool_name, "Parent UI Grounding rejected: no snapshot registry on task_context.")
+
         worker_req = WorkerRequest(
             task_id=task_id,
             tool_name=tool_name,
@@ -452,6 +468,7 @@ class ToolRegistry:
             timeout_s=timeout_s,
             undo_stack=ctx_undo_stack,
             env_overrides=env_flags,
+            grounded_ui_target=grounded_ui_target,
         )
 
 
@@ -467,12 +484,13 @@ class ToolRegistry:
 
         if use_process_isolation:
             try:
-                status, payload = _GLOBAL_WORKER_POOL.execute(
+                worker_controller = TaskWorkerController(task_id=task_id or "global")
+                status, payload = worker_controller.execute_call(
                     spec.executor,
                     validated_args,
                     worker_req,
                     timeout_s,
-                    task_context=task_context,
+                    job_object=getattr(task_context, "job_object", None) if task_context else None,
                 )
                 if status == "ok" and isinstance(payload, WorkerResponse):
                     result = payload.result
@@ -486,6 +504,16 @@ class ToolRegistry:
                                     external_id=wr.external_id,
                                     metadata=wr.metadata,
                                 )
+                            except Exception:
+                                pass
+                    # Propagate snapshot
+                    if tool_name == "inspect_active_window" and result.ok and task_context:
+                        registry = getattr(task_context, "snapshot_registry", None)
+                        if registry and "raw_snapshot" in result.data:
+                            try:
+                                from pluma.perception.element_refs import ScreenSnapshot
+                                raw = result.data.pop("raw_snapshot")
+                                registry.register(ScreenSnapshot.model_validate(raw))
                             except Exception:
                                 pass
                     # Propagate worker undo stack sync

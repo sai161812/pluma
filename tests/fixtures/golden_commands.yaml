@@ -8,6 +8,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-002
   command: volume 30
   input_mode: text
@@ -17,6 +21,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-003
   command: unmute
   input_mode: text
@@ -26,6 +35,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-004
   command: set volume to 50 percent
   input_mode: text
@@ -35,6 +48,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-005
   command: volume up
   input_mode: text
@@ -44,6 +62,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-006
   command: volume down
   input_mode: text
@@ -53,6 +76,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-007
   command: mute audio
   input_mode: voice
@@ -62,6 +90,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-008
   command: unmute sound
   input_mode: voice
@@ -71,6 +103,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-009
   command: turn volume to seventy
   input_mode: voice
@@ -80,6 +116,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-010
   command: set volume to twenty five
   input_mode: voice
@@ -89,6 +130,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-011
   command: volume 100
   input_mode: text
@@ -98,6 +144,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-012
   command: volume 0
   input_mode: text
@@ -107,6 +158,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    level: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-013
   command: get volume status
   input_mode: text
@@ -116,6 +172,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-014
   command: check volume
   input_mode: text
@@ -125,6 +185,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-015
   command: sound status
   input_mode: text
@@ -134,6 +198,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-016
   command: open notepad
   input_mode: text
@@ -143,6 +211,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-017
   command: open calculator
   input_mode: text
@@ -152,6 +227,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-018
   command: launch notepad
   input_mode: text
@@ -161,6 +243,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-019
   command: start cmd
   input_mode: text
@@ -170,6 +259,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-020
   command: open terminal
   input_mode: text
@@ -179,6 +275,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-021
   command: launch powershell
   input_mode: text
@@ -188,6 +291,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-022
   command: open explorer
   input_mode: text
@@ -197,6 +307,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-023
   command: start edge
   input_mode: text
@@ -206,6 +323,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-024
   command: open paint
   input_mode: text
@@ -215,6 +339,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-025
   command: launch taskmgr
   input_mode: text
@@ -224,6 +355,13 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    arguments: []
+    working_dir: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-026
   command: list apps
   input_mode: text
@@ -233,6 +371,11 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    filter: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-027
   command: running applications
   input_mode: text
@@ -242,6 +385,11 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    filter: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-028
   command: close notepad
   input_mode: text
@@ -251,6 +399,12 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    force: false
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-029
   command: close calculator
   input_mode: text
@@ -260,6 +414,12 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+    force: false
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-030
   command: focus notepad
   input_mode: text
@@ -269,6 +429,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    app_name: notepad
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-031
   command: minimize window
   input_mode: text
@@ -278,6 +443,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-032
   command: maximize window
   input_mode: text
@@ -287,6 +458,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-033
   command: restore window
   input_mode: text
@@ -296,6 +473,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-034
   command: list windows
   input_mode: text
@@ -305,6 +488,12 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    visible_only: true
+    filter: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-035
   command: show open windows
   input_mode: text
@@ -314,6 +503,12 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    visible_only: true
+    filter: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-036
   command: minimize current window
   input_mode: voice
@@ -323,6 +518,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-037
   command: maximize active window
   input_mode: voice
@@ -332,6 +533,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-038
   command: restore active window
   input_mode: voice
@@ -341,6 +548,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-039
   command: focus window
   input_mode: text
@@ -350,6 +563,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-040
   command: switch window
   input_mode: text
@@ -359,6 +578,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-041
   command: minimize all
   input_mode: text
@@ -368,6 +593,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-042
   command: minimize
   input_mode: text
@@ -377,6 +608,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-043
   command: maximize
   input_mode: text
@@ -386,6 +623,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-044
   command: restore
   input_mode: text
@@ -395,6 +638,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    hwnd: 1234
+    title: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-045
   command: open windows list
   input_mode: text
@@ -404,6 +653,12 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    visible_only: true
+    filter: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-046
   command: show activity
   input_mode: text
@@ -413,6 +668,11 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    limit: 10
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-047
   command: get system status
   input_mode: text
@@ -422,6 +682,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-048
   command: system status
   input_mode: text
@@ -431,6 +695,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-049
   command: battery status
   input_mode: text
@@ -440,6 +708,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-050
   command: check battery
   input_mode: text
@@ -449,6 +721,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-051
   command: stop current task
   input_mode: text
@@ -458,6 +734,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    reason: user_stop
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-052
   command: stop
   input_mode: text
@@ -467,6 +748,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    reason: user_stop
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-053
   command: cancel task
   input_mode: text
@@ -476,6 +762,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    reason: user_stop
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-054
   command: undo last
   input_mode: text
@@ -485,6 +776,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-055
   command: undo
   input_mode: text
@@ -494,6 +789,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-056
   command: activity history
   input_mode: text
@@ -503,6 +802,11 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    limit: 10
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-057
   command: recent actions
   input_mode: text
@@ -512,6 +816,11 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    limit: 10
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-058
   command: cpu memory status
   input_mode: text
@@ -521,6 +830,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-059
   command: system health
   input_mode: text
@@ -530,6 +843,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-060
   command: abort
   input_mode: text
@@ -539,6 +856,11 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    reason: user_stop
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-061
   command: clear clipboard
   input_mode: text
@@ -548,6 +870,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-062
   command: clipboard clear
   input_mode: text
@@ -557,6 +883,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-063
   command: get clipboard text
   input_mode: text
@@ -566,6 +896,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-064
   command: read clipboard
   input_mode: text
@@ -575,6 +909,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-065
   command: show clipboard
   input_mode: text
@@ -584,6 +922,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-066
   command: pasteboard read
   input_mode: text
@@ -593,6 +935,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-067
   command: wipe clipboard
   input_mode: text
@@ -602,6 +948,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-068
   command: empty clipboard
   input_mode: text
@@ -611,6 +961,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-069
   command: view clipboard
   input_mode: text
@@ -620,6 +974,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-070
   command: get clipboard content
   input_mode: text
@@ -629,6 +987,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-071
   command: clean clipboard
   input_mode: text
@@ -638,6 +1000,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-072
   command: inspect clipboard
   input_mode: text
@@ -647,6 +1013,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-073
   command: clipboard history
   input_mode: text
@@ -656,6 +1026,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-074
   command: reset clipboard
   input_mode: text
@@ -665,6 +1039,10 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-075
   command: copy status
   input_mode: text
@@ -674,6 +1052,10 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-076
   command: list files
   input_mode: text
@@ -683,6 +1065,13 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: .
+    max_depth: 1
+    include_hidden: false
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-077
   command: list files in current directory
   input_mode: text
@@ -692,6 +1081,13 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: .
+    max_depth: 1
+    include_hidden: false
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-078
   command: find file test.txt
   input_mode: text
@@ -701,6 +1097,14 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    directory: .
+    pattern: config.txt
+    max_depth: 5
+    max_results: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-079
   command: find *.py
   input_mode: text
@@ -710,6 +1114,14 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    directory: .
+    pattern: config.txt
+    max_depth: 5
+    max_results: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-080
   command: create folder test_dir
   input_mode: text
@@ -719,6 +1131,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: new_folder
+    exist_ok: true
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-081
   command: create folder my_docs
   input_mode: text
@@ -728,6 +1146,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: new_folder
+    exist_ok: true
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-082
   command: move file a.txt to b.txt
   input_mode: text
@@ -737,6 +1161,13 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args:
+    source: a.txt
+    destination: b.txt
+    overwrite: false
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-083
   command: rename file old.txt to new.txt
   input_mode: text
@@ -746,6 +1177,12 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: a.txt
+    new_name: b.txt
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-084
   command: list directory contents
   input_mode: text
@@ -755,6 +1192,13 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: .
+    max_depth: 1
+    include_hidden: false
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-085
   command: search file report.docx
   input_mode: text
@@ -764,6 +1208,14 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    directory: .
+    pattern: config.txt
+    max_depth: 5
+    max_results: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-086
   command: make folder archive
   input_mode: text
@@ -773,6 +1225,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: new_folder
+    exist_ok: true
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-087
   command: locate file config.yaml
   input_mode: text
@@ -782,6 +1240,14 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    directory: .
+    pattern: config.txt
+    max_depth: 5
+    max_results: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-088
   command: move a to b
   input_mode: text
@@ -791,6 +1257,13 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args:
+    source: a.txt
+    destination: b.txt
+    overwrite: false
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-089
   command: rename sample.log to sample.txt
   input_mode: text
@@ -800,6 +1273,12 @@ commands:
   expected_risk: MEDIUM
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: a.txt
+    new_name: b.txt
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-090
   command: mkdir output
   input_mode: text
@@ -809,6 +1288,12 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    path: new_folder
+    exist_ok: true
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-091
   command: click Save
   input_mode: text
@@ -818,6 +1303,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-092
   command: click File
   input_mode: text
@@ -827,6 +1322,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-093
   command: click Submit button
   input_mode: text
@@ -836,6 +1341,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-094
   command: type hello world into Search
   input_mode: text
@@ -845,6 +1360,17 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    text: hello
+    snapshot_id: snap-1
+    target_ref: snap-1::txt1
+    hwnd: null
+    name: null
+    auto_id: null
+    clear_existing: true
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-095
   command: inspect active window
   input_mode: text
@@ -854,6 +1380,12 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    include_controls: true
+    max_controls: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-096
   command: click Cancel
   input_mode: text
@@ -863,6 +1395,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-097
   command: click OK
   input_mode: text
@@ -872,6 +1414,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-098
   command: click Close
   input_mode: text
@@ -881,6 +1433,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-099
   command: type sample text into editor
   input_mode: text
@@ -890,6 +1452,17 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    text: hello
+    snapshot_id: snap-1
+    target_ref: snap-1::txt1
+    hwnd: null
+    name: null
+    auto_id: null
+    clear_existing: true
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-100
   command: click Edit menu
   input_mode: text
@@ -899,6 +1472,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-101
   command: click View
   input_mode: text
@@ -908,6 +1491,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-102
   command: inspect window controls
   input_mode: text
@@ -917,6 +1510,12 @@ commands:
   expected_risk: READ
   no_llm: true
   no_ocr: true
+  normalized_args:
+    include_controls: true
+    max_controls: 50
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-103
   command: click on button Next
   input_mode: text
@@ -926,6 +1525,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-104
   command: click button Apply
   input_mode: text
@@ -935,6 +1544,16 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    snapshot_id: snap-1
+    target_ref: snap-1::btn1
+    hwnd: null
+    name: null
+    auto_id: null
+    control_type: null
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-105
   command: type password123 into PasswordField
   input_mode: text
@@ -944,6 +1563,17 @@ commands:
   expected_risk: LOW
   no_llm: true
   no_ocr: true
+  normalized_args:
+    text: hello
+    snapshot_id: snap-1
+    target_ref: snap-1::txt1
+    hwnd: null
+    name: null
+    auto_id: null
+    clear_existing: true
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-106
   command: organize my desktop by file type
   input_mode: text
@@ -952,6 +1582,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-107
   command: find all invoices from last month and archive them
   input_mode: text
@@ -960,6 +1594,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-108
   command: summarize the recent error logs in my project
   input_mode: text
@@ -968,6 +1606,10 @@ commands:
   expected_risk: READ
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-109
   command: create a backup folder and copy important docs there
   input_mode: text
@@ -976,6 +1618,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-110
   command: prepare my workspace by launching notepad and browser
   input_mode: text
@@ -984,6 +1630,10 @@ commands:
   expected_risk: LOW
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-111
   command: search for pdf documents and move them to documents folder
   input_mode: text
@@ -992,6 +1642,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-112
   command: clean up temp files and report freed disk space
   input_mode: text
@@ -1000,6 +1654,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-113
   command: analyze the open windows and arrange them neatly
   input_mode: text
@@ -1008,6 +1666,10 @@ commands:
   expected_risk: LOW
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-114
   command: extract data from report and save to spreadsheet
   input_mode: text
@@ -1016,6 +1678,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-115
   command: check system performance and log top processes
   input_mode: text
@@ -1024,6 +1690,10 @@ commands:
   expected_risk: READ
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-116
   command: batch rename all screenshots in pictures directory
   input_mode: text
@@ -1032,6 +1702,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-117
   command: find python files and count total lines of code
   input_mode: text
@@ -1040,6 +1714,10 @@ commands:
   expected_risk: READ
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-118
   command: create daily routine folder and setup project templates
   input_mode: text
@@ -1048,6 +1726,10 @@ commands:
   expected_risk: LOW
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-119
   command: archive older logs to zip file and delete source
   input_mode: text
@@ -1056,6 +1738,10 @@ commands:
   expected_risk: HIGH
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-120
   command: automate report generation and notify on completion
   input_mode: text
@@ -1064,6 +1750,10 @@ commands:
   expected_risk: LOW
   no_llm: false
   no_ocr: true
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-121
   command: look at this form and fill in the missing fields
   input_mode: text
@@ -1072,6 +1762,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: false
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-122
   command: find the unlabelled checkbox on screen and check it
   input_mode: text
@@ -1080,6 +1774,10 @@ commands:
   expected_risk: LOW
   no_llm: false
   no_ocr: false
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-123
   command: read the error message dialog and click the suggested remedy
   input_mode: text
@@ -1088,6 +1786,10 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: false
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-124
   command: inspect the table on screen and copy third column
   input_mode: text
@@ -1096,6 +1798,10 @@ commands:
   expected_risk: READ
   no_llm: false
   no_ocr: false
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true
 - id: GC-125
   command: locate visual prompt on screen and enter confirmation code
   input_mode: text
@@ -1104,3 +1810,7 @@ commands:
   expected_risk: MEDIUM
   no_llm: false
   no_ocr: false
+  normalized_args: {}
+  expected_policy_decision: ALLOW
+  expected_execution_status: SUCCEEDED
+  expected_postcondition_present: true

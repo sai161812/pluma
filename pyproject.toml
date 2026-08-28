@@ -30,6 +30,7 @@ windows = [
     "pywin32>=306; platform_system=='Windows'",
     "pycaw>=20240210; platform_system=='Windows'",
     "comtypes>=1.4.0; platform_system=='Windows'",
+    "pywinauto>=0.6.8; platform_system=='Windows'",
 ]
 media = [
     "sounddevice>=0.4.6",

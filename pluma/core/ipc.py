@@ -36,6 +36,62 @@ def get_pipe_name() -> str:
     return f"/tmp/pluma_ipc_{clean_user}.sock"
 
 
+def _verify_win32_file_dacl(filepath: str) -> None:
+    """Verify that the file DACL grants access only to the current user."""
+    import ctypes
+    from ctypes import wintypes
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
+    advapi32.GetNamedSecurityInfoW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+    advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.ULONG)]
+    advapi32.SetSecurityInfo.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+
+
+    TOKEN_QUERY = 0x0008
+    h_token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(h_token)):
+        raise RuntimeError("OpenProcessToken failed")
+
+    TOKEN_USER = 1
+    needed = wintypes.DWORD(0)
+    advapi32.GetTokenInformation(h_token, TOKEN_USER, None, 0, ctypes.byref(needed))
+    buf = ctypes.create_string_buffer(needed.value)
+    if not advapi32.GetTokenInformation(h_token, TOKEN_USER, buf, needed, ctypes.byref(needed)):
+        kernel32.CloseHandle(h_token)
+        raise RuntimeError("GetTokenInformation failed")
+    kernel32.CloseHandle(h_token)
+
+    sid_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+    sid_str_ptr = ctypes.c_wchar_p()
+    if not advapi32.ConvertSidToStringSidW(sid_ptr, ctypes.byref(sid_str_ptr)):
+        raise RuntimeError("ConvertSidToStringSidW failed")
+    current_sid_str = sid_str_ptr.value
+
+    SE_FILE_OBJECT = 1
+    DACL_SECURITY_INFORMATION = 4
+    OWNER_SECURITY_INFORMATION = 1
+    pSD = ctypes.c_void_p()
+    ret = advapi32.GetNamedSecurityInfoW(
+        filepath, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION,
+        None, None, None, None, ctypes.byref(pSD)
+    )
+    if ret != 0:
+        raise RuntimeError(f"GetNamedSecurityInfoW failed with {ret}")
+
+    str_sd = ctypes.c_wchar_p()
+    if not advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW(
+        pSD, 1, DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION, ctypes.byref(str_sd), None
+    ):
+        raise RuntimeError("ConvertSecurityDescriptorToStringSecurityDescriptorW failed")
+    
+    if "WD" in str_sd.value or "BU" in str_sd.value or "AN" in str_sd.value:
+         raise RuntimeError(f"Insecure DACL detected: {str_sd.value}")
+
 def _get_or_create_ipc_secret(paths_root: Optional[str] = None) -> bytes:
     """Get or create the persistent random IPC authentication secret.
 
@@ -50,13 +106,23 @@ def _get_or_create_ipc_secret(paths_root: Optional[str] = None) -> bytes:
     sec_file = os.path.join(sec_dir, "ipc_secret.key")
 
     if os.path.exists(sec_file):
+        if sys.platform == "win32":
+            _verify_win32_file_dacl(sec_file)
+        else:
+            st = os.stat(sec_file)
+            if st.st_uid != os.getuid():
+                raise RuntimeError(f"Insecure IPC secret file owner: {st.st_uid}")
+            if (st.st_mode & 0o777) != 0o600:
+                raise RuntimeError(f"Insecure IPC secret file mode: {oct(st.st_mode)}")
         try:
             with open(sec_file, "rb") as f:
                 sec = f.read()
             if len(sec) == IPC_SECRET_SIZE:
                 return sec
-        except OSError as exc:
-            logger.warning("Could not read existing IPC secret file %s: %s", sec_file, exc)
+            else:
+                raise RuntimeError("IPC secret file is corrupt or invalid size.")
+        except Exception as exc:
+            raise RuntimeError(f"Failed to read IPC secret: {exc}")
 
     # Generate and securely store new secret
     secret = secrets.token_bytes(IPC_SECRET_SIZE)
@@ -175,6 +241,7 @@ class IpcServer:
         self._listener: Any = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._client_semaphore = threading.Semaphore(32)
 
         # Load auth secret immediately if authentication is required so startup fails closed
         if require_auth:
@@ -191,8 +258,8 @@ class IpcServer:
 
         try:
             self._listener = Listener(self.address)
-            # Attempt to restrict DACL to current user on Windows after pipe creation
-            _try_restrict_pipe_to_current_user(self.address)
+            # Restrict DACL to current user on Windows after pipe creation
+            _restrict_pipe_to_current_user(self.address)
         except Exception as e:
             logger.error("Failed to start IPC server at %s: %s", self.address, e)
             return
@@ -208,9 +275,13 @@ class IpcServer:
                 if not self._listener:
                     break
                 conn = self._listener.accept()
-                # Spawn a per-client thread so one slow client cannot block others
+                # Bound the client semaphore
+                if not self._client_semaphore.acquire(timeout=1.0):
+                    logger.warning("IPC server saturated, dropping client")
+                    conn.close()
+                    continue
                 client_thread = threading.Thread(
-                    target=self._handle_client,
+                    target=self._handle_client_wrapper,
                     args=(conn,),
                     daemon=True,
                     name="PlumaIpcClient",
@@ -221,6 +292,12 @@ class IpcServer:
             except Exception as e:
                 if self._running:
                     logger.error("IPC listener error: %s", e)
+
+    def _handle_client_wrapper(self, conn: Any) -> None:
+        try:
+            self._handle_client(conn)
+        finally:
+            self._client_semaphore.release()
 
     def _handle_client(self, conn: Any) -> None:
         """Handle one client connection in a dedicated daemon thread.
@@ -324,12 +401,9 @@ class IpcServer:
         logger.info("IPC Server stopped.")
 
 
-def _try_restrict_pipe_to_current_user(pipe_name: str) -> None:
-    """Attempt to restrict the named pipe DACL to the current user SID (Windows only).
-
-    This is a best-effort operation. If it fails, the pipe security degrades to
-    the default Windows named pipe security (accessible to all local processes).
-    The error is logged at DEBUG level and does NOT prevent the server from starting.
+def _restrict_pipe_to_current_user(pipe_name: str) -> None:
+    """Restrict the named pipe DACL to the current user SID (Windows only).
+    Raises RuntimeError if it fails.
     """
     if sys.platform != "win32":
         return
@@ -339,13 +413,21 @@ def _try_restrict_pipe_to_current_user(pipe_name: str) -> None:
 
         advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+        advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+        advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
+        advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.ULONG)]
+        advapi32.SetSecurityInfo.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+
+        advapi32.SetFileSecurityW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, ctypes.c_void_p]
 
         # Get current user SID
         TOKEN_QUERY = 0x0008
         h_token = wintypes.HANDLE()
         if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(h_token)):
-            logger.debug("_try_restrict_pipe_to_current_user: OpenProcessToken failed")
-            return
+            raise RuntimeError("_restrict_pipe_to_current_user: OpenProcessToken failed")
 
         TOKEN_USER = 1
         needed = wintypes.DWORD(0)
@@ -354,14 +436,12 @@ def _try_restrict_pipe_to_current_user(pipe_name: str) -> None:
         ok = advapi32.GetTokenInformation(h_token, TOKEN_USER, buf, needed, ctypes.byref(needed))
         kernel32.CloseHandle(h_token)
         if not ok:
-            logger.debug("_try_restrict_pipe_to_current_user: GetTokenInformation failed")
-            return
+            raise RuntimeError("_restrict_pipe_to_current_user: GetTokenInformation failed")
 
         sid_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
         sid_str_ptr = ctypes.c_wchar_p()
         if not advapi32.ConvertSidToStringSidW(sid_ptr, ctypes.byref(sid_str_ptr)):
-            logger.debug("_try_restrict_pipe_to_current_user: ConvertSidToStringSidW failed")
-            return
+            raise RuntimeError("_restrict_pipe_to_current_user: ConvertSidToStringSidW failed")
 
         sid_str = sid_str_ptr.value
         sddl = f"D:(A;;GA;;;{sid_str})"
@@ -370,42 +450,16 @@ def _try_restrict_pipe_to_current_user(pipe_name: str) -> None:
         if not advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
             sddl, 1, ctypes.byref(sd_ptr), ctypes.byref(sd_size)
         ):
-            logger.debug("_try_restrict_pipe_to_current_user: ConvertStringSecurityDescriptorToSecurityDescriptorW failed")
-            return
+            raise RuntimeError("_restrict_pipe_to_current_user: ConvertStringSecurityDescriptorToSecurityDescriptorW failed")
 
-        # Get a handle to the pipe for SetSecurityInfo
-        FILE_WRITE_ATTRIBUTES = 0x100
-        OPEN_EXISTING = 3
-        FILE_ATTRIBUTE_NORMAL = 0x80
-        h_pipe = kernel32.CreateFileW(
-            pipe_name,
-            FILE_WRITE_ATTRIBUTES,
-            0, None,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            None,
-        )
-        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
-        if not h_pipe or h_pipe == INVALID_HANDLE_VALUE:
-            logger.debug("_try_restrict_pipe_to_current_user: CreateFileW failed (err %d)", ctypes.get_last_error())
-            return
-
-        try:
-            # SE_KERNEL_OBJECT=6, DACL_SECURITY_INFORMATION=4
-            DACL_SECURITY_INFORMATION = 4
-            SE_KERNEL_OBJECT = 6
-            ret = advapi32.SetSecurityInfo(
-                h_pipe, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION,
-                None, None, sd_ptr, None
-            )
-            if ret != 0:  # ERROR_SUCCESS = 0
-                logger.debug("_try_restrict_pipe_to_current_user: SetSecurityInfo returned %d", ret)
-            else:
-                logger.debug("Named pipe DACL restricted to current user SID %s", sid_str)
-        finally:
-            kernel32.CloseHandle(h_pipe)
+        DACL_SECURITY_INFORMATION = 4
+        if not advapi32.SetFileSecurityW(pipe_name, DACL_SECURITY_INFORMATION, sd_ptr):
+            err = ctypes.get_last_error()
+            raise RuntimeError(f"_restrict_pipe_to_current_user: SetFileSecurityW failed with err {err}")
+        else:
+            logger.debug("Named pipe DACL restricted to current user SID %s", sid_str)
     except Exception as exc:
-        logger.debug("_try_restrict_pipe_to_current_user failed: %s", exc)
+        raise RuntimeError(f"_restrict_pipe_to_current_user failed: {exc}")
 
 
 class IpcClient:
