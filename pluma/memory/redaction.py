@@ -21,44 +21,27 @@ from typing import Any, Dict, List, Union
 # Replacement token used wherever a value is redacted.
 REDACTED_TOKEN = "[REDACTED]"
 
-# Exact key names (case-insensitive) that always trigger redaction.
-_SENSITIVE_KEYS: frozenset[str] = frozenset({
-    "password",
-    "passwd",
-    "secret",
-    "token",
-    "api_key",
-    "apikey",
-    "auth",
-    "authorization",
-    "bearer",
-    "credential",
-    "credentials",
-    "private_key",
-    "privatekey",
-    "access_key",
-    "accesskey",
-    "session_token",
-    "sessiontoken",
-    "client_secret",
-    "clientsecret",
-    "clipboard",      # Raw clipboard values per spec §16.3.
-    "audio_path",     # Raw audio file paths per spec §16.3.
-    "raw_audio",
-})
+_SENSITIVE_KEY_SUBSTRINGS = (
+    "password", "passwd", "secret", "token", "api_key", "apikey",
+    "auth", "bearer", "credential", "private_key", "privkey",
+    "access_key", "session_token", "jwt", "client_secret",
+    "clipboard", "audio_path", "raw_audio",
+)
+
+
+def _is_sensitive_key(key: str) -> bool:
+    clean_k = key.lower().replace("-", "_").replace(" ", "_")
+    return any(sub in clean_k for sub in _SENSITIVE_KEY_SUBSTRINGS)
+
 
 # Regex patterns for values that look like secrets (applied after key check).
 _SECRET_VALUE_PATTERNS: List[re.Pattern] = [
     re.compile(r"^(?:[A-Za-z0-9+/]{20,}={0,2})$"),      # base64-like blobs
     re.compile(r"^[0-9a-fA-F]{32,}$"),                   # hex tokens
     re.compile(r"^ghp_[A-Za-z0-9]{36}$"),                # GitHub PAT
-    re.compile(r"^sk-[A-Za-z0-9]{32,}"),                 # OpenAI-style keys
+    re.compile(r"^sk-[A-Za-z0-9_-]{20,}"),               # OpenAI / Anthropic keys
     re.compile(r"^AKIA[0-9A-Z]{16}$"),                   # AWS access key
 ]
-
-
-def _is_sensitive_key(key: str) -> bool:
-    return key.lower() in _SENSITIVE_KEYS
 
 
 def _looks_like_secret_value(value: str) -> bool:
@@ -122,10 +105,11 @@ def sanitise_args_for_ledger(tool_name: str, args: Dict[str, Any]) -> str:
     return json.dumps({"tool": tool_name, "args": sanitised}, ensure_ascii=False)
 
 
-# Unanchored patterns for finding secrets embedded in free-form strings
 _UNANCHORED_SECRET_PATTERNS: List[re.Pattern] = [
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
     re.compile(r"\bghp_[A-Za-z0-9]{36}\b"),
-    re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
     re.compile(r"(?i)\b(api_key|apikey|password|passwd|secret|token)\s*[:=]\s*['\"]?([^\s'\"]+)['\"]?"),
