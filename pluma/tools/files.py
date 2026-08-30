@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import (
@@ -51,11 +51,36 @@ class MoveFileArgs(BaseModel):
     overwrite: bool = Field(default=False, description="Whether to overwrite existing destination.")
 
 
+_WINDOWS_RESERVED_NAMES = frozenset({
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+})
+
+
 class RenameFileArgs(BaseModel):
     """Arguments for rename_file."""
     model_config = {"extra": "forbid"}
     path: str = Field(min_length=1, description="Target file or folder to rename.")
-    new_name: str = Field(min_length=1, max_length=255, description="New filename or relative name.")
+    new_name: str = Field(min_length=1, max_length=255, description="New filename (basename only).")
+
+    @field_validator("new_name")
+    @classmethod
+    def validate_new_name(cls, v: str) -> str:
+        clean = v.strip()
+        if not clean:
+            raise ValueError("new_name cannot be empty or whitespace.")
+        if "\0" in clean:
+            raise ValueError("new_name cannot contain null bytes.")
+        if any(sep in clean for sep in ("/", "\\", "..")):
+            raise ValueError(f"Path traversal characters are forbidden in rename_file new_name: '{clean}'")
+        from pathlib import Path
+        if Path(clean).name != clean:
+            raise ValueError(f"new_name must be a pure filename without path elements: '{clean}'")
+        stem = clean.split(".")[0].upper()
+        if stem in _WINDOWS_RESERVED_NAMES or clean.upper() in _WINDOWS_RESERVED_NAMES:
+            raise ValueError(f"Windows reserved device name is forbidden: '{clean}'")
+        return clean
 
 
 class CreateFolderArgs(BaseModel):
@@ -73,23 +98,23 @@ def undo_builder_move_file(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Capture pre-state before moving a file."""
     import os
     from pathlib import Path
-    
+
     src = str(Path(args["source"]).resolve())
     dst_input = Path(args["destination"])
-    
-    if not os.path.exists(src):
-        return None
-        
+
     if dst_input.is_dir() or args["destination"].endswith(("/", "\\")):
         dst = str((dst_input / Path(src).name).resolve())
     else:
         dst = str(dst_input.resolve())
-        
+
+    backup_path = args.get("preserved_destination_backup")
+
     return {
         "action": "move_file",
         "source": src,
         "destination": dst,
         "destination_existed": os.path.exists(dst),
+        "preserved_destination_backup": backup_path,
     }
 
 
@@ -221,33 +246,52 @@ def execute_find_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
 def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     import os
     import shutil
+    import uuid
     from pathlib import Path
-    
+
     src = Path(args["source"]).resolve()
     dst = Path(args["destination"]).resolve()
     overwrite = args.get("overwrite", False)
-    
+
     if not src.exists():
         return ToolResult.failure("move_file", f"Source '{src}' does not exist.")
-        
+
     if dst.is_dir():
         final_dst = dst / src.name
     else:
         final_dst = dst
-        
+
     if final_dst.exists() and not overwrite and final_dst != src:
         return ToolResult.failure("move_file", f"Destination '{final_dst}' already exists and overwrite=False.")
-        
+
+    backup_path_str = None
+    if final_dst.exists() and overwrite and final_dst != src:
+        try:
+            appdata = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or "/tmp"
+            backup_dir = Path(appdata) / "PLUMA" / "rollback_cache"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            backup_file = backup_dir / f"bak_{uuid.uuid4().hex}_{final_dst.name}"
+            shutil.copy2(str(final_dst), str(backup_file))
+            backup_path_str = str(backup_file)
+            args["preserved_destination_backup"] = backup_path_str
+        except Exception:
+            pass
+
     try:
         final_dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(final_dst))
-        
+
         # Postcondition verification
         v_res = verify_file_moved(src, final_dst)
         return ToolResult(
             ok=v_res.ok,
             tool="move_file",
-            data={"source": str(src), "destination": str(final_dst)},
+            data={
+                "source": str(src),
+                "destination": str(final_dst),
+                "destination_existed": backup_path_str is not None,
+                "preserved_destination_backup": backup_path_str,
+            },
             factual_message=f"Moved '{src.name}' to '{final_dst}'.",
             verified=v_res.ok,
             verify_detail=v_res,
@@ -259,17 +303,20 @@ def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
 def execute_rename_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     import os
     from pathlib import Path
-    
+
     target = Path(args["path"]).resolve()
     new_name = args["new_name"]
-    
+
+    if any(sep in new_name for sep in ("/", "\\", "..")) or Path(new_name).name != new_name:
+        return ToolResult.failure("rename_file", f"Path traversal characters forbidden in new_name: '{new_name}'")
+
     if not target.exists():
         return ToolResult.failure("rename_file", f"Target '{target}' does not exist.")
-        
+
     new_path = target.parent / new_name
     if new_path.exists() and new_path != target:
         return ToolResult.failure("rename_file", f"Destination '{new_path}' already exists.")
-        
+
     try:
         target.rename(new_path)
         v_res = verify_file_renamed(target, new_path)
