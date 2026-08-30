@@ -24,6 +24,12 @@ dev = [
 where = ["."]
 include = ["pluma*"]
 
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.yml", "*.json"]
+
+[project.scripts]
+pluma = "pluma.app:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 30
