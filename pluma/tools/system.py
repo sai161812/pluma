@@ -61,24 +61,25 @@ class BatteryStatusArgs(BaseModel):
 def execute_get_system_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     import platform
     import shutil
-    
+
     # Disk usage
     total, used, free = shutil.disk_usage(os.path.abspath(os.sep))
     disk_free_gb = round(free / (1024 ** 3), 1)
     disk_total_gb = round(total / (1024 ** 3), 1)
-    
+
     # Memory and CPU metrics
     data: Dict[str, Any] = {
         "os": platform.platform(),
         "python_version": platform.python_version(),
         "disk_free_gb": disk_free_gb,
         "disk_total_gb": disk_total_gb,
+        "cpu_percent": 0.0,
     }
-    
+
     if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
-        
+
         class MEMORYSTATUSEX(ctypes.Structure):
             _fields_ = [
                 ("dwLength", wintypes.DWORD),
@@ -91,7 +92,7 @@ def execute_get_system_status(args: Dict[str, Any], task_context: Any = None) ->
                 ("ullAvailVirtual", ctypes.c_uint64),
                 ("sullAvailExtendedVirtual", ctypes.c_uint64),
             ]
-            
+
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         stat = MEMORYSTATUSEX()
         stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
@@ -100,14 +101,22 @@ def execute_get_system_status(args: Dict[str, Any], task_context: Any = None) ->
             data["ram_free_gb"] = round(stat.ullAvailPhys / (1024 ** 3), 1)
             data["ram_total_gb"] = round(stat.ullTotalPhys / (1024 ** 3), 1)
 
+        # Lazy check for psutil for accurate CPU measurement if present
+        try:
+            import psutil
+            data["cpu_percent"] = psutil.cpu_percent(interval=None)
+        except Exception:
+            data["cpu_percent"] = 0.0
+
     ram_info = f"RAM: {data.get('ram_free_gb', '?')}GB free of {data.get('ram_total_gb', '?')}GB"
     disk_info = f"Disk: {disk_free_gb}GB free of {disk_total_gb}GB"
-    
+    cpu_info = f"CPU: {data.get('cpu_percent', 0.0)}%"
+
     return ToolResult(
         ok=True,
         tool="get_system_status",
         data=data,
-        factual_message=f"System Status — {ram_info}, {disk_info}.",
+        factual_message=f"System Status — {cpu_info}, {ram_info}, {disk_info}.",
         verified=True,
     )
 
