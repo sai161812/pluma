@@ -20,7 +20,7 @@ import threading
 import time
 from typing import Any, Dict, Optional, Sequence
 
-from pluma.config.loader import load_config
+from pluma.config.loader import get, load_config
 from pluma.config.paths import PlumaPaths, set_paths
 from pluma.core.orchestrator import Orchestrator
 from pluma.core.ownership import OwnershipRegistry
@@ -73,14 +73,39 @@ class PlumaApplicationRuntime:
 
         self.rollback_engine = RollbackEngine(ledger=self.ledger)
         self.router = Router()
+
+        # Model & Planner Lifecycles (Zero-ML at startup; auto-unloaded on idle)
+        model_name = get(self.config, "brain", "model_name", default="qwen3-4b.gguf")
+        model_path = get(self.config, "brain", "model_path", default=str(paths.models_dir / model_name))
+        idle_seconds = float(get(self.config, "brain", "idle_unload_seconds", default=30.0))
+
+        from pluma.brain.lifecycle import LlmLifecycleManager
+        self.llm_lifecycle = LlmLifecycleManager(
+            model_path=model_path,
+            registry=self.tool_registry,
+            idle_unload_seconds=idle_seconds,
+        )
+
         self.orchestrator = Orchestrator(
             registry=self.tool_registry,
             supervisor=self.supervisor,
             ledger=self.ledger,
             router=self.router,
+            llm_manager=self.llm_lifecycle,
             rollback_engine=self.rollback_engine,
         )
-        self.voice_pipeline = VoicePipeline()
+
+        stt_model_name = get(self.config, "voice", "model_name", default="base.en.pt")
+        stt_model_path = get(self.config, "voice", "model_path", default=str(paths.models_dir / stt_model_name))
+        stt_idle = float(get(self.config, "voice", "idle_unload_seconds", default=30.0))
+
+        from pluma.voice.lifecycle import VoiceLifecycleManager
+        self.voice_lifecycle = VoiceLifecycleManager(
+            model_path=stt_model_path,
+            idle_unload_seconds=stt_idle,
+        )
+        self.voice_pipeline = VoicePipeline(lifecycle_manager=self.voice_lifecycle)
+
         self.resident_core = ResidentCore(
             config=self.config,
             voice_pipeline=self.voice_pipeline,
@@ -94,6 +119,14 @@ class PlumaApplicationRuntime:
         """Close resident core and database connection cleanly."""
         try:
             self.resident_core.stop()
+        except Exception:
+            pass
+        try:
+            self.llm_lifecycle.shutdown()
+        except Exception:
+            pass
+        try:
+            self.voice_lifecycle.shutdown()
         except Exception:
             pass
         try:

@@ -129,6 +129,30 @@ class MultiStepOrchestrator:
                         reason="Stopped by user request",
                     )
 
+                # Route-specific tool subset check
+                from pluma.brain.tool_subset import ToolSubsetSelector
+                plan_route = getattr(current_plan, "route", None) or (context.get("route") if context else None)
+                if plan_route and not ToolSubsetSelector.is_tool_permitted(tool_call.tool, plan_route):
+                    logger.warning("Task %s: Tool '%s' not permitted for route '%s'.", task_id, tool_call.tool, plan_route)
+                    tool_result = ToolResult.failure(
+                        tool_call.tool,
+                        f"Tool '{tool_call.tool}' is not permitted in {plan_route} route.",
+                        error_code="TOOL_NOT_PERMITTED_FOR_ROUTE",
+                    )
+                    record = StepExecutionRecord(
+                        step_index=step_idx,
+                        tool=tool_call.tool,
+                        arguments=tool_call.arguments,
+                        purpose=tool_call.purpose,
+                        result=tool_result,
+                        duration_ms=0.0,
+                        replan_iteration=replan_count,
+                    )
+                    executed_records.append(record)
+                    plan_succeeded = False
+                    overall_error = tool_result.error
+                    break
+
                 step_start = time.perf_counter()
                 logger.info(
                     "Task %s [Step %d/%d (Lifetime %d/%d)]: Executing '%s' (purpose: %s)",
@@ -169,6 +193,17 @@ class MultiStepOrchestrator:
                     "error": tool_result.error,
                 })
 
+                # Check cancellation right after step execution
+                if token.is_cancelled:
+                    logger.info("Task %s: Stop-latch detected after step %d (%s). Aborting.", task_id, step_idx, tool_call.tool)
+                    return self._handle_stop(
+                        capsule=capsule,
+                        executed_records=executed_records,
+                        start_time=start_time,
+                        replan_count=replan_count,
+                        reason="Stopped by user request",
+                    )
+
                 # 3. Check for Step Failure or Verification Rejection
                 if not tool_result.ok or not tool_result.verified:
                     logger.warning(
@@ -182,6 +217,14 @@ class MultiStepOrchestrator:
 
             # If all steps in current plan succeeded, complete task
             if plan_succeeded:
+                if token.is_cancelled:
+                    return self._handle_stop(
+                        capsule=capsule,
+                        executed_records=executed_records,
+                        start_time=start_time,
+                        replan_count=replan_count,
+                        reason="Stopped by user request",
+                    )
                 total_duration_ms = (time.perf_counter() - start_time) * 1000.0
                 self.supervisor.transition(task_id, TaskState.SUCCEEDED)
                 summary_msgs = [r.result.factual_message for r in executed_records if r.result.factual_message]

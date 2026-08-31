@@ -250,6 +250,11 @@ class Orchestrator:
 
         duration_ms = (time.perf_counter() - wall_start) * 1000.0
 
+        if capsule.cancellation_token.is_cancelled:
+            final_state = "STOPPED"
+            if not last_error:
+                last_error = "Task was stopped by user request."
+
         if final_state == "STOPPED":
             self._supervisor.stop_task(task_id)
         else:

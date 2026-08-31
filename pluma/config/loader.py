@@ -67,9 +67,11 @@ def _user_config_path() -> Optional[Path]:
     return None
 
 
-def load_config() -> Dict[str, Any]:
+def load_config(user_config_path: Optional[Union[Path, str]] = None) -> Dict[str, Any]:
     """Load and return the merged PLUMA configuration.
 
+    If user_config_path is provided, it is merged over defaults.
+    Otherwise, standard user settings locations are checked.
     Returns a deep copy so callers cannot mutate the shared defaults.
     Raises FileNotFoundError if defaults.yaml is missing.
     Raises yaml.YAMLError / json.JSONDecodeError on parse failures.
@@ -77,8 +79,8 @@ def load_config() -> Dict[str, Any]:
     """
     config = _load_yaml(_DEFAULTS_FILE)
 
-    user_path = _user_config_path()
-    if user_path is not None:
+    user_path = Path(user_config_path) if user_config_path is not None else _user_config_path()
+    if user_path is not None and user_path.exists():
         if user_path.suffix == ".json":
             with open(user_path, encoding="utf-8") as fh:
                 overrides = json.load(fh)

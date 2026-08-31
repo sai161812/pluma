@@ -204,17 +204,39 @@ class ToolRegistry:
         if spec.cancellable and task_context and hasattr(task_context, "cancellation_token"):
             task_context.cancellation_token.raise_if_cancelled()
 
-        # 3. Execution with duration measurement
+        # 3. Capture pre-mutation undo data BEFORE mutation occurs
+        pre_undo_data = None
+        if spec.undo_builder:
+            try:
+                pre_undo_data = spec.undo_builder(validated_args)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to build pre-mutation undo data for %s: %s", tool_name, e)
+
+        # 4. Execution with timeout enforcement and duration measurement
         start_t = time.perf_counter()
+        timeout_s = spec.timeout_s if spec.timeout_s and spec.timeout_s > 0 else 30.0
         try:
-            result = spec.executor(validated_args, task_context)
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool_exec:
+                future = pool_exec.submit(spec.executor, validated_args, task_context)
+                try:
+                    result = future.result(timeout=timeout_s)
+                except TimeoutError:
+                    duration_ms = (time.perf_counter() - start_t) * 1000.0
+                    result = ToolResult.failure(
+                        tool_name,
+                        f"Tool execution timed out after {timeout_s:.1f}s",
+                        error_code="TOOL_TIMEOUT",
+                        duration_ms=duration_ms,
+                    )
         except Exception as e:
             duration_ms = (time.perf_counter() - start_t) * 1000.0
             result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
 
         duration_ms = (time.perf_counter() - start_t) * 1000.0
 
-        # 4. Postcondition verification
+        # 5. Postcondition verification
         verified = result.verified
         verify_detail = result.verify_detail
         if result.ok and spec.verifier:
@@ -226,18 +248,16 @@ class ToolRegistry:
                 verified = False
                 verify_detail = VerifyResult(ok=False, method="verifier_exception", detail=str(e))
 
-        # 5. Build undo record only on verified success
+        # 6. Finalize undo record only on verified success
         undo_record = None
-        if result.ok and verified and spec.undo_builder:
-            try:
-                undo_record = spec.undo_builder(validated_args)
-                if undo_record and task_context and hasattr(task_context, "undo_stack"):
-                    task_context.undo_stack.append(undo_record)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning("Failed to build undo record for %s: %s", tool_name, e)
+        if result.ok and verified and pre_undo_data:
+            undo_record = dict(pre_undo_data)
+            if isinstance(result.data, dict) and "preserved_destination_backup" in result.data:
+                undo_record["preserved_destination_backup"] = result.data["preserved_destination_backup"]
+            if task_context and hasattr(task_context, "undo_stack"):
+                task_context.undo_stack.append(undo_record)
 
-        # 6. Build final consolidated result
+        # 7. Build final consolidated result
         final_result = ToolResult(
             ok=result.ok and verified,
             tool=tool_name,
