@@ -12,6 +12,7 @@ from pluma.tools.base import RiskClass, ToolResult
 from pluma.tools.ui import (
     ALL_UI_TOOLS,
     CLICK_ELEMENT_SPEC,
+    CLICK_OCR_TEXT_SPEC,
     INSPECT_ACTIVE_WINDOW_SPEC,
     TYPE_INTO_ELEMENT_SPEC,
     execute_click_element,
@@ -21,8 +22,8 @@ from pluma.tools.ui import (
 
 
 def test_ui_tool_specs_metadata() -> None:
-    assert len(ALL_UI_TOOLS) == 3
-    
+    assert len(ALL_UI_TOOLS) == 4
+
     assert INSPECT_ACTIVE_WINDOW_SPEC.name == "inspect_active_window"
     assert INSPECT_ACTIVE_WINDOW_SPEC.risk_class == RiskClass.READ
 
@@ -31,6 +32,9 @@ def test_ui_tool_specs_metadata() -> None:
 
     assert TYPE_INTO_ELEMENT_SPEC.name == "type_into_element"
     assert TYPE_INTO_ELEMENT_SPEC.risk_class == RiskClass.LOW
+
+    assert CLICK_OCR_TEXT_SPEC.name == "click_ocr_text"
+    assert CLICK_OCR_TEXT_SPEC.risk_class == RiskClass.LOW
 
 
 @patch("pluma.tools.ui.ActiveWindowContext")

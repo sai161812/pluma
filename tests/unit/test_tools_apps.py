@@ -34,35 +34,43 @@ def test_list_apps_and_app_status() -> None:
 
 
 def test_open_and_close_fixture_app() -> None:
-    # Open the fixture app in spin mode
-    open_res = execute_open_app({
+    # 1. Verify forbidden executables (python, cmd, powershell) are rejected per risk policy
+    forbidden_res = execute_open_app({
         "app_name": sys.executable,
         "arguments": ["tests/fixtures/fixture_app.py", "spin"],
     })
-    assert open_res.ok is True
-    assert open_res.verified is True
-    assert "pid" in open_res.data
-    pid = open_res.data["pid"]
+    assert forbidden_res.ok is False
+    assert "forbidden" in forbidden_res.error.lower()
 
-    try:
-        # Check app status by PID
-        stat_res = execute_app_status({"app_name": str(pid)})
-        assert stat_res.ok is True
-        assert stat_res.data["running"] is True
+    # 2. Open standard app (e.g. notepad.exe on Windows)
+    if sys.platform == "win32":
+        open_res = execute_open_app({
+            "app_name": "notepad.exe",
+            "arguments": [],
+        })
+        assert open_res.ok is True
+        assert open_res.verified is True
+        assert "pid" in open_res.data
+        pid = open_res.data["pid"]
 
-        # Close the fixture app
-        close_res = execute_close_app({"app_name": str(pid), "force": True})
-        assert close_res.ok is True
-        assert close_res.verified is True
-        
-        # Verify it's not running
-        time.sleep(0.2)
-        stat_after = execute_app_status({"app_name": str(pid)})
-        assert stat_after.data["running"] is False
-    finally:
-        # Emergency cleanup if still alive
-        import subprocess
         try:
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
-        except Exception:
-            pass
+            # Check app status by PID
+            stat_res = execute_app_status({"app_name": str(pid)})
+            assert stat_res.ok is True
+            assert stat_res.data["running"] is True
+
+            # Close the app
+            close_res = execute_close_app({"app_name": str(pid), "force": True})
+            assert close_res.ok is True
+            assert close_res.verified is True
+
+            # Verify it's not running
+            time.sleep(0.2)
+            stat_after = execute_app_status({"app_name": str(pid)})
+            assert stat_after.data["running"] is False
+        finally:
+            import subprocess
+            try:
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+            except Exception:
+                pass

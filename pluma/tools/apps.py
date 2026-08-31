@@ -10,6 +10,7 @@ Boundary: No heavy automation libraries imported at module level.
 from __future__ import annotations
 
 import re
+import sys
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
