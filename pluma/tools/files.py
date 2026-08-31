@@ -267,8 +267,8 @@ def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
     backup_path_str = None
     if final_dst.exists() and overwrite and final_dst != src:
         try:
-            appdata = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or "/tmp"
-            backup_dir = Path(appdata) / "PLUMA" / "rollback_cache"
+            from pluma.config.paths import get_paths
+            backup_dir = get_paths().cache_dir / "rollback"
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup_file = backup_dir / f"bak_{uuid.uuid4().hex}_{final_dst.name}"
             shutil.copy2(str(final_dst), str(backup_file))

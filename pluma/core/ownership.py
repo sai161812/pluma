@@ -90,8 +90,8 @@ class OwnershipRegistry:
         Spec §13: "Task temporary files live under a task-specific temp directory
         and are removed on success/stop unless intentionally promoted."
         """
-        appdata = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or "/tmp"
-        temp_dir = Path(appdata) / "PLUMA" / "tasks" / task_id / "temp"
+        from pluma.config.paths import get_paths
+        temp_dir = get_paths().task_temp_dir(task_id)
         temp_dir.mkdir(parents=True, exist_ok=True)
         
         self.register_resource(
