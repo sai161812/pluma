@@ -140,10 +140,12 @@ class TaskSupervisor:
         ownership_registry: Any = None,
         ledger: Any = None,
         rollback_engine: Any = None,
+        paths: Any = None,
     ) -> None:
         self._registry = ownership_registry
         self._ledger = ledger
         self._rollback_engine = rollback_engine
+        self._paths = paths
         self._tasks: Dict[str, TaskCapsule] = {}
         self._lock = threading.RLock()
 
@@ -321,9 +323,9 @@ class TaskSupervisor:
         if new_state in _TERMINAL_STATES:
             capsule.completed_at = datetime.now(timezone.utc)
             try:
-                from pluma.config.paths import PlumaPaths
-                paths = PlumaPaths()
-                task_dir = paths.temp_dir / f"task_{capsule.task_id}"
+                from pluma.config.paths import get_paths
+                paths_inst = self._paths or get_paths()
+                task_dir = paths_inst.task_temp_dir(capsule.task_id)
                 if task_dir.exists():
                     import shutil
                     shutil.rmtree(task_dir, ignore_errors=True)
