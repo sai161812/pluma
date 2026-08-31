@@ -54,23 +54,23 @@ def test_open_and_close_fixture_app() -> None:
         pid = open_res.data["pid"]
 
         try:
-            # Check app status by PID
-            stat_res = execute_app_status({"app_name": str(pid)})
+            # Check app status
+            stat_res = execute_app_status({"app_name": "notepad"})
             assert stat_res.ok is True
             assert stat_res.data["running"] is True
 
             # Close the app
-            close_res = execute_close_app({"app_name": str(pid), "force": True})
+            close_res = execute_close_app({"app_name": "notepad", "force": True})
             assert close_res.ok is True
             assert close_res.verified is True
 
             # Verify it's not running
-            time.sleep(0.2)
-            stat_after = execute_app_status({"app_name": str(pid)})
+            time.sleep(0.3)
+            stat_after = execute_app_status({"app_name": "notepad"})
             assert stat_after.data["running"] is False
         finally:
             import subprocess
             try:
-                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+                subprocess.run(["taskkill", "/F", "/IM", "notepad.exe"], capture_output=True)
             except Exception:
                 pass

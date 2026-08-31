@@ -151,6 +151,10 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
         proc = subprocess.Popen(
             full_cmd,
             cwd=work_dir,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
 

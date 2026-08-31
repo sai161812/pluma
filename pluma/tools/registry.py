@@ -12,6 +12,7 @@ No OS-automation, ML, or adapter code in this module.
 
 from __future__ import annotations
 
+import concurrent.futures
 import threading
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional
@@ -19,6 +20,11 @@ from typing import Any, Callable, Dict, Iterator, List, Optional
 from pydantic import BaseModel, ValidationError
 
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
+
+_GLOBAL_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=16,
+    thread_name_prefix="pluma_tool_exec",
+)
 
 
 class UnknownToolError(KeyError):
@@ -43,6 +49,20 @@ class ToolRegistry:
         self._specs: Dict[str, ToolSpec] = {}
         self._lock = threading.RLock()
         self._policy_engine = policy_engine
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._specs)
+
+    def list_tools(self) -> List[ToolSpec]:
+        """Return a list of all registered ToolSpec objects."""
+        with self._lock:
+            return list(self._specs.values())
+
+    def list_tool_names(self) -> List[str]:
+        """Return a list of all registered tool names."""
+        with self._lock:
+            return list(self._specs.keys())
 
     # ------------------------------------------------------------------
     # Registration
@@ -217,19 +237,17 @@ class ToolRegistry:
         start_t = time.perf_counter()
         timeout_s = spec.timeout_s if spec.timeout_s and spec.timeout_s > 0 else 30.0
         try:
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool_exec:
-                future = pool_exec.submit(spec.executor, validated_args, task_context)
-                try:
-                    result = future.result(timeout=timeout_s)
-                except TimeoutError:
-                    duration_ms = (time.perf_counter() - start_t) * 1000.0
-                    result = ToolResult.failure(
-                        tool_name,
-                        f"Tool execution timed out after {timeout_s:.1f}s",
-                        error_code="TOOL_TIMEOUT",
-                        duration_ms=duration_ms,
-                    )
+            future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args, task_context)
+            try:
+                result = future.result(timeout=timeout_s)
+            except (TimeoutError, concurrent.futures.TimeoutError):
+                duration_ms = (time.perf_counter() - start_t) * 1000.0
+                result = ToolResult.failure(
+                    tool_name,
+                    f"Tool execution timed out after {timeout_s:.3f}s",
+                    error_code="TOOL_TIMEOUT",
+                    duration_ms=duration_ms,
+                )
         except Exception as e:
             duration_ms = (time.perf_counter() - start_t) * 1000.0
             result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
