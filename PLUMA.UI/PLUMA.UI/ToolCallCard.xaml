@@ -1,46 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="PLUMA.UI.ToolCallCard"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Width="420"
-            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="420"
+    MinWidth="0"
+    UseLayoutRounding="True">
+
+    <Border Padding="16,14,16,16"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
-            CornerRadius="{ThemeResource OverlayCornerRadius}">
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+            CornerRadius="8">
+        <Grid RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <Border Grid.Column="0"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                    CornerRadius="{ThemeResource OverlayCornerRadius}" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="1"
-                        Padding="16"
-                        Spacing="8">
                 <TextBlock Text="PLUMA"
+                           VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}"
+                           FontWeight="SemiBold"
                            CharacterSpacing="80" />
-                <StackPanel Spacing="3">
-                    <TextBlock Text="open_file"
-                               FontSize="18"
-                               FontWeight="SemiBold" />
-                    <TextBlock Text="Downloads\quarterly_report.pdf"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               TextWrapping="Wrap"
-                               Style="{StaticResource BodyTextBlockStyle}" />
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="7"
+                            VerticalAlignment="Center">
+                    <ProgressRing Width="14"
+                                  Height="14"
+                                  IsActive="True" />
+                    <TextBlock Text="Running tool"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="16">
-                    <TextBlock Text="Elapsed 00:03"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
-                    <TextBlock Text="Risk LOW"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
-                </StackPanel>
-            </StackPanel>
+            </Grid>
+
+            <TextBlock Grid.Row="1"
+                       Text="open_file"
+                       FontFamily="Segoe UI Variable"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis" />
+
+            <Border Grid.Row="2"
+                    Padding="10,8"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    CornerRadius="4">
+                <TextBlock Text="Downloads\quarterly_report.pdf"
+                           FontFamily="Segoe UI Variable"
+                           FontSize="13"
+                           TextWrapping="Wrap"
+                           TextTrimming="CharacterEllipsis"
+                           MaxLines="2"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Border>
+
+            <Grid Grid.Row="3" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Elapsed 00:03"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Grid.Column="1"
+                           Text="Risk · Low"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
         </Grid>
     </Border>
 </UserControl>

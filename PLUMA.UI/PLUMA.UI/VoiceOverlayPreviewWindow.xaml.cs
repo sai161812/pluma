@@ -15,8 +15,8 @@ namespace PLUMA.UI
     /// </summary>
     public sealed partial class VoiceOverlayPreviewWindow : Window
     {
-        private const int ContentWidth = 400;
-        private const int ContentHeight = 270;
+        private const int ContentWidth = 460;
+        private const int ContentHeight = 276;
         private readonly VoiceOverlayPreviewGenerator _generator;
         private AppWindow? _appWindow;
         private bool _correctingClientSize;

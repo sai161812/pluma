@@ -3,19 +3,20 @@
     x:Class="PLUMA.UI.VoiceOverlay"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:PLUMA.UI">
+    xmlns:local="using:PLUMA.UI"
+    Width="460"
+    Height="276"
+    RequestedTheme="Dark"
+    UseLayoutRounding="True">
 
-    <Grid Width="400"
-          Height="270">
-
+    <Grid>
         <Grid.Resources>
-            <SolidColorBrush x:Key="VoiceSurfaceBrush"
-                             Color="#202020" />
+            <SolidColorBrush x:Key="VoiceSurfaceBrush" Color="#0F0F0F" />
+            <SolidColorBrush x:Key="VoiceStrokeBrush" Color="#2B2B2B" />
         </Grid.Resources>
 
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="VoiceStates">
-
                 <VisualState x:Name="Hidden">
                     <VisualState.Setters>
                         <Setter Target="RootBorder.Opacity" Value="0" />
@@ -25,8 +26,10 @@
 
                 <VisualState x:Name="ListeningSilence">
                     <VisualState.Setters>
+                        <Setter Target="RootBorder.Opacity" Value="1" />
+                        <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
                         <Setter Target="StatusText.Text" Value="Listening" />
-                        <Setter Target="StatusText.Visibility" Value="Visible" />
+                        <Setter Target="StatusHost.Visibility" Value="Visible" />
                         <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
                         <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
                         <Setter Target="TimeoutBar.Opacity" Value="0" />
@@ -35,8 +38,10 @@
 
                 <VisualState x:Name="ListeningSpeech">
                     <VisualState.Setters>
+                        <Setter Target="RootBorder.Opacity" Value="1" />
+                        <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
                         <Setter Target="StatusText.Text" Value="Listening" />
-                        <Setter Target="StatusText.Visibility" Value="Visible" />
+                        <Setter Target="StatusHost.Visibility" Value="Visible" />
                         <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
                         <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
                         <Setter Target="TimeoutBar.Opacity" Value="0" />
@@ -45,8 +50,10 @@
 
                 <VisualState x:Name="SilenceTimeout">
                     <VisualState.Setters>
-                        <Setter Target="StatusText.Text" Value="Finishing…" />
-                        <Setter Target="StatusText.Visibility" Value="Visible" />
+                        <Setter Target="RootBorder.Opacity" Value="1" />
+                        <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
+                        <Setter Target="StatusText.Text" Value="Finishing" />
+                        <Setter Target="StatusHost.Visibility" Value="Visible" />
                         <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
                         <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
                         <Setter Target="TimeoutBar.Opacity" Value="1" />
@@ -55,98 +62,86 @@
 
                 <VisualState x:Name="Committed">
                     <VisualState.Setters>
-                        <Setter Target="StatusText.Visibility" Value="Collapsed" />
+                        <Setter Target="RootBorder.Opacity" Value="1" />
+                        <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
+                        <Setter Target="StatusHost.Visibility" Value="Collapsed" />
                         <Setter Target="LiveTranscriptHost.Visibility" Value="Collapsed" />
                         <Setter Target="CommittedPanel.Visibility" Value="Visible" />
                         <Setter Target="TimeoutBar.Opacity" Value="0" />
                     </VisualState.Setters>
                 </VisualState>
-
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
         <Border x:Name="RootBorder"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
                 Background="{StaticResource VoiceSurfaceBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderBrush="{StaticResource VoiceStrokeBrush}"
                 BorderThickness="1"
-                CornerRadius="{ThemeResource OverlayCornerRadius}">
+                CornerRadius="8">
 
-            <Grid Padding="22,18,22,18">
-
+            <Grid Padding="20,16,20,16">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="24" />
-                    <RowDefinition Height="125" />
+                    <RowDefinition Height="28" />
+                    <RowDefinition Height="132" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="5" />
+                    <RowDefinition Height="4" />
                 </Grid.RowDefinitions>
 
-                <!-- HEADER -->
                 <Grid Grid.Row="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="48" />
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock
-                        Text="PLUMA"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        CharacterSpacing="80" />
+                    <TextBlock Text="PLUMA"
+                               VerticalAlignment="Center"
+                               FontFamily="Segoe UI Variable"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               CharacterSpacing="80"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
 
-                    <TextBlock
-                        x:Name="StatusText"
-                        Grid.Column="1"
-                        Text="Listening"
-                        VerticalAlignment="Center"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Style="{StaticResource CaptionTextBlockStyle}" />
+                    <StackPanel x:Name="StatusHost"
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="7"
+                                VerticalAlignment="Center">
+                        <Ellipse Width="5"
+                                 Height="5"
+                                 Fill="{ThemeResource TextFillColorSecondaryBrush}"
+                                 VerticalAlignment="Center" />
+                        <TextBlock x:Name="StatusText"
+                                   Text="Listening"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Segoe UI Variable"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
                 </Grid>
 
-                <!-- LISTENING RING -->
-                <Grid Grid.Row="1"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch">
+                <local:VoiceListeningRing x:Name="ListeningRing"
+                                          Grid.Row="1"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
 
-                    <local:VoiceListeningRing
-                        x:Name="ListeningRing"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center" />
-
-                </Grid>
-
-                <!-- TRANSCRIPT / COMMITTED STATE -->
                 <Grid Grid.Row="2"
                       MinWidth="0"
-                      Margin="0,4,0,0"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch">
-
-                    <!-- LIVE TRANSCRIPTION -->
-                    <local:LiveTranscriptionOverlay
-                        x:Name="LiveTranscriptHost"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Stretch" />
-
-                    <!-- COMMITTED STATE:
-                         intentionally NO transcript -->
-                    <local:VoiceCommittedBanner
-                        x:Name="CommittedPanel"
-                        Visibility="Collapsed"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center" />
-
+                      Margin="0,6,0,0">
+                    <local:LiveTranscriptionOverlay x:Name="LiveTranscriptHost"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Stretch" />
+                    <local:VoiceCommittedBanner x:Name="CommittedPanel"
+                                                Visibility="Collapsed"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Center" />
                 </Grid>
 
-                <!-- SILENCE TIMEOUT -->
-                <local:VoiceSilenceTimeoutIndicator
-                    x:Name="TimeoutBar"
-                    Grid.Row="3"
-                    Opacity="0"
-                    HorizontalAlignment="Stretch"
-                    VerticalAlignment="Bottom" />
-
+                <local:VoiceSilenceTimeoutIndicator x:Name="TimeoutBar"
+                                                    Grid.Row="3"
+                                                    Opacity="0"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Bottom" />
             </Grid>
         </Border>
     </Grid>

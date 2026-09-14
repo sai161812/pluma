@@ -3,27 +3,31 @@
     x:Class="PLUMA.UI.VoiceListeningRing"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Width="115"
-    Height="115">
+    Width="126"
+    Height="126"
+    IsTabStop="False"
+    UseLayoutRounding="True">
 
-    <Grid Width="115" Height="115">
-        <Ellipse Width="92"
-                 Height="92"
+    <Grid Width="126" Height="126">
+        <Ellipse Width="98"
+                 Height="98"
                  HorizontalAlignment="Center"
                  VerticalAlignment="Center"
-                 Stroke="#A6D0D0D0"
-                 StrokeThickness="4.5" />
+                 Stroke="#FFE6E6E6"
+                 StrokeThickness="3" />
+
         <Canvas x:Name="RingCanvas"
-                Width="115"
-                Height="115"
+                Width="126"
+                Height="126"
                 HorizontalAlignment="Center"
-                VerticalAlignment="Center" />
+                VerticalAlignment="Center"
+                IsHitTestVisible="False" />
 
         <FontIcon Glyph="&#xE720;"
                   FontFamily="Segoe Fluent Icons"
-                  FontSize="16"
+                  FontSize="17"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
-                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                  Foreground="#FFBDBDBD" />
     </Grid>
 </UserControl>

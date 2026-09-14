@@ -2,74 +2,71 @@
 <UserControl
     x:Class="PLUMA.UI.TaskRunningPopup"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Width="360"
-            MinHeight="132"
-            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="360"
+    MinWidth="0"
+    UseLayoutRounding="True">
+
+    <Border MinHeight="136"
+            Padding="16,14,16,16"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
-            CornerRadius="{ThemeResource OverlayCornerRadius}">
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+            CornerRadius="8">
+        <Grid RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <Border Grid.Column="0"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                    CornerRadius="{ThemeResource OverlayCornerRadius}" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="1" Padding="16,14,16,16" RowSpacing="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+                <TextBlock Text="PLUMA"
+                           VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           FontWeight="SemiBold"
+                           CharacterSpacing="80" />
 
-                <Grid Grid.Row="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="PLUMA"
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="7"
+                            VerticalAlignment="Center">
+                    <ProgressRing Width="14"
+                                  Height="14"
+                                  IsActive="True" />
+                    <TextBlock Text="Running"
+                               VerticalAlignment="Center"
                                Style="{StaticResource CaptionTextBlockStyle}"
-                               CharacterSpacing="80" />
-                    <StackPanel Grid.Column="1"
-                                Orientation="Horizontal"
-                                Spacing="8">
-                        <ProgressRing Width="16"
-                                      Height="16"
-                                      IsActive="True" />
-                        <TextBlock Text="RUNNING"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
-
-                <StackPanel Grid.Row="1" Spacing="3">
-                    <TextBlock Text="Opening the latest PDF in Downloads"
-                               TextWrapping="Wrap"
-                               Style="{StaticResource BodyTextBlockStyle}" />
-                    <TextBlock Text="TASK-2025-0145"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
+            </Grid>
 
-                <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="Working quietly in the background"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
-                    <TextBlock Grid.Column="1"
-                               Text="00:08"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
-                </Grid>
+            <TextBlock Grid.Row="1"
+                       Text="Opening the latest PDF in Downloads"
+                       TextWrapping="Wrap"
+                       TextTrimming="CharacterEllipsis"
+                       MaxLines="2"
+                       Style="{StaticResource BodyTextBlockStyle}" />
+
+            <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="TASK-2025-0145"
+                           TextTrimming="CharacterEllipsis"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Grid.Column="1"
+                           Text="00:08"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
         </Grid>
     </Border>

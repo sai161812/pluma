@@ -3,17 +3,18 @@
     x:Class="PLUMA.UI.VoiceSilenceTimeoutIndicator"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Height="5"
+    Height="4"
     HorizontalContentAlignment="Stretch"
-    VerticalContentAlignment="Bottom">
+    VerticalContentAlignment="Bottom"
+    IsTabStop="False">
 
-    <ProgressBar
-        x:Name="TimeoutBar"
-        Height="3"
-        Minimum="0"
-        Maximum="1"
-        Value="0"
-        Opacity="0"
-        VerticalAlignment="Bottom"
-        Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
+    <ProgressBar x:Name="TimeoutBar"
+                 Height="2"
+                 Minimum="0"
+                 Maximum="1"
+                 Value="0"
+                 Opacity="0"
+                 VerticalAlignment="Bottom"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                 Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
 </UserControl>

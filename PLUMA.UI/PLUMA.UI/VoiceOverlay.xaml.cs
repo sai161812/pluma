@@ -242,7 +242,10 @@ namespace PLUMA.UI
 
             if (ListeningRing != null)
             {
-                IsAnimating = VoiceState != VoiceOverlayState.Hidden;
+                IsAnimating =
+                    VoiceState is VoiceOverlayState.ListeningSilence
+                    or VoiceOverlayState.ListeningSpeech
+                    or VoiceOverlayState.SilenceTimeout;
             }
 
             Visibility =

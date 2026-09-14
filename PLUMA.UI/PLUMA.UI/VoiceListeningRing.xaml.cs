@@ -1,5 +1,4 @@
 using System;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -9,8 +8,8 @@ using Windows.UI;
 namespace PLUMA.UI
 {
     /// <summary>
-    /// Compact listening ring. Perimeter deforms with amplitude; colour travels
-    /// around the circumference. Does not capture audio.
+    /// Monochrome circular waveform driven by a normalized amplitude value.
+    /// It renders feedback only and never captures audio.
     /// </summary>
     public sealed partial class VoiceListeningRing : UserControl
     {
@@ -28,38 +27,33 @@ namespace PLUMA.UI
                 typeof(VoiceListeningRing),
                 new PropertyMetadata(true, OnIsAnimatingChanged));
 
-        private const int SegmentCount = 80;
-        private const double CanvasSize = 115.0;
-        private const double BaseRadius = 46.0;
-        private const double MaxDeformPx = 8.0;
-        private const double StrokeThickness = 1.4;
-        private const double EnergyStrokeThickness = 1.8;
-        private const double AttackSeconds = 0.11;
-        private const double ReleaseSeconds = 0.24;
-        private const double ColorPeriodSeconds = 9.0;
+        private const int SegmentCount = 88;
+        private const double CanvasSize = 126.0;
+        private const double BaseRadius = 49.0;
+        private const double StrokeThickness = 1.25;
+        private const double QuietHalfLength = 0.55;
+        private const double MaximumAddedHalfLength = 8.5;
+        private const double AttackSeconds = 0.07;
+        private const double ReleaseSeconds = 0.18;
+        private const double BarAttackSeconds = 0.055;
+        private const double BarReleaseSeconds = 0.15;
+        private const double TargetRefreshSeconds = 0.085;
+        private const double FrameIntervalSeconds = 1.0 / 30.0;
 
-        private static readonly Color[] Palette =
-        {
-            Color.FromArgb(255, 86, 132, 196),
-            Color.FromArgb(255, 72, 168, 186),
-            Color.FromArgb(255, 122, 102, 186),
-            Color.FromArgb(255, 168, 96, 148),
-            Color.FromArgb(255, 186, 148, 86),
-            Color.FromArgb(255, 96, 156, 118)
-        };
-
-        private readonly Line[] _segments = new Line[SegmentCount];
-        private readonly SolidColorBrush[] _brushes = new SolidColorBrush[SegmentCount];
-        private readonly Line[] _energySegments = new Line[SegmentCount];
-        private readonly SolidColorBrush[] _energyBrushes = new SolidColorBrush[SegmentCount];
+        private readonly Line[] _bars = new Line[SegmentCount];
+        private readonly double[] _rawTargets = new double[SegmentCount];
+        private readonly double[] _targetLevels = new double[SegmentCount];
+        private readonly double[] _currentLevels = new double[SegmentCount];
+        private readonly double[] _barBias = new double[SegmentCount];
+        private readonly Random _random = new(0x504C554D);
+        private readonly SolidColorBrush _waveBrush =
+            new(Color.FromArgb(255, 230, 230, 230));
 
         private bool _hooked;
         private bool _built;
         private double _smoothedAmplitude;
-        private double _colorPhase;
-        private double _wavePhaseA;
-        private double _wavePhaseB;
-        private double _wavePhaseC;
+        private double _targetRefreshElapsed = TargetRefreshSeconds;
+        private double _renderElapsed;
         private long _lastTicks;
 
         public VoiceListeningRing()
@@ -81,7 +75,9 @@ namespace PLUMA.UI
             set => SetValue(IsAnimatingProperty, value);
         }
 
-        private static void OnIsAnimatingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnIsAnimatingChanged(
+            DependencyObject d,
+            DependencyPropertyChangedEventArgs e)
         {
             if (d is VoiceListeningRing ring)
             {
@@ -91,8 +87,9 @@ namespace PLUMA.UI
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            EnsureRing();
+            EnsureWaveform();
             _lastTicks = Environment.TickCount64;
+            _targetRefreshElapsed = TargetRefreshSeconds;
             SyncRenderingHook();
             RenderFrame(0);
         }
@@ -137,7 +134,7 @@ namespace PLUMA.UI
             _hooked = false;
         }
 
-        private void EnsureRing()
+        private void EnsureWaveform()
         {
             if (_built)
             {
@@ -146,35 +143,19 @@ namespace PLUMA.UI
 
             for (int i = 0; i < SegmentCount; i++)
             {
-                var energyBrush = new SolidColorBrush(Palette[0])
-                {
-                    Opacity = 0.68
-                };
-                _energyBrushes[i] = energyBrush;
+                _barBias[i] = 0.72 + (_random.NextDouble() * 0.56);
 
-                var energyLine = new Line
+                var bar = new Line
                 {
-                    Stroke = energyBrush,
-                    StrokeThickness = EnergyStrokeThickness,
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap = PenLineCap.Round
-                };
-                _energySegments[i] = energyLine;
-                RingCanvas.Children.Add(energyLine);
-
-                var brush = new SolidColorBrush(Palette[0]);
-                _brushes[i] = brush;
-
-                var line = new Line
-                {
-                    Stroke = brush,
+                    Stroke = _waveBrush,
                     StrokeThickness = StrokeThickness,
                     StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap = PenLineCap.Round
+                    StrokeEndLineCap = PenLineCap.Round,
+                    IsHitTestVisible = false
                 };
 
-                _segments[i] = line;
-                RingCanvas.Children.Add(line);
+                _bars[i] = bar;
+                RingCanvas.Children.Add(bar);
             }
 
             _built = true;
@@ -185,7 +166,16 @@ namespace PLUMA.UI
             long now = Environment.TickCount64;
             double dt = Math.Clamp((now - _lastTicks) / 1000.0, 0.0, 0.05);
             _lastTicks = now;
-            RenderFrame(dt);
+
+            _renderElapsed += dt;
+            if (_renderElapsed < FrameIntervalSeconds)
+            {
+                return;
+            }
+
+            double frameDt = _renderElapsed;
+            _renderElapsed = 0;
+            RenderFrame(frameDt);
         }
 
         private void RenderFrame(double dt)
@@ -195,104 +185,116 @@ namespace PLUMA.UI
                 return;
             }
 
-            double target = Math.Clamp(Amplitude, 0.0, 1.0);
-            if (target <= 0.02)
+            double targetAmplitude = Math.Clamp(Amplitude, 0.0, 1.0);
+            if (targetAmplitude <= 0.025)
             {
-                _smoothedAmplitude = 0.0;
-            }
-            else
-            {
-                double tau = target > _smoothedAmplitude ? AttackSeconds : ReleaseSeconds;
-                double k = 1.0 - Math.Exp(-dt / Math.Max(tau, 0.001));
-                _smoothedAmplitude += (target - _smoothedAmplitude) * k;
+                targetAmplitude = 0;
             }
 
-            _colorPhase = (_colorPhase + dt / ColorPeriodSeconds) % 1.0;
-            _wavePhaseA += dt * 1.15;
-            _wavePhaseB += dt * 0.82;
-            _wavePhaseC += dt * 0.54;
+            double amplitudeTau =
+                targetAmplitude > _smoothedAmplitude
+                    ? AttackSeconds
+                    : ReleaseSeconds;
+            _smoothedAmplitude = Smooth(
+                _smoothedAmplitude,
+                targetAmplitude,
+                dt,
+                amplitudeTau);
+
+            _targetRefreshElapsed += dt;
+            if (_targetRefreshElapsed >= TargetRefreshSeconds)
+            {
+                _targetRefreshElapsed %= TargetRefreshSeconds;
+                RefreshTargets(_smoothedAmplitude);
+            }
 
             double cx = CanvasSize / 2.0;
             double cy = CanvasSize / 2.0;
-            double amp = _smoothedAmplitude;
 
             for (int i = 0; i < SegmentCount; i++)
             {
+                double levelTau =
+                    _targetLevels[i] > _currentLevels[i]
+                        ? BarAttackSeconds
+                        : BarReleaseSeconds;
+                _currentLevels[i] = Smooth(
+                    _currentLevels[i],
+                    _targetLevels[i],
+                    dt,
+                    levelTau);
+
+                double halfLength =
+                    QuietHalfLength +
+                    (_smoothedAmplitude * MaximumAddedHalfLength * _currentLevels[i]);
+
+                double theta = (Math.PI * 2.0 * i) / SegmentCount;
+                double cos = Math.Cos(theta);
+                double sin = Math.Sin(theta);
+                double innerRadius = BaseRadius - halfLength;
+                double outerRadius = BaseRadius + halfLength;
+
+                _bars[i].X1 = cx + (cos * innerRadius);
+                _bars[i].Y1 = cy + (sin * innerRadius);
+                _bars[i].X2 = cx + (cos * outerRadius);
+                _bars[i].Y2 = cy + (sin * outerRadius);
+            }
+
+            _waveBrush.Opacity =
+                0.18 + (0.74 * Math.Min(1.0, _smoothedAmplitude * 2.4));
+        }
+
+        private void RefreshTargets(double amplitude)
+        {
+            if (amplitude <= 0.015)
+            {
+                Array.Clear(_targetLevels);
+                return;
+            }
+
+            for (int i = 0; i < SegmentCount; i++)
+            {
+                double randomValue = Math.Pow(_random.NextDouble(), 2.15);
+                _rawTargets[i] = randomValue * _barBias[i];
+            }
+
+            for (int i = 0; i < SegmentCount; i++)
+            {
+                int previous = (i + SegmentCount - 1) % SegmentCount;
                 int next = (i + 1) % SegmentCount;
-                GetPoint(i, cx, cy, out double x1, out double y1);
-                GetPoint(next, cx, cy, out double x2, out double y2);
 
-                GetEnergyBasePoint(i, cx, cy, out double ex1, out double ey1);
-                GetEnergyPoint(i, amp, cx, cy, out double ex2, out double ey2);
+                double localContinuity =
+                    (_rawTargets[previous] +
+                     (2.0 * _rawTargets[i]) +
+                     _rawTargets[next]) / 4.0;
 
-                _segments[i].X1 = x1;
-                _segments[i].Y1 = y1;
-                _segments[i].X2 = x2;
-                _segments[i].Y2 = y2;
-                _brushes[i].Color = SamplePalette((i / (double)SegmentCount) + _colorPhase);
+                double isolatedPeak =
+                    _random.NextDouble() < 0.055
+                        ? 0.28 + (_random.NextDouble() * 0.42)
+                        : 0.0;
 
-                _energySegments[i].X1 = ex1;
-                _energySegments[i].Y1 = ey1;
-                _energySegments[i].X2 = ex2;
-                _energySegments[i].Y2 = ey2;
-                _energyBrushes[i].Color = SamplePalette((i / (double)SegmentCount) + _colorPhase + 0.04);
-
+                _targetLevels[i] = Math.Clamp(
+                    (0.72 * localContinuity) +
+                    (0.28 * _rawTargets[i]) +
+                    isolatedPeak,
+                    0.0,
+                    1.0);
             }
         }
 
-        private void GetPoint(int index, double cx, double cy, out double x, out double y)
+        private static double Smooth(
+            double current,
+            double target,
+            double dt,
+            double timeConstant)
         {
-            double theta = (Math.PI * 2.0 * index) / SegmentCount;
+            if (dt <= 0)
+            {
+                return target;
+            }
 
-            x = cx + Math.Cos(theta) * BaseRadius;
-            y = cy + Math.Sin(theta) * BaseRadius;
-        }
-
-        private void GetEnergyPoint(int index, double amp, double cx, double cy, out double x, out double y)
-        {
-            double theta = (Math.PI * 2.0 * index) / SegmentCount;
-
-            double wave =
-                0.55 * Math.Sin(2.0 * theta + _wavePhaseA) +
-                0.30 * Math.Sin(3.0 * theta + _wavePhaseB) +
-                0.15 * Math.Sin(5.0 * theta + _wavePhaseC);
-
-            double displacement = amp * MaxDeformPx * Math.Max(0.0, wave);
-            double radius = BaseRadius + 2.4 + displacement;
-
-            x = cx + Math.Cos(theta) * radius;
-            y = cy + Math.Sin(theta) * radius;
-        }
-
-        private void GetEnergyBasePoint(int index, double cx, double cy, out double x, out double y)
-        {
-            double theta = (Math.PI * 2.0 * index) / SegmentCount;
-            double radius = BaseRadius + 2.4;
-
-            x = cx + Math.Cos(theta) * radius;
-            y = cy + Math.Sin(theta) * radius;
-        }
-
-        private static Color SamplePalette(double t)
-        {
-            t = t - Math.Floor(t);
-            double scaled = t * Palette.Length;
-            int i0 = (int)Math.Floor(scaled) % Palette.Length;
-            int i1 = (i0 + 1) % Palette.Length;
-            double f = scaled - Math.Floor(scaled);
-
-            Color a = Palette[i0];
-            Color b = Palette[i1];
-            return Color.FromArgb(
-                255,
-                Lerp(a.R, b.R, f),
-                Lerp(a.G, b.G, f),
-                Lerp(a.B, b.B, f));
-        }
-
-        private static byte Lerp(byte a, byte b, double t)
-        {
-            return (byte)Math.Round(a + (b - a) * t);
+            double factor =
+                1.0 - Math.Exp(-dt / Math.Max(timeConstant, 0.001));
+            return current + ((target - current) * factor);
         }
     }
 }
