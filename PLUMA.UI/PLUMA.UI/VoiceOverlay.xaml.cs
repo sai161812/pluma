@@ -79,6 +79,18 @@ namespace PLUMA.UI
             Loaded += OnLoaded;
         }
 
+        // UI-thread entry point for analyzed audio, independent of capture ownership.
+        public void SetAudioSpectrum(AudioSpectrumFrame frame)
+        {
+            Amplitude = frame.Amplitude;
+            ListeningRing.SetSpectrum(frame.Bands);
+        }
+
+        public void SetPreviewStatus(string status)
+        {
+            StatusText.Text = status;
+        }
+
         public bool IsAnimating
         {
             get => (bool)GetValue(IsAnimatingProperty);

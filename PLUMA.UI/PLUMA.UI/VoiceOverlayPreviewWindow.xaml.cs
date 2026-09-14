@@ -1,4 +1,6 @@
 using System;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -11,13 +13,17 @@ namespace PLUMA.UI
 {
     /// <summary>
     /// Temporary preview host for Surfaces 11–14. Positions a compact overlay
-    /// in the bottom-right work area and drives VoiceOverlay with mock frames.
+    /// in the bottom-right work area. Capture starts only after explicit consent.
     /// </summary>
     public sealed partial class VoiceOverlayPreviewWindow : Window
     {
         private const int ContentWidth = 460;
         private const int ContentHeight = 276;
-        private readonly VoiceOverlayPreviewGenerator _generator;
+        private MicrophoneSpectrumSource? _microphone;
+        private readonly DispatcherQueueTimer _audioTimer;
+        private ContentDialog? _prompt;
+        private bool _closed;
+        private bool _prompted;
         private AppWindow? _appWindow;
         private bool _correctingClientSize;
 
@@ -28,8 +34,13 @@ namespace PLUMA.UI
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(RootGrid);
 
-            _generator = new VoiceOverlayPreviewGenerator(DispatcherQueue);
-            _generator.FrameReady += OnFrameReady;
+            _audioTimer = DispatcherQueue.CreateTimer();
+            _audioTimer.Interval = TimeSpan.FromMilliseconds(16);
+            _audioTimer.Tick += OnAudioTick;
+            RootGrid.Loaded += OnPreviewLoaded;
+            Overlay.VoiceState = VoiceOverlayState.ListeningSilence;
+            Overlay.SetPreviewStatus("Preview");
+            Overlay.FinalTranscript = "Microphone preview. No transcription or command execution.";
 
             Activated += OnActivated;
             Closed += OnClosed;
@@ -53,22 +64,78 @@ namespace PLUMA.UI
             }
 
             ConfigurePlacement();
-            _generator.Start();
+
+        }
+
+        private async void OnPreviewLoaded(object sender, RoutedEventArgs e)
+        {
+            if (_prompted || _closed) return;
+            _prompted = true;
+            try
+            {
+                _prompt = new ContentDialog
+                {
+                    XamlRoot = RootGrid.XamlRoot,
+                    Title = "Test microphone",
+                    Content = "Use your microphone for this preview? Audio stays in memory. Close the preview to stop.",
+                    PrimaryButtonText = "Start",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Close
+                };
+                var result = await _prompt.ShowAsync();
+                _prompt = null;
+                if (_closed) return;
+                if (result != ContentDialogResult.Primary)
+                {
+                    Overlay.SetPreviewStatus("Stopped");
+                    Overlay.IsAnimating = false;
+                    return;
+                }
+                _microphone = new MicrophoneSpectrumSource();
+                _microphone.Start();
+                Overlay.SetPreviewStatus("Listening");
+                _audioTimer.Start();
+            }
+            catch (Exception)
+            {
+                if (!_closed) ShowMicrophoneError();
+                _microphone?.Dispose();
+                _microphone = null;
+            }
+        }
+
+        private void OnAudioTick(DispatcherQueueTimer sender, object args)
+        {
+            if (_closed || _microphone == null) return;
+            if (_microphone.Error != null)
+            {
+                ShowMicrophoneError();
+                _microphone.Dispose();
+                _microphone = null;
+                return;
+            }
+            var frame = _microphone.TakeLatest();
+            if (frame != null) Overlay.SetAudioSpectrum(frame);
+        }
+
+        private void ShowMicrophoneError()
+        {
+            _audioTimer.Stop();
+            Overlay.IsAnimating = false;
+            Overlay.SetPreviewStatus("Unavailable");
+            Overlay.FinalTranscript = "Check microphone access and the Windows input device, then reopen this preview.";
         }
 
         private void OnClosed(object sender, WindowEventArgs args)
         {
-            _generator.Stop();
-            _generator.FrameReady -= OnFrameReady;
-        }
-
-        private void OnFrameReady(object? sender, VoiceOverlayPreviewFrame frame)
-        {
-            Overlay.VoiceState = frame.VoiceState;
-            Overlay.Amplitude = frame.Amplitude;
-            Overlay.FinalTranscript = frame.FinalTranscript;
-            Overlay.PartialTranscript = frame.PartialTranscript;
-            Overlay.SilenceProgress = frame.SilenceProgress;
+            _closed = true;
+            _prompt?.Hide();
+            _audioTimer.Stop();
+            _audioTimer.Tick -= OnAudioTick;
+            RootGrid.Loaded -= OnPreviewLoaded;
+            Overlay.IsAnimating = false;
+            _microphone?.Dispose();
+            _microphone = null;
         }
 
         private void ConfigurePlacement()
