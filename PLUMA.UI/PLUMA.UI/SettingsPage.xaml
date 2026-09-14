@@ -1,0 +1,152 @@
+<Page
+    x:Class="PLUMA.UI.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalContentAlignment="Stretch">
+        <Grid HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0"
+                  HorizontalAlignment="Stretch"
+                  MaxWidth="1000"
+                  Padding="32,24,32,32"
+                  RowSpacing="24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Text="Settings"
+                           Style="{StaticResource TitleTextBlockStyle}"
+                           Margin="0,0,0,8" />
+
+                <StackPanel Grid.Row="1" Spacing="8">
+                    <TextBlock Text="Local model"
+                               Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Choose the local model used by PLUMA"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{StaticResource BodyTextBlockStyle}" />
+                    <controls:SettingsCard Header="Model path"
+                                            Description="Local inference is enabled. The model remains on this device."
+                                            HorizontalAlignment="Stretch">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="C:\\PLUMA\\models\\llama-3.1-8b-instruct.gguf"
+                                     HorizontalAlignment="Stretch" />
+                            <Button Grid.Column="1" Content="Browse" />
+                        </Grid>
+                    </controls:SettingsCard>
+                </StackPanel>
+
+                <StackPanel Grid.Row="2" Spacing="8">
+                    <TextBlock Text="Hotkeys"
+                               Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Configure keyboard shortcuts for common actions"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{StaticResource BodyTextBlockStyle}" />
+                    <StackPanel Spacing="8">
+                        <controls:SettingsCard Header="Command activation"
+                                                HorizontalAlignment="Stretch">
+                            <TextBox Text="Ctrl + Space"
+                                     Width="240"
+                                     HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Stop current task"
+                                                HorizontalAlignment="Stretch">
+                            <TextBox Text="Ctrl + Shift + X"
+                                     Width="240"
+                                     HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Enable global hotkeys"
+                                                HorizontalAlignment="Stretch">
+                            <ToggleSwitch IsOn="True"
+                                          HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Row="3" Spacing="8">
+                    <TextBlock Text="Audio and voice"
+                               Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Manage voice activation and audio feedback"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{StaticResource BodyTextBlockStyle}" />
+                    <StackPanel Spacing="8">
+                        <controls:SettingsCard Header="Voice activation"
+                                                HorizontalAlignment="Stretch">
+                            <ToggleSwitch IsOn="True"
+                                          HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Voice input language"
+                                                HorizontalAlignment="Stretch">
+                            <ComboBox SelectedIndex="0"
+                                      Width="240"
+                                      HorizontalAlignment="Right">
+                                <ComboBoxItem Content="English (United States)" />
+                                <ComboBoxItem Content="English (United Kingdom)" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Play confirmation sounds"
+                                                HorizontalAlignment="Stretch">
+                            <ToggleSwitch IsOn="False"
+                                          HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Row="4" Spacing="8">
+                    <TextBlock Text="Tool permissions"
+                               Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Control which tools may run without confirmation"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{StaticResource BodyTextBlockStyle}" />
+                    <StackPanel Spacing="8">
+                        <controls:SettingsCard Header="Read files and folders"
+                                                HorizontalAlignment="Stretch">
+                            <ComboBox SelectedIndex="0"
+                                      Width="240"
+                                      HorizontalAlignment="Right">
+                                <ComboBoxItem Content="Allow" />
+                                <ComboBoxItem Content="Ask every time" />
+                                <ComboBoxItem Content="Block" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Modify files and folders"
+                                                HorizontalAlignment="Stretch">
+                            <ComboBox SelectedIndex="1"
+                                      Width="240"
+                                      HorizontalAlignment="Right">
+                                <ComboBoxItem Content="Allow" />
+                                <ComboBoxItem Content="Ask every time" />
+                                <ComboBoxItem Content="Block" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Require confirmation for external applications"
+                                                HorizontalAlignment="Stretch">
+                            <ToggleSwitch IsOn="True"
+                                          HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                    </StackPanel>
+                </StackPanel>
+
+                <Button Grid.Row="5"
+                        Content="Save settings"
+                        HorizontalAlignment="Left" />
+            </Grid>
+        </Grid>
+    </ScrollViewer>
+</Page>

@@ -1,0 +1,54 @@
+﻿<UserControl
+    x:Class="PLUMA.UI.ToolResultCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Width="420"
+            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource OverlayCornerRadius}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    CornerRadius="{ThemeResource OverlayCornerRadius}" />
+
+            <StackPanel Grid.Column="1"
+                        Padding="16"
+                        Spacing="8">
+                <TextBlock Text="PLUMA"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           CharacterSpacing="80" />
+                <StackPanel Spacing="3">
+                    <TextBlock Text="quarterly_report.pdf opened successfully"
+                               TextWrapping="Wrap"
+                               FontSize="16"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Tool: open_file"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+                <StackPanel x:ConnectionId='2' x:Name="VerificationState"
+                            Orientation="Horizontal"
+                            Spacing="6">
+                    <SymbolIcon x:ConnectionId='3' x:Name="VerificationIcon"
+                                Symbol="Accept"
+                                Width="14"
+                                Height="14" />
+                    <TextBlock x:ConnectionId='4' x:Name="VerificationText"
+                               Text="Verified"
+                               Style="{StaticResource CaptionTextBlockStyle}" />
+                    <TextBlock x:ConnectionId='5' x:Name="ErrorCodeText"
+                               Visibility="Collapsed"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>
+

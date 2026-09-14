@@ -1,0 +1,133 @@
+================================================================================
+PLUMA — Complete List of Executable Commands & Tasks
+================================================================================
+Backend Version: Phase 13.8 (Certified Stable, 715 Passing Tests)
+Execution Routes: FAST (Deterministic Regex), SCREEN (OCR/UIA), SMART/DEEP (Local LLM)
+Input Modes: Spoken Voice or Typed Text
+
+--------------------------------------------------------------------------------
+1. AUDIO & VOLUME CONTROL (FAST Route — Instant Execution)
+--------------------------------------------------------------------------------
+1. "mute" / "mute audio" / "mute sound" — Instantly mutes system master volume.
+2. "unmute" / "unmute sound" / "turn audio back on" — Restores system sound.
+3. "volume 30" / "set volume to 30" — Sets master volume directly to 30%.
+4. "set volume to fifty percent" — Sets master volume to 50% (supports spoken word numbers).
+5. "turn volume to seventy" — Sets master volume to 70% from spoken voice input.
+6. "volume up" — Bumps system volume up by 10%.
+7. "volume down" — Lowers system volume by 10%.
+8. "volume 100" / "max volume" — Sets audio to maximum level.
+9. "volume 0" — Drops volume to silent (without muting).
+10. "get volume status" / "check volume" / "sound status" — Queries and reports current volume % and mute status.
+
+--------------------------------------------------------------------------------
+2. APPLICATION MANAGEMENT (FAST Route — Process/App Launch & Closure)
+--------------------------------------------------------------------------------
+11. "open notepad" / "launch notepad" — Spawns and focuses Windows Notepad.
+12. "open calculator" / "start calc" — Launches Windows Calculator.
+13. "start cmd" / "open terminal" — Launches Windows Command Prompt or Windows Terminal.
+14. "launch powershell" — Spawns a PowerShell terminal session.
+15. "open explorer" — Launches Windows File Explorer.
+16. "start edge" — Opens Microsoft Edge browser.
+17. "open paint" / "launch mspaint" — Opens Microsoft Paint.
+18. "launch taskmgr" / "open task manager" — Launches Windows Task Manager.
+19. "open <app_name>" — Launches any registered Windows desktop application or executable in PATH.
+20. "list apps" / "running applications" — Enumerates all currently running user applications with PIDs.
+21. "close notepad" — Gracefully requests Notepad to terminate.
+22. "close calculator" — Closes Windows Calculator.
+23. "close <app_name>" — Terminates target application process safely.
+24. "focus notepad" / "switch to calculator" — Brings the specified application window to the foreground.
+25. "is notepad running" / "app status notepad" — Checks whether an application is actively running.
+
+--------------------------------------------------------------------------------
+3. WINDOW MANAGEMENT & DESKTOP CONTROL (FAST Route — Win32 Windowing)
+--------------------------------------------------------------------------------
+26. "minimize window" / "minimize active window" — Minimizes the currently focused window.
+27. "maximize window" / "maximize active window" — Maximizes the currently focused window.
+28. "restore window" / "restore active window" — Restores minimized/maximized window to normal bounds.
+29. "minimize all" — Minimizes open desktop windows to show desktop.
+30. "focus window" / "switch window" — Cycles or focuses target window.
+31. "list windows" / "show open windows" — Lists all visible top-level windows with HWNDs and titles.
+32. "open windows list" — Returns the complete hierarchy of active desktop windows.
+
+--------------------------------------------------------------------------------
+4. CLIPBOARD & TEXT BUFFER (FAST Route — Windows Clipboard)
+--------------------------------------------------------------------------------
+33. "clear clipboard" / "empty clipboard" / "wipe clipboard" — Wipes clipboard contents clean.
+34. "get clipboard text" / "read clipboard" / "show clipboard" — Reads and returns plain text from clipboard.
+35. "pasteboard read" / "view clipboard" — Returns current text stored in system clipboard.
+36. "copy status" — Checks whether clipboard has active text content.
+37. "set clipboard to <text>" — Copies specific text directly into the system clipboard buffer.
+
+--------------------------------------------------------------------------------
+5. FILE & FOLDER OPERATIONS (FAST Route — Local Filesystem Management)
+--------------------------------------------------------------------------------
+38. "list files" / "list files in current directory" — Lists files and directories in current working path.
+39. "list directory contents in <folder_path>" — Enumerates files in a specific directory.
+40. "find file test.txt" — Searches local directory tree for a specific file by name.
+41. "find *.py" / "search file report.docx" — Pattern/glob search for matching files.
+42. "locate file config.yaml" — Recursively locates matching files on the local filesystem.
+43. "create folder test_dir" / "mkdir output" — Creates a new directory on disk.
+44. "make folder archive" — Creates an archive directory for file sorting.
+45. "move file a.txt to b.txt" / "move a to b" — Moves/relocates a file between paths.
+46. "rename file old.txt to new.txt" — Renames an existing file (records rollback snapshot).
+47. "rename sample.log to sample.txt" — Renames log or text file in place.
+
+--------------------------------------------------------------------------------
+6. SYSTEM HEALTH & DIAGNOSTICS (FAST Route — Hardware & OS Metrics)
+--------------------------------------------------------------------------------
+48. "system status" / "get system status" — Queries CPU usage, RAM utilization, and OS uptime.
+49. "system health" / "cpu memory status" — Returns live CPU load and available physical memory.
+50. "battery status" / "check battery" — Queries laptop battery percentage, charging state, and AC power status.
+
+--------------------------------------------------------------------------------
+7. VISUAL SCREEN & OCR INTERACTIONS (SCREEN Route — On-Screen Grounding)
+--------------------------------------------------------------------------------
+51. "click Save" — Captures screen, runs OCR, grounds "Save", verifies geometry, and clicks button.
+52. "click File" — Finds "File" on screen via OCR and clicks menu item.
+53. "click OK" — OCR finds and clicks modal "OK" button.
+54. "click Cancel" — OCR finds and clicks modal "Cancel" button.
+55. "click Close" — Clicks "Close" button on active dialog.
+56. "click Submit button" / "click button Apply" — Targets UI Automation button or OCR text to click.
+57. "click on button Next" — Locates "Next" navigation button and sends physical click.
+58. "click Edit menu" / "click View" — Interacts with application menu bar options visually.
+59. "inspect active window" — Dumps active window title, HWND, process ID, bounds, and UI controls.
+60. "inspect window controls" — Deep-inspects accessibility tree (UIA) of current application.
+61. "type hello world into Search" — Focuses on-screen search field and types text.
+62. "type sample text into editor" — Focuses active text area and inputs text.
+
+--------------------------------------------------------------------------------
+8. TASK SUPERVISOR, HISTORY & ROLLBACK (Core Control Commands)
+--------------------------------------------------------------------------------
+63. "stop" / "stop current task" / "cancel task" / "abort" — Immediately halts active task and kills worker process.
+64. "undo" / "undo last" — Triggers rollback engine to reverse previous action (e.g. restore renamed/moved file).
+65. "show activity" / "activity history" / "recent actions" — Opens/displays SQLite activity ledger of past tasks.
+
+--------------------------------------------------------------------------------
+9. MULTI-STEP & SMART WORKFLOWS (SMART & DEEP Routes — Local LLM Multi-Step Plan)
+--------------------------------------------------------------------------------
+66. "organize my desktop by file type" — Plans and moves desktop files into Categorized folders.
+67. "prepare my workspace by launching notepad and browser" — Opens multiple applications sequentially.
+68. "find all invoices from last month and archive them" — Searches for invoice documents and moves them.
+69. "create a backup folder and copy important docs there" — Creates backup directory and copies files.
+70. "search for pdf documents and move them to documents folder" — Locates all .pdf files and moves them.
+71. "clean up temp files and report freed disk space" — Locates temporary files, removes them, and calculates freed space.
+72. "check system performance and log top processes" — Gathers CPU/RAM diagnostics and inspects top process list.
+73. "batch rename all screenshots in pictures directory" — Renames sequential screenshots with standard naming.
+74. "find python files and count total lines of code" — Locates files matching *.py and tallies line count.
+75. "create daily routine folder and setup project templates" — Creates folder structure and template files.
+76. "read the error message dialog and click the suggested remedy" — Captures active error popup, reads text, and clicks OK/Retry.
+77. "look at this form and fill in the missing fields" — Inspects open form controls, determines inputs, and types data.
+78. "find the unlabelled checkbox on screen and check it" — Inspects screen elements via UIA and toggles target checkbox.
+79. "inspect the table on screen and copy third column" — Reads on-screen table data and copies contents to clipboard.
+80. "locate visual prompt on screen and enter confirmation code" — Reads on-screen visual prompt and types confirmation string.
+
+================================================================================
+SAFETY & POLICY BOUNDARIES (Deterministic Rejections / Fail-Closed)
+================================================================================
+PLUMA includes a policy engine that actively intercepts and blocks hazardous actions:
+- "rm -rf /" or "format c:" — Automatically DENIED (System destruction prevented).
+- "delete system32" — Automatically DENIED (Protected directory policy).
+- "shutdown laptop immediately" — Automatically BLOCKED (High-risk action policy).
+- "open malicious.exe" — Automatically REJECTED by process safety gate.
+- "change firewall settings" — Automatically BLOCKED (Requires elevated approval).
+================================================================================

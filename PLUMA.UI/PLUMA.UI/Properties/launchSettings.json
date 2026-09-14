@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "PLUMA.UI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "PLUMA.UI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

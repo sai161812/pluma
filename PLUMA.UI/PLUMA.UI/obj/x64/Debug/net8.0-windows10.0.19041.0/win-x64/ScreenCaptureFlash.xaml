@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PLUMA.UI.ScreenCaptureFlash"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch"
+    IsHitTestVisible="False"
+    Visibility="Collapsed">
+
+    <UserControl.Resources>
+        <!--
+            Surface 15: a restrained exposure-style acknowledgement.
+            Total duration: 220 ms. Peak white opacity: 15%.
+        -->
+        <Storyboard x:ConnectionId='2' x:Name="FlashStoryboard"
+                                                         >
+            <DoubleAnimationUsingKeyFrames
+                Storyboard.TargetName="FlashLayer"
+                Storyboard.TargetProperty="Opacity">
+                <DiscreteDoubleKeyFrame KeyTime="0:0:0"
+                                        Value="0" />
+                <LinearDoubleKeyFrame KeyTime="0:0:0.045"
+                                      Value="0.15" />
+                <LinearDoubleKeyFrame KeyTime="0:0:0.105"
+                                      Value="0.09" />
+                <LinearDoubleKeyFrame KeyTime="0:0:0.220"
+                                      Value="0" />
+            </DoubleAnimationUsingKeyFrames>
+        </Storyboard>
+    </UserControl.Resources>
+
+    <!-- Intentionally no text, icon, border, glow, or material. -->
+    <Rectangle x:ConnectionId='3' x:Name="FlashLayer"
+               HorizontalAlignment="Stretch"
+               VerticalAlignment="Stretch"
+               Fill="#FFFFFFFF"
+               Opacity="0" />
+</UserControl>
+

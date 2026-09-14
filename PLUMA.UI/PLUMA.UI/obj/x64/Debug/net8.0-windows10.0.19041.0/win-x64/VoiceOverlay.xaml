@@ -1,0 +1,154 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PLUMA.UI.VoiceOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PLUMA.UI">
+
+    <Grid Width="400"
+          Height="270">
+
+        <Grid.Resources>
+            <SolidColorBrush x:Key="VoiceSurfaceBrush"
+                             Color="#202020" />
+        </Grid.Resources>
+
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:ConnectionId='2' x:Name="VoiceStates">
+
+                <VisualState x:ConnectionId='3' x:Name="Hidden">
+                    <VisualState.Setters>
+                        <Setter Target="RootBorder.Opacity" Value="0" />
+                        <Setter Target="RootBorder.IsHitTestVisible" Value="False" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <VisualState x:ConnectionId='4' x:Name="ListeningSilence">
+                    <VisualState.Setters>
+                        <Setter Target="StatusText.Text" Value="Listening" />
+                        <Setter Target="StatusText.Visibility" Value="Visible" />
+                        <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
+                        <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="TimeoutBar.Opacity" Value="0" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <VisualState x:ConnectionId='5' x:Name="ListeningSpeech">
+                    <VisualState.Setters>
+                        <Setter Target="StatusText.Text" Value="Listening" />
+                        <Setter Target="StatusText.Visibility" Value="Visible" />
+                        <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
+                        <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="TimeoutBar.Opacity" Value="0" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <VisualState x:ConnectionId='6' x:Name="SilenceTimeout">
+                    <VisualState.Setters>
+                        <Setter Target="StatusText.Text" Value="Finishing…" />
+                        <Setter Target="StatusText.Visibility" Value="Visible" />
+                        <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
+                        <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="TimeoutBar.Opacity" Value="1" />
+                    </VisualState.Setters>
+                </VisualState>
+
+                <VisualState x:ConnectionId='7' x:Name="Committed">
+                    <VisualState.Setters>
+                        <Setter Target="StatusText.Visibility" Value="Collapsed" />
+                        <Setter Target="LiveTranscriptHost.Visibility" Value="Collapsed" />
+                        <Setter Target="CommittedPanel.Visibility" Value="Visible" />
+                        <Setter Target="TimeoutBar.Opacity" Value="0" />
+                    </VisualState.Setters>
+                </VisualState>
+
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <Border x:ConnectionId='8' x:Name="RootBorder"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="{StaticResource VoiceSurfaceBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}">
+
+            <Grid Padding="22,18,22,18">
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="24" />
+                    <RowDefinition Height="125" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="5" />
+                </Grid.RowDefinitions>
+
+                <!-- HEADER -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        Text="PLUMA"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        CharacterSpacing="80" />
+
+                    <TextBlock x:ConnectionId='13'
+                        x:Name="StatusText"
+                        Grid.Column="1"
+                        Text="Listening"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                </Grid>
+
+                <!-- LISTENING RING -->
+                <Grid Grid.Row="1"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch">
+
+                    <local:VoiceListeningRing x:ConnectionId='12'
+                        x:Name="ListeningRing"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+
+                </Grid>
+
+                <!-- TRANSCRIPT / COMMITTED STATE -->
+                <Grid Grid.Row="2"
+                      MinWidth="0"
+                      Margin="0,4,0,0"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch">
+
+                    <!-- LIVE TRANSCRIPTION -->
+                    <local:LiveTranscriptionOverlay x:ConnectionId='10'
+                        x:Name="LiveTranscriptHost"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch" />
+
+                    <!-- COMMITTED STATE:
+                         intentionally NO transcript -->
+                    <local:VoiceCommittedBanner x:ConnectionId='11'
+                        x:Name="CommittedPanel"
+                        Visibility="Collapsed"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+
+                </Grid>
+
+                <!-- SILENCE TIMEOUT -->
+                <local:VoiceSilenceTimeoutIndicator x:ConnectionId='9'
+                    x:Name="TimeoutBar"
+                    Grid.Row="3"
+                    Opacity="0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Bottom" />
+
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
+
