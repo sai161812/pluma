@@ -6,6 +6,29 @@
 
 ---
 
+## What PLUMA Does
+
+PLUMA is a **local Windows automation assistant** built around deterministic execution rather than free-form agent behavior.
+
+It accepts voice or text requests, routes them through a typed tool system, executes actions through bounded Windows automation adapters, verifies postconditions before reporting success, records an audit trail, and captures undo evidence for reversible actions.
+
+The local reasoning layer is replaceable and loaded only when needed. Core execution remains policy-constrained, observable, and independently verifiable.
+
+### Engineering highlights
+
+- **Fully local execution path** for voice, planning, perception, and desktop control
+- **Typed tool contracts** instead of direct natural-language execution
+- **Postcondition verification** for state-changing actions
+- **Reverse-order rollback** with evidence-backed undo records
+- **Windows Job Object containment** for subprocess ownership and STOP behavior
+- **UI Automation + targeted OCR fallback** with freshness and focus validation
+- **On-demand ML runtimes** so heavy components unload while idle
+- **Release hardening evidence** with 716 collected tests and 0 failures in the final release report
+
+> The goal is not to make an assistant that can do anything. It is to make one that can do useful things **predictably, reversibly, and with evidence that the action actually happened**.
+
+---
+
 ## Engineering Philosophy
 
 PLUMA is a deterministic Windows control system with a replaceable local reasoning layer, not an unpredictable chatbot. It accepts voice or text commands through a single unified pipeline, executes actions strictly via registered and typed tools, verifies every state change, captures evidence-based undo records, records factual audit history into an Activity Ledger, and unloads heavy runtimes while idle.
