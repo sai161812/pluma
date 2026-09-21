@@ -28,23 +28,25 @@ PLUMA is a deterministic Windows control system with a replaceable local reasoni
 
 ## Build & Phase Status
 
-| Phase | Description | Status | Cumulative Tests |
-|---|---|---|---|
-| **Phase 0** | Freeze contracts, schemas, SQLite baseline, benchmarks, golden corpus | Complete | 65 |
-| **Phase 1** | Resident Core, Task Capsule, Windows Job Objects, atomic STOP sequence | Complete | 82 |
-| **Phase 2** | Typed tool framework, initial 19 tools, postcondition verifiers, ledger | Complete | 101 |
-| **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | Complete | 220 |
-| **Phase 4** | Windows Automation Adapters (Win32, PowerShell, UIA, Input, Screen) | Complete | 246 |
-| **Phase 5** | Activity Ledger completion, redaction engine, reverse-order rollback | Complete | 266 |
-| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Complete | 294 |
-| **Phase 7** | UIA perception worker (ScreenElement semantic grounding, snapshot TTL) | Complete | 314 |
-| **Phase 8** | Targeted OCR fallback (PaddleOCR/ONNX region-only) | Complete | 339 |
-| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Complete | 365 |
-| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Complete | 384 |
-| **Phase 11** | Policy engine, risk classifications, elevation broker | Complete | 399 |
-| **Phase 12** | Latency and quality benchmark tuning, leak testing | Complete | 405 |
-| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery | Complete | **430** |
-| **Phase 14** | Creator-directed UI implementation | Blocked on Owner Design | — |
+| Phase | Description | Status |
+|---|---|---|
+| **Phase 0** | Freeze contracts, schemas, SQLite baseline, benchmarks, golden corpus | Complete |
+| **Phase 1** | Resident Core, Task Capsule, Windows Job Objects, atomic STOP sequence | Complete |
+| **Phase 2** | Typed tool framework, initial tool catalog, postcondition verifiers, ledger | Complete |
+| **Phase 3** | Deterministic FAST route, Router, Fast Orchestrator, clipboard & window tools | Complete |
+| **Phase 4** | Windows Automation Adapters (Win32, PowerShell, UIA, Input, Screen) | Complete |
+| **Phase 5** | Activity Ledger, redaction engine, reverse-order rollback | Complete |
+| **Phase 6** | Mandatory voice path (push-to-talk, VAD, whisper.cpp on-demand) | Complete |
+| **Phase 7** | UIA perception worker (semantic grounding, snapshot freshness) | Complete |
+| **Phase 8** | Targeted OCR fallback (region-only perception) | Complete |
+| **Phase 9** | Replaceable local planner (llama.cpp on-demand manager) | Complete |
+| **Phase 10** | Bounded multi-step orchestration (execute-observe-replan loop) | Complete |
+| **Phase 11** | Policy engine, risk classifications, elevation broker | Complete |
+| **Phase 12** | Latency, quality, leak, and soak verification | Complete |
+| **Phase 13** | Packaging, `%LOCALAPPDATA%` isolation, crash recovery, release hardening | Complete |
+| **Phase 14** | Creator-directed UI implementation | In progress / separate from hardened core |
+
+Release verification evidence is tracked in [FINAL_RELEASE_REPORT.md](FINAL_RELEASE_REPORT.md). That report records **716 collected tests: 713 passed, 3 environment-specific skips, 0 failures**, plus 9/9 deterministic acceptance gates passed.
 
 ---
 
@@ -123,7 +125,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 pip install -e .
 
-# Run complete test suite (365 unit tests)
+# Run the unit test suite
 python -m pytest tests/unit/ -v
 ```
 
