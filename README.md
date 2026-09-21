@@ -86,3 +86,69 @@ Raw screenshots and microphone audio are not persisted by default.
 The architecture keeps model-specific and automation-specific dependencies behind adapters. The resident core does not depend directly on a particular LLM, OCR engine, or UI automation implementation.
 
 The current baseline uses local `llama.cpp`, `whisper.cpp`, UI Automation, and targeted OCR, but those components are intentionally replaceable.
+
+
+## Implemented capability surface
+
+The current tool registry exposes concrete Windows operations rather than generic "agent actions".
+
+| Area | Implemented operations |
+|---|---|
+| Files | `list_files`, `find_file`, `move_file`, `rename_file`, `create_folder` |
+| Applications | `open_app`, `close_app`, `focus_app`, `list_apps`, `app_status` |
+| Windows | `list_windows`, `focus_window`, `minimize_window`, `maximize_window`, `restore_window` |
+| Audio | `set_volume`, `mute`, `unmute`, `get_volume_status` |
+| System | `get_system_status`, `battery_status`, `stop_current`, `show_activity`, `undo_last` |
+| Clipboard | `get_clipboard_text`, `set_clipboard_text`, `clear_clipboard` |
+| Screen interaction | `inspect_active_window`, `click_element`, `type_into_element`, `click_ocr_text` |
+
+The screen tools use snapshot-backed targets rather than accepting arbitrary model-generated coordinates.
+
+## Tech stack
+
+Grouped by what each component is responsible for:
+
+- **Core runtime:** Python 3.12+, Pydantic, PyYAML
+- **Windows integration:** `ctypes`, pywin32, pycaw, comtypes
+- **Desktop automation:** Microsoft UI Automation through pywinauto
+- **Voice capture:** sounddevice + local VAD
+- **Speech-to-text:** local `whisper.cpp` adapter
+- **Planner:** local `llama.cpp` adapter with structured output and second-pass validation
+- **Screen perception:** targeted window capture + OCR adapter
+- **Persistence:** SQLite with local activity, preference, alias, routine, undo, and resource state
+- **Process control:** Windows Job Objects + cooperative cancellation
+- **Testing:** pytest, adversarial cases, benchmark tests, and soak tests
+- **Packaging:** wheel + PyInstaller executable + Windows installer/uninstaller scripts
+
+Heavy ML runtimes and model files are intentionally not imported by the resident process at startup.
+
+## Repository structure
+
+```text
+pluma/
+├── app.py                  # production entry point and runtime wiring
+├── core/                   # routing, orchestration, task ownership, IPC, recovery
+├── tools/                  # typed tool contracts and Windows operations
+├── adapters/               # Win32, PowerShell, UIA, input and screen boundaries
+├── brain/                  # local planner adapter, prompts, schemas and tool subsets
+├── perception/             # active-window context, UIA snapshots, OCR and freshness
+├── voice/                  # capture, VAD, STT lifecycle and voice request pipeline
+├── policy/                 # risk rules and bounded elevation
+├── verify/                 # postcondition verification
+├── rollback/               # undo recipes and reverse-order rollback
+├── memory/                 # SQLite, Activity Ledger, redaction and local stores
+├── ui/                     # functional UI contracts; final visual shell is not complete
+└── config/                 # runtime defaults and policy configuration
+
+tests/
+├── unit/                   # component, adversarial and regression coverage
+├── benchmarks/             # latency and memory/soak checks
+└── fixtures/               # golden command and deterministic test data
+
+build_release.py            # wheel, EXE, ZIP and checksum build
+install.ps1                 # isolated Windows installation
+uninstall.ps1               # removal / cleanup path
+release/                    # packaged release artifacts
+```
+
+The main architectural boundary is deliberate: core code should not depend directly on pywinauto classes, OCR-library objects, PowerShell implementation details, or a specific local model runtime.
