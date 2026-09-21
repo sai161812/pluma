@@ -61,23 +61,16 @@ Simple commands such as opening an application, changing volume, or querying sys
 
 This reduces latency and idle resource cost while keeping model output away from actions that already have a reliable deterministic path.
 
-### UI Automation before OCR or coordinates
+### UIA is the primary screen-grounding path
 
-Screen interaction follows this order:
+The current SCREEN and DEEP routes do not use perception in exactly the same way.
 
-```text
-Native / application API
-        ↓
-Windows UI Automation
-        ↓
-Stable keyboard / input path
-        ↓
-Targeted OCR
-        ↓
-Freshness-checked coordinates
-```
+- **SCREEN:** captures a UI Automation snapshot first with OCR disabled, then passes that context to the planner. If the resulting plan uses `click_ocr_text`, OCR is loaded on demand for that tool call.
+- **DEEP:** captures both UIA controls and OCR text before planning by calling the snapshot builder with `include_ocr=True`.
+- **Semantic UI actions:** `click_element` and `type_into_element` require a snapshot ID and grounded target reference. Before acting, they re-check window identity, PID/process identity, DPI, and geometry.
+- **OCR actions:** `click_ocr_text` captures only the target window or region, runs OCR through its lifecycle manager, rejects missing or ambiguous matches, revalidates the target immediately before clicking, and performs a post-action visual verification.
 
-UIA gives PLUMA semantic controls instead of raw pixels. OCR is scoped to the active window or a target region when UIA cannot expose the required text. Coordinate interaction is a last resort and is rejected when its snapshot is stale or the target window has changed.
+The OCR lifecycle starts cold, loads only when OCR is actually invoked, and schedules an unload after 10 seconds of inactivity. Captured image bytes are kept in memory for the operation and explicitly discarded rather than written as screenshots.
 
 ### Task ownership instead of loose background work
 
@@ -196,7 +189,7 @@ Start the resident process:
 pluma --debug
 ```
 
-The repository does **not** vendor local model weights or the external C/C++ runtime binaries used by the planner/STT/OCR adapters. Those assets need to be configured locally before exercising the corresponding SMART, voice, or OCR paths.
+The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR. Their model files/runtime packages are not vendored in this repository and must be installed and configured separately before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions.
 
 For packaged installation, the release bundle contains the wheel, `pluma.exe`, installer scripts, configuration, and SHA-256 manifest:
 
