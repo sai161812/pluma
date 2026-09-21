@@ -73,7 +73,7 @@ Release verification evidence is tracked in [FINAL_RELEASE_REPORT.md](FINAL_RELE
 
 ---
 
-## Key Subsystems Implemented (Phases 0–9)
+## Key Subsystems
 
 ### Replaceable Local Planner Subsystem (`pluma.brain`)
 - **Pluggable Local LLM Adapter**: `LlamaCppAdapter` using `llama.cpp` for local quantized inference with zero module-level imports.
@@ -121,7 +121,7 @@ Release verification evidence is tracked in [FINAL_RELEASE_REPORT.md](FINAL_RELE
 - **Input Adapter**: `SendInput` ctypes with guaranteed modifier key safe-release in `finally` blocks and coordinate boundary checks.
 - **Screen Adapter**: Window and region GDI screen capture with headless buffer fallbacks. Zero persistent screenshots.
 
-----
+---
 
 ## Implemented Tool Catalog
 
@@ -132,7 +132,13 @@ Release verification evidence is tracked in [FINAL_RELEASE_REPORT.md](FINAL_RELE
 - **System & Activity**: `get_system_status`, `battery_status`, `stop_current`, `show_activity`, `undo_last`
 - **Clipboard Management**: `clear_clipboard`, `clipboard_clear`, `get_clipboard_text`, `set_clipboard_text`
 
-----
+---
+
+## Current State
+
+The hardened backend/core, automation stack, safety model, local reasoning path, packaging, and release verification are implemented. The remaining active work is primarily the creator-directed Windows UI layer and final UI-to-core wiring.
+
+---
 
 ## Requirements & Development Setup
 
@@ -154,11 +160,15 @@ python -m pytest tests/unit/ -v
 
 ---
 
-## Authoritative Project Documentation
+## Verification & Project Evidence
 
-- [`PLUMA_MASTER_SPEC.md`](PLUMA_MASTER_SPEC.md) — Authoritative product and engineering specification
-- [`AGENTS.md`](AGENTS.md) — Mandatory safety and architecture contract for coding agents
-- [`PLUMA_BUILD_PLAN.md`](PLUMA_BUILD_PLAN.md) — Ordered implementation phases
-- [`PLUMA_ACCEPTANCE_TESTS.md`](PLUMA_ACCEPTANCE_TESTS.md) — Objective release gates
-- [`PLUMA_TECH_STACK.md`](PLUMA_TECH_STACK.md) — Approved runtime libraries and technology stack
-- [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) — Live continuity and save-state record
+PLUMA keeps implementation claims tied to explicit project artifacts rather than README-only assertions.
+
+- [`FINAL_RELEASE_REPORT.md`](FINAL_RELEASE_REPORT.md) — final verification matrix, release status, test summary, and packaged artifacts
+- [`ACCEPTANCE_TEST_RAW_LOG.txt`](ACCEPTANCE_TEST_RAW_LOG.txt) — raw acceptance-test evidence
+- [`PLUMA_ACCEPTANCE_TESTS.md`](PLUMA_ACCEPTANCE_TESTS.md) — release gates and verification criteria
+- [`PLUMA_MASTER_SPEC.md`](PLUMA_MASTER_SPEC.md) — authoritative product and engineering specification
+- [`PLUMA_BUILD_PLAN.md`](PLUMA_BUILD_PLAN.md) — ordered implementation phases
+- [`PLUMA_TECH_STACK.md`](PLUMA_TECH_STACK.md) — approved runtime libraries and technology stack
+- [`AGENTS.md`](AGENTS.md) — safety and architecture contract used during implementation
+- [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) — project continuity and implementation state
