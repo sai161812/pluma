@@ -8,6 +8,12 @@ The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loa
 
 > **Current state:** the automation core, safety model, local reasoning path, packaging, and release hardening are implemented. The final Windows UI and UI-to-core integration are still in progress.
 
+## Demo status
+
+There is no polished screenshot or GIF in the repository yet because the final Windows shell is not complete. The `pluma/ui` package currently defines the functional contracts for command entry, task state, confirmations, STOP, Activity Ledger access, settings, and errors; the creator-directed visual layer is still being integrated.
+
+A real interaction recording should be added here once that UI path is complete. Until then, the repository evidence is the implementation, tests, release artifacts, and verification logs rather than a mocked interface.
+
 ## How it works
 
 ```mermaid
@@ -228,3 +234,23 @@ python build_release.py
 - [`PLUMA_ACCEPTANCE_TESTS.md`](PLUMA_ACCEPTANCE_TESTS.md) — acceptance gates and expected behavior
 - [`PLUMA_MASTER_SPEC.md`](PLUMA_MASTER_SPEC.md) — product and engineering specification
 - [`PLUMA_TECH_STACK.md`](PLUMA_TECH_STACK.md) — implementation/runtime contract
+
+
+## Current limitations
+
+These are product boundaries, not hidden roadmap items:
+
+- **Application coverage is not universal.** Secure desktops, elevated applications, anti-automation software, remote sessions, games, custom-rendered canvases, and inaccessible controls can block UIA or normal input automation.
+- **OCR is text grounding, not general vision.** A textless visual object with no UIA semantics is not a reliable V1 target.
+- **Undo only applies where a real inverse exists.** Sent messages, remote submissions, external side effects, and some destructive actions cannot be guaranteed reversible after commit.
+- **PLUMA does not continuously watch the screen.** Perception is task-scoped and targeted.
+- **The planner does not receive unrestricted shell or administrator access.** Elevated operations go through typed, bounded paths.
+- **The final visual UI is not complete yet.** The core exposes UI contracts, but the finished shell and its integration are still active work.
+
+## Project references
+
+For deeper implementation detail:
+
+- [`PLUMA_BUILD_PLAN.md`](PLUMA_BUILD_PLAN.md) — ordered implementation phases
+- [`AGENTS.md`](AGENTS.md) — architecture and safety constraints used during implementation
+- [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) — live engineering continuity/state record
