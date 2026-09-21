@@ -29,9 +29,34 @@ The local reasoning layer is replaceable and loaded only when needed. Core execu
 
 ---
 
-## Engineering Philosophy
+## Execution Model
 
-PLUMA is a deterministic Windows control system with a replaceable local reasoning layer, not an unpredictable chatbot. It accepts voice or text commands through a single unified pipeline, executes actions strictly via registered and typed tools, verifies every state change, captures evidence-based undo records, records factual audit history into an Activity Ledger, and unloads heavy runtimes while idle.
+```text
+Voice / Text Request
+        |
+        v
+   Request Router
+   /     |      \
+FAST   SMART   SCREEN/DEEP
+   \     |      /
+        v
+ Policy + Tool Subset
+        |
+        v
+ Typed Tool Execution
+        |
+        v
+ Postcondition Verification
+        |
+        +----> Activity Ledger
+        |
+        +----> Undo Evidence / Rollback
+        |
+        v
+ Verified Result
+```
+
+The reasoning layer can propose a plan, but it never bypasses the registered tool system, route permissions, policy checks, or verification path.
 
 ---
 
