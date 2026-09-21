@@ -152,3 +152,79 @@ release/                    # packaged release artifacts
 ```
 
 The main architectural boundary is deliberate: core code should not depend directly on pywinauto classes, OCR-library objects, PowerShell implementation details, or a specific local model runtime.
+
+
+## Running locally
+
+### Prerequisites
+
+- Windows 11 x64
+- Python 3.12+
+- Git
+
+Clone and create an isolated development environment:
+
+```powershell
+git clone https://github.com/sai161812/pluma.git
+cd pluma
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+pip install -e ".[windows,media,dev]"
+```
+
+Start the resident process:
+
+```powershell
+pluma --debug
+```
+
+The repository does **not** vendor local model weights or the external C/C++ runtime binaries used by the planner/STT/OCR adapters. Those assets need to be configured locally before exercising the corresponding SMART, voice, or OCR paths.
+
+For packaged installation, the release bundle contains the wheel, `pluma.exe`, installer scripts, configuration, and SHA-256 manifest:
+
+```powershell
+.\install.ps1
+```
+
+## Testing and release verification
+
+Run the repository test suite with:
+
+```powershell
+python -m pytest tests
+```
+
+The test tree includes unit, regression, adversarial, Windows-integration, benchmark, memory/soak, routing, policy, rollback, IPC, UI-grounding, and lifecycle checks.
+
+The final release verification report dated **August 28, 2026** records:
+
+| Result | Value |
+|---|---:|
+| Collected tests | 716 |
+| Passed | 713 |
+| Environment-specific skips | 3 |
+| Failed | 0 |
+| Deterministic acceptance gates | 9 / 9 passed |
+
+The release build also produces:
+
+- `dist/pluma-0.1.0-py3-none-any.whl`
+- `dist/pluma.exe`
+- `release/pluma-0.1.0-windows-x64-release.zip`
+- `release/SHA256SUMS.txt`
+
+Build from source with:
+
+```powershell
+python build_release.py
+```
+
+### Verification evidence
+
+- [`FINAL_RELEASE_REPORT.md`](FINAL_RELEASE_REPORT.md) — final verification matrix and packaged artifacts
+- [`ACCEPTANCE_TEST_RAW_LOG.txt`](ACCEPTANCE_TEST_RAW_LOG.txt) — raw acceptance-test output
+- [`PLUMA_ACCEPTANCE_TESTS.md`](PLUMA_ACCEPTANCE_TESTS.md) — acceptance gates and expected behavior
+- [`PLUMA_MASTER_SPEC.md`](PLUMA_MASTER_SPEC.md) — product and engineering specification
+- [`PLUMA_TECH_STACK.md`](PLUMA_TECH_STACK.md) — implementation/runtime contract
