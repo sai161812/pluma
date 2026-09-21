@@ -57,9 +57,9 @@ The planner is not an execution API. It can propose bounded tool calls, but thos
 
 ### Deterministic paths before model inference
 
-Simple commands such as opening an application, changing volume, or querying system state do not need an LLM. PLUMA routes those requests directly to deterministic tools and only starts the planner when interpretation or decomposition is actually required.
+Commands matched by the FAST router — including supported app launch/focus actions, volume controls, clipboard operations, and several file/system commands — execute from deterministic plans without starting the LLM. SMART and DEEP routes invoke the planner, while the current SCREEN route captures UIA context before invoking it.
 
-This reduces latency and idle resource cost while keeping model output away from actions that already have a reliable deterministic path.
+That keeps model inference out of the deterministic FAST path and avoids loading the local model for commands the router can already map to a concrete tool call.
 
 ### UIA is the primary screen-grounding path
 
@@ -70,7 +70,7 @@ The current SCREEN and DEEP routes do not use perception in exactly the same way
 - **Semantic UI actions:** `click_element` and `type_into_element` require a snapshot ID and grounded target reference. Before acting, they re-check window identity, PID/process identity, DPI, and geometry.
 - **OCR actions:** `click_ocr_text` captures only the target window or region, runs OCR through its lifecycle manager, rejects missing or ambiguous matches, revalidates the target immediately before clicking, and performs a post-action visual verification.
 
-The OCR lifecycle starts cold, loads only when OCR is actually invoked, and schedules an unload after 10 seconds of inactivity. Captured image bytes are kept in memory for the operation and explicitly discarded rather than written as screenshots.
+The OCR lifecycle starts cold, loads only when OCR is actually invoked, and schedules an unload after 10 seconds of inactivity. Screen-capture bytes are used in memory and are not persisted as screenshots by these paths; the OCR click tool explicitly clears its capture buffer after recognition.
 
 ### Task ownership instead of loose background work
 
@@ -129,7 +129,7 @@ Grouped by what each component is responsible for:
 - **Testing:** pytest, adversarial cases, benchmark tests, and soak tests
 - **Packaging:** wheel + PyInstaller executable + Windows installer/uninstaller scripts
 
-Heavy ML runtimes and model files are intentionally not imported by the resident process at startup.
+The heavy ML libraries are imported lazily inside their adapter load paths, and model weights are not loaded by the resident process at startup.
 
 ## Repository structure
 
@@ -205,7 +205,7 @@ Run the repository test suite with:
 python -m pytest tests
 ```
 
-The test tree includes unit, regression, adversarial, Windows-integration, benchmark, memory/soak, routing, policy, rollback, IPC, UI-grounding, and lifecycle checks.
+The test tree includes unit, regression, adversarial, Windows-specific adapter/Job Object/grounding checks, benchmark and memory/soak tests, plus routing, policy, rollback, IPC, UI-grounding, and lifecycle coverage.
 
 The final release verification report dated **August 28, 2026** records:
 
