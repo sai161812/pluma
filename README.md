@@ -2,7 +2,7 @@
 
 **A local-first Windows 11 automation system with voice input, screen-aware control, typed tools, verification, rollback, and an on-demand local reasoning layer.**
 
-PLUMA is built around a simple constraint: natural language can interpret intent, but it should not directly control the operating system. Voice and text requests enter the same pipeline, deterministic routes are tried first, and every real action is executed through registered tools with policy checks, task ownership, and postcondition verification.
+PLUMA is built around a simple constraint: natural language can interpret intent, but it should not directly control the operating system. Voice and text requests enter the same orchestrator pipeline, the router selects a FAST, SMART, SCREEN, or DEEP path, and every real action is executed through registered tools with policy checks, task ownership, and postcondition verification. Exact FAST commands bypass model inference entirely.
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
@@ -18,18 +18,24 @@ A real interaction recording should be added here once that UI path is complete.
 
 ```mermaid
 flowchart TD
-    A[Voice or text request] --> B[Resident Core]
+    A[Voice or text request] --> B[Resident Core / Orchestrator]
     B --> C[Router]
 
-    C -->|FAST| D[Deterministic route]
-    C -->|SCREEN| E[UIA / targeted OCR]
-    C -->|SMART / DEEP| F[Local planner]
+    C -->|FAST| D[Deterministic plan<br/>LLM remains cold]
+    C -->|SMART| P[Wake local LLM planner]
+    C -->|SCREEN| E[Capture UIA snapshot]
+    C -->|DEEP| F[Capture UIA + OCR snapshot]
 
-    D --> G[Permitted Tool Set]
-    E --> G
-    F --> G
+    E --> P
+    F --> P
 
-    G --> H[Schema validation + policy]
+    P --> G[Route-permitted validated plan]
+    P -. after planning .-> W[Warm grace period]
+    W -. 30s idle .-> X[Unload LLM / COLD]
+
+    D --> H[Tool schema validation + policy]
+    G --> H
+
     H --> I[Task-owned tool execution]
     I --> J[Postcondition verification]
 
@@ -40,6 +46,10 @@ flowchart TD
     N[Global STOP] --> I
     N --> L
 ```
+
+The LLM lifecycle starts in `COLD` state and loads the model only when `LlmLifecycleManager.plan()` is called. In the current production router, FAST commands never call the planner; SMART and DEEP do. SCREEN first captures UIA context and then calls the planner. The orchestrator also supports executing a prebuilt SCREEN plan without the LLM, although the current `Router` does not generate that path yet.
+
+After planning, the model remains warm for the configured grace period and is unloaded back to `COLD` after 30 seconds of inactivity by the current application runtime.
 
 The planner is not an execution API. It can propose bounded tool calls, but those calls still have to exist in the registry, validate against their schemas, pass route permissions and policy, execute under the task supervisor, and verify their result.
 
