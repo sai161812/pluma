@@ -1,10 +1,12 @@
 # PLUMA Final Patch Completion & Release Verification Report
 
 **Version:** 0.1.0  
-**Status:** **GO — READY FOR SHIPMENT / PRODUCTION RELEASE**  
+**Status:** Core verification and packaging recorded; final UI integration pending  
 **Date:** 2026-08-28  
 
 ---
+
+This report records core verification and packaging results from the date above. It does not establish a completed end-user release: the final Windows UI and UI-to-core integration remain in progress, as documented in [README.md](README.md).
 
 ## 1. Executive Summary & Verification Matrix
 
