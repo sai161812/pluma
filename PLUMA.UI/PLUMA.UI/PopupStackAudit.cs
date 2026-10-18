@@ -42,8 +42,11 @@ namespace PLUMA.UI
                 PopupRect area=PopupStackLayout.ContentArea(_host.Desktop!);
                 Check(cards.All(p=>area.Contains(p.Bounds,1)),"actual native window rectangles remain in the safe area");
                 foreach(var window in _host.Windows.Where(w=>w.WasShown))
+                {
+                    report.WriteLine($"CLIENT content {window.HostedContent?.ActualWidth:0.##}x{window.HostedContent?.ActualHeight:0.##}; root {window.Root.ActualWidth:0.##}x{window.Root.ActualHeight:0.##}; frame {window.ChromePixels}; raster {window.Root.XamlRoot?.RasterizationScale}; monitor scale {_host.Desktop!.Scale}; native DPI {PopupDesktopPlacement.Native.GetDpiForWindow(window.Handle)}; loaded {window.Root.IsLoaded}; bounds {window.ReadBounds()}");
                     Check(window.HostedContent==null || window.HostedContent.ActualWidth<=window.Root.ActualWidth+1,
                         "component width fits the actual native client area");
+                }
                 Check(cards.Select(p=>p.Bounds.Right).Distinct().Count()<=1,"actual native windows have a common right edge");
                 for(int i=1;i<cards.Length;i++) Check(!cards[i-1].Bounds.Overlaps(cards[i].Bounds),"visible native windows do not overlap");
             }
