@@ -3,7 +3,7 @@
     x:Class="PLUMA.UI.SurfaceGalleryWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="PLUMA — UI surface gallery">
+    Title="PLUMA · UI surface gallery">
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
     <Grid x:Name="GalleryRoot" Padding="28,24" RowSpacing="16"
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">

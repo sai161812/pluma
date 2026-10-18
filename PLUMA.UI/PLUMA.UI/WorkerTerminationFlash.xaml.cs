@@ -67,9 +67,9 @@ namespace PLUMA.UI
         private void ApplyText()
         {
             if (HeadingText == null) return;
-            HeadingText.Text = Heading ?? string.Empty;
-            MessageText.Text = Message ?? string.Empty;
-            MetadataText.Text = $"PID {WorkerPid ?? string.Empty} · {ElapsedTime ?? string.Empty}";
+            HeadingText.Text = PopupText.Message(Heading);
+            MessageText.Text = PopupText.Message(Message);
+            MetadataText.Text = PopupText.Message($"Worker {WorkerPid} · Elapsed {ElapsedTime}");
         }
 
         private void OnFadeOutCompleted(object? sender, object e)

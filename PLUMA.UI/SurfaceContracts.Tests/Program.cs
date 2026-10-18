@@ -9,6 +9,15 @@ void Check(bool condition, string name)
 }
 
 var feed = new LiveMessageBuffer(2);
+Check(PopupText.Label("open_file") == "Open file", "tool identifiers have human-readable labels");
+Check(PopupText.Label("ocr_rescan") == "Screen text check", "verification method uses a meaningful label");
+Check(PopupText.Message("Opened quarterly_report.pdf — file_ready") == "Opened quarterly report.pdf. file ready",
+    "popup copy removes machine separators without changing file extensions");
+Check(PopupText.Arguments("{\"source_path\":\"Downloads/quarterly_report.pdf\",\"overwrite\":false}") ==
+    "Source path: Downloads/quarterly report.pdf" + Environment.NewLine + "Overwrite: No", "sanitized arguments render as readable labelled fields");
+var rawEntry = new LiveMessageEntry(DateTimeOffset.UtcNow, "open_file — quarterly_report.pdf");
+Check(rawEntry.Message == "open_file — quarterly_report.pdf" && !rawEntry.DisplayMessage.Contains('_') && !rawEntry.DisplayMessage.Contains('—'),
+    "display formatting preserves original factual event data");
 Check(SurfaceGalleryCatalog.Items.Select(item => item.Id).SequenceEqual(Enumerable.Range(1, 26)),
     "gallery includes every planned surface exactly once in order");
 Check(SurfaceGalleryCatalog.Items.All(item => !string.IsNullOrWhiteSpace(item.Name)),

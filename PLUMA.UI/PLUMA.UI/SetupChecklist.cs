@@ -15,6 +15,7 @@ namespace PLUMA.UI
         public int Step { get; }
         public SetupCheckState State { get; private set; }
         public string Detail { get; private set; } = string.Empty;
+        public string DisplayDetail => PopupText.Message(Detail);
         public string StatusText => State switch
         {
             SetupCheckState.Passed => "Available",
@@ -32,6 +33,7 @@ namespace PLUMA.UI
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Detail)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplayDetail)));
         }
     }
 

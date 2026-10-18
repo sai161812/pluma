@@ -40,7 +40,7 @@ namespace PLUMA.UI
         {
             if (d is LiveTranscriptionOverlay overlay && overlay.LiveTranscript != null)
             {
-                overlay.LiveTranscript.Text = overlay.GetTranscript();
+                overlay.LiveTranscript.Text = PopupText.Message(overlay.GetTranscript());
             }
         }
 

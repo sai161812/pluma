@@ -70,7 +70,7 @@
                         <TextBlock Text="Current path"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Text="Downloads\quarterly_report.pdf"
+                        <TextBlock Text="Downloads\quarterly report.pdf"
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"
                                    TextTrimming="CharacterEllipsis"
@@ -85,7 +85,7 @@
                         <TextBlock Text="Conflict path"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Text="Downloads\quarterly_report.restored.pdf"
+                        <TextBlock Text="Downloads\quarterly report.restored.pdf"
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"
                                    TextTrimming="CharacterEllipsis"

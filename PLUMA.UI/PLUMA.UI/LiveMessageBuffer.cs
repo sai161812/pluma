@@ -6,6 +6,7 @@ namespace PLUMA.UI
     public sealed record LiveMessageEntry(DateTimeOffset Timestamp, string Message)
     {
         public string DisplayTime => Timestamp.ToLocalTime().ToString("HH:mm:ss");
+        public string DisplayMessage => PopupText.Message(Message);
     }
 
     /// <summary>Transient display buffer; the Activity Ledger remains the history source.</summary>

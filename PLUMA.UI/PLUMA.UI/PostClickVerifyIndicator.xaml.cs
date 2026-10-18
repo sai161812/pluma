@@ -13,7 +13,8 @@ namespace PLUMA.UI
             if (string.IsNullOrWhiteSpace(verificationMethod)) return;
             Title = verified ? "Verified" : "Unverified";
             Severity = verified ? InfoBarSeverity.Success : InfoBarSeverity.Error;
-            Message = string.IsNullOrWhiteSpace(sanitizedDetail) ? verificationMethod : $"{verificationMethod} — {sanitizedDetail}";
+            string method = PopupText.Label(verificationMethod);
+            Message = string.IsNullOrWhiteSpace(sanitizedDetail) ? method : $"{method}. {PopupText.Message(sanitizedDetail)}";
             IsOpen = true;
         }
 

@@ -28,7 +28,7 @@ namespace PLUMA.UI
                 throw new ArgumentOutOfRangeException(nameof(duration));
 
             _dismissTimer.Stop();
-            Notice.Message = sanitizedMessage ?? string.Empty;
+            Notice.Message = PopupText.Message(sanitizedMessage);
             Notice.Severity = severity;
             Notice.IsOpen = !string.IsNullOrWhiteSpace(sanitizedMessage);
             Visibility = Notice.IsOpen ? Visibility.Visible : Visibility.Collapsed;

@@ -5,7 +5,7 @@ namespace PLUMA.UI
     /// <summary>Preview inventory only; IDs match the owner-facing surface reference.</summary>
     public sealed record SurfaceGalleryItem(int Id, string Name)
     {
-        public string Label => $"{Id:00} — {Name}";
+        public string Label => $"{Id:00} · {Name}";
     }
 
     public static class SurfaceGalleryCatalog

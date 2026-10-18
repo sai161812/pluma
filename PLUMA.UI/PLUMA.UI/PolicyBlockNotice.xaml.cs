@@ -84,11 +84,11 @@ namespace PLUMA.UI
 
         private void ApplyDisplayValues()
         {
-            string toolName = ToolName ?? string.Empty;
-            string matchedRule = MatchedRule ?? string.Empty;
+            string toolName = PopupText.Label(ToolName);
+            string matchedRule = PopupText.Message(MatchedRule);
             Message = string.IsNullOrWhiteSpace(toolName)
                 ? matchedRule
-                : $"{toolName} — {matchedRule}";
+                : string.IsNullOrWhiteSpace(matchedRule) ? toolName : $"{toolName}. {matchedRule}";
         }
 
         private void OnCloseButtonClick(InfoBar sender, object args)

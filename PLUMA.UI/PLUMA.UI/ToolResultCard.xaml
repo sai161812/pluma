@@ -36,14 +36,14 @@
             </Grid>
 
             <StackPanel Grid.Row="1" Spacing="4">
-                <TextBlock Text="quarterly_report.pdf opened successfully"
+                <TextBlock Text="quarterly report.pdf opened successfully"
                            FontFamily="Segoe UI Variable"
                            FontSize="16"
                            FontWeight="SemiBold"
                            TextWrapping="Wrap"
                            TextTrimming="CharacterEllipsis"
                            MaxLines="3" />
-                <TextBlock Text="Tool · open_file"
+                <TextBlock Text="Tool · Open file"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>

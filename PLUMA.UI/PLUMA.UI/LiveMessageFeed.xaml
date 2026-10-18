@@ -24,7 +24,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{x:Bind DisplayTime}" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock Grid.Column="1" Text="{x:Bind Message}" TextWrapping="Wrap"
+                            <TextBlock Grid.Column="1" Text="{x:Bind DisplayMessage}" TextWrapping="Wrap"
                                        Style="{StaticResource BodyTextBlockStyle}" IsTextSelectionEnabled="True" />
                         </Grid>
                     </DataTemplate>

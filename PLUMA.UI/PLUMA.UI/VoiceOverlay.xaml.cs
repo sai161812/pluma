@@ -88,7 +88,7 @@ namespace PLUMA.UI
 
         public void SetPreviewStatus(string status)
         {
-            StatusText.Text = status;
+            StatusText.Text = PopupText.Message(status);
         }
 
         public bool IsAnimating

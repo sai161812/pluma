@@ -74,9 +74,9 @@ namespace PLUMA.UI
                 return;
             }
 
-            ToolNameText.Text = ToolName ?? string.Empty;
-            RiskClassText.Text = RiskClass ?? string.Empty;
-            SanitizedArgumentsText.Text = SanitizedArguments ?? string.Empty;
+            ToolNameText.Text = PopupText.Label(ToolName);
+            RiskClassText.Text = PopupText.Label(RiskClass);
+            SanitizedArgumentsText.Text = PopupText.Arguments(SanitizedArguments);
         }
 
         private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)

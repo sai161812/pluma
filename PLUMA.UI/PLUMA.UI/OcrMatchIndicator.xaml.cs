@@ -39,7 +39,7 @@ namespace PLUMA.UI
             _expiresAt = remaining > TimeSpan.FromSeconds(3) ? now.AddSeconds(3) : snapshotExpiresAt;
             remaining = _expiresAt - now;
             _bounds = hostBounds;
-            MatchText.Text = sanitizedText;
+            MatchText.Text = PopupText.Message(sanitizedText);
             MetadataText.Text = $"Confidence {confidence:0.00} · Desktop ({desktopPosition.X:0}, {desktopPosition.Y:0})";
             Visibility = Visibility.Visible;
             _expiryTimer.Interval = remaining;
