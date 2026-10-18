@@ -5,7 +5,7 @@ This document records the UI work currently present in the C# WinUI 3 project.
 ## Summary
 
 - Total planned surfaces: **26**
-- Implemented UI surface components: **26** (backend integration is separate; surfaces 16–17 have runtime verification pending)
+- Implemented UI surface components: **26** (all render in the preview gallery; backend integration and remaining behavior checks are separate)
 - Intentionally skipped: **0** — the owner authorized surfaces 16 and 17
 - Not started: **0** within the approved UI component scope
 - Production namespace: `PLUMA.UI`
@@ -33,8 +33,8 @@ Temporary preview windows are not production surfaces and are not included in th
 | 13 | Voice Committed Banner | `VoiceCommittedBanner.xaml` | `VoiceCommittedBanner.xaml.cs` | Committed-state visual component. |
 | 14 | Voice Silence Timeout Indicator | `VoiceSilenceTimeoutIndicator.xaml` | `VoiceSilenceTimeoutIndicator.xaml.cs` | Silence progress indicator. |
 | 15 | Screen Capture Flash | `ScreenCaptureFlash.xaml` | `ScreenCaptureFlash.xaml.cs` | Dormant capture acknowledgement control. |
-| 16 | OCR Match Indicator | `OcrMatchIndicator.xaml` | `OcrMatchIndicator.xaml.cs` | Input-transparent target outline and Acrylic callout; expires with supplied snapshot, at most three seconds. Runtime checks pending Application Control approval. |
-| 17 | Post-Click Verify Indicator | `PostClickVerifyIndicator.xaml` | `PostClickVerifyIndicator.xaml.cs` | Native success/error InfoBar displaying supplied verifier evidence. Runtime checks pending Application Control approval. |
+| 16 | OCR Match Indicator | `OcrMatchIndicator.xaml` | `OcrMatchIndicator.xaml.cs` | Input-transparent target outline and Acrylic callout; expires with supplied snapshot, at most three seconds. Native gallery rendering verified; behavior assertions pending. |
+| 17 | Post-Click Verify Indicator | `PostClickVerifyIndicator.xaml` | `PostClickVerifyIndicator.xaml.cs` | Native success/error InfoBar displaying supplied verifier evidence. Native gallery rendering verified; behavior assertions pending. |
 | 18 | Risk Approval Dialog | `RiskApprovalDialog.xaml` | `RiskApprovalDialog.xaml.cs` | Native WinUI `ContentDialog`. |
 | 19 | Policy Block Notice | `PolicyBlockNotice.xaml` | `PolicyBlockNotice.xaml.cs` | Native WinUI `InfoBar`. |
 | 20 | Cancellation Animation | `CancellationAnimation.xaml` | `CancellationAnimation.xaml.cs` | Cancellation feedback popup. |
@@ -177,7 +177,7 @@ Auto-dismiss timing belongs to a preview or future host, not the production cont
 - `ShowResult(verified, verificationMethod, sanitizedDetail)` and `HideResult()`.
 - Defaults closed. Displays supplied verification evidence with native Success/Verified or Error/Unverified severity; missing method cannot display success.
 - A click event itself never counts as verification. The future host must supply the backend verifier's actual result and already-redacted detail.
-- Both new controls compile. Their newly added runtime assertions and visual renders are currently blocked by the machine's Application Control policy; see the verification notes.
+- Both new controls compile and render in the self-contained owner-facing gallery. The standalone runner's new behavioral assertions remain pending; see the verification notes.
 
 ## Surfaces 22–26 — wiring contracts
 
@@ -230,11 +230,12 @@ This inventory records UI component implementation. It does not assert that Phas
 The following are preview-only or obsolete and are not production surfaces:
 
 - `VoiceOverlayPreviewWindow` — retained and approved for the voice preview.
+- `SurfaceGalleryWindow` — opt-in catalogue of all 26 actual components; launch with `--surface-gallery`. See `surface_gallery.md`.
 - Stop Surfaces preview host — removed after preview validation.
 - Safety Surfaces preview host — removed after preview validation.
 - Screen Capture Flash preview host — not implemented or launched.
 
-Current application launch should retain the main `MainWindow` and the approved `VoiceOverlayPreviewWindow` only.
+Default application launch retains the main `MainWindow` and the approved `VoiceOverlayPreviewWindow`. The explicit gallery launch opens only the preview catalogue and starts no microphone or backend.
 
 No Python, IPC, backend, OCR, capture, process termination, or mock service integration was added to the UI surface controls.
 
@@ -244,6 +245,6 @@ For the next workspace:
 
 1. Preserve all completed surface files listed above.
 2. Do not modify approved Surfaces 1–15 or 18–21 while beginning new work.
-3. Run and visually inspect the new surfaces 16–17 in an approved WinUI test environment; their runtime gate is currently pending, not passed.
+3. Use the gallery for owner appearance review; run the pending standalone behavioral assertions in an approved test environment before claiming their behavior gate passed.
 4. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
 5. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.

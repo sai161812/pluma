@@ -44,6 +44,16 @@ namespace PLUMA.UI
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "--surface-gallery") >= 0)
+            {
+                string[] launchArgs = Environment.GetCommandLineArgs();
+                int exportIndex = Array.IndexOf(launchArgs, "--surface-gallery-export");
+                string? exportDirectory = exportIndex >= 0 && exportIndex + 1 < launchArgs.Length ? launchArgs[exportIndex + 1] : null;
+                _window = new SurfaceGalleryWindow(exportDirectory);
+                _window.Activate();
+                return;
+            }
+
             _window = new MainWindow();
             _window.Activate();
 

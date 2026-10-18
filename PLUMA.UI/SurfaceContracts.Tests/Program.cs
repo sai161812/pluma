@@ -9,6 +9,10 @@ void Check(bool condition, string name)
 }
 
 var feed = new LiveMessageBuffer(2);
+Check(SurfaceGalleryCatalog.Items.Select(item => item.Id).SequenceEqual(Enumerable.Range(1, 26)),
+    "gallery includes every planned surface exactly once in order");
+Check(SurfaceGalleryCatalog.Items.All(item => !string.IsNullOrWhiteSpace(item.Name)),
+    "every gallery surface has a readable label");
 var timestamp = new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
 Check(feed.Entries.Count == 0, "feed starts empty");
 feed.Append("  ", timestamp);

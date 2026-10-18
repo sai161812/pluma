@@ -3,6 +3,12 @@
     "PLUMA.UI (Package)": {
       "commandName": "MsixPackage"
     },
+    "PLUMA.UI (Surface Gallery)": {
+      "commandName": "Executable",
+      "executablePath": "../../output/ui-gallery-preview/PLUMA.UI.exe",
+      "workingDirectory": "../..",
+      "commandLineArgs": "--surface-gallery"
+    },
     "PLUMA.UI (Unpackaged)": {
       "commandName": "Project"
     }

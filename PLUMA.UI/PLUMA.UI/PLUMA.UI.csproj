@@ -15,6 +15,11 @@
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(SurfaceGalleryPreview)' == 'true'">
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <OutDir>$(MSBuildProjectDirectory)\..\..\output\ui-gallery-preview\</OutDir>
+  </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
@@ -49,6 +54,7 @@
     <Page Include="SettingsPage.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="HistoryPage.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="MainWindow.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="SurfaceGalleryWindow.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="TaskRunningPopup.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="StepProgressPopup.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="RouteBadgePopup.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />

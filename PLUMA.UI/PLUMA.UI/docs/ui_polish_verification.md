@@ -125,6 +125,20 @@ boundaries, HMAC challenge/response, a per-user pipe name, and one request/reply
 per connection. There is no current push event stream or JSON-RPC dispatcher.
 Wiring must follow the code and add any missing event support explicitly.
 
+### Subsequent owner-facing preview gallery
+
+The owner requested appearance review before placement or wiring. An opt-in
+`SurfaceGalleryWindow` now instantiates all 26 actual components using fixture
+data. Its preview-only self-contained Windows App SDK build successfully ran
+and exported 52 native light/dark renders, including surfaces 16–17. No signing
+policy or system runtime registration was changed. See `surface_gallery.md`.
+
+This provides real visual previews despite the earlier standalone test-launcher
+block. It confirms construction and rendering; it does not retroactively mark
+the 12 pending behavioral assertions as passed. Placement and wiring remain
+undecided. The catalogue/state harness passes 17 checks and the existing audio
+harness passes 15; the gallery build has zero warnings/errors.
+
 This is UI component verification, not completion of Phase 14 or a release
 acceptance claim. No backend, IPC, planner, policy, ledger, microphone, capture,
 process termination, or installation behavior was added or simulated.
