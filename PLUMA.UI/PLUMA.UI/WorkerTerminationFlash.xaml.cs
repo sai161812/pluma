@@ -4,8 +4,10 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace PLUMA.UI
 {
-    public sealed partial class WorkerTerminationFlash : UserControl
+    public sealed partial class WorkerTerminationFlash : UserControl, IHostedPopup
     {
+        public bool IsHosted { get; set; }
+        public event EventHandler? DismissRequested;
         public static readonly DependencyProperty HeadingProperty = RegisterTextProperty(nameof(Heading), "Worker terminated");
         public static readonly DependencyProperty MessageProperty = RegisterTextProperty(nameof(Message), "The isolated tool worker was closed safely");
         public static readonly DependencyProperty WorkerPidProperty = RegisterTextProperty(nameof(WorkerPid), "18432");
@@ -29,6 +31,7 @@ namespace PLUMA.UI
         {
             IsOpen = true;
             FadeOutStoryboard.Stop();
+            if (IsHosted) { FadeInStoryboard.Stop(); RootBorder.Opacity = 1; Visibility = Visibility.Visible; return; }
             Visibility = Visibility.Visible;
             RootBorder.Opacity = 0;
             FadeInStoryboard.Begin();
@@ -36,6 +39,7 @@ namespace PLUMA.UI
 
         public void Hide()
         {
+            if (IsHosted) { DismissRequested?.Invoke(this, EventArgs.Empty); return; }
             IsOpen = false;
             if (Visibility != Visibility.Visible) return;
             FadeInStoryboard.Stop();

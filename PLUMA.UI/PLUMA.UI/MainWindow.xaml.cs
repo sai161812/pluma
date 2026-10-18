@@ -23,6 +23,17 @@ namespace PLUMA.UI
     /// </summary>
     public sealed partial class MainWindow : Window
     {
+        private PopupStackHost? _popups;
+        private bool _closed;
+        public PopupStackHost Popups
+        {
+            get
+            {
+                ObjectDisposedException.ThrowIf(_closed, this);
+                return _popups ??= new PopupStackHost(this);
+            }
+        }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -35,6 +46,7 @@ namespace PLUMA.UI
 
             // Navigate to the default page (Dashboard)
             ContentFrame.Navigate(typeof(DashboardPage));
+            Closed += (_, _) => { _closed = true; _popups?.Dispose(); };
         }
 
         private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)

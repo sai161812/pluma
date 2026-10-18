@@ -41,7 +41,7 @@ namespace PLUMA.UI
                 entry = new PopupStackItem(key, ++_sequence);
                 _items.Add(entry);
             }
-            entry.WidthDips = Math.Min(widthDips, PopupStackLayout.MaximumWidthDips);
+            entry.WidthDips = Math.Min(widthDips, PopupStackLayout.MaximumWidthDips + 32); // includes measured native frame chrome
             entry.HeightDips = heightDips;
             entry.Persistent = persistent;
             entry.Priority = priority;

@@ -4,8 +4,10 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace PLUMA.UI
 {
-    public sealed partial class CancellationAnimation : UserControl
+    public sealed partial class CancellationAnimation : UserControl, IHostedPopup
     {
+        public bool IsHosted { get; set; }
+        public event EventHandler? DismissRequested;
         public static readonly DependencyProperty HeadingProperty = RegisterTextProperty(nameof(Heading), "Stopping…");
         public static readonly DependencyProperty MessageProperty = RegisterTextProperty(nameof(Message), "Cancelling the current task safely");
         public static readonly DependencyProperty TaskIdProperty = RegisterTextProperty(nameof(TaskId), "TASK-2026-0204");
@@ -29,6 +31,7 @@ namespace PLUMA.UI
         {
             IsActive = true;
             FadeOutStoryboard.Stop();
+            if (IsHosted) { FadeInStoryboard.Stop(); RootBorder.Opacity = 1; Visibility = Visibility.Visible; return; }
             Visibility = Visibility.Visible;
             RootBorder.Opacity = 0;
             FadeInStoryboard.Begin();
@@ -36,6 +39,7 @@ namespace PLUMA.UI
 
         public void Hide()
         {
+            if (IsHosted) { DismissRequested?.Invoke(this, EventArgs.Empty); return; }
             IsActive = false;
             if (Visibility != Visibility.Visible)
             {

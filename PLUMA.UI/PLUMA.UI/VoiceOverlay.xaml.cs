@@ -8,8 +8,10 @@ namespace PLUMA.UI
     /// Reusable PLUMA voice overlay.
     /// Surfaces 11–14 are represented as visual states.
     /// </summary>
-    public sealed partial class VoiceOverlay : UserControl
+    public sealed partial class VoiceOverlay : UserControl, IHostedPopup
     {
+        public bool IsHosted { get; set; }
+        public event EventHandler? DismissRequested;
         public static readonly DependencyProperty VoiceStateProperty =
             DependencyProperty.Register(
                 nameof(VoiceState),
@@ -239,6 +241,12 @@ namespace PLUMA.UI
 
         private void ApplyVoiceState(bool useTransitions)
         {
+            if (IsHosted && VoiceState == VoiceOverlayState.Hidden)
+            {
+                IsAnimating = false;
+                DismissRequested?.Invoke(this, EventArgs.Empty);
+                return;
+            }
             string stateName = VoiceState switch
             {
                 VoiceOverlayState.ListeningSilence => "ListeningSilence",

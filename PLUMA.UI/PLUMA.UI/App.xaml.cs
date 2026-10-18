@@ -44,6 +44,16 @@ namespace PLUMA.UI
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            string[] commandLine = Environment.GetCommandLineArgs();
+            int stackAudit = Array.IndexOf(commandLine, "--popup-stack-audit");
+            if (Array.IndexOf(commandLine, "--popup-stack-preview") >= 0 || stackAudit >= 0)
+            {
+                string? directory = stackAudit >= 0 && stackAudit + 1 < commandLine.Length ? commandLine[stackAudit + 1] : null;
+                if (stackAudit >= 0 && string.IsNullOrWhiteSpace(directory)) throw new ArgumentException("An audit output directory is required.");
+                _window = new PopupStackPreviewWindow(directory);
+                _window.Activate();
+                return;
+            }
             if (Array.IndexOf(Environment.GetCommandLineArgs(), "--surface-gallery") >= 0)
             {
                 string[] launchArgs = Environment.GetCommandLineArgs();
@@ -57,9 +67,12 @@ namespace PLUMA.UI
             _window = new MainWindow();
             _window.Activate();
 
-            // Temporary Surfaces 11–14 preview host. Replace with production overlay hosting later.
-            _voicePreviewWindow = new VoiceOverlayPreviewWindow();
-            _voicePreviewWindow.Activate();
+            // The legacy microphone fixture is opt-in. Production overlays belong to MainWindow.Popups.
+            if (Array.IndexOf(commandLine, "--voice-preview") >= 0)
+            {
+                _voicePreviewWindow = new VoiceOverlayPreviewWindow();
+                _voicePreviewWindow.Activate();
+            }
 
         }
     }

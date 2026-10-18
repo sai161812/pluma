@@ -46,6 +46,7 @@
     <Compile Include="../PLUMA.UI/LiveMessageBuffer.cs" Link="LiveMessageBuffer.cs" />
     <Compile Include="../PLUMA.UI/SetupChecklist.cs" Link="SetupChecklist.cs" />
     <Compile Include="../PLUMA.UI/PopupMessageText.cs" Link="PopupMessageText.cs" />
+    <Compile Include="../PLUMA.UI/IHostedPopup.cs" Link="IHostedPopup.cs" />
     <Compile Include="../PLUMA.UI/PopupText.cs" Link="PopupText.cs" />
   </ItemGroup>
 </Project>

@@ -22,6 +22,7 @@ namespace PLUMA.UI
         private Task? _exportTask;
         private bool _closed;
         private bool _exporting;
+        private PopupStackPreviewWindow? _stackPreview;
 
         public SurfaceGalleryWindow(string? exportDirectory = null)
         {
@@ -49,6 +50,7 @@ namespace PLUMA.UI
             {
                 _closed = true;
                 _lifetime.Cancel();
+                _stackPreview?.Close();
                 _dialog?.Hide();
                 PreviewHost.Children.Clear();
                 if (_exportTask != null)
@@ -62,6 +64,16 @@ namespace PLUMA.UI
         private void OnSurfaceChanged(object sender, SelectionChangedEventArgs args)
         {
             if (SurfacePicker.SelectedItem is SurfaceGalleryItem surface) ShowSurface(surface.Id);
+        }
+
+        private void OnOpenStackPreview(object sender, RoutedEventArgs args)
+        {
+            if (_stackPreview == null)
+            {
+                _stackPreview = new PopupStackPreviewWindow();
+                _stackPreview.Closed += (_, _) => _stackPreview = null;
+            }
+            _stackPreview.Activate();
         }
 
         private void AddAction(string text, Action action)
@@ -243,6 +255,7 @@ namespace PLUMA.UI
             foreach (var child in PreviewActions.Children)
                 if (child is Control control) control.IsEnabled = false;
             SurfacePicker.IsEnabled = false;
+            StackPreviewButton.IsEnabled = false;
             PreviewHost.IsHitTestVisible = false;
             PreviewActions.IsHitTestVisible = false;
             try
@@ -287,7 +300,7 @@ namespace PLUMA.UI
                     await report.WriteLineAsync($"PASS {filename}: {item.Name}");
                 }
                 await AuditFormattingAsync(outputDirectory, token);
-                await report.WriteLineAsync("26 dark component renders exported. Formatting audit passed; see formatting-checks.txt. Bottom-right placement is specified; desktop stack hosting and backend wiring remain pending.");
+                await report.WriteLineAsync("26 dark component renders exported. Formatting audit passed; see formatting-checks.txt. Use the separate desktop stack audit for placement and motion. Backend wiring remains pending.");
                 WritePreviewIndex(outputDirectory);
             }
             finally
@@ -296,6 +309,7 @@ namespace PLUMA.UI
                 if (!_closed)
                 {
                     SurfacePicker.IsEnabled = true;
+                    StackPreviewButton.IsEnabled = true;
                     PreviewHost.IsHitTestVisible = true;
                     PreviewActions.IsHitTestVisible = true;
                     GalleryRoot.RequestedTheme = ElementTheme.Dark;
@@ -335,7 +349,7 @@ namespace PLUMA.UI
                 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
                 <title>PLUMA UI surface previews</title>
                 <style>body{font:16px system-ui;margin:24px;color-scheme:dark;background:#202020;color:#fff}header{display:flex;gap:16px;align-items:center;flex-wrap:wrap}select{font:inherit;padding:8px;max-width:100%}img{display:block;max-width:100%;height:auto;margin-top:20px;border:1px solid #888}p{max-width:80ch}</style>
-                <h1>PLUMA UI surface previews</h1><p>Actual WinUI renders with preview data. Floating surfaces are specified to share a bottom-right stack. This catalogue shows individual components; desktop stack hosting and backend wiring are pending. Animation previews are still frames; the native gallery includes replay buttons.</p>
+                <h1>PLUMA UI surface previews</h1><p>Actual WinUI renders with preview data. This catalogue shows individual components. Use the native desktop stack preview to inspect their bottom-right placement and motion. Backend wiring is pending. Animation previews are still frames; the native gallery includes replay buttons.</p>
                 <header><label>Surface <select id="surface">OPTIONS</select></label><a id="full" href="surface-16-dark.png" target="_blank">Open full-size image</a></header>
                 <img id="preview" src="surface-16-dark.png" alt="OCR Match Indicator native WinUI preview">
                 <script>const surface=document.getElementById('surface'),preview=document.getElementById('preview'),full=document.getElementById('full');function update(){const path='surface-'+surface.value+'-dark.png';preview.src=path;full.href=path;preview.alt=surface.selectedOptions[0].text+' dark preview'}surface.addEventListener('change',update);</script></html>
