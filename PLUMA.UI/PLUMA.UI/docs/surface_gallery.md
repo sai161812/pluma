@@ -1,7 +1,9 @@
 # UI surface gallery
 
-This is an owner-review catalogue of the actual 26 WinUI components. It is not
-a proposal for where they should appear in the product. All displayed task,
+This is an owner-review catalogue of the actual 26 WinUI components, shown
+one at a time. The owner has specified a shared bottom-right popup stack in
+[popup_placement_contract.md](popup_placement_contract.md). This catalogue does
+not yet demonstrate that desktop placement or stack motion. All displayed task,
 voice, OCR, health, notification, and setup values are preview fixtures.
 The owner specified dark-only appearance. The app and all previews default to
 Dark; there is no theme selector or light-version review requirement.
@@ -71,4 +73,5 @@ physical display scaling. Preview actions are disabled while export runs.
   It is not a claim that the previously blocked UI behavior assertions passed,
   nor that placement, DPI/accessibility, or backend acceptance is complete.
 
-The owner should review appearance first. Placement and wiring remain undecided.
+Popup placement is specified in the shared contract. Desktop stack
+implementation, visual/behavior acceptance, and backend wiring remain pending.

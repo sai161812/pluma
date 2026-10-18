@@ -125,3 +125,17 @@ still reports 30 checks passed. Both the app preview and control harness build
 with zero warnings/errors. Runtime acceptance retains the recorded signing-policy
 limitation; removal of the light review requirement does not mark pending dark
 layout/behavior checks as passed. No wiring or backend behavior changed.
+
+## Owner placement direction recorded
+
+On 2026-10-18 the owner chose bottom-right placement for surfaces 4-9, 11-14,
+17, 19-21, and 24. New arrivals belong below older visible entries, which slide
+up smoothly; entry/exit, edge clearance, spacing, overflow, and auto-hide taskbar
+reveal must remain clean. Keep the existing dark appearance. The detailed
+implementation contract and pending P-01 through P-15 acceptance cases are in
+[popup_placement_contract.md](popup_placement_contract.md).
+
+Placement selection is settled. The shared desktop host and these runtime
+checks are pending; the isolated catalogue and legacy voice preview do not
+satisfy the new stack requirements. This update records behavior and clarifies
+preview copy, with no backend wiring or palette/component redesign.

@@ -138,6 +138,8 @@ namespace PLUMA.UI
             _microphone = null;
         }
 
+        // Legacy standalone preview only. Shared production placement/motion is specified
+        // in docs/popup_placement_contract.md; this fixed-offset code does not satisfy it.
         private void ConfigurePlacement()
         {
             nint hwnd = WindowNative.GetWindowHandle(this);

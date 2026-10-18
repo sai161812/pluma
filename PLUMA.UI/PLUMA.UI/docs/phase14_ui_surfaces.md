@@ -1,5 +1,13 @@
 # PLUMA Phase 14 — UI Surfaces Reference
 
+Owner placement direction (2026-10-18): surfaces 4-9, 11-14, 17, 19-21, and 24
+share a bottom-right stack, newest below older entries, with comfortable edge
+clearance, smooth reflow/exit, and auto-hide taskbar handling. The full contract
+and pending acceptance cases are in
+[popup_placement_contract.md](popup_placement_contract.md). Existing dark styling
+is retained. Surface purposes and wiring references below do not establish that
+the shared desktop host or event integration is implemented.
+
 All surfaces wire directly to the resident core via `pluma.core.ipc` (named pipe / JSON-RPC).  
 No surface requires polling — all state changes are event-driven from the core.
 

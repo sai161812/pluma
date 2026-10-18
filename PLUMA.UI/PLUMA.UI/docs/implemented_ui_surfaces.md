@@ -14,6 +14,19 @@ This document records the UI work currently present in the C# WinUI 3 project.
 
 Temporary preview windows are not production surfaces and are not included in the completed count.
 
+## Owner-directed placement
+
+The owner specified one bottom-right stack for surfaces 4-9, 11-14, 17, 19-21,
+and 24. Keep the existing dark appearance, a common right edge, comfortable
+screen/taskbar clearance, and consistent gaps. New entries appear below older
+ones; earlier entries slide up smoothly; completed entries vanish smoothly.
+The full geometry, auto-hide taskbar, overflow, lifetime, and acceptance contract
+is [popup_placement_contract.md](popup_placement_contract.md).
+
+The shared desktop stack is pending implementation. Individual control counts
+below do not include a completed placement/motion host. The legacy standalone
+voice preview is not acceptance evidence for the shared stack.
+
 ## Implemented UI components
 
 | Surface | UI surface | XAML | Code-behind | Notes |
@@ -246,5 +259,6 @@ For the next workspace:
 1. Preserve all completed surface files listed above.
 2. The owner subsequently authorized formatting all surfaces before wiring. Preserve that pass, documented in `ui_formatting_review.md`, and the existing visual direction.
 3. Use the gallery for owner appearance review; run the pending standalone behavioral assertions in an approved test environment before claiming their behavior gate passed.
-4. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
-5. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.
+4. Implement and verify the shared popup host against `popup_placement_contract.md` before wiring floating surfaces.
+5. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
+6. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.

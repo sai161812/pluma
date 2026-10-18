@@ -15,7 +15,7 @@
         </Grid.RowDefinitions>
         <StackPanel Spacing="4">
             <TextBlock Text="UI surface gallery" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock Text="Preview data only. Placement and backend wiring are undecided."
+            <TextBlock Text="Individual component previews. Shared popup hosting and backend wiring are pending."
                        Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
