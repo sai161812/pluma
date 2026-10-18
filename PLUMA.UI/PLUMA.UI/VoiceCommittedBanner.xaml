@@ -4,21 +4,5 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     IsTabStop="False">
-
-    <StackPanel Orientation="Horizontal"
-                Spacing="8"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Center">
-        <FontIcon Glyph="&#xE73E;"
-                  FontFamily="Segoe Fluent Icons"
-                  FontSize="14"
-                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                  VerticalAlignment="Center" />
-        <TextBlock Text="Command received"
-                   FontFamily="Segoe UI Variable"
-                   FontSize="15"
-                   FontWeight="SemiBold"
-                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                   VerticalAlignment="Center" />
-    </StackPanel>
+    <InfoBar IsOpen="True" IsClosable="False" Severity="Success" Message="Command received" />
 </UserControl>

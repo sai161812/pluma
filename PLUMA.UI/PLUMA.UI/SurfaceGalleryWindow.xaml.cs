@@ -96,7 +96,10 @@ namespace PLUMA.UI
                 case 7: preview = new ToolCallCard(); break;
                 case 8: preview = new ToolResultCard(); break;
                 case 9: preview = new RollbackPopup(); break;
-                case 10: preview = new ConflictAlertPopup(); break;
+                case 10:
+                    preview = new TextBlock { Text = "Open the native conflict dialog. File actions remain preview requests." };
+                    AddDialogAction("Open conflict dialog", () => new ConflictAlertPopup());
+                    break;
                 case 11:
                     var voice = new VoiceOverlay { VoiceState = VoiceOverlayState.ListeningSilence,
                         IsAnimating = true, FinalTranscript = "Preview: no microphone capture" };

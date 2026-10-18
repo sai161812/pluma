@@ -10,10 +10,7 @@
     UseLayoutRounding="True">
 
     <Grid>
-        <Grid.Resources>
-            <SolidColorBrush x:Key="VoiceSurfaceBrush" Color="#0F0F0F" />
-            <SolidColorBrush x:Key="VoiceStrokeBrush" Color="#2B2B2B" />
-        </Grid.Resources>
+
 
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="VoiceStates">
@@ -74,8 +71,8 @@
         </VisualStateManager.VisualStateGroups>
 
         <Border x:Name="RootBorder"
-                Background="{StaticResource VoiceSurfaceBrush}"
-                BorderBrush="{StaticResource VoiceStrokeBrush}"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8">
 
@@ -120,7 +117,7 @@
                                                     VerticalAlignment="Stretch" />
                     <local:VoiceCommittedBanner x:Name="CommittedPanel"
                                                 Visibility="Collapsed"
-                                                HorizontalAlignment="Left"
+                                                HorizontalAlignment="Stretch"
                                                 VerticalAlignment="Center" />
                 </Grid>
 

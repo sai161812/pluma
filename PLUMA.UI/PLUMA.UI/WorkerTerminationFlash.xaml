@@ -31,7 +31,7 @@
     <Border x:Name="RootBorder"
             MinHeight="140"
             Padding="16,14,16,16"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="8">

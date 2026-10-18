@@ -1,12 +1,25 @@
+using System;
 using Microsoft.UI.Xaml.Controls;
 
 namespace PLUMA.UI
 {
-    public sealed partial class ConflictAlertPopup : UserControl
+    /// <summary>The host supplies XamlRoot and handles requests; this dialog never changes files.</summary>
+    public sealed partial class ConflictAlertPopup : ContentDialog
     {
-        public ConflictAlertPopup()
+        public ConflictAlertPopup() => InitializeComponent();
+        public event EventHandler? ViewConflictRequested;
+        public event EventHandler? OpenFolderRequested;
+
+        private void OnViewConflict(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
-            InitializeComponent();
+            args.Cancel = true;
+            ViewConflictRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void OnOpenFolder(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            args.Cancel = true;
+            OpenFolderRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 }
