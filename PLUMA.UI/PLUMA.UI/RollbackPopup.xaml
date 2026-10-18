@@ -29,22 +29,13 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="PLUMA"
+                <TextBlock Text="PLUMA" VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
 
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            Spacing="7"
-                            VerticalAlignment="Center">
-                    <ProgressRing Width="14"
-                                  Height="14"
-                                  IsActive="True" />
-                    <TextBlock Text="Rolling back"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
+                <local:PopupStatusIndicator Grid.Column="1" Label="Rolling back" Kind="Progress"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
             <StackPanel Grid.Row="1" Spacing="3">

@@ -26,14 +26,12 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="PLUMA"
+                <TextBlock Text="PLUMA" VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
-                <TextBlock Grid.Column="1"
-                           Text="Completed"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <local:PopupStatusIndicator Grid.Column="1" Label="Completed" Kind="Success"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
             <StackPanel Grid.Row="1" Spacing="4">
@@ -52,17 +50,7 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel x:Name="VerificationState"
-                            Orientation="Horizontal"
-                            Spacing="6">
-                    <SymbolIcon x:Name="VerificationIcon"
-                                Symbol="Accept"
-                                Width="14"
-                                Height="14" />
-                    <TextBlock x:Name="VerificationText"
-                               Text="Verified"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
-                </StackPanel>
+                <local:PopupStatusIndicator x:Name="VerificationState" Label="Verified" Kind="Success" />
 
                 <local:PopupMessageText x:Name="ErrorCodeText"
                            Grid.Column="1"

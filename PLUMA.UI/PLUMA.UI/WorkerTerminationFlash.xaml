@@ -49,23 +49,13 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="PLUMA"
+                <TextBlock Text="PLUMA" VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
 
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            Spacing="7"
-                            VerticalAlignment="Center">
-                    <FontIcon Glyph="&#xE73E;"
-                              FontFamily="Segoe Fluent Icons"
-                              FontSize="13"
-                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Text="Completed"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
+                <local:PopupStatusIndicator Grid.Column="1" Label="Completed" Kind="Success"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
             <local:PopupMessageText x:Name="HeadingText"

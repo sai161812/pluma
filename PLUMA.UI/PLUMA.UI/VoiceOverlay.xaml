@@ -28,7 +28,7 @@
                     <VisualState.Setters>
                         <Setter Target="RootBorder.Opacity" Value="1" />
                         <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
-                        <Setter Target="StatusText.Text" Value="Listening" />
+                        <Setter Target="StatusHost.Label" Value="Listening" />
                         <Setter Target="StatusHost.Visibility" Value="Visible" />
                         <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
                         <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
@@ -40,7 +40,7 @@
                     <VisualState.Setters>
                         <Setter Target="RootBorder.Opacity" Value="1" />
                         <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
-                        <Setter Target="StatusText.Text" Value="Listening" />
+                        <Setter Target="StatusHost.Label" Value="Listening" />
                         <Setter Target="StatusHost.Visibility" Value="Visible" />
                         <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
                         <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
@@ -52,7 +52,7 @@
                     <VisualState.Setters>
                         <Setter Target="RootBorder.Opacity" Value="1" />
                         <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
-                        <Setter Target="StatusText.Text" Value="Finishing" />
+                        <Setter Target="StatusHost.Label" Value="Finishing" />
                         <Setter Target="StatusHost.Visibility" Value="Visible" />
                         <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
                         <Setter Target="CommittedPanel.Visibility" Value="Collapsed" />
@@ -102,22 +102,9 @@
                                CharacterSpacing="80"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
 
-                    <StackPanel x:Name="StatusHost"
-                                Grid.Column="1"
-                                Orientation="Horizontal"
-                                Spacing="7"
-                                VerticalAlignment="Center">
-                        <Ellipse Width="5"
-                                 Height="5"
-                                 Fill="{ThemeResource TextFillColorSecondaryBrush}"
-                                 VerticalAlignment="Center" />
-                        <TextBlock x:Name="StatusText"
-                                   Text="Listening"
-                                   VerticalAlignment="Center"
-                                   FontFamily="Segoe UI Variable"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
+                    <local:PopupStatusIndicator x:Name="StatusHost" Grid.Column="1"
+                                                Label="Listening" Kind="Dot"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </Grid>
 
                 <local:VoiceListeningRing x:Name="ListeningRing"

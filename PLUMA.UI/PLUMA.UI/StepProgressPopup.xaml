@@ -33,18 +33,8 @@
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
 
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            Spacing="7"
-                            VerticalAlignment="Center">
-                    <ProgressRing Width="14"
-                                  Height="14"
-                                  IsActive="True" />
-                    <TextBlock Text="Active"
-                               VerticalAlignment="Center"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
+                <local:PopupStatusIndicator Grid.Column="1" Label="Active" Kind="Progress"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
             <TextBlock Grid.Row="1"

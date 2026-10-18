@@ -33,17 +33,8 @@
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
 
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            Spacing="7"
-                            VerticalAlignment="Center">
-                    <ProgressRing Width="14"
-                                  Height="14"
-                                  IsActive="True" />
-                    <TextBlock Text="Running tool"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
+                <local:PopupStatusIndicator Grid.Column="1" Label="Running tool" Kind="Progress"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
             <local:PopupMessageText Grid.Row="1"
