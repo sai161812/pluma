@@ -1,7 +1,9 @@
 # UI polish verification — surfaces 22–26
 
 Current all-surface formatting status is in [ui_formatting_review.md](ui_formatting_review.md).
-It records the latest passing checks and the final native-launch signing block.
+It records the latest passing checks. The earlier native-launch signing block
+is historical; current native results are in
+[popup_stack_verification.md](popup_stack_verification.md).
 The owner has since specified dark-only appearance; current previews and
 acceptance checks use Dark only. The counts and light/dark renders below are
 historical evidence for their stated versions.

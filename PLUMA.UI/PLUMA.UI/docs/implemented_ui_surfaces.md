@@ -23,9 +23,13 @@ ones; earlier entries slide up smoothly; completed entries vanish smoothly.
 The full geometry, auto-hide taskbar, overflow, lifetime, and acceptance contract
 is [popup_placement_contract.md](popup_placement_contract.md).
 
-The shared desktop stack is pending implementation. Individual control counts
-below do not include a completed placement/motion host. The legacy standalone
-voice preview is not acceptance evidence for the shared stack.
+The shared desktop stack is implemented in `PopupStackHost`, with an isolated
+native placement adapter and pure queue/layout model. Its opt-in native audit
+passes 504 checks; the all-surface gallery passes 195 formatting checks and the
+native control runner passes 35 UI checks. Physical display/taskbar interaction
+and owner motion review remain open; see
+[popup_stack_verification.md](popup_stack_verification.md). The legacy standalone
+voice preview is not acceptance evidence for this host.
 
 ## Implemented UI components
 
@@ -46,8 +50,8 @@ voice preview is not acceptance evidence for the shared stack.
 | 13 | Voice Committed Banner | `VoiceCommittedBanner.xaml` | `VoiceCommittedBanner.xaml.cs` | Committed-state visual component. |
 | 14 | Voice Silence Timeout Indicator | `VoiceSilenceTimeoutIndicator.xaml` | `VoiceSilenceTimeoutIndicator.xaml.cs` | Silence progress indicator. |
 | 15 | Screen Capture Flash | `ScreenCaptureFlash.xaml` | `ScreenCaptureFlash.xaml.cs` | Dormant capture acknowledgement control. |
-| 16 | OCR Match Indicator | `OcrMatchIndicator.xaml` | `OcrMatchIndicator.xaml.cs` | Input-transparent target outline and Acrylic callout; expires with supplied snapshot, at most three seconds. Native gallery rendering verified; behavior assertions pending. |
-| 17 | Post-Click Verify Indicator | `PostClickVerifyIndicator.xaml` | `PostClickVerifyIndicator.xaml.cs` | Native success/error InfoBar displaying supplied verifier evidence. Native gallery rendering verified; behavior assertions pending. |
+| 16 | OCR Match Indicator | `OcrMatchIndicator.xaml` | `OcrMatchIndicator.xaml.cs` | Input-transparent outline/Acrylic callout; supplied snapshot expires within three seconds. Native render, bounds rejection and expiry checks pass. |
+| 17 | Post-Click Verify Indicator | `PostClickVerifyIndicator.xaml` | `PostClickVerifyIndicator.xaml.cs` | Native success/error InfoBar; supplied evidence and long-text formatting checks pass. |
 | 18 | Risk Approval Dialog | `RiskApprovalDialog.xaml` | `RiskApprovalDialog.xaml.cs` | Native WinUI `ContentDialog`. |
 | 19 | Policy Block Notice | `PolicyBlockNotice.xaml` | `PolicyBlockNotice.xaml.cs` | Native WinUI `InfoBar`. |
 | 20 | Cancellation Animation | `CancellationAnimation.xaml` | `CancellationAnimation.xaml.cs` | Cancellation feedback popup. |
@@ -92,7 +96,9 @@ Supporting voice files:
 - `VoiceOverlayPreviewWindow.xaml` — preview window XAML.
 - `VoiceOverlayPreviewWindow.xaml.cs` — preview window host and generator wiring.
 
-Only one `VoiceOverlayPreviewWindow` is launched by `App.xaml.cs`.
+`VoiceOverlayPreviewWindow` launches only with `--voice-preview`. Normal startup
+opens MainWindow, whose `Popups` host is lazy. Production voice presentation
+belongs to one `VoiceOverlay` entry in that shared host.
 
 ## Future-wiring APIs
 
@@ -190,7 +196,7 @@ Auto-dismiss timing belongs to a preview or future host, not the production cont
 - `ShowResult(verified, verificationMethod, sanitizedDetail)` and `HideResult()`.
 - Defaults closed. Displays supplied verification evidence with native Success/Verified or Error/Unverified severity; missing method cannot display success.
 - A click event itself never counts as verification. The future host must supply the backend verifier's actual result and already-redacted detail.
-- Both new controls compile and render in the self-contained owner-facing gallery. The standalone runner's new behavioral assertions remain pending; see the verification notes.
+- Both controls render in the self-contained gallery and their behavioral assertions now pass in the native control runner; see the verification notes.
 
 ## Surfaces 22–26 — wiring contracts
 
@@ -248,7 +254,11 @@ The following are preview-only or obsolete and are not production surfaces:
 - Safety Surfaces preview host — removed after preview validation.
 - Screen Capture Flash preview host — not implemented or launched.
 
-Default application launch retains the main `MainWindow` and the approved `VoiceOverlayPreviewWindow`. The explicit gallery launch opens only the preview catalogue and starts no microphone or backend.
+Default application launch opens only `MainWindow`. Its shared popup host is
+created on demand. The legacy microphone preview requires `--voice-preview`.
+`PopupStackPreviewWindow` is an explicit fixture producer opened by the gallery
+button or `--popup-stack-preview`; `--popup-stack-audit <directory>` runs its
+native audit. These gallery/stack fixtures start no microphone or backend.
 
 No Python, IPC, backend, OCR, capture, process termination, or mock service integration was added to the UI surface controls.
 
@@ -258,7 +268,7 @@ For the next workspace:
 
 1. Preserve all completed surface files listed above.
 2. The owner subsequently authorized formatting all surfaces before wiring. Preserve that pass, documented in `ui_formatting_review.md`, and the existing visual direction.
-3. Use the gallery for owner appearance review; run the pending standalone behavioral assertions in an approved test environment before claiming their behavior gate passed.
-4. Implement and verify the shared popup host against `popup_placement_contract.md` before wiring floating surfaces.
+3. Preserve the passing native component and formatting checks; use the gallery for owner appearance review.
+4. Finish the remaining physical/interactive cases recorded in `popup_stack_verification.md` before wiring floating surfaces.
 5. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
 6. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.

@@ -1,9 +1,10 @@
 # Shared bottom-right popup placement contract
 
 Date: 2026-10-18. Branch: `ui-polish`.
-Status: owner placement and behavior requirements recorded; shared desktop
-stack implementation and runtime acceptance are pending. This document is the
-reference for that implementation before backend wiring. Existing controls,
+Status: shared desktop stack implemented and exercised by the native fixture
+audit. Physical taskbar interaction, other real display configurations, and
+owner motion review remain open; see [popup_stack_verification.md](popup_stack_verification.md).
+This document is the reference before backend wiring. Existing controls,
 their dark resources, and their approved appearance remain the starting point.
 
 ## Owner decisions
@@ -53,6 +54,9 @@ values, drawn from the existing spacing scale, when implementing that direction:
 | Component dimensions | Preserve current approved widths/heights where they fit; align narrower cards to the same right edge |
 | Text | Existing bounded wrapping/scrolling and readable font sizes |
 
+The implementation reserves another 8 DIPs inside the 24-DIP clearance for native
+shadows, and measures each native window's frame outside its client area. The
+460-DIP limit applies to component content; outer bounds include that frame.
 Include shadow and motion extents inside the outer clearance. Measure content
 before positioning it. A taller message must not push another entry offscreen.
 Clamp available dimensions before arranging text; keep the transcript in its
@@ -62,13 +66,14 @@ Let `safe` be the selected monitor's usable rectangle after taskbar/appbar
 exclusions. In DIPs, arrange visible entries from newest to oldest:
 
 ```text
-right = safe.right - 24
-bottom = safe.bottom - 24
+inset = 24 + 8  # edge clearance plus shadow reserve
+right = safe.right - inset
+bottom = safe.bottom - inset
 for entry in newest_to_oldest:
     measure entry within the available width and height
     x = right - entry.width
     y = bottom - entry.height
-    require x >= safe.left + 24 and y >= safe.top + 24
+    require x >= safe.left + inset and y >= safe.top + inset
     bottom = y - 12
 ```
 
@@ -137,16 +142,18 @@ Relevant native references:
 
 ## Motion and lifetime
 
-Use the existing WinUI/Windows Composition motion style. Initial implementation
-targets are a 200-ms entry/reflow and a 160-ms exit, using native easing. These
+Keep the existing Windows motion style. Implementation defaults are a 200-ms
+entry/reflow and a 160-ms exit, using cubic ease-out. Native card windows use
+uniform opacity for entry/exit and move in physical pixels during reflow. These
 are implementation defaults; they do not change factual completion or timeout
 semantics.
 
 1. Measure and position the new entry inside the safe bounds before revealing
-   it. Fade in with a small vertical movement that stays inside those bounds.
+   it. Fade in at its final position after earlier cards have made room. This
+   keeps the clear gap intact throughout the animation.
 2. On arrival, smoothly move older entries up while the newest settles at the
    bottom. Retarget interrupted movement from its current visual position.
-3. On completion, dismissal, or expiry, fade/slide the entry out before removing
+3. On completion, dismissal, or expiry, fade the entry out before removing
    it from layout. Smoothly close the gap among the surviving entries.
 4. Coordinate host motion with existing child animations/timers so a child's
    immediate `Visibility` collapse cannot cut off the shared exit animation.
@@ -169,8 +176,9 @@ static component PNGs cannot demonstrate smooth motion.
 
 ## Required acceptance evidence
 
-These checks describe the pending desktop host; none is marked passed merely
-because this document or the individual components exists.
+These checks define acceptance for the desktop host. Executed checks and
+remaining physical/interactive cases are recorded separately in
+[popup_stack_verification.md](popup_stack_verification.md).
 
 | ID | Case | Required result |
 |---|---|---|
@@ -195,22 +203,34 @@ entry order/bounds, animation setting, and pass/fail output. Use owned fixture
 windows; explicitly requested recordings/renders are review artifacts. Do not
 add routine screenshot persistence or infer backend success from a popup.
 
-## Current repository status and next implementation step
+## Current implementation and next step
 
 `SurfaceGalleryWindow` previews individual controls. `VoiceOverlayPreviewWindow`
 is a legacy standalone microphone preview, with its own fixed-offset positioning;
 it does not implement this shared stack. Its current positioning must not be
 copied into production as proof of DPI/taskbar compliance.
 
-Implement one shared desktop host plus an isolated native placement adapter,
-ordered state/overflow management, and coordinated motion under this contract.
-Preview it with deterministic fixtures and pass P-01 through P-15 before
-connecting real core events. The existing signing-policy/runtime verification
-limitation remains recorded in `ui_formatting_review.md`; placement decisions
-are now settled, while desktop hosting, visual acceptance, and backend wiring
-remain pending. This contract does not define a new IPC protocol.
+`PopupStackHost` coordinates card-sized native windows through
+`PopupDesktopPlacement`, `PopupStackState`, and `PopupStackLayout`. The bounded
+queue admits at most 48 identities; callers must handle a false admission
+result and retain factual history. Existing identities update in place. A full
+queue does not silently delete active state. Routine displayed overflow fades
+out; protected/pending entries wait without offscreen windows or expiry.
 
-## Verification of this requirements update
+`MainWindow.Popups` creates the host lazily. Normal launch opens the main window;
+the legacy microphone fixture now requires `--voice-preview`. The explicit
+`--popup-stack-preview` and `--popup-stack-audit <directory>` paths use existing
+components and deterministic data, without microphone or core activation.
+
+The native adapter reads taskbar/monitor state, reserves full known auto-hide
+thickness with a conservative 64-DIP minimum, and observes shell/display events.
+Card XamlRoot changes also trigger measurement for DPI changes. Geometry changes
+snap into verified safe bounds before further motion; an in-flight exit can
+finish immediately when its old bounds are no longer safe. No Windows setting
+is modified. Finish the remaining acceptance cases before real event wiring.
+This contract does not define a new IPC protocol.
+
+## Historical verification of the requirements-only update
 
 - Confirmed that membership covers exactly the 15 surface IDs selected by the
   owner, with voice 11-14 grouped as one entry.
@@ -223,5 +243,6 @@ remain pending. This contract does not define a new IPC protocol.
   and a legacy-host comment; no layout, palette, core behavior, or IPC change
   is being claimed by this documentation commit.
 
-The acceptance cases above remain pending implementation/execution. No motion
-or auto-hide-taskbar runtime pass is claimed by these source/document checks.
+Those source/document checks predated the implementation. Current executed
+native and simulated evidence is in `popup_stack_verification.md`; that report
+does not infer physical taskbar interaction from a static capture.

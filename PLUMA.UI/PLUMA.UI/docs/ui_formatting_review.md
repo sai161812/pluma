@@ -1,6 +1,6 @@
 # All-surface formatting review
 
-Date: 2026-10-18. Branch: `ui-polish`. Product changes through `c62fd9f`.
+Date: 2026-10-18. Branch: `ui-polish`. Includes the runtime fixes in `0127744`.
 Scope: owner-directed appearance and message formatting before placement/wiring.
 
 Owner correction on 2026-10-18: PLUMA is dark-only, matching the owner's Windows
@@ -9,21 +9,22 @@ viewer, exports, formatting audit, and control-preview harness now use Dark
 only. Light-theme support and review are outside the requested scope. The
 current exporter produces 26 dark component renders, plus stress fixtures.
 
-**Implementation and build checks are complete. Final native visual/layout
-acceptance is blocked and has not passed.** Windows Application Control refused
-the rebuilt preview executable, including the final launch attempt. Event 3077
-reports enterprise signing requirements. No security policy was changed. Under
-`AGENTS.md`, this is not a fully accepted UI phase; no owner-approved limitation
-is assumed, and wiring has not started.
+**Current native formatting audit: 195 checks passed, with all 26 Dark renders.
+Native control runner: 35 UI checks passed.** The shared desktop host also has
+passing native fixture evidence, documented in
+[popup_stack_verification.md](popup_stack_verification.md). Current executables
+launched normally without changing security policy. Earlier signing failures
+are historical. Physical display/taskbar, accessibility and owner motion review
+remain open; Phase 14 and backend wiring are not claimed complete.
 
 ## Review against the four requirements
 
 | Requirement | Implementation and evidence | Remaining evidence |
 |---|---|---|
-| Native Windows appearance | Reviewed all 26 surfaces against `PLUMA_WINDOWS_11_UI_STYLE_MAPPING.md` and existing components. Standard WinUI resources, Acrylic floating surfaces, card fills in Dashboard, native conflict dialog, and native committed InfoBar. | Inspect the final build in Dark. Earlier renders are historical references. |
-| Long text fits notifications | Shared `PopupMessageText` uses word/character wrapping and bounded native vertical scrolling, without ellipsis or a line-count cutoff. Body text remains readable; captions stay at least 12px. Transcript viewport is 64 DIPs within the existing 460x276 voice overlay. | Run the native long-word, Unicode, scrolling, enlarged-text, and transcript-follow checks. |
-| Status elements align with captions | Shared `PopupStatusIndicator` centers dots, checkmarks, spinners, and text in the same grid row. ProgressRing minimum dimensions are explicitly removed so a 14-DIP ring fits. Text line height adapts to its size. | Run the measured center-alignment checks, including enlarged captions. |
-| No underscores or em dashes in messages | Static scan passes for all 33 compiled XAML files. Display-only formatting converts tool/state labels and sanitized argument fields; removes both separators; preserves line breaks, file extensions, Unicode, and normal ellipses. Raw transcripts, arguments, event messages, and ledger data are preserved. | Native audit also scans the actual visible TextBlocks. |
+| Native Windows appearance | All 26 Dark renders inspected against `PLUMA_WINDOWS_11_UI_STYLE_MAPPING.md` and existing controls. Standard WinUI resources, Acrylic floating surfaces, native conflict dialog and committed InfoBar; no new dark palette. | Physical display/accessibility and owner review remain. |
+| Long text fits notifications | Shared `PopupMessageText` wraps and uses bounded native scrolling, readable font sizes, no ellipsis or line-count cutoff. A finite 460-DIP maximum also bounds InfoBar's initially infinite content measure. The transcript stays within its existing 460x276 host. | Native long-word, Unicode, enlarged-text, scrolling and transcript-follow checks pass; other physical DPI remains open. |
+| Status elements align with captions | Shared `PopupStatusIndicator` centers glyphs/spinners and text in one grid row; a 14-DIP ProgressRing has no conflicting minimum size. | Native measured centers pass, including enlarged captions. |
+| No underscores or em dashes in messages | Display-only normalization preserves raw values and factual data. All 33 compiled XAML files pass the copy scan. | Actual visible TextBlocks pass the native scan. |
 
 ## Surface review
 
@@ -93,24 +94,27 @@ The first intermediate build exported 52 native renders into
 problem subsequently fixed by themed XAML roots. Those images predate the final
 alignment/material/contrast changes and do not prove current acceptance.
 
-The final normal executable launch for `output/ui-formatting-preview/PLUMA.UI.exe`
-was refused by Windows Application Control. Consequently, neither final renders
-nor a passing `formatting-checks.txt` exist for this version. The separate WinUI
-behavior harness also retains its previously recorded execution blocker. Older
-test outputs must not be counted as current passes.
+The earlier `output/ui-formatting-preview/PLUMA.UI.exe` launch was refused by
+Windows Application Control. Those old outputs are not current acceptance
+evidence. The current normal launch succeeds: all 26 Dark renders and 195
+passing formatting checks are in `output/surface-gallery-final-audit/`.
+The current control runner also launches and reports 35 passing UI checks in
+`SurfaceControls.Tests/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/control-tests.txt`.
 
 The explicit gallery export now includes a fail-fast native audit of every
 surface in Dark, long unbroken words/Unicode, 150% message/caption text,
 foreground theme, viewport bounds, reachable last lines, glyph/text centers,
 transcript follow/read-back behavior, and committed-banner fit. It writes
-`formatting-checks.txt` and `stress-*.png`; these checks are **implemented but
-unexecuted**, rather than claimed as passing. Enlarged text is not a substitute
+`formatting-checks.txt` and `stress-*.png`; these checks now **pass in Dark**.
+Enlarged text is not a substitute
 for physical DPI, high-contrast, keyboard, or screen-reader acceptance.
 
-Next step: execute `./PLUMA.UI/preview-surfaces.ps1 -Export` and the WinUI behavior
-harness in an environment whose signing policy permits the development build,
-then inspect the resulting native previews. Resolve any failures before the
-separate wiring task or a full Phase 14 completion claim.
+The runtime audit found and fixed an unconstrained InfoBar long-word measure;
+the native control runner found and fixed pre-layout OCR bounds validation.
+Its Dark health-brush assertion now compares with an actual theme-resource
+probe, rather than assuming live dictionary insertion changes the OS theme.
+No production health color changed. Next: finish physical/interactive placement
+checks in the stack report before separate wiring or a full Phase 14 claim.
 
 ## Dark-only correction verification
 
@@ -122,9 +126,9 @@ artifacts; no new light renders are requested or generated.
 
 The copy scan still passes for 33 compiled XAML files, and the contract harness
 still reports 30 checks passed. Both the app preview and control harness build
-with zero warnings/errors. Runtime acceptance retains the recorded signing-policy
-limitation; removal of the light review requirement does not mark pending dark
-layout/behavior checks as passed. No wiring or backend behavior changed.
+with zero warnings/errors. Subsequent current native execution passes as
+recorded above; older blocked runs are retained as historical evidence.
+No wiring or backend behavior changed.
 
 ## Owner placement direction recorded
 
@@ -132,10 +136,11 @@ On 2026-10-18 the owner chose bottom-right placement for surfaces 4-9, 11-14,
 17, 19-21, and 24. New arrivals belong below older visible entries, which slide
 up smoothly; entry/exit, edge clearance, spacing, overflow, and auto-hide taskbar
 reveal must remain clean. Keep the existing dark appearance. The detailed
-implementation contract and pending P-01 through P-15 acceptance cases are in
+implementation contract and P-01 through P-15 acceptance cases are in
 [popup_placement_contract.md](popup_placement_contract.md).
 
-Placement selection is settled. The shared desktop host and these runtime
-checks are pending; the isolated catalogue and legacy voice preview do not
-satisfy the new stack requirements. This update records behavior and clarifies
-preview copy, with no backend wiring or palette/component redesign.
+The shared desktop host is implemented and its native fixture audit passes.
+The isolated catalogue and legacy voice preview remain separate from the host.
+See `popup_stack_verification.md` for executed evidence and remaining real
+taskbar/DPI/accessibility/owner-motion checks. No backend wiring or palette
+redesign is included.

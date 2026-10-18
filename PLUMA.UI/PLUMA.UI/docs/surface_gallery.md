@@ -2,8 +2,9 @@
 
 This is an owner-review catalogue of the actual 26 WinUI components, shown
 one at a time. The owner has specified a shared bottom-right popup stack in
-[popup_placement_contract.md](popup_placement_contract.md). This catalogue does
-not yet demonstrate that desktop placement or stack motion. All displayed task,
+[popup_placement_contract.md](popup_placement_contract.md). This catalogue
+shows individual components. Its **Desktop stack preview** button opens the
+shared native host for placement and motion review. All displayed task,
 voice, OCR, health, notification, and setup values are preview fixtures.
 The owner specified dark-only appearance. The app and all previews default to
 Dark; there is no theme selector or light-version review requirement.
@@ -24,7 +25,8 @@ machine. It does not install a runtime, change security settings, or change the
 default production build. Restore project dependencies first on a fresh checkout.
 
 The optional Visual Studio **PLUMA.UI (Surface Gallery)** launch profile opens
-that same previously built executable. The normal app launch path is unchanged.
+that same previously built executable. Normal app launch opens MainWindow;
+the legacy microphone preview is opt-in with `--voice-preview`.
 
 Use the numbered picker to inspect any surface and the state buttons to
 inspect variants, all in Dark. The gallery starts
@@ -55,10 +57,10 @@ start the backend, run tools, capture audio, perform OCR, or terminate workers.
 ## Verification
 
 For the latest all-surface formatting pass, see
-[ui_formatting_review.md](ui_formatting_review.md). The current development
-executable is blocked by Windows Application Control signing requirements;
-the earlier render counts below must not be treated as final formatting passes.
-On an approved runner, the current export produces 26 dark renders and also runs `SurfaceGalleryAudit.cs`, writes
+[ui_formatting_review.md](ui_formatting_review.md). The current executable
+launched normally and exported 26 Dark renders with **195 passing formatting
+checks**. Earlier signing failures are historical; no security policy was
+changed. The current export runs `SurfaceGalleryAudit.cs`, writes
 `formatting-checks.txt` and long-text `stress-*.png`, and fails on layout/copy
 assertions. Its 150% text-size stress does not change OS settings or validate
 physical display scaling. Preview actions are disabled while export runs.
@@ -66,12 +68,25 @@ physical display scaling. Preview actions are disabled while export runs.
 - Preview build: zero warnings, zero errors.
 - State/catalogue harness: 30 checks passed, including every surface ID 1–26
   exactly once and readable popup-copy formatting.
-- Historical gallery export before the dark-only direction: 52 component renders
-  completed, recorded in
-  `output/ui-surface-gallery/gallery-report.txt`.
-- This confirms component construction/rendering for the review catalogue.
-  It is not a claim that the previously blocked UI behavior assertions passed,
-  nor that placement, DPI/accessibility, or backend acceptance is complete.
+- Native control runner: **35 UI checks passed**, including surfaces 16/17.
+- All-surface current output: `output/surface-gallery-final-audit/`.
+- Physical DPI/accessibility and backend acceptance remain separate checks.
 
-Popup placement is specified in the shared contract. Desktop stack
-implementation, visual/behavior acceptance, and backend wiring remain pending.
+## Review the desktop stack
+
+```powershell
+./PLUMA.UI/preview-popup-stack.ps1
+./PLUMA.UI/preview-popup-stack.ps1 -Audit
+```
+
+The first command opens a fixture controller for all 15 participating surface
+IDs. Use Burst, Long message, dismissal controls and the local motion checkbox.
+Voice 11-14 shares one entry; task/tool updates keep their stable identity.
+The audit writes its own timestamped output directory and exercises native
+positions, opacity, expiry, overflow and cleanup. Controls are disabled while an
+audit is running. All fixture work is owned by the controller and cancelled
+when it closes. Normal startup does not create fixture popups.
+
+Current results and remaining physical/interactive cases are in
+[popup_stack_verification.md](popup_stack_verification.md). Backend wiring is
+still a separate phase.
