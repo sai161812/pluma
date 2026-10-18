@@ -10,6 +10,11 @@ and remaining physical/interactive checks are in
 [popup_stack_verification.md](popup_stack_verification.md). Surface purposes and
 wiring references below remain future integration references.
 
+Owner refinement (2026-10-19): lower the stack while the taskbar is hidden,
+glide up/down with reveal/hide, and keep identical sizes within each notification
+class. The source is updated; current native execution is blocked. See
+[popup_placement_refinement.md](popup_placement_refinement.md) before wiring.
+
 All surfaces wire directly to the resident core via `pluma.core.ipc` (named pipe / JSON-RPC).  
 No surface requires polling — all state changes are event-driven from the core.
 

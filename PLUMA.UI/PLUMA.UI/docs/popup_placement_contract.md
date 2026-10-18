@@ -1,9 +1,11 @@
 # Shared bottom-right popup placement contract
 
 Date: 2026-10-18. Branch: `ui-polish`.
-Status: shared desktop stack implemented and exercised by the native fixture
-audit. Physical taskbar interaction, other real display configurations, and
-owner motion review remain open; see [popup_stack_verification.md](popup_stack_verification.md).
+Owner refinement: 2026-10-19, following two marked desktop screenshots.
+Status: the lower hidden-taskbar anchor, reveal/hide glide and stable class
+sizes are implemented. The current native preview launch is blocked by Windows
+Application Control. Current checks and pending runtime evidence are in
+[popup_placement_refinement.md](popup_placement_refinement.md).
 This document is the reference before backend wiring. Existing controls,
 their dark resources, and their approved appearance remain the starting point.
 
@@ -18,6 +20,11 @@ their dark resources, and their approved appearance remain the starting point.
 - Several notifications must form a clean, readable stack.
 - Placement accounts for the owner's auto-hide taskbar, including its reveal
   when the pointer moves to the bottom edge.
+- With the taskbar hidden, use the lower screen-edge anchor, roughly matching
+  the owner's marked area. Do not reserve the entire invisible taskbar footprint.
+  When it reveals, glide up above it; when it fully hides, glide back down.
+- Every notification in the same class has the same width and height. Short
+  and long messages must not produce miniature or oversized variants.
 - Entry, reflow, and disappearance are smooth. Completion must not cause an
   abrupt visual collapse.
 - Keep the existing native Windows dark appearance. This is layout and motion
@@ -51,7 +58,7 @@ values, drawn from the existing spacing scale, when implementing that direction:
 | Space between entries | 12 DIPs |
 | Right alignment | A common right edge for every visible entry |
 | Stack width | At most the existing 460-DIP voice width, clamped to available space |
-| Component dimensions | Preserve current approved widths/heights where they fit; align narrower cards to the same right edge |
+| Component dimensions | Stable class footprints below, clamped only when the usable display is smaller |
 | Text | Existing bounded wrapping/scrolling and readable font sizes |
 
 The implementation reserves another 8 DIPs inside the 24-DIP clearance for native
@@ -59,8 +66,23 @@ shadows, and measures each native window's frame outside its client area. The
 460-DIP limit applies to component content; outer bounds include that frame.
 Include shadow and motion extents inside the outer clearance. Measure content
 before positioning it. A taller message must not push another entry offscreen.
-Clamp available dimensions before arranging text; keep the transcript in its
-bounded viewport so partial words do not repeatedly resize the desktop stack.
+Clamp available dimensions before arranging text. Longer content scrolls within
+the fixed class footprint; it never enlarges the outer window. The existing
+voice geometry and transcript viewport remain unchanged.
+
+| Class / surface IDs | Content size in DIPs |
+|---|---|
+| Task/progress/STOP/termination: 4, 5, 20, 21 | 360 x 152 |
+| Route: 6 | 260 x 112 |
+| Tool call/result: 7, 8 | 420 x 176 |
+| Rollback: 9 | 380 x 276 |
+| Unified voice: 11-14 | Existing 460 x 276 |
+| Verification/policy/general notice: 17, 19, 24 | 400 x 112 |
+
+`PopupSizing.cs` is the single size source. Existing dark resources, native
+controls, text sizes, inner padding and status alignment remain the starting
+point. Fixed native client dimensions and the existing scroll viewports keep
+message length from changing class size.
 
 Let `safe` be the selected monitor's usable rectangle after taskbar/appbar
 exclusions. In DIPs, arrange visible entries from newest to oldest:
@@ -85,17 +107,21 @@ unshowable routine entries pending instead of partially displaying them.
 
 - Select the monitor associated with the invoking task/voice activation. Use
   the PLUMA window's monitor as fallback, then the primary display. Keep one
-  stack on that monitor; a pointer moving toward the taskbar must not move it.
+  stack on that monitor; pointer movement does not select another monitor.
+  Actual taskbar reveal/hide changes only the stack's anchor.
 - Read the monitor's current work area and docked appbar exclusions. Explicitly
   normalize monitor-relative coordinates and desktop coordinates. Test monitors
   with negative origins and non-primary positions.
 - Keep DIPs and AppWindow pixel coordinates separate. Convert once at the
   native window boundary using that monitor/window's current DPI.
-- Detect an auto-hide appbar on the selected monitor. Reserve clearance for
-  its full revealed footprint while it is hidden. The narrow activation strip
-  alone is not adequate clearance.
+- Detect an auto-hide appbar on the selected monitor. Use its current on-screen
+  window bounds to distinguish the hidden activation strip (at most 2 DIPs)
+  from a revealing bar. Cache its measured full thickness. As soon as reveal
+  begins, glide toward the full-thickness exclusion; hold that raised anchor
+  until the bar has fully retreated to the activation strip. Do not use the
+  narrow strip as the revealed bar's full thickness.
 - Do not add the same taskbar exclusion twice when the work area already
-  reserves it. The stack must stay above the taskbar when it appears and must
+  reserves it. The raised stack must stay above the taskbar and must
   leave the edge activation strip available to Windows.
 - Re-read/reflow on taskbar configuration, work-area, display, or DPI changes,
   including monitor disconnection and resolution changes. Use native events;
@@ -168,6 +194,12 @@ semantics.
    releases them on dismissal, unload, or shutdown. Visual dismissal does not
    report task success or cancel a task implicitly.
 
+Taskbar reveal/hide uses a shared 200-ms reflow clock and pixel-rounded
+translations so neighboring cards retain their gap. If a card is already
+exiting, all participating translations use the same 160-ms clock while its
+opacity fades. An unsafe overflow or a real monitor/DPI/work-area change may
+still require an immediate safe reflow instead of moving content offscreen.
+
 [RepositionThemeTransition](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.media.animation.repositionthemetransition?view=windows-app-sdk-2.0)
 is a native reference for layout reflow. Microsoft documents its restriction
 with virtualizing panels, so use an appropriate bounded layout or composition
@@ -186,8 +218,8 @@ remaining physical/interactive cases are recorded separately in
 | P-02 | A, then B, then C | Visible order A/B/C from top to bottom; each arrival smoothly moves earlier entries up |
 | P-03 | Remove middle, oldest, then newest | Exit completes cleanly; survivors reflow with no overlap or abrupt collapse |
 | P-04 | Mixed voice, tool, progress, and notices | One shared lane; voice uses one entry; consistent right edge and 12-DIP gaps |
-| P-05 | Long text, long words, Unicode, enlarged text | Bounded wrapping/scrolling; readable content and controls stay on screen |
-| P-06 | Auto-hide taskbar hidden, then revealed by bottom-edge pointer movement | Stack remains clear of the full taskbar; reveal behavior still works; no clipping or jump caused by pointer movement |
+| P-05 | Long text, long words, Unicode, enlarged text | Fixed class size; bounded wrapping/scrolling; readable content and controls stay on screen |
+| P-06 | Auto-hide taskbar hidden, revealed by bottom-edge pointer movement, then hidden | Lower anchor while hidden; smooth upward glide on reveal and downward glide after hide; edge activation still works; stable card sizes and gaps |
 | P-07 | Taskbar auto-hide toggled, docked area changed, Explorer/taskbar restarted | Geometry is refreshed and the stack remains within verified safe bounds |
 | P-08 | 100%, 125%, 150%, 200% DPI; negative-origin secondary monitor | Insets/gaps retain their DIP sizes; pixel conversion and selected monitor are correct |
 | P-09 | Resolution change, smaller work area, monitor disconnect | Stack reflows or retires/queues overflow; no entry is stranded offscreen |
@@ -222,12 +254,13 @@ the legacy microphone fixture now requires `--voice-preview`. The explicit
 `--popup-stack-preview` and `--popup-stack-audit <directory>` paths use existing
 components and deterministic data, without microphone or core activation.
 
-The native adapter reads taskbar/monitor state, reserves full known auto-hide
-thickness with a conservative 64-DIP minimum, and observes shell/display events.
-Card XamlRoot changes also trigger measurement for DPI changes. Geometry changes
-snap into verified safe bounds before further motion; an in-flight exit can
-finish immediately when its old bounds are no longer safe. No Windows setting
-is modified. Finish the remaining acceptance cases before real event wiring.
+The native adapter reads taskbar/monitor state and observes shell/display events.
+It distinguishes an actually hidden auto-hide bar from a revealed one. Measured
+full thickness is reserved only during reveal; unverified geometry falls back
+to a conservative 64-DIP reservation. Card XamlRoot changes trigger DPI
+measurement. Taskbar visibility changes glide; unrelated geometry changes snap
+into safe bounds. No Windows setting is modified. Finish the current native
+acceptance cases before real event wiring.
 This contract does not define a new IPC protocol.
 
 ## Historical verification of the requirements-only update

@@ -57,10 +57,12 @@ start the backend, run tools, capture audio, perform OCR, or terminate workers.
 ## Verification
 
 For the latest all-surface formatting pass, see
-[ui_formatting_review.md](ui_formatting_review.md). The current executable
-launched normally and exported 26 Dark renders with **195 passing formatting
-checks**. Earlier signing failures are historical; no security policy was
-changed. The current export runs `SurfaceGalleryAudit.cs`, writes
+[ui_formatting_review.md](ui_formatting_review.md). The component baseline
+exported 26 Dark renders with **195 passing formatting checks**. The subsequent
+lower-placement/class-size refinement builds, but its fresh executable is again
+blocked by Windows Application Control; see
+[popup_placement_refinement.md](popup_placement_refinement.md). No security policy
+was changed. The export runs `SurfaceGalleryAudit.cs`, writes
 `formatting-checks.txt` and long-text `stress-*.png`, and fails on layout/copy
 assertions. Its 150% text-size stress does not change OS settings or validate
 physical display scaling. Preview actions are disabled while export runs.
@@ -87,6 +89,6 @@ positions, opacity, expiry, overflow and cleanup. Controls are disabled while an
 audit is running. All fixture work is owned by the controller and cancelled
 when it closes. Normal startup does not create fixture popups.
 
-Current results and remaining physical/interactive cases are in
-[popup_stack_verification.md](popup_stack_verification.md). Backend wiring is
+Current placement checks and remaining native/physical cases are in
+[popup_placement_refinement.md](popup_placement_refinement.md). Backend wiring is
 still a separate phase.

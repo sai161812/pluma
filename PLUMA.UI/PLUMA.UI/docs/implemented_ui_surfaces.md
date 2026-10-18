@@ -24,11 +24,12 @@ The full geometry, auto-hide taskbar, overflow, lifetime, and acceptance contrac
 is [popup_placement_contract.md](popup_placement_contract.md).
 
 The shared desktop stack is implemented in `PopupStackHost`, with an isolated
-native placement adapter and pure queue/layout model. Its opt-in native audit
-passes 504 checks; the all-surface gallery passes 195 formatting checks and the
-native control runner passes 35 UI checks. Physical display/taskbar interaction
-and owner motion review remain open; see
-[popup_stack_verification.md](popup_stack_verification.md). The legacy standalone
+native placement adapter and pure queue/layout model. The owner subsequently
+requested a lower hidden-taskbar anchor, reveal/hide glide and stable class
+sizes. Those changes build and pass 64,537 pure checks; their new native checks
+are blocked from launch by Windows Application Control. Current evidence is in
+[popup_placement_refinement.md](popup_placement_refinement.md); earlier 504 native,
+195 formatting and 35 UI checks remain baseline evidence. The legacy standalone
 voice preview is not acceptance evidence for this host.
 
 ## Implemented UI components
@@ -269,6 +270,6 @@ For the next workspace:
 1. Preserve all completed surface files listed above.
 2. The owner subsequently authorized formatting all surfaces before wiring. Preserve that pass, documented in `ui_formatting_review.md`, and the existing visual direction.
 3. Preserve the passing native component and formatting checks; use the gallery for owner appearance review.
-4. Finish the remaining physical/interactive cases recorded in `popup_stack_verification.md` before wiring floating surfaces.
+4. Execute the newly blocked native size/glide checks in `popup_placement_refinement.md`, then finish physical/interactive cases before wiring floating surfaces.
 5. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
 6. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.

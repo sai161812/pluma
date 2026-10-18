@@ -3,6 +3,13 @@
 Date: 2026-10-18. Branch: `ui-polish`. Includes the runtime fixes in `0127744`.
 Scope: owner-directed appearance and message formatting before placement/wiring.
 
+**Latest placement refinement (2026-10-19):** lower hidden-taskbar positioning,
+reveal/hide glide and stable notification-class sizes are implemented and pass
+pure checks. Their fresh native preview is blocked by Application Control;
+see [popup_placement_refinement.md](popup_placement_refinement.md). The 195 native
+formatting and 35 control results below remain component-baseline evidence,
+not acceptance of the new hosted class dimensions.
+
 Owner correction on 2026-10-18: PLUMA is dark-only, matching the owner's Windows
 appearance. `App.xaml` explicitly requests Dark. The native gallery, HTML
 viewer, exports, formatting audit, and control-preview harness now use Dark

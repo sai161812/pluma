@@ -1,5 +1,11 @@
 # Popup stack implementation and audit
 
+**Historical baseline:** the owner refined placement and class sizes on
+2026-10-19. Current source changes, passing pure checks and the new native-launch
+block are recorded in [popup_placement_refinement.md](popup_placement_refinement.md).
+The 504 native checks below predate that refinement and do not accept its new
+size or taskbar-glide behavior.
+
 Date: 2026-10-19. Branch: `ui-polish`. Owner appearance and placement contract:
 [popup_placement_contract.md](popup_placement_contract.md).
 
