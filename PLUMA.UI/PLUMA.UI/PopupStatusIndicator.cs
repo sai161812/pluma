@@ -36,7 +36,7 @@ namespace PLUMA.UI
                 Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center };
             _dot = new InfoBadge { Width = 6, Height = 6, MinWidth = 0, MinHeight = 0,
                 VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-            _label = new TextBlock { FontSize = 12, LineHeight = 16, LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+            _label = new TextBlock { FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_label, 1);
             foreach (FrameworkElement element in new FrameworkElement[] { _progress, _success, _dot, _label }) row.Children.Add(element);

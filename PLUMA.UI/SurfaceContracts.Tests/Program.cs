@@ -14,6 +14,7 @@ Check(PopupText.Label("ocr_rescan") == "Screen text check", "verification method
 Check(PopupText.Label("uia") == "Windows accessibility check", "verification abbreviations have readable names");
 Check(PopupText.Message("Ready \u2014 \u2014 continue") == "Ready. continue", "repeated separators do not create odd punctuation");
 Check(PopupText.Message("Ready. \u2014 continue") == "Ready. continue", "existing sentence punctuation is retained cleanly");
+Check(PopupText.Message("Waiting...") == "Waiting...", "human ellipses are preserved without odd punctuation");
 Check(PopupText.Message(" ___ \u2014 __ ") == "", "separator-only messages become empty");
 Check(PopupText.Message("first_line\r\nsecond_line") == "first line\r\nsecond line", "intentional message line breaks are preserved");
 string unicodeMessage = "\u65e5\u672c\u8a9e_\u2014\ud83d\udcc4 " + new string('W', 2000);

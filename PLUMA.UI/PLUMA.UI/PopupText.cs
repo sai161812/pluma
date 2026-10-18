@@ -36,8 +36,15 @@ namespace PLUMA.UI
             string text = value ?? string.Empty;
             text = Regex.Replace(text, @"\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b",
                 match => Labels.TryGetValue(match.Value, out string? label) ? label : match.Value.Replace('_', ' '));
-            text = Regex.Replace(text.Replace('_', ' '), @"(?:\s*\u2014\s*)+", ". ");
-            text = Regex.Replace(text, @"([.!?:;])\s*\.\s*", "$1 ");
+            string separated = text.Replace('_', ' ');
+            text = Regex.Replace(separated, @"(?:\s*\u2014\s*)+", match =>
+            {
+                int previous = match.Index - 1;
+                int next = match.Index + match.Length;
+                bool hasPunctuation = previous < 0 || ".!?:;".IndexOf(separated[previous]) >= 0 ||
+                    (next < separated.Length && ".!?:;".IndexOf(separated[next]) >= 0);
+                return hasPunctuation ? " " : ". ";
+            });
             text = Regex.Replace(text, @"[^\S\r\n]+", " ");
             text = Regex.Replace(text, @"[ \t]+([.,:;!?])", "$1");
             text = Regex.Replace(text, @"^\.\s+", string.Empty);
