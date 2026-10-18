@@ -88,12 +88,9 @@ namespace PLUMA.UI
             Check(_host.Snapshot().All(p=>p.Key!="B"),"dismissed native window is removed after exit");
             _host.Clear(); await Settle();
             Check(_host.Count==0 && !_host.TimerRunning,"empty stack releases its timer");
-            if(_host.MotionEnabled)
-            {
-                Check(frames.SelectMany(frame=>frame).Any(card=>card.Opacity>0 && card.Opacity<1),"native opacity readback includes intermediate fade frames");
-                Check(frames.SelectMany(frame=>frame).Where(card=>card.Key=="A").Select(card=>card.Bounds.Y).Distinct().Count()>2,
-                    "native position readback includes intermediate reflow frames");
-            }
+            Check(frames.SelectMany(frame=>frame).Any(card=>card.Opacity>0 && card.Opacity<1),"native opacity readback includes intermediate fade frames");
+            Check(frames.SelectMany(frame=>frame).Where(card=>card.Key=="A").Select(card=>card.Bounds.Y).Distinct().Count()>2,
+                "native position readback includes intermediate reflow frames");
             Check(frames.All(frame=>frame.Where(card=>card.Opacity>0.01).SelectMany((a,i)=>frame.Where(card=>card.Opacity>0.01).Skip(i+1).Select(b=>!a.Bounds.Overlaps(b.Bounds))).All(ok=>ok)),
                 "no visible overlap in sampled animation frames");
 
@@ -181,13 +178,13 @@ namespace PLUMA.UI
             PopupRect rising=_host.Snapshot().Single().Bounds;
             await Settle(); Bounds();
             PopupRect raised=_host.Snapshot().Single().Bounds;
-            Check(raised.Y<lowered.Y && (!_host.MotionEnabled || rising.Y<lowered.Y && rising.Y>raised.Y),"taskbar reveal has intermediate native glide positions rather than a jump");
+            Check(raised.Y<lowered.Y && rising.Y<lowered.Y && rising.Y>raised.Y,"taskbar reveal has intermediate native glide positions rather than a jump");
             Check(raised.Width==lowered.Width && raised.Height==lowered.Height,"taskbar movement preserves the notification size");
             placement.ForceTaskbar(false);
             await Task.Delay(50,token);
             PopupRect falling=_host.Snapshot().Single().Bounds;
             await Settle(); Bounds();
-            Check(_host.Snapshot().Single().Bounds==lowered && (!_host.MotionEnabled || falling.Y>raised.Y && falling.Y<lowered.Y),"taskbar hide glides back to the same lower anchor");
+            Check(_host.Snapshot().Single().Bounds==lowered && falling.Y>raised.Y && falling.Y<lowered.Y,"taskbar hide glides back to the same lower anchor");
             _host.Dismiss("taskbar");
             placement.ForceTaskbar(true);
             await Settle();
