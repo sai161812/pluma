@@ -54,7 +54,7 @@ namespace PLUMA.UI
             await Settle(); Bounds();
             Check(PopupDesktopPlacement.Native.GetForegroundWindow()==foreground,"routine presentation does not steal foreground focus");
             report.WriteLine($"DISPLAY {_host.Desktop}");
-            foreach(var bar in _host.Desktop!.AutoHideBars) report.WriteLine($"AUTOHIDE {bar.Edge}: reserved {bar.ThicknessPixels:0.##} physical pixels");
+            foreach(var bar in _host.Desktop!.AutoHideBars) report.WriteLine($"AUTOHIDE {bar.Edge}: full height {bar.ThicknessPixels:0.##} physical pixels; revealed {bar.IsRevealed}");
             var b=new ToastNotification(); b.Show("Second preview notice");
             double oldY=_host.Snapshot().Single(p=>p.Key=="A").Bounds.Y;
             Check(_host.Present("B",24,b,lifetime:TimeSpan.FromSeconds(30)),"second presentation admitted");
@@ -62,6 +62,7 @@ namespace PLUMA.UI
             Check(_host.Snapshot().Where(p=>p.Opacity>0.01).All(p=>PopupStackLayout.ContentArea(_host.Desktop!).Contains(p.Bounds,1)),"entry/reflow path stays inside usable bounds");
             await Settle(); Bounds();
             var visible=_host.Snapshot();
+            Check(visible[0].Bounds.Width==visible[1].Bounds.Width && visible[0].Bounds.Height==visible[1].Bounds.Height,"same-class notices have identical native sizes");
             Check(visible.Select(p=>p.Key).SequenceEqual(new[]{"A","B"}) && visible[0].Bounds.Y<oldY,"newest is below and the earlier card moved up");
             var replacement=new ToastNotification(); replacement.Show("Updated second notice");
             nint originalHandle=_host.HandleFor("B");
@@ -104,6 +105,9 @@ namespace PLUMA.UI
                 Check(_host.Present("sample",surface,CreateFixture(surface),persistent:true),$"surface {surface} admitted with existing dark component");
                 await Settle(); Bounds();
                 Check(_host.Windows.All(w=>w.Root.ActualTheme==ElementTheme.Dark),$"surface {surface} uses Dark");
+                PopupClassSize profile=PopupSizing.ForSurface(surface);
+                Check(_host.Windows.All(window=>Math.Abs(window.Root.ActualWidth-profile.WidthDips)<=1 && Math.Abs(window.Root.ActualHeight-profile.HeightDips)<=1),
+                    $"surface {surface} matches its stable class client dimensions");
                 foreach(var window in _host.Windows) await CaptureCardAsync(window,Path.Combine(directory,$"surface-{surface:00}-dark.png"),token);
                 _host.Clear(); await Settle();
             }
@@ -120,6 +124,8 @@ namespace PLUMA.UI
             await Settle(); Bounds();
             var message=(PopupMessageText)longNotice.FindName("NoticeText");
             Check(!message.DisplayText.Contains('_') && !message.DisplayText.Contains('\u2014') && message.MessageScroll.ScrollableWidth<=1,"long popup copy is readable and horizontally bounded");
+            var longBounds=_host.Snapshot().Single().Bounds;
+            Check(Math.Abs(longBounds.Width-visible[1].Bounds.Width)<=1 && Math.Abs(longBounds.Height-visible[1].Bounds.Height)<=1,"long content retains the same notice footprint");
             _host.Clear(); await Settle();
             Check(_host.Present("task",4,new TaskRunningPopup()),"active task fixture admitted before burst");
             await Settle();
@@ -137,6 +143,28 @@ namespace PLUMA.UI
             _host.Dispose();
             var placement=new AuditPlacement(new PopupDesktopPlacement(WinRT.Interop.WindowNative.GetWindowHandle(this),DispatcherQueue));
             _host=new PopupStackHost(this,placement);
+            placement.ForceTaskbar(false);
+            Check(_host.Present("taskbar",24,CreateFixture(24),persistent:true),"taskbar glide fixture admitted");
+            await Settle();
+            PopupRect lowered=_host.Snapshot().Single().Bounds;
+            Check(Math.Abs(lowered.Bottom-PopupStackLayout.ContentArea(_host.Desktop!).Bottom)<=1,"hidden taskbar uses the lower screen-edge anchor");
+            placement.ForceTaskbar(true);
+            await Task.Delay(50,token);
+            PopupRect rising=_host.Snapshot().Single().Bounds;
+            await Settle(); Bounds();
+            PopupRect raised=_host.Snapshot().Single().Bounds;
+            Check(raised.Y<lowered.Y && (!_host.MotionEnabled || rising.Y<lowered.Y && rising.Y>raised.Y),"taskbar reveal has intermediate native glide positions rather than a jump");
+            Check(raised.Width==lowered.Width && raised.Height==lowered.Height,"taskbar movement preserves the notification size");
+            placement.ForceTaskbar(false);
+            await Task.Delay(50,token);
+            PopupRect falling=_host.Snapshot().Single().Bounds;
+            await Settle(); Bounds();
+            Check(_host.Snapshot().Single().Bounds==lowered && (!_host.MotionEnabled || falling.Y>raised.Y && falling.Y<lowered.Y),"taskbar hide glides back to the same lower anchor");
+            _host.Dismiss("taskbar");
+            placement.ForceTaskbar(true);
+            await Settle();
+            Check(_host.Count==0,"taskbar reveal during dismissal leaves no orphan card");
+            placement.ForceTaskbar(null);
             Check(_host.Present("geometry-task",4,new TaskRunningPopup()),"native geometry fixture admitted");
             await Settle();
             Check(_host.Present("geometry-notice",24,CreateFixture(24),persistent:true),"native geometry second entry admitted");
@@ -190,6 +218,7 @@ namespace PLUMA.UI
         {
             private readonly IPopupDesktopPlacement _native;
             private double _width=1,_height=1;
+            private bool? _taskbar;
             public bool Disposed {get;private set;}
             public bool Fail {get;set;}
             public event EventHandler? Changed;
@@ -200,8 +229,12 @@ namespace PLUMA.UI
                 if(Fail) throw new System.Runtime.InteropServices.COMException("Preview placement is unavailable.");
                 var desktop=_native.Read(referenceWindow);
                 var work=desktop.WorkArea;
+                if(_taskbar.HasValue)
+                    desktop=desktop with {WorkArea=desktop.Monitor, AutoHideBars=new[]{new PopupAppBar(PopupScreenEdge.Bottom,60*desktop.Scale,_taskbar.Value)}};
+                work=desktop.WorkArea;
                 return desktop with {WorkArea=new(work.X,work.Y,Math.Floor(work.Width*_width),Math.Floor(work.Height*_height))};
             }
+            public void ForceTaskbar(bool? revealed) { _taskbar=revealed;Changed?.Invoke(this,EventArgs.Empty); }
             public void SetArea(double width,double height,bool notify=true)
             { _width=width;_height=height;if(notify)Changed?.Invoke(this,EventArgs.Empty); }
             public void Watch(bool enabled)=>_native.Watch(enabled);

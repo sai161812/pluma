@@ -45,6 +45,7 @@ namespace PLUMA.UI
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollMode = ScrollMode.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch, ZoomMode = ZoomMode.Disabled };
+            _viewport.VerticalContentAlignment = VerticalAlignment.Stretch;
             Root.Children.Add(_viewport);
             Content = Root;
             try

@@ -21,7 +21,6 @@ namespace PLUMA.UI
             internal required string Key;
             internal required FrameworkElement Content;
             internal required int Surface;
-            internal required double PreferredWidth;
             internal PopupCardWindow? Window;
             internal PopupRect Target, From;
             internal double FromAlpha, ToAlpha, Start, Duration;
@@ -84,7 +83,6 @@ namespace PLUMA.UI
             if (!_entries.ContainsKey(key) && _entries.Count >= PopupStackState.Capacity) return false;
             AdvanceClock();
             bool pinned = persistent ?? surface is 4 or 5 or 7 or 9 or 11 or 12 or 14 or 20;
-            double preferred = double.IsFinite(content.Width) && content.Width > 0 ? content.Width : PopupStackLayout.MaximumWidthDips;
             if (_entries.Count == 0) _reference = referenceWindow == 0 ? _ownerHandle : referenceWindow;
             try
             {
@@ -95,14 +93,14 @@ namespace PLUMA.UI
                 {
                     entry = existing;
                     Detach(entry);
-                    entry.Content = content; entry.Surface = surface; entry.PreferredWidth = Math.Min(preferred,460);
+                    entry.Content = content; entry.Surface = surface;
                     entry.Closing = false;
                     entry.Window?.SetContent(content);
                     entry.Target = default;
                 }
                 else
                 {
-                    entry = new Entry { Key = key, Content = content, Surface = surface, PreferredWidth = Math.Min(preferred,460) };
+                    entry = new Entry { Key = key, Content = content, Surface = surface };
                     _entries[key] = entry;
                 }
                 Attach(entry);
@@ -163,12 +161,15 @@ namespace PLUMA.UI
             var chrome = entry.Window?.ChromePixels;
             double chromeWidth = chrome?.Width / desktop.Scale ?? _chromeWidth;
             double chromeHeight = chrome?.Height / desktop.Scale ?? _chromeHeight;
-            double width = Math.Max(1,Math.Min(entry.PreferredWidth,area.Width/desktop.Scale-chromeWidth));
+            PopupClassSize profile = PopupSizing.ForSurface(entry.Surface);
+            double width = Math.Max(1,Math.Min(profile.WidthDips,area.Width/desktop.Scale-chromeWidth));
             entry.Content.MinWidth = 0;
+            entry.Content.MinHeight = profile.HeightDips;
             entry.Content.Width = width;
             entry.Content.HorizontalAlignment = HorizontalAlignment.Stretch;
+            entry.Content.VerticalAlignment = VerticalAlignment.Stretch;
             entry.Content.Measure(new Size(width,double.PositiveInfinity));
-            double height = Math.Max(1,Math.Min(Math.Max(entry.Content.DesiredSize.Height,entry.Content.MinHeight)+chromeHeight,Math.Max(1,area.Height/desktop.Scale)));
+            double height = Math.Max(1,Math.Min(profile.HeightDips+chromeHeight,Math.Max(1,area.Height/desktop.Scale)));
             return new Size(width+chromeWidth,height);
         }
 
@@ -223,6 +224,8 @@ namespace PLUMA.UI
                 if(_entries.Count==0) { StopIfEmpty(); return; }
                 PopupDesktop next=_placement.Read(_reference);
                 bool geometryChanged=_desktop==null || PopupStackLayout.ContentArea(next)!=PopupStackLayout.ContentArea(_desktop) || next.Scale!=_desktop.Scale;
+                bool taskbarGlide=geometryChanged && _desktop!=null && PopupStackLayout.CanGlideForTaskbar(_desktop,next);
+                PopupDesktop? previous=_desktop;
                 _desktop=next;
                 bool resized=false;
                 foreach(Entry entry in _entries.Values.Where(e=>!e.Closing))
@@ -233,13 +236,15 @@ namespace PLUMA.UI
                     if(Math.Abs(size.Width-item.WidthDips)>0.5 || Math.Abs(size.Height-item.HeightDips)>0.5)
                     { item.WidthDips=size.Width; item.HeightDips=size.Height; resized=true; }
                 }
-                bool snap=force || geometryChanged || resized || !Animate;
+                bool snap=force || (geometryChanged && !taskbarGlide) || resized || !Animate;
+                if(taskbarGlide && !snap && _entries.Values.Any(e=>e.Closing) && GlideClosingStack(previous!,next))
+                { ArmTimer(); return; }
                 if(geometryChanged || force)
                     foreach(Entry closing in _entries.Values.Where(e=>e.Closing).ToArray()) RemoveEntry(closing);
                 if(_entries.Values.Any(e=>e.Closing)) { ArmTimer(); return; }
                 PopupStackPlan plan=_state.Plan(next);
                 foreach(string key in plan.Retire)
-                    if(snap && _entries.TryGetValue(key,out var retired)) RemoveEntry(retired); else Dismiss(key);
+                    if((snap || geometryChanged) && _entries.TryGetValue(key,out var retired)) RemoveEntry(retired); else Dismiss(key);
                 if(_entries.Values.Any(e=>e.Closing)) { ArmTimer(); return; }
                 var selected=plan.Placements.Select(p=>p.Key).ToHashSet(StringComparer.Ordinal);
                 foreach(Entry entry in _entries.Values.Where(e=>!selected.Contains(e.Key)).ToArray())
@@ -247,6 +252,7 @@ namespace PLUMA.UI
                     // Protected entries remain queued; no content extends outside the safe desktop.
                     if(entry.Window!=null) { CloseWindow(entry); _state.SetDisplayed(entry.Key,false); }
                 }
+                double motionStart=Now;
                 foreach(PopupPlacement place in plan.Placements)
                 {
                     Entry entry=_entries[place.Key];
@@ -282,13 +288,31 @@ namespace PLUMA.UI
                             entry.Window.Place(place.Bounds); entry.Target=place.Bounds; entry.Moving=false;
                             if(entry.Window.WasShown) { entry.Window.SetAlpha(1); _state.SetDisplayed(entry.Key,true); }
                         }
-                        else StartMotion(entry,place.Bounds,1,200);
+                        else StartMotion(entry,place.Bounds,1,200,motionStart);
                     }
                 }
                 RevealWaiting(snap);
                 ArmTimer();
             }
             finally { _reconciling=false; }
+        }
+
+        private bool GlideClosingStack(PopupDesktop previous,PopupDesktop next)
+        {
+            PopupRect before=PopupStackLayout.ContentArea(previous),after=PopupStackLayout.ContentArea(next);
+            double dx=after.Right-before.Right,dy=after.Bottom-before.Bottom;
+            PopupRect Shift(PopupRect rect)=>rect with {X=rect.X+dx,Y=rect.Y+dy};
+            var windows=_entries.Values.Where(entry=>entry.Window!=null).ToArray();
+            if(windows.Any(entry=>!after.Contains(Shift(entry.Target)))) return false;
+            double motionStart=Now;
+            foreach(var entry in windows)
+            {
+                PopupRect target=Shift(entry.Target);
+                // Move every card on the same clock; differing exit/reflow durations can narrow the gap.
+                if(entry.Window!.WasShown) StartMotion(entry,target,entry.Closing?0:1,160,motionStart);
+                else { entry.Target=target;entry.Window.Place(target); }
+            }
+            return true;
         }
 
         private void RevealWaiting(bool snap)
@@ -310,11 +334,11 @@ namespace PLUMA.UI
             }
         }
 
-        private void StartMotion(Entry entry,PopupRect target,double alpha,double milliseconds)
+        private void StartMotion(Entry entry,PopupRect target,double alpha,double milliseconds,double? startedAt=null)
         {
             if(entry.Window==null) return;
             entry.From=entry.Window.Bounds; entry.FromAlpha=entry.Window.Alpha; entry.Target=target; entry.ToAlpha=alpha;
-            entry.Start=Now; entry.Duration=milliseconds; entry.Moving=true;
+            entry.Start=startedAt??Now; entry.Duration=milliseconds; entry.Moving=true;
         }
 
         private void AdvanceClock()
@@ -329,12 +353,15 @@ namespace PLUMA.UI
             try
             {
                 AdvanceClock();
+                double frameTime=Now;
                 foreach(Entry entry in _entries.Values.Where(e=>e.Moving).ToArray())
                 {
                     if(entry.Window==null) continue;
-                    double progress=Animate?PopupStackLayout.Ease(Now-entry.Start,entry.Duration):1;
+                    double progress=Animate?PopupStackLayout.Ease(frameTime-entry.Start,entry.Duration):1;
                     double Lerp(double a,double b)=>a+(b-a)*progress;
-                    entry.Window.Place(new(Lerp(entry.From.X,entry.Target.X),Lerp(entry.From.Y,entry.Target.Y),entry.Target.Width,entry.Target.Height));
+                    // Round the translation, rather than absolute coordinates, to keep equal gaps on half-pixel frames.
+                    entry.Window.Place(new(entry.From.X+Math.Round((entry.Target.X-entry.From.X)*progress),
+                        entry.From.Y+Math.Round((entry.Target.Y-entry.From.Y)*progress),entry.Target.Width,entry.Target.Height));
                     entry.Window.SetAlpha(Lerp(entry.FromAlpha,entry.ToAlpha));
                     if(progress>=1)
                     {

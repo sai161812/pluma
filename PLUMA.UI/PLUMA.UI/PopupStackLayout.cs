@@ -21,7 +21,7 @@ namespace PLUMA.UI
     }
 
     public enum PopupScreenEdge { Left, Top, Right, Bottom }
-    public sealed record PopupAppBar(PopupScreenEdge Edge, double ThicknessPixels);
+    public sealed record PopupAppBar(PopupScreenEdge Edge, double ThicknessPixels, bool IsRevealed = true);
     public sealed record PopupDesktop(PopupRect Monitor, PopupRect WorkArea, double Scale,
         IReadOnlyList<PopupAppBar> AutoHideBars, bool GeometryVerified = true);
     public sealed record PopupPlacement(string Key, PopupRect Bounds);
@@ -43,6 +43,7 @@ namespace PLUMA.UI
             {
                 if (!double.IsFinite(bar.ThicknessPixels) || bar.ThicknessPixels <= 0)
                     throw new ArgumentException("Invalid taskbar geometry.", nameof(desktop));
+                if (!bar.IsRevealed) continue;
                 PopupRect monitor = desktop.Monitor;
                 PopupRect excluded = bar.Edge switch
                 {
@@ -55,6 +56,28 @@ namespace PLUMA.UI
                 safe = safe.Intersect(excluded); // Existing docked reservation is never added twice.
             }
             return safe;
+        }
+
+        public static bool IsTaskbarRevealed(PopupRect monitor, PopupRect currentBounds, PopupScreenEdge edge, double scale)
+        {
+            if (!monitor.IsValid || !currentBounds.IsValid || !double.IsFinite(scale) || scale <= 0)
+                throw new ArgumentException("Invalid taskbar visibility geometry.");
+            PopupRect visible = monitor.Intersect(currentBounds);
+            double thickness = edge is PopupScreenEdge.Left or PopupScreenEdge.Right ? visible.Width : visible.Height;
+            return visible.IsValid && thickness > Math.Ceiling(2 * scale); // Ignore the hidden activation strip.
+        }
+
+        public static bool CanGlideForTaskbar(PopupDesktop previous, PopupDesktop next)
+        {
+            if (previous.Monitor != next.Monitor || previous.Scale != next.Scale) return false;
+            var before = previous.AutoHideBars.OrderBy(bar => bar.Edge).ToArray();
+            var after = next.AutoHideBars.OrderBy(bar => bar.Edge).ToArray();
+            if (before.Length != after.Length || before.Length == 0) return false;
+            if (before.Where((bar, index) => bar.Edge != after[index].Edge || bar.ThicknessPixels != after[index].ThicknessPixels).Any()) return false;
+            if (!before.Where((bar, index) => bar.IsRevealed != after[index].IsRevealed).Any()) return false;
+            PopupDesktop FullyReserved(PopupDesktop desktop) => desktop with { AutoHideBars = desktop.AutoHideBars.Select(bar => bar with { IsRevealed = true }).ToArray() };
+            // Some shells update the work area on reveal. Accept only changes covered by the same appbar footprint.
+            return SafeArea(FullyReserved(previous)) == SafeArea(FullyReserved(next));
         }
 
         public static PopupRect ContentArea(PopupDesktop desktop)

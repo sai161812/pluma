@@ -60,16 +60,22 @@ namespace PLUMA.UI
                 if (bar == 0) continue;
                 _bars.Add(bar);
                 double measured = 0;
-                if (Native.GetWindowRect(bar, out Native.Rect rectangle))
+                bool hasBounds = Native.GetWindowRect(bar, out Native.Rect rectangle) && ToRect(rectangle).IsValid;
+                bool revealed = true;
+                if (hasBounds)
+                {
                     measured = edge is 0 or 2 ? rectangle.Right - rectangle.Left : rectangle.Bottom - rectangle.Top;
+                    revealed = Native.IsWindowVisible(bar) && PopupStackLayout.IsTaskbarRevealed(ToRect(info.Monitor), ToRect(rectangle), (PopupScreenEdge)edge, scale);
+                }
+                else verified = false;
                 // Query the system taskbar's full bounds as an additional source, including while auto-hidden.
                 var taskbar = new Native.AppBarData { Size = (uint)Marshal.SizeOf<Native.AppBarData>() };
                 if (Native.SHAppBarMessage(5, ref taskbar) != 0 && taskbar.Edge == edge && Native.MonitorFromRect(ref taskbar.Rect, 0) == _monitor)
                     measured = Math.Max(measured, edge is 0 or 2 ? taskbar.Rect.Right - taskbar.Rect.Left : taskbar.Rect.Bottom - taskbar.Rect.Top);
                 if (measured >= 20 * scale && measured <= 200 * scale)
-                    _thickness[(_monitor, edge)] = Math.Max(_thickness.GetValueOrDefault((_monitor, edge)), measured);
-                if (!_thickness.TryGetValue((_monitor, edge), out double known)) { verified = false; known = 64 * scale; }
-                reservations.Add(new((PopupScreenEdge)edge, Math.Max(known, 64 * scale)));
+                    _thickness[(_monitor, edge)] = measured;
+                if (!_thickness.TryGetValue((_monitor, edge), out double known)) { verified = false; known = 64 * scale; revealed = true; }
+                reservations.Add(new((PopupScreenEdge)edge, known, revealed));
             }
             return new(ToRect(info.Monitor), ToRect(info.Work), scale, reservations, verified);
         }
@@ -131,6 +137,7 @@ namespace PLUMA.UI
             internal delegate nint SubclassProc(nint window, uint message, nuint wParam, nint lParam, nuint id, nuint data);
             internal delegate void WinEventProc(nint hook, uint kind, nint window, int objectId, int childId, uint thread, uint time);
             [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool IsWindow(nint window);
+            [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool IsWindowVisible(nint window);
             [DllImport("user32.dll")] internal static extern nint MonitorFromWindow(nint window, uint flags);
             [DllImport("user32.dll")] internal static extern nint MonitorFromRect(ref Rect rect, uint flags);
             [DllImport("user32.dll", EntryPoint="GetMonitorInfoW")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);
