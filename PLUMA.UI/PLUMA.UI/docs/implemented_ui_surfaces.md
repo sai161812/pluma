@@ -26,10 +26,13 @@ is [popup_placement_contract.md](popup_placement_contract.md).
 The shared desktop stack is implemented in `PopupStackHost`, with an isolated
 native placement adapter and pure queue/layout model. The owner subsequently
 requested a lower hidden-taskbar anchor, reveal/hide glide and stable class
-sizes. Those changes build and pass 64,537 pure checks; their new native checks
-are blocked from launch by Windows Application Control. Current evidence is in
-[popup_placement_refinement.md](popup_placement_refinement.md); earlier 504 native,
-195 formatting and 35 UI checks remain baseline evidence. The legacy standalone
+sizes. Current integration verification passes 64,537 pure layout checks,
+**658 native popup checks, 195 formatting checks and 35 UI checks**, with all
+26 Dark gallery surfaces and 15 floating classes rendered. Current evidence is
+in [ui_integration_review.md](ui_integration_review.md); the local Windows
+Application Control restriction and remaining physical Windows 11 checks are
+recorded there. Earlier native results retain their named revision scope.
+The legacy standalone
 voice preview is not acceptance evidence for this host.
 
 ## Implemented UI components

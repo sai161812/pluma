@@ -1,5 +1,13 @@
 # Lower popup placement and consistent class sizes
 
+**Latest integration verification (2026-10-19):** the refinement and subsequent
+native startup/InfoBar-height corrections pass **658 native popup checks, 195
+formatting checks and 35 native control checks** on the hosted Windows runner.
+All class renders were exported and inspected. Exact commits, run, commands and
+remaining physical Windows 11 acceptance are in
+[ui_integration_review.md](ui_integration_review.md). The local signing block
+below remains; the older unexecuted status describes the original local attempt.
+
 Date: 2026-10-19. Branch: `ui-polish`.
 Placement and class-size source: `f64c008`; dismissal/reflow spacing fix: `8cb49c8`.
 This owner-directed refinement supersedes the always-reserved hidden-taskbar
@@ -66,7 +74,7 @@ queue ordering/overflow, monitor bounds and pixel-consistent gaps. The expanded
 motion checks initially exposed fractional-coordinate gap comparisons; the
 implementation now rounds translation consistently on a shared animation clock.
 
-## Current runtime limitation
+## Original local runtime limitation
 
 Normal launches of the rebuilt preview were rejected by Windows Application
 Control. Code Integrity event **3077**, 2026-10-19 at **00:15:54** local time,

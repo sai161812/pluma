@@ -1,8 +1,12 @@
 # Popup stack implementation and audit
 
 **Historical baseline:** the owner refined placement and class sizes on
-2026-10-19. Current source changes, passing pure checks and the new native-launch
-block are recorded in [popup_placement_refinement.md](popup_placement_refinement.md).
+2026-10-19. The latest hosted integration passes **658 native popup checks,
+195 formatting checks and 35 control checks**; exact source/run evidence and the
+remaining physical Windows 11 checks are in
+[ui_integration_review.md](ui_integration_review.md). Source changes and the
+original local native-launch block are in
+[popup_placement_refinement.md](popup_placement_refinement.md).
 The 504 native checks below predate that refinement and do not accept its new
 size or taskbar-glide behavior.
 

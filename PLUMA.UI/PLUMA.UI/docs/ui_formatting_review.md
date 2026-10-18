@@ -5,10 +5,14 @@ Scope: owner-directed appearance and message formatting before placement/wiring.
 
 **Latest placement refinement (2026-10-19):** lower hidden-taskbar positioning,
 reveal/hide glide and stable notification-class sizes are implemented and pass
-pure checks. Their fresh native preview is blocked by Application Control;
-see [popup_placement_refinement.md](popup_placement_refinement.md). The 195 native
-formatting and 35 control results below remain component-baseline evidence,
-not acceptance of the new hosted class dimensions.
+64,537 pure checks and the expanded hosted **658 native popup checks**. The
+integration also reran all **195 native formatting checks and 35 control checks**,
+and exported all 26 Dark surfaces and 15 floating class renders. Startup layout
+and fixed InfoBar background height corrections are included. See
+[ui_integration_review.md](ui_integration_review.md) for the tested source and run.
+The owner's local signing block remains unchanged; physical Windows 11 taskbar,
+DPI and accessibility review remains open. Results below retain their original
+component-baseline source and environment.
 
 Owner correction on 2026-10-18: PLUMA is dark-only, matching the owner's Windows
 appearance. `App.xaml` explicitly requests Dark. The native gallery, HTML
@@ -19,9 +23,10 @@ current exporter produces 26 dark component renders, plus stress fixtures.
 **Current native formatting audit: 195 checks passed, with all 26 Dark renders.
 Native control runner: 35 UI checks passed.** The shared desktop host also has
 passing native fixture evidence, documented in
-[popup_stack_verification.md](popup_stack_verification.md). Current executables
-launched normally without changing security policy. Earlier signing failures
-are historical. Physical display/taskbar, accessibility and owner motion review
+[popup_stack_verification.md](popup_stack_verification.md). Those baseline executables
+launched normally without changing security policy; later local builds are
+blocked as recorded in the latest integration review. Physical display/taskbar,
+accessibility and owner motion review
 remain open; Phase 14 and backend wiring are not claimed complete.
 
 ## Review against the four requirements

@@ -263,6 +263,14 @@ into safe bounds. No Windows setting is modified. Finish the current native
 acceptance cases before real event wiring.
 This contract does not define a new IPC protocol.
 
+New owned popup windows start transparently without taking foreground focus.
+Their first visible frame waits for Loaded and XAML bounds matching the actual
+native client rectangle. Root-size changes trigger a frame-aware remeasurement;
+pending reconciliation is not considered settled. Existing native InfoBar
+backgrounds on surfaces 17, 19 and 24 fill the shared 112-DIP class viewport via
+the scoped native minimum-height resource, including the themed border. Short
+messages must not leave an unused host-background strip below the notice.
+
 ## Historical verification of the requirements-only update
 
 - Confirmed that membership covers exactly the 15 surface IDs selected by the

@@ -31,11 +31,25 @@ Windows runner with PowerShell 7 and the required SDKs, use:
 pwsh -File ./PLUMA.UI/verify-ui.ps1
 ```
 
-The initial hosted job is an execution attempt, not an assumed pass. Read its
-completion state and artifacts before claiming native acceptance. A hosted
-Windows Server result also does not establish the final appearance or physical
-taskbar/DPI/accessibility behavior on the owner's Windows 11 laptop. Keep those
-checks and backend wiring separate, and keep the integration PR in draft.
+## Executed hosted verification
+
+[Run 5](https://github.com/sai161812/pluma/actions/runs/39158908362), head `d312ac6`,
+completed successfully: **658 native popup, 195 formatting and 35 native control
+checks**, all 26 Dark gallery renders, all 15 floating class renders, and the
+64,537/30/15 pure regression checks. Both native projects built with zero
+warnings/errors. See [ui_integration_review.md](ui_integration_review.md) for
+the exact source, environment, hash, corrections and artifact location.
+
+The initial hosted job failed its client-width assertion; it is retained as
+failure evidence. A diagnostic rerun passed, then the startup layout gate and
+native InfoBar height were corrected and passed the current expanded audit.
+Successful process start or a historical passing run never substitutes for a
+completed report for the source being reviewed.
+
+The owner's local Application Control restriction remains unchanged. A hosted
+Windows Server result does not establish physical taskbar/DPI/accessibility
+behavior on the owner's Windows 11 laptop. Keep those checks and backend wiring
+separate, and keep the integration PR in draft.
 
 Primary references:
 

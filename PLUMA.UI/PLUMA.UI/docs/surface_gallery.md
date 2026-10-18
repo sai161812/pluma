@@ -57,12 +57,13 @@ start the backend, run tools, capture audio, perform OCR, or terminate workers.
 ## Verification
 
 For the latest all-surface formatting pass, see
-[ui_formatting_review.md](ui_formatting_review.md). The component baseline
-exported 26 Dark renders with **195 passing formatting checks**. The subsequent
-lower-placement/class-size refinement builds, but its fresh executable is again
-blocked by Windows Application Control; see
-[popup_placement_refinement.md](popup_placement_refinement.md). No security policy
-was changed. The export runs `SurfaceGalleryAudit.cs`, writes
+[ui_formatting_review.md](ui_formatting_review.md). Hosted integration verification
+now exports all 26 Dark renders with **195 passing formatting checks**, plus all
+15 floating class renders with **658 passing native popup checks** and **35
+native control checks**. See [ui_integration_review.md](ui_integration_review.md)
+for current source/run evidence. Local execution remains blocked by Windows
+Application Control; no security policy was changed. The export runs
+`SurfaceGalleryAudit.cs`, writes
 `formatting-checks.txt` and long-text `stress-*.png`, and fails on layout/copy
 assertions. Its 150% text-size stress does not change OS settings or validate
 physical display scaling. Preview actions are disabled while export runs.
@@ -71,7 +72,9 @@ physical display scaling. Preview actions are disabled while export runs.
 - State/catalogue harness: 30 checks passed, including every surface ID 1–26
   exactly once and readable popup-copy formatting.
 - Native control runner: **35 UI checks passed**, including surfaces 16/17.
-- All-surface current output: `output/surface-gallery-final-audit/`.
+- Current hosted artifacts: `windows-ui-verification`, run 39158908362;
+  downloaded under `output/ci-artifacts/run-39158908362/`. Older output folders
+  describe their original source revisions.
 - Physical DPI/accessibility and backend acceptance remain separate checks.
 
 ## Review the desktop stack
