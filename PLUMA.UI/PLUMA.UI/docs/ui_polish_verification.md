@@ -99,6 +99,32 @@ remain outside RenderTargetBitmap verification.
 
 ## Remaining acceptance work
 
+### Surfaces 16–17 implementation and current verification blocker
+
+The owner authorized implementing the previously skipped perception surfaces.
+`OcrMatchIndicator` uses an input-transparent accent outline and an Acrylic
+callout matching the approved typography, spacing, and border resources.
+`PostClickVerifyIndicator` follows the existing native InfoBar pattern.
+The UI harness includes 12 additional runtime checks and light/dark perception
+renders. Both the main UI and extended test host compile with zero warnings/errors.
+
+Those new runtime checks have **not passed yet**. Windows Application Control
+blocked `SurfaceControls.Tests.exe`; Code Integrity event 3077 reports that it
+does not meet the enterprise signing requirements. Running the managed assembly
+through the normal .NET host also exited at WinUI startup (0xC000027B), before
+the new assertions ran. No security settings were changed. Older 24-check output
+does not count as verification of surfaces 16–17. Owner approval of this recorded
+limitation is pending; otherwise an approved test runner is required before
+calling these surfaces accepted.
+
+The existing backend IPC tests were run with Python 3.12.10:
+`python -m pytest tests/unit/test_ipc.py -q --tb=short` → **2 passed in 5.09s**.
+Source inspection also confirmed that the untracked capability matrix describes
+a protocol that is not implemented: the actual Python Windows pipe uses message
+boundaries, HMAC challenge/response, a per-user pipe name, and one request/reply
+per connection. There is no current push event stream or JSON-RPC dispatcher.
+Wiring must follow the code and add any missing event support explicitly.
+
 This is UI component verification, not completion of Phase 14 or a release
 acceptance claim. No backend, IPC, planner, policy, ledger, microphone, capture,
 process termination, or installation behavior was added or simulated.

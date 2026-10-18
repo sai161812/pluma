@@ -5,8 +5,8 @@ This document records the UI work currently present in the C# WinUI 3 project.
 ## Summary
 
 - Total planned surfaces: **26**
-- Implemented UI surface components: **24** (backend integration is separate)
-- Intentionally skipped: **2** — Surfaces 16 and 17
+- Implemented UI surface components: **26** (backend integration is separate; surfaces 16–17 have runtime verification pending)
+- Intentionally skipped: **0** — the owner authorized surfaces 16 and 17
 - Not started: **0** within the approved UI component scope
 - Production namespace: `PLUMA.UI`
 - Project: `PLUMA.UI/PLUMA.UI.csproj`
@@ -33,6 +33,8 @@ Temporary preview windows are not production surfaces and are not included in th
 | 13 | Voice Committed Banner | `VoiceCommittedBanner.xaml` | `VoiceCommittedBanner.xaml.cs` | Committed-state visual component. |
 | 14 | Voice Silence Timeout Indicator | `VoiceSilenceTimeoutIndicator.xaml` | `VoiceSilenceTimeoutIndicator.xaml.cs` | Silence progress indicator. |
 | 15 | Screen Capture Flash | `ScreenCaptureFlash.xaml` | `ScreenCaptureFlash.xaml.cs` | Dormant capture acknowledgement control. |
+| 16 | OCR Match Indicator | `OcrMatchIndicator.xaml` | `OcrMatchIndicator.xaml.cs` | Input-transparent target outline and Acrylic callout; expires with supplied snapshot, at most three seconds. Runtime checks pending Application Control approval. |
+| 17 | Post-Click Verify Indicator | `PostClickVerifyIndicator.xaml` | `PostClickVerifyIndicator.xaml.cs` | Native success/error InfoBar displaying supplied verifier evidence. Runtime checks pending Application Control approval. |
 | 18 | Risk Approval Dialog | `RiskApprovalDialog.xaml` | `RiskApprovalDialog.xaml.cs` | Native WinUI `ContentDialog`. |
 | 19 | Policy Block Notice | `PolicyBlockNotice.xaml` | `PolicyBlockNotice.xaml.cs` | Native WinUI `InfoBar`. |
 | 20 | Cancellation Animation | `CancellationAnimation.xaml` | `CancellationAnimation.xaml.cs` | Cancellation feedback popup. |
@@ -161,15 +163,21 @@ It is a non-blocking native `InfoBar` with error severity.
 
 Auto-dismiss timing belongs to a preview or future host, not the production control.
 
-## Intentionally skipped surfaces
+## Perception surface contracts
 
 ### Surface 16 — OCR Match Indicator
 
-No production XAML or code-behind exists yet.
+- `ShowMatch(sanitizedText, confidence, hostBounds, desktopPosition, snapshotExpiresAt)` and `HideMatch()`; read-only `IsMatchVisible`.
+- `hostBounds` are host-local logical pixels (DIPs), supplied after the host verifies the snapshot/window identity and current DPI/geometry. Desktop coordinates are display metadata only and may be negative on multiple monitors.
+- Rejects blank text, invalid confidence/geometry, expired snapshots, and targets outside the host. Automatically clears on expiry or unload. Display lifetime never exceeds three seconds or the supplied expiry.
+- The target outline and callout never intercept input and never click anything. The host must also hide the marker whenever the target window or snapshot changes. Actual OCR targeting and action verification remain exclusively in the existing backend pipeline.
 
 ### Surface 17 — Post-Click Verify Indicator
 
-No production XAML or code-behind exists yet.
+- `ShowResult(verified, verificationMethod, sanitizedDetail)` and `HideResult()`.
+- Defaults closed. Displays supplied verification evidence with native Success/Verified or Error/Unverified severity; missing method cannot display success.
+- A click event itself never counts as verification. The future host must supply the backend verifier's actual result and already-redacted detail.
+- Both new controls compile. Their newly added runtime assertions and visual renders are currently blocked by the machine's Application Control policy; see the verification notes.
 
 ## Surfaces 22–26 — wiring contracts
 
@@ -236,6 +244,6 @@ For the next workspace:
 
 1. Preserve all completed surface files listed above.
 2. Do not modify approved Surfaces 1–15 or 18–21 while beginning new work.
-3. Keep Surfaces 16 and 17 explicitly tracked as skipped until their requirements are defined.
+3. Run and visually inspect the new surfaces 16–17 in an approved WinUI test environment; their runtime gate is currently pending, not passed.
 4. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
 5. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.

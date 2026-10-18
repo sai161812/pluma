@@ -56,6 +56,42 @@ namespace PLUMA.UI.Tests
 
         private async Task RunChecks(StackPanel root)
         {
+            var marker = new OcrMatchIndicator { Width = 600, Height = 240 };
+            root.Children.Add(marker);
+            await Task.Delay(100);
+            Check(!marker.IsMatchVisible && !marker.IsHitTestVisible, "OCR marker starts hidden and cannot intercept input");
+            var bounds = new Windows.Foundation.Rect(30, 30, 100, 24);
+            var desktop = new Windows.Foundation.Point(-120, 200);
+            marker.ShowMatch("Submit", 0.95, bounds, desktop, DateTimeOffset.UtcNow.AddSeconds(1));
+            Check(marker.IsMatchVisible && ((TextBlock)marker.FindName("MatchText")).Text == "Submit", "OCR marker displays supplied match");
+            Check(((TextBlock)marker.FindName("MetadataText")).Text.Contains("-120"), "OCR metadata supports negative desktop coordinates");
+            marker.ShowMatch("Submit", double.NaN, bounds, desktop, DateTimeOffset.UtcNow.AddSeconds(1));
+            Check(!marker.IsMatchVisible, "invalid OCR confidence clears marker");
+            marker.ShowMatch("Submit", 0.9, bounds, desktop, DateTimeOffset.UtcNow.AddSeconds(-1));
+            Check(!marker.IsMatchVisible, "expired OCR snapshot is not shown");
+            marker.ShowMatch("Submit", 0.9, new Windows.Foundation.Rect(590, 20, 100, 24), desktop, DateTimeOffset.UtcNow.AddSeconds(1));
+            Check(!marker.IsMatchVisible, "OCR target outside host geometry is rejected");
+            marker.ShowMatch("Submit", 0.9, bounds, desktop, DateTimeOffset.UtcNow.AddMilliseconds(100));
+            await Task.Delay(200);
+            Check(!marker.IsMatchVisible && ((TextBlock)marker.FindName("MatchText")).Text == "", "OCR expiry clears visual evidence");
+            marker.ShowMatch("Submit", 0.9, bounds, desktop, DateTimeOffset.UtcNow.AddSeconds(1));
+            root.Children.Remove(marker);
+            await Task.Delay(100);
+            Check(!marker.IsMatchVisible, "unloading clears OCR marker and timer");
+
+            var verification = new PostClickVerifyIndicator();
+            root.Children.Add(verification);
+            Check(!verification.IsOpen, "verification starts without a result");
+            verification.ShowResult(true, "ocr_rescan", "Expected label appeared");
+            Check(verification.IsOpen && verification.Title == "Verified" && verification.Severity == InfoBarSeverity.Success,
+                "positive verifier evidence displays success");
+            verification.ShowResult(false, "ocr_rescan", "Expected transition not observed");
+            Check(verification.Title == "Unverified" && verification.Severity == InfoBarSeverity.Error && verification.Message.Contains("not observed"),
+                "failed verification replaces prior success with factual failure");
+            verification.ShowResult(true, "", "");
+            Check(!verification.IsOpen, "missing verification method cannot display success");
+            root.Children.Remove(verification);
+
             var feed = new LiveMessageFeed();
             root.Children.Add(feed);
             Check(((TextBlock)feed.FindName("EmptyText")).Visibility == Visibility.Visible, "feed empty state visible");

@@ -48,6 +48,25 @@ namespace PLUMA.UI.Tests
                 await CaptureAsync(root, Path.Combine(output, $"setup-{suffix}.png"));
 
                 root = CreateRoot(theme);
+                var perceptionPanel = new Grid { Margin = new Thickness(28, 24, 28, 32) };
+                var target = new Button { Content = "Submit", Width = 100, Height = 32,
+                    HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(30, 30, 0, 0) };
+                var marker = new OcrMatchIndicator();
+                perceptionPanel.Children.Add(target);
+                perceptionPanel.Children.Add(marker);
+                var verification = new PostClickVerifyIndicator { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 220, 0, 0) };
+                verification.ShowResult(false, "ocr_rescan", "Expected transition not observed");
+                perceptionPanel.Children.Add(verification);
+                AddColumn(root, new PolicyBlockNotice { IsNoticeOpen = true, ToolName = "invoke_control", MatchedRule = "Target changed" }, "Existing policy notice", 0);
+                AddColumn(root, perceptionPanel, "OCR match and verification", 1);
+                window.Content = root;
+                await Task.Delay(100);
+                marker.ShowMatch("Submit", 0.95, new Windows.Foundation.Rect(30, 30, 100, 32),
+                    new Windows.Foundation.Point(1200, 300), DateTimeOffset.UtcNow.AddSeconds(3));
+                await CaptureAsync(root, Path.Combine(output, $"perception-{suffix}.png"));
+
+                root = CreateRoot(theme);
                 window.Content = root;
                 await Task.Delay(100);
                 var approval = new RiskApprovalDialog

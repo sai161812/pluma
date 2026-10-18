@@ -33,6 +33,10 @@
     <Page Include="../PLUMA.UI/ToastNotification.xaml" Link="ToastNotification.xaml" />
     <Page Include="../PLUMA.UI/CriticalErrorDialog.xaml" Link="CriticalErrorDialog.xaml" />
     <Page Include="../PLUMA.UI/SetupWizard.xaml" Link="SetupWizard.xaml" />
+    <Page Include="../PLUMA.UI/OcrMatchIndicator.xaml" Link="OcrMatchIndicator.xaml" />
+    <Page Include="../PLUMA.UI/PostClickVerifyIndicator.xaml" Link="PostClickVerifyIndicator.xaml" />
+    <Compile Include="../PLUMA.UI/OcrMatchIndicator.xaml.cs" Link="OcrMatchIndicator.xaml.cs" />
+    <Compile Include="../PLUMA.UI/PostClickVerifyIndicator.xaml.cs" Link="PostClickVerifyIndicator.xaml.cs" />
     <Compile Include="../PLUMA.UI/LiveMessageFeed.xaml.cs" Link="LiveMessageFeed.xaml.cs" />
     <Compile Include="../PLUMA.UI/CoreHealthIndicator.xaml.cs" Link="CoreHealthIndicator.xaml.cs" />
     <Compile Include="../PLUMA.UI/ToastNotification.xaml.cs" Link="ToastNotification.xaml.cs" />

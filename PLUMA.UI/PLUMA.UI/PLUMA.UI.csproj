@@ -63,6 +63,8 @@
     <Page Include="VoiceOverlay.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="VoiceOverlayPreviewWindow.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="ScreenCaptureFlash.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="OcrMatchIndicator.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="PostClickVerifyIndicator.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="RiskApprovalDialog.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="PolicyBlockNotice.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="CancellationAnimation.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />

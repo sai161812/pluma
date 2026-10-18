@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<InfoBar
+    x:Class="PLUMA.UI.PostClickVerifyIndicator"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsOpen="False" IsClosable="True" Severity="Error"
+    CloseButtonClick="OnCloseButtonClick" />
