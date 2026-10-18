@@ -46,7 +46,7 @@ namespace PLUMA.UI
         public bool SuppressAnimations { get; set; }
         public int Count => _entries.Count;
         public bool IsDisposed => _disposed;
-        public bool IsAnimating => _entries.Values.Any(e => e.Moving || e.Waiting);
+        public bool IsAnimating => _refreshQueued || _entries.Values.Any(e => e.Moving || e.Waiting);
         public PopupDesktop? Desktop => _desktop;
         internal bool TimerRunning => _timer.IsRunning;
         internal bool MotionEnabled => Animate;
@@ -326,8 +326,12 @@ namespace PLUMA.UI
             if(_entries.Values.Any(e=>e.Moving)) return;
             foreach(Entry entry in _entries.Values.Where(e=>e.Waiting).ToArray())
             {
-                entry.Waiting=false;
                 if(entry.Window==null) continue;
+                // A non-activating show starts WinUI layout while the owned window is transparent.
+                // Loaded/SizeChanged queue a frame-aware remeasure before the first visible frame.
+                entry.Window.Reveal();
+                if(!entry.Window.IsLayoutReady || _refreshQueued) continue;
+                entry.Waiting=false;
                 if(snap || !Animate)
                 { entry.Window.Place(entry.Target); entry.Window.SetAlpha(1); entry.Window.Reveal(); _state.SetDisplayed(entry.Key,true); }
                 else

@@ -18,6 +18,16 @@ namespace PLUMA.UI
         internal double Alpha { get; private set; }
         internal bool WasShown { get; private set; }
         internal bool IsClosed { get; private set; }
+        internal bool IsLayoutReady
+        {
+            get
+            {
+                if (!Root.IsLoaded || Root.XamlRoot is not { } xamlRoot || Root.ActualWidth <= 0 || Root.ActualHeight <= 0) return false;
+                if (!PopupDesktopPlacement.Native.GetClientRect(Handle, out var client)) throw new Win32Exception("Could not verify popup client layout.");
+                return Math.Abs(Root.ActualWidth*xamlRoot.RasterizationScale-(client.Right-client.Left)) <= 1 &&
+                    Math.Abs(Root.ActualHeight*xamlRoot.RasterizationScale-(client.Bottom-client.Top)) <= 1;
+            }
+        }
         internal FrameworkElement? HostedContent => _content;
         internal (double Width, double Height) ChromePixels
         {
@@ -72,7 +82,9 @@ namespace PLUMA.UI
                 if (_xamlRoot != null) _xamlRoot.Changed -= OnXamlRootChanged;
                 _xamlRoot = Root.XamlRoot;
                 if (_xamlRoot != null) _xamlRoot.Changed += OnXamlRootChanged;
+                _changed();
             };
+            Root.SizeChanged += OnContentSizeChanged;
             Activated += (_, args) =>
             {
                 _activated = args.WindowActivationState != WindowActivationState.Deactivated;
@@ -93,6 +105,7 @@ namespace PLUMA.UI
             {
                 IsClosed = true;
                 if (_content != null) _content.SizeChanged -= OnContentSizeChanged;
+                Root.SizeChanged -= OnContentSizeChanged;
                 if (_xamlRoot != null) _xamlRoot.Changed -= OnXamlRootChanged;
                 _xamlRoot = null;
             };

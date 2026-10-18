@@ -23,7 +23,12 @@ namespace PLUMA.UI
             using var report=new StreamWriter(Path.Combine(directory,"popup-stack-audit.txt")) {AutoFlush=true};
             int checks=0;
             var frames=new System.Collections.Generic.List<PopupWindowSnapshot[]>();
-            _host.FramePresented+=snapshot=>frames.Add(snapshot.ToArray());
+            bool visibleLayoutsReady=true;
+            _host.FramePresented+=snapshot=>
+            {
+                frames.Add(snapshot.ToArray());
+                visibleLayoutsReady &= _host.Windows.Where(window=>window.Alpha>0.01).All(window=>window.IsLayoutReady);
+            };
             void Check(bool result,string label)
             {
                 report.WriteLine($"{(result?"PASS":"FAIL")} {label}");
@@ -43,6 +48,7 @@ namespace PLUMA.UI
                 Check(cards.All(p=>area.Contains(p.Bounds,1)),"actual native window rectangles remain in the safe area");
                 foreach(var window in _host.Windows.Where(w=>w.WasShown))
                 {
+                    Check(window.IsLayoutReady,"visible popup has loaded its native client layout");
                     report.WriteLine($"CLIENT content {window.HostedContent?.ActualWidth:0.##}x{window.HostedContent?.ActualHeight:0.##}; root {window.Root.ActualWidth:0.##}x{window.Root.ActualHeight:0.##}; frame {window.ChromePixels}; raster {window.Root.XamlRoot?.RasterizationScale}; monitor scale {_host.Desktop!.Scale}; native DPI {PopupDesktopPlacement.Native.GetDpiForWindow(window.Handle)}; loaded {window.Root.IsLoaded}; bounds {window.ReadBounds()}");
                     Check(window.HostedContent==null || window.HostedContent.ActualWidth<=window.Root.ActualWidth+1,
                         "component width fits the actual native client area");
@@ -55,6 +61,7 @@ namespace PLUMA.UI
             var a=new ToastNotification(); a.Show("First preview notice");
             Check(_host.Present("A",24,a,lifetime:TimeSpan.FromSeconds(30)),"first presentation admitted");
             await Settle(); Bounds();
+            Check(visibleLayoutsReady,"native client layout is ready before sampled visible frames");
             Check(PopupDesktopPlacement.Native.GetForegroundWindow()==foreground,"routine presentation does not steal foreground focus");
             report.WriteLine($"DISPLAY {_host.Desktop}");
             foreach(var bar in _host.Desktop!.AutoHideBars) report.WriteLine($"AUTOHIDE {bar.Edge}: full height {bar.ThicknessPixels:0.##} physical pixels; revealed {bar.IsRevealed}");
@@ -211,6 +218,7 @@ namespace PLUMA.UI
             {
                 var notice=new ToastNotification(); notice.Show($"Lifecycle {cycle}");
                 Check(_host.Present("cycle",24,notice,persistent:true),"repeat lifecycle admission");
+                await Settle();
                 Bounds();
                 _host.Clear(); await Task.Delay(15,token);
                 Check(_host.Count==0 && !_host.TimerRunning,"repeat lifecycle has no orphan window or timer");
