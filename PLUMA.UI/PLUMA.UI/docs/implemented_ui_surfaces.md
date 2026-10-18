@@ -244,7 +244,7 @@ No Python, IPC, backend, OCR, capture, process termination, or mock service inte
 For the next workspace:
 
 1. Preserve all completed surface files listed above.
-2. Do not modify approved Surfaces 1–15 or 18–21 while beginning new work.
+2. The owner subsequently authorized formatting all surfaces before wiring. Preserve that pass, documented in `ui_formatting_review.md`, and the existing visual direction.
 3. Use the gallery for owner appearance review; run the pending standalone behavioral assertions in an approved test environment before claiming their behavior gate passed.
 4. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
 5. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.

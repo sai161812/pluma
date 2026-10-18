@@ -21,6 +21,7 @@ namespace PLUMA.UI
         private readonly CancellationTokenSource _lifetime = new();
         private Task? _exportTask;
         private bool _closed;
+        private bool _exporting;
 
         public SurfaceGalleryWindow(string? exportDirectory = null)
         {
@@ -72,7 +73,7 @@ namespace PLUMA.UI
 
         private void AddAction(string text, Action action)
         {
-            var button = new Button { Content = text };
+            var button = new Button { Content = text, IsEnabled = !_exporting };
             button.Click += (_, _) => action();
             PreviewActions.Children.Add(button);
         }
@@ -220,7 +221,7 @@ namespace PLUMA.UI
         private void AddDialogAction(string label, Func<ContentDialog> factory)
         {
             _dialogFactory = factory;
-            var button = new Button { Content = label };
+            var button = new Button { Content = label, IsEnabled = !_exporting };
             button.Click += async (_, _) => await ShowDialogAsync(factory, button);
             PreviewActions.Children.Add(button);
         }
@@ -245,13 +246,18 @@ namespace PLUMA.UI
         private async Task ExportPreviewsAsync(string outputDirectory, CancellationToken token)
         {
             Directory.CreateDirectory(outputDirectory);
+            _exporting = true;
+            foreach (var child in PreviewActions.Children)
+                if (child is Control control) control.IsEnabled = false;
             SurfacePicker.IsEnabled = false;
             ThemePicker.IsEnabled = false;
             PreviewHost.IsHitTestVisible = false;
+            PreviewActions.IsHitTestVisible = false;
             try
             {
                 using var report = new StreamWriter(Path.Combine(outputDirectory, "gallery-report.txt")) { AutoFlush = true };
                 report.WriteLine("Actual WinUI component previews. Fixture data only; no backend or microphone.");
+                report.WriteLine($"Started {DateTimeOffset.Now:O}");
                 foreach (ElementTheme theme in new[] { ElementTheme.Light, ElementTheme.Dark })
                 {
                     ThemePicker.SelectedIndex = theme == ElementTheme.Light ? 1 : 2;
@@ -291,16 +297,19 @@ namespace PLUMA.UI
                         await report.WriteLineAsync($"PASS {filename}: {item.Name}");
                     }
                 }
-                await report.WriteLineAsync("52 component renders exported. Appearance/placement still require owner review.");
+                await AuditFormattingAsync(outputDirectory, token);
+                await report.WriteLineAsync("52 component renders exported. Formatting audit passed; see formatting-checks.txt. Placement and wiring remain undecided.");
                 WritePreviewIndex(outputDirectory);
             }
             finally
             {
+                _exporting = false;
                 if (!_closed)
                 {
                     SurfacePicker.IsEnabled = true;
                     ThemePicker.IsEnabled = true;
                     PreviewHost.IsHitTestVisible = true;
+                    PreviewActions.IsHitTestVisible = true;
                     ThemePicker.SelectedIndex = 0;
                     GalleryRoot.RequestedTheme = ElementTheme.Default;
                     if (SurfacePicker.SelectedIndex == 15) ShowSurface(16);

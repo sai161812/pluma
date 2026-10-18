@@ -27,7 +27,7 @@ System/Light/Dark, and the state buttons to inspect variants. The gallery starts
 at surface 16. Its marker intentionally expires after three seconds; use the
 replay button to show it again. Surface 17 offers Verified and Unverified states.
 
-Native dialogs 18 and 25 open from preview buttons. Approval and restart controls
+Native dialogs 10, 18 and 25 open from preview buttons. Conflict, approval and restart controls
 perform no real operation. Setup checks can be set to sample available or failed
 values without inspecting the machine or saving preferences. The voice surface
 uses the already approved voice host without opening the microphone.
@@ -49,6 +49,15 @@ window and is cancelled when it closes. The gallery does not connect to IPC,
 start the backend, run tools, capture audio, perform OCR, or terminate workers.
 
 ## Verification
+
+For the latest all-surface formatting pass, see
+[ui_formatting_review.md](ui_formatting_review.md). The current development
+executable is blocked by Windows Application Control signing requirements;
+the earlier render counts below must not be treated as final formatting passes.
+On an approved runner, export also runs `SurfaceGalleryAudit.cs`, writes
+`formatting-checks.txt` and long-text `stress-*.png`, and fails on layout/copy
+assertions. Its 150% text-size stress does not change OS settings or validate
+physical display scaling. Preview actions are disabled while export runs.
 
 - Preview build: zero warnings, zero errors.
 - State/catalogue harness: 17 checks passed, including every surface ID 1–26
