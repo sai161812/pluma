@@ -100,6 +100,18 @@ namespace PLUMA.UI
             Check(emptyNotice.Visibility==Visibility.Visible,"empty hosted notice preserves its previous content through exit");
             await Settle(); Check(_host.Count==0,"empty hosted notice is dismissed by the coordinator");
 
+            frames.Clear();
+            Check(_host.Present("moving-A",24,CreateFixture(24),persistent:true) &&
+                _host.Present("moving-B",24,CreateFixture(24),persistent:true),"dismissal reflow fixtures admitted");
+            await Settle();
+            Check(_host.Present("moving-C",24,CreateFixture(24),persistent:true),"arrival starts the dismissal reflow fixture");
+            await Task.Delay(40,token);
+            _host.Dismiss("moving-A");
+            await Settle(); Bounds();
+            Check(frames.All(frame=>frame.Where(card=>card.Opacity>0.01).SelectMany((a,i)=>frame.Where(card=>card.Opacity>0.01).Skip(i+1).Select(b=>!a.Bounds.Overlaps(b.Bounds))).All(ok=>ok)),
+                "dismissal during upward reflow preserves non-overlap in every sampled native frame");
+            _host.Clear(); await Settle();
+
             foreach(int surface in new[]{4,5,6,7,8,9,11,12,13,14,17,19,20,21,24})
             {
                 Check(_host.Present("sample",surface,CreateFixture(surface),persistent:true),$"surface {surface} admitted with existing dark component");

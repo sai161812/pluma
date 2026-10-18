@@ -136,6 +136,10 @@ namespace PLUMA.UI
             if (_disposed || !_entries.TryGetValue(key,out Entry? entry) || entry.Closing) return;
             _state.Remove(key);
             if (entry.Window == null || !entry.Window.WasShown || !Animate) { RemoveEntry(entry); QueueRefresh(); return; }
+            // Keep the current spacing while an entry fades; survivors reflow after its window is removed.
+            double pausedAt=Now;
+            foreach(Entry moving in _entries.Values.Where(other=>other.Moving && other.Window?.WasShown==true).ToArray())
+                StartMotion(moving,moving.Window!.Bounds,moving.ToAlpha,Math.Max(1,moving.Start+moving.Duration-pausedAt),pausedAt);
             entry.Closing = true; entry.Waiting = false;
             StartMotion(entry, entry.Window.Bounds, 0,160);
             ArmTimer();
@@ -304,6 +308,8 @@ namespace PLUMA.UI
             PopupRect Shift(PopupRect rect)=>rect with {X=rect.X+dx,Y=rect.Y+dy};
             var windows=_entries.Values.Where(entry=>entry.Window!=null).ToArray();
             if(windows.Any(entry=>!after.Contains(Shift(entry.Target)))) return false;
+            var targets=windows.Select(entry=>Shift(entry.Target)).OrderBy(rect=>rect.Y).ToArray();
+            if(targets.Zip(targets.Skip(1),(upper,lower)=>upper.Overlaps(lower)).Any(overlap=>overlap)) return false;
             double motionStart=Now;
             foreach(var entry in windows)
             {
