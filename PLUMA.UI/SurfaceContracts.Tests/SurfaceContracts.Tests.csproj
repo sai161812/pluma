@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../PLUMA.UI/LiveMessageBuffer.cs" Link="LiveMessageBuffer.cs" />
+    <Compile Include="../PLUMA.UI/SetupChecklist.cs" Link="SetupChecklist.cs" />
+    <Compile Include="../PLUMA.UI/SurfaceGalleryCatalog.cs" Link="SurfaceGalleryCatalog.cs" />
+    <Compile Include="../PLUMA.UI/PopupText.cs" Link="PopupText.cs" />
+  </ItemGroup>
+</Project>

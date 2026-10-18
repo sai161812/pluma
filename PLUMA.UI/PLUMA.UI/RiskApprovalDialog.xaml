@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="PLUMA.UI.RiskApprovalDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PLUMA.UI"
+    Title="Approve this action?"
+    PrimaryButtonText="Approve"
+    SecondaryButtonText="Deny"
+    DefaultButton="Secondary"
+    Closing="OnClosing"
+    PrimaryButtonClick="OnPrimaryButtonClick"
+    SecondaryButtonClick="OnSecondaryButtonClick">
+
+    <StackPanel Width="440"
+                MinWidth="0"
+                Spacing="16">
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <FontIcon Glyph="&#xE72E;"
+                      FontFamily="Segoe Fluent Icons"
+                      FontSize="20"
+                      Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                      VerticalAlignment="Top"
+                      Margin="0,2,0,0" />
+
+            <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Text="Approval required"
+                           FontFamily="Segoe UI Variable"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                <local:PopupMessageText x:Name="ToolNameText"
+                           FontFamily="Segoe UI Variable"
+                           FontSize="17"
+                           FontWeight="SemiBold" MaxHeight="96" />
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Spacing="5">
+            <TextBlock Text="Risk level"
+                       FontFamily="Segoe UI Variable"
+                       FontSize="12"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <local:PopupMessageText x:Name="RiskClassText"
+                       FontFamily="Segoe UI Variable"
+                       FontSize="14" MaxHeight="96" />
+        </StackPanel>
+
+        <StackPanel Spacing="5">
+            <TextBlock Text="Action details"
+                       FontFamily="Segoe UI Variable"
+                       FontSize="12"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Border Padding="12,10"
+                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                    CornerRadius="4">
+                <local:PopupMessageText x:Name="SanitizedArgumentsText"
+                           FontFamily="Segoe UI Variable"
+                           FontSize="13" MaxHeight="160" />
+            </Border>
+        </StackPanel>
+    </StackPanel>
+</ContentDialog>
