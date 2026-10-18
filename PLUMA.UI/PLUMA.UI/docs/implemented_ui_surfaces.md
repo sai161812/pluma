@@ -205,6 +205,7 @@ No production XAML or code-behind exists yet.
 
 - `SetCheckResult(id, state, sanitizedDetail)`, `RecheckRequested`, and `ContinueRequested`.
 - Checks: OCR runtime, UI Automation, local model path, microphone access, and command/STOP hotkeys.
+- Uses the same Community Toolkit `SettingsCard` and page spacing as the approved Settings page.
 - The OCR label is adapter-neutral, following the master specification rather than requiring Tesseract.
 - All checks start pending. Failed or pending checks block progress; later failures revoke Continue.
 - Check again invalidates previous results. The host must correlate check results with the current check run.

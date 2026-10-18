@@ -25,6 +25,8 @@ namespace PLUMA.UI.Tests
                 _window.Activate();
                 await RunChecks(root);
                 Console.WriteLine($"{_checks} UI checks passed.");
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "--visual-review") >= 0)
+                    await VisualReview.RenderAsync(_window);
             }
             catch (Exception error)
             {

@@ -63,6 +63,40 @@ was added.
 
 Full local outputs are in `output/ui-polish/{state-checks,control-checks,audio-checks,build}.txt`.
 
+## Visual consistency review
+
+The follow-up review rendered the actual existing and new controls in light and
+dark themes at the host's native 125% display scaling. Eight PNGs were inspected:
+Dashboard/status comparisons, Settings/setup comparisons, and the approval and
+critical-error dialogs. These are test-owned XAML renders, not desktop captures.
+Reference components are linked unchanged from production source.
+
+| New surface | Existing visual reference | Result |
+|---|---|---|
+| Live message feed | Dashboard live messages | Same native subtitle/body/caption styles and list spacing; timestamps remain secondary. The host supplies the surrounding card. |
+| Core health | Dashboard status text and approved InfoBadge mapping | Same native text/theme resources; compact dot/latency layout fits the component's ambient status role. |
+| Notification | PolicyBlockNotice | Same native InfoBar layout, icon, severity fill, close button, and typography. |
+| Critical error | RiskApprovalDialog | Matched its 440-pixel content width and 16-pixel spacing; same native dialog title and button treatment. |
+| Setup | SettingsPage | Replaced hand-built checklist cards with the same Community Toolkit SettingsCard; matched 1000-pixel page limit, 32/24/32/32 padding, 24-pixel section spacing, title margin, and secondary description text. |
+
+No changes were needed to the feed, health indicator, or notification styling.
+The only product changes in this follow-up are `CriticalErrorDialog.xaml` and
+`SetupWizard.xaml`. Existing approved components and runtime behavior are unchanged.
+After the layout changes, all 24 UI, 15 state, and 15 audio checks passed again;
+both the test host and main UI built with zero warnings/errors.
+
+To reproduce the renders, build the UI harness as above and run:
+
+```powershell
+& ./PLUMA.UI/SurfaceControls.Tests/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/SurfaceControls.Tests.exe --visual-review
+```
+
+PNGs are written under `visual-review` beside the test executable. The reviewed
+copies are also available locally under `output/ui-polish/visual-review/`;
+the follow-up assertion output is `output/ui-polish/style-review-checks.txt`.
+The preview uses a theme page fill; native desktop Mica and compositor effects
+remain outside RenderTargetBitmap verification.
+
 ## Remaining acceptance work
 
 This is UI component verification, not completion of Phase 14 or a release
@@ -75,6 +109,7 @@ checks with current-run correlation, handle recovery under core ownership, and
 persist verified setup completion before navigating to Dashboard. Recovery
 failure should update the error and explicitly re-enable retry when appropriate.
 
-Manual review at 100%, 125%, and 150% DPI, high contrast, keyboard and screen-reader
-review, and end-to-end core failure/STOP/recovery acceptance remain outstanding.
+Manual review at 100% and 150% DPI, high contrast, full-window material behavior,
+keyboard and screen-reader review, and end-to-end core failure/STOP/recovery
+acceptance remain outstanding.
 The Python regression suite was not run because no Python/backend code changed.

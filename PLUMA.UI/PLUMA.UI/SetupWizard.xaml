@@ -3,29 +3,30 @@
     x:Class="PLUMA.UI.SetupWizard"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:PLUMA.UI">
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <StackPanel MaxWidth="720" Padding="32,24,32,32" Spacing="20" HorizontalAlignment="Stretch">
-            <TextBlock Text="Set up PLUMA" Style="{StaticResource TitleTextBlockStyle}" />
+    xmlns:local="using:PLUMA.UI"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                  HorizontalContentAlignment="Stretch">
+        <StackPanel MaxWidth="1000" Padding="32,24,32,32" Spacing="24" HorizontalAlignment="Stretch">
+            <TextBlock Text="Set up PLUMA" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8" />
             <TextBlock x:Name="StepText" Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <ProgressBar x:Name="StepProgress" Minimum="0" Maximum="2" />
-            <TextBlock x:Name="StepHeading" Style="{StaticResource SubtitleTextBlockStyle}" />
-            <TextBlock Text="Continue when the required checks are available." TextWrapping="Wrap"
-                       Style="{StaticResource BodyTextBlockStyle}" />
+            <StackPanel Spacing="8">
+                <TextBlock x:Name="StepHeading" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="Continue when the required checks are available." TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{StaticResource BodyTextBlockStyle}" />
+            </StackPanel>
             <ItemsControl x:Name="CheckList">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="local:SetupCheck">
-                        <Border Padding="16" Margin="0,0,0,8" CornerRadius="4" BorderThickness="1"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="{x:Bind Name}" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock Text="{x:Bind StatusText, Mode=OneWay}" />
-                                <TextBlock Text="{x:Bind Detail, Mode=OneWay}" TextWrapping="Wrap"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </Border>
+                        <controls:SettingsCard Header="{x:Bind Name}"
+                                              Description="{x:Bind Detail, Mode=OneWay}"
+                                              HorizontalAlignment="Stretch" Margin="0,0,0,8">
+                            <TextBlock Text="{x:Bind StatusText, Mode=OneWay}" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </controls:SettingsCard>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

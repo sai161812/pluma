@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Core unavailable" PrimaryButtonText="Restart core" CloseButtonText="Close"
     DefaultButton="Close" IsPrimaryButtonEnabled="False" PrimaryButtonClick="OnRestartClick">
-    <StackPanel Spacing="16" MaxWidth="440">
+    <StackPanel Spacing="16" Width="440" MinWidth="0">
         <TextBlock x:Name="ErrorText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                    Style="{StaticResource BodyTextBlockStyle}" />
         <Expander x:Name="DetailsExpander" Header="Technical details" HorizontalAlignment="Stretch"

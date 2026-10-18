@@ -19,6 +19,15 @@
     <ApplicationDefinition Include="TestApp.xaml" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
+    <Page Include="../PLUMA.UI/SettingsPage.xaml" Link="SettingsPage.xaml" />
+    <Page Include="../PLUMA.UI/DashboardPage.xaml" Link="DashboardPage.xaml" />
+    <Page Include="../PLUMA.UI/PolicyBlockNotice.xaml" Link="PolicyBlockNotice.xaml" />
+    <Page Include="../PLUMA.UI/RiskApprovalDialog.xaml" Link="RiskApprovalDialog.xaml" />
+    <Compile Include="../PLUMA.UI/SettingsPage.xaml.cs" Link="SettingsPage.xaml.cs" />
+    <Compile Include="../PLUMA.UI/DashboardPage.xaml.cs" Link="DashboardPage.xaml.cs" />
+    <Compile Include="../PLUMA.UI/PolicyBlockNotice.xaml.cs" Link="PolicyBlockNotice.xaml.cs" />
+    <Compile Include="../PLUMA.UI/RiskApprovalDialog.xaml.cs" Link="RiskApprovalDialog.xaml.cs" />
     <Page Include="../PLUMA.UI/LiveMessageFeed.xaml" Link="LiveMessageFeed.xaml" />
     <Page Include="../PLUMA.UI/CoreHealthIndicator.xaml" Link="CoreHealthIndicator.xaml" />
     <Page Include="../PLUMA.UI/ToastNotification.xaml" Link="ToastNotification.xaml" />
