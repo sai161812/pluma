@@ -8,7 +8,7 @@ namespace PLUMA.UI
     public enum PopupStatusKind { Progress, Success, Dot, None }
 
     /// <summary>One shared line box for popup status glyphs and captions.</summary>
-    public sealed class PopupStatusIndicator : UserControl
+    public sealed partial class PopupStatusIndicator : UserControl
     {
         public static readonly DependencyProperty LabelProperty = DependencyProperty.Register(
             nameof(Label), typeof(string), typeof(PopupStatusIndicator), new PropertyMetadata(string.Empty,
@@ -24,6 +24,7 @@ namespace PLUMA.UI
 
         public PopupStatusIndicator()
         {
+            InitializeComponent();
             IsTabStop = false;
             VerticalAlignment = VerticalAlignment.Center;
             var row = new Grid { MinHeight = 20, ColumnSpacing = 7 };

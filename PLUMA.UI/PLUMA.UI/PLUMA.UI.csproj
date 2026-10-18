@@ -56,6 +56,8 @@
     <Page Include="MainWindow.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="SurfaceGalleryWindow.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="TaskRunningPopup.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="PopupMessageText.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="PopupStatusIndicator.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="StepProgressPopup.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="RouteBadgePopup.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="ToolCallCard.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />

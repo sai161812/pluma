@@ -34,7 +34,7 @@ namespace PLUMA.UI
             if (ErrorText == null) return;
             ErrorText.Text = PopupText.Message(ErrorMessage);
             DetailsText.Text = PopupText.Message(SanitizedDetails);
-            DetailsExpander.Visibility = string.IsNullOrWhiteSpace(SanitizedDetails) ? Visibility.Collapsed : Visibility.Visible;
+            DetailsExpander.Visibility = string.IsNullOrWhiteSpace(DetailsText.DisplayText) ? Visibility.Collapsed : Visibility.Visible;
             IsPrimaryButtonEnabled = CanRestart;
         }
 

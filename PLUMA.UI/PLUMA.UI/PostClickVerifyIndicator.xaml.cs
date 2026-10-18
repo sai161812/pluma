@@ -10,10 +10,10 @@ namespace PLUMA.UI
         public void ShowResult(bool verified, string verificationMethod, string sanitizedDetail)
         {
             HideResult();
-            if (string.IsNullOrWhiteSpace(verificationMethod)) return;
+            string method = PopupText.Label(verificationMethod);
+            if (string.IsNullOrWhiteSpace(method)) return;
             Title = verified ? "Verified" : "Unverified";
             Severity = verified ? InfoBarSeverity.Success : InfoBarSeverity.Error;
-            string method = PopupText.Label(verificationMethod);
             NoticeText.Text = string.IsNullOrWhiteSpace(sanitizedDetail) ? method : $"{method}. {PopupText.Message(sanitizedDetail)}";
             IsOpen = true;
         }

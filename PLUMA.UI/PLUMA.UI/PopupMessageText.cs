@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Data;
 namespace PLUMA.UI
 {
     /// <summary>Readable, bounded notification text with native wrapping and keyboard scrolling.</summary>
-    public sealed class PopupMessageText : UserControl
+    public sealed partial class PopupMessageText : UserControl
     {
         public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
             nameof(Text), typeof(string), typeof(PopupMessageText), new PropertyMetadata(string.Empty, OnTextChanged));
@@ -19,9 +19,11 @@ namespace PLUMA.UI
 
         private readonly TextBlock _message;
         private readonly ScrollViewer _scroll;
+        private bool _followPending;
 
         public PopupMessageText()
         {
+            InitializeComponent();
             MinWidth = 0;
             MaxHeight = 96;
             HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -47,6 +49,13 @@ namespace PLUMA.UI
                 ZoomMode = ZoomMode.Disabled, IsTabStop = true
             };
             Content = _scroll;
+            Loaded += (_, _) => _followPending = FollowTail;
+            LayoutUpdated += (_, _) =>
+            {
+                if (!_followPending || !IsLoaded || _scroll.ViewportWidth <= 0) return;
+                _followPending = false;
+                _scroll.ChangeView(null, _scroll.ScrollableHeight, null, true);
+            };
         }
 
         public string Text { get => (string)GetValue(TextProperty); set => SetValue(TextProperty, value); }
@@ -60,12 +69,10 @@ namespace PLUMA.UI
         {
             var control = (PopupMessageText)sender;
             bool atEnd = control._scroll.ScrollableHeight - control._scroll.VerticalOffset < 2;
+            control._followPending = control.FollowTail && (control._followPending || atEnd);
             control._message.Text = PopupText.Message(args.NewValue as string);
             AutomationProperties.SetName(control._scroll, control._message.Text);
-            // Update only this control's layout. No polling, timer, or detached dispatcher work.
-            control.UpdateLayout();
-            if (control.FollowTail && atEnd)
-                control._scroll.ChangeView(null, control._scroll.ScrollableHeight, null, true);
+            // Native layout coalesces rapid partial transcripts; scrolling waits for the new extent.
         }
     }
 }

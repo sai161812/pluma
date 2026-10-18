@@ -13,7 +13,7 @@
                 Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
             <StackPanel Spacing="5">
-                <TextBlock Text="OCR match" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock Text="Text match" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <local:PopupMessageText x:Name="MatchText" FontFamily="Segoe UI Variable" FontSize="16"
                            FontWeight="SemiBold" MaxHeight="96" />

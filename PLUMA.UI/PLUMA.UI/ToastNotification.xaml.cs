@@ -30,7 +30,7 @@ namespace PLUMA.UI
             _dismissTimer.Stop();
             NoticeText.Text = PopupText.Message(sanitizedMessage);
             Notice.Severity = severity;
-            Notice.IsOpen = !string.IsNullOrWhiteSpace(sanitizedMessage);
+            Notice.IsOpen = !string.IsNullOrWhiteSpace(NoticeText.DisplayText);
             Visibility = Notice.IsOpen ? Visibility.Visible : Visibility.Collapsed;
             _dismissTimer.Interval = timeout;
             StartDismissTimer();

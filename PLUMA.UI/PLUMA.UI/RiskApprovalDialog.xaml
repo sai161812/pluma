@@ -29,7 +29,7 @@
                       Margin="0,2,0,0" />
 
             <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Text="High risk"
+                <TextBlock Text="Approval required"
                            FontFamily="Segoe UI Variable"
                            FontSize="12"
                            FontWeight="SemiBold"
@@ -42,7 +42,7 @@
         </Grid>
 
         <StackPanel Spacing="5">
-            <TextBlock Text="Risk class"
+            <TextBlock Text="Risk level"
                        FontFamily="Segoe UI Variable"
                        FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -52,7 +52,7 @@
         </StackPanel>
 
         <StackPanel Spacing="5">
-            <TextBlock Text="Sanitised arguments"
+            <TextBlock Text="Action details"
                        FontFamily="Segoe UI Variable"
                        FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

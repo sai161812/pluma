@@ -72,6 +72,7 @@ namespace PLUMA.UI
                     OnSilenceProgressChanged));
 
         private bool _suppressListeningCallback;
+        internal UIElement DragRegion => HeaderDragRegion;
 
         public VoiceOverlay()
         {

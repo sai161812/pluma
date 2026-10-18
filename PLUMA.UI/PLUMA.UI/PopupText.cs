@@ -14,6 +14,8 @@ namespace PLUMA.UI
             ["open_file"] = "Open file", ["move_file"] = "Move file", ["rename_file"] = "Rename file",
             ["open_app"] = "Open app", ["close_app"] = "Close app", ["invoke_control"] = "Select control",
             ["click_ocr_text"] = "Select text on screen", ["ocr_rescan"] = "Screen text check",
+            ["ocr"] = "Screen text check", ["uia"] = "Windows accessibility check",
+            ["api"] = "Application check", ["ocr_grounded"] = "Screen target check",
             ["restart_request"] = "Restart computer", ["shutdown_request"] = "Shut down computer",
             ["set_volume"] = "Set volume", ["permission_denied"] = "Permission denied",
             ["rollback_conflict"] = "Could not safely restore the previous state"
@@ -34,7 +36,8 @@ namespace PLUMA.UI
             string text = value ?? string.Empty;
             text = Regex.Replace(text, @"\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b",
                 match => Labels.TryGetValue(match.Value, out string? label) ? label : match.Value.Replace('_', ' '));
-            text = Regex.Replace(text.Replace('_', ' '), @"\s*\u2014+\s*", ". ");
+            text = Regex.Replace(text.Replace('_', ' '), @"(?:\s*\u2014\s*)+", ". ");
+            text = Regex.Replace(text, @"([.!?:;])\s*\.\s*", "$1 ");
             text = Regex.Replace(text, @"[^\S\r\n]+", " ");
             text = Regex.Replace(text, @"[ \t]+([.,:;!?])", "$1");
             text = Regex.Replace(text, @"^\.\s+", string.Empty);

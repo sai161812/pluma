@@ -44,7 +44,7 @@
                        FontWeight="SemiBold" />
 
             <StackPanel Grid.Row="2" Spacing="3">
-                <TextBlock Text="OCR Click"
+                <TextBlock Text="Selecting text on screen"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <local:PopupMessageText Text="Locating the Downloads button"

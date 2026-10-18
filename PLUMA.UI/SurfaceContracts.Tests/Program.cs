@@ -11,6 +11,15 @@ void Check(bool condition, string name)
 var feed = new LiveMessageBuffer(2);
 Check(PopupText.Label("open_file") == "Open file", "tool identifiers have human-readable labels");
 Check(PopupText.Label("ocr_rescan") == "Screen text check", "verification method uses a meaningful label");
+Check(PopupText.Label("uia") == "Windows accessibility check", "verification abbreviations have readable names");
+Check(PopupText.Message("Ready \u2014 \u2014 continue") == "Ready. continue", "repeated separators do not create odd punctuation");
+Check(PopupText.Message("Ready. \u2014 continue") == "Ready. continue", "existing sentence punctuation is retained cleanly");
+Check(PopupText.Message(" ___ \u2014 __ ") == "", "separator-only messages become empty");
+Check(PopupText.Message("first_line\r\nsecond_line") == "first line\r\nsecond line", "intentional message line breaks are preserved");
+string unicodeMessage = "\u65e5\u672c\u8a9e_\u2014\ud83d\udcc4 " + new string('W', 2000);
+Check(!PopupText.Message(unicodeMessage).Contains('_') && !PopupText.Message(unicodeMessage).Contains('\u2014') &&
+    PopupText.Message(unicodeMessage).EndsWith(new string('W', 2000)), "long Unicode messages retain their content without machine separators");
+Check(PopupText.Label("ROLLING_BACK") == "Rolling back", "state names use normal sentence case");
 Check(PopupText.Message("Opened quarterly_report.pdf — file_ready") == "Opened quarterly report.pdf. file ready",
     "popup copy removes machine separators without changing file extensions");
 Check(PopupText.Arguments("{\"source_path\":\"Downloads/quarterly_report.pdf\",\"overwrite\":false}") ==

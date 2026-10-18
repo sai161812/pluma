@@ -29,6 +29,7 @@
     <Compile Include="../PLUMA.UI/PolicyBlockNotice.xaml.cs" Link="PolicyBlockNotice.xaml.cs" />
     <Compile Include="../PLUMA.UI/RiskApprovalDialog.xaml.cs" Link="RiskApprovalDialog.xaml.cs" />
     <Page Include="../PLUMA.UI/LiveMessageFeed.xaml" Link="LiveMessageFeed.xaml" />
+    <Page Include="../PLUMA.UI/PopupMessageText.xaml" Link="PopupMessageText.xaml" />
     <Page Include="../PLUMA.UI/CoreHealthIndicator.xaml" Link="CoreHealthIndicator.xaml" />
     <Page Include="../PLUMA.UI/ToastNotification.xaml" Link="ToastNotification.xaml" />
     <Page Include="../PLUMA.UI/CriticalErrorDialog.xaml" Link="CriticalErrorDialog.xaml" />

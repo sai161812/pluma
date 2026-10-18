@@ -30,7 +30,8 @@ namespace PLUMA.UI
             HideMatch();
             DateTimeOffset now = DateTimeOffset.UtcNow;
             TimeSpan remaining = snapshotExpiresAt - now;
-            if (string.IsNullOrWhiteSpace(sanitizedText) || !double.IsFinite(confidence) || confidence < 0 || confidence > 1 ||
+            string displayText = PopupText.Message(sanitizedText);
+            if (string.IsNullOrWhiteSpace(displayText) || !double.IsFinite(confidence) || confidence < 0 || confidence > 1 ||
                 !Finite(hostBounds.X, hostBounds.Y, hostBounds.Width, hostBounds.Height, desktopPosition.X, desktopPosition.Y) ||
                 hostBounds.X < 0 || hostBounds.Y < 0 || hostBounds.Width <= 0 || hostBounds.Height <= 0 || remaining <= TimeSpan.Zero)
                 return;
@@ -39,7 +40,7 @@ namespace PLUMA.UI
             _expiresAt = remaining > TimeSpan.FromSeconds(3) ? now.AddSeconds(3) : snapshotExpiresAt;
             remaining = _expiresAt - now;
             _bounds = hostBounds;
-            MatchText.Text = PopupText.Message(sanitizedText);
+            MatchText.Text = displayText;
             MetadataText.Text = $"Confidence {confidence:0.00} · Desktop ({desktopPosition.X:0}, {desktopPosition.Y:0})";
             Visibility = Visibility.Visible;
             _expiryTimer.Interval = remaining;

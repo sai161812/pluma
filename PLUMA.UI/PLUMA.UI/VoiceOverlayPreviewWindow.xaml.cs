@@ -32,7 +32,7 @@ namespace PLUMA.UI
             InitializeComponent();
 
             ExtendsContentIntoTitleBar = true;
-            SetTitleBar(RootGrid);
+            SetTitleBar(Overlay.DragRegion);
 
             _audioTimer = DispatcherQueue.CreateTimer();
             _audioTimer.Interval = TimeSpan.FromMilliseconds(16);
