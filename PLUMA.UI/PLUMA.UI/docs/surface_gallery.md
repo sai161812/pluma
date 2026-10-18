@@ -3,6 +3,8 @@
 This is an owner-review catalogue of the actual 26 WinUI components. It is not
 a proposal for where they should appear in the product. All displayed task,
 voice, OCR, health, notification, and setup values are preview fixtures.
+The owner specified dark-only appearance. The app and all previews default to
+Dark; there is no theme selector or light-version review requirement.
 
 ## Open the native gallery
 
@@ -22,8 +24,8 @@ default production build. Restore project dependencies first on a fresh checkout
 The optional Visual Studio **PLUMA.UI (Surface Gallery)** launch profile opens
 that same previously built executable. The normal app launch path is unchanged.
 
-Use the numbered picker to inspect any surface, the Theme picker to choose
-System/Light/Dark, and the state buttons to inspect variants. The gallery starts
+Use the numbered picker to inspect any surface and the state buttons to
+inspect variants, all in Dark. The gallery starts
 at surface 16. Its marker intentionally expires after three seconds; use the
 replay button to show it again. Surface 17 offers Verified and Unverified states.
 
@@ -39,7 +41,7 @@ uses the already approved voice host without opening the microphone.
 ```
 
 After rendering completes, open `output/ui-surface-gallery/index.html` to browse
-all 52 actual WinUI PNGs (26 surfaces × light/dark). Each PNG is a still frame;
+all 26 actual dark-theme WinUI PNGs. Each PNG is a still frame;
 use the native gallery for animations, scrolling, and sample state changes.
 Surface 15's exported image shows the documented peak of its capture flash.
 
@@ -54,15 +56,16 @@ For the latest all-surface formatting pass, see
 [ui_formatting_review.md](ui_formatting_review.md). The current development
 executable is blocked by Windows Application Control signing requirements;
 the earlier render counts below must not be treated as final formatting passes.
-On an approved runner, export also runs `SurfaceGalleryAudit.cs`, writes
+On an approved runner, the current export produces 26 dark renders and also runs `SurfaceGalleryAudit.cs`, writes
 `formatting-checks.txt` and long-text `stress-*.png`, and fails on layout/copy
 assertions. Its 150% text-size stress does not change OS settings or validate
 physical display scaling. Preview actions are disabled while export runs.
 
 - Preview build: zero warnings, zero errors.
-- State/catalogue harness: 17 checks passed, including every surface ID 1–26
-  exactly once.
-- Gallery export: 52 component renders completed, recorded in
+- State/catalogue harness: 30 checks passed, including every surface ID 1–26
+  exactly once and readable popup-copy formatting.
+- Historical gallery export before the dark-only direction: 52 component renders
+  completed, recorded in
   `output/ui-surface-gallery/gallery-report.txt`.
 - This confirms component construction/rendering for the review catalogue.
   It is not a claim that the previously blocked UI behavior assertions passed,

@@ -3,6 +3,12 @@
 Date: 2026-10-18. Branch: `ui-polish`. Product changes through `c62fd9f`.
 Scope: owner-directed appearance and message formatting before placement/wiring.
 
+Owner correction on 2026-10-18: PLUMA is dark-only, matching the owner's Windows
+appearance. `App.xaml` explicitly requests Dark. The native gallery, HTML
+viewer, exports, formatting audit, and control-preview harness now use Dark
+only. Light-theme support and review are outside the requested scope. The
+current exporter produces 26 dark component renders, plus stress fixtures.
+
 **Implementation and build checks are complete. Final native visual/layout
 acceptance is blocked and has not passed.** Windows Application Control refused
 the rebuilt preview executable, including the final launch attempt. Event 3077
@@ -14,7 +20,7 @@ is assumed, and wiring has not started.
 
 | Requirement | Implementation and evidence | Remaining evidence |
 |---|---|---|
-| Native Windows appearance | Reviewed all 26 surfaces against `PLUMA_WINDOWS_11_UI_STYLE_MAPPING.md` and existing components. Standard WinUI resources, Acrylic floating surfaces, card fills in Dashboard, native conflict dialog, and native committed InfoBar. | Inspect the final build in light/dark themes. Earlier renders are historical references. |
+| Native Windows appearance | Reviewed all 26 surfaces against `PLUMA_WINDOWS_11_UI_STYLE_MAPPING.md` and existing components. Standard WinUI resources, Acrylic floating surfaces, card fills in Dashboard, native conflict dialog, and native committed InfoBar. | Inspect the final build in Dark. Earlier renders are historical references. |
 | Long text fits notifications | Shared `PopupMessageText` uses word/character wrapping and bounded native vertical scrolling, without ellipsis or a line-count cutoff. Body text remains readable; captions stay at least 12px. Transcript viewport is 64 DIPs within the existing 460x276 voice overlay. | Run the native long-word, Unicode, scrolling, enlarged-text, and transcript-follow checks. |
 | Status elements align with captions | Shared `PopupStatusIndicator` centers dots, checkmarks, spinners, and text in the same grid row. ProgressRing minimum dimensions are explicitly removed so a 14-DIP ring fits. Text line height adapts to its size. | Run the measured center-alignment checks, including enlarged captions. |
 | No underscores or em dashes in messages | Static scan passes for all 33 compiled XAML files. Display-only formatting converts tool/state labels and sanitized argument fields; removes both separators; preserves line breaks, file extensions, Unicode, and normal ellipses. Raw transcripts, arguments, event messages, and ledger data are preserved. | Native audit also scans the actual visible TextBlocks. |
@@ -94,7 +100,7 @@ behavior harness also retains its previously recorded execution blocker. Older
 test outputs must not be counted as current passes.
 
 The explicit gallery export now includes a fail-fast native audit of every
-surface in both themes, long unbroken words/Unicode, 150% message/caption text,
+surface in Dark, long unbroken words/Unicode, 150% message/caption text,
 foreground theme, viewport bounds, reachable last lines, glyph/text centers,
 transcript follow/read-back behavior, and committed-banner fit. It writes
 `formatting-checks.txt` and `stress-*.png`; these checks are **implemented but
@@ -105,3 +111,17 @@ Next step: execute `./PLUMA.UI/preview-surfaces.ps1 -Export` and the WinUI behav
 harness in an environment whose signing policy permits the development build,
 then inspect the resulting native previews. Resolve any failures before the
 separate wiring task or a full Phase 14 completion claim.
+
+## Dark-only correction verification
+
+Changed files: `App.xaml`, `SurfaceGalleryWindow.xaml/.cs`,
+`SurfaceGalleryAudit.cs`, `SurfaceControls.Tests/TestApp.xaml`,
+`SurfaceControls.Tests/App.xaml.cs`, `SurfaceControls.Tests/VisualReview.cs`,
+and these gallery/review documents. Existing light renders remain historical
+artifacts; no new light renders are requested or generated.
+
+The copy scan still passes for 33 compiled XAML files, and the contract harness
+still reports 30 checks passed. Both the app preview and control harness build
+with zero warnings/errors. Runtime acceptance retains the recorded signing-policy
+limitation; removal of the light review requirement does not mark pending dark
+layout/behavior checks as passed. No wiring or backend behavior changed.

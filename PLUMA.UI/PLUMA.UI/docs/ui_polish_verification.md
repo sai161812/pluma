@@ -2,7 +2,9 @@
 
 Current all-surface formatting status is in [ui_formatting_review.md](ui_formatting_review.md).
 It records the latest passing checks and the final native-launch signing block.
-The counts and renders below are historical evidence for their stated versions.
+The owner has since specified dark-only appearance; current previews and
+acceptance checks use Dark only. The counts and light/dark renders below are
+historical evidence for their stated versions.
 
 Date: 2026-10-18. Branch: `ui-polish`, tracking `origin/ui-polish`.
 Environment: Windows build 26200, .NET SDK 10.0.401, .NET 8 target, Debug/x64.

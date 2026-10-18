@@ -19,82 +19,80 @@ namespace PLUMA.UI.Tests
             Directory.CreateDirectory(output);
             window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1460, 980));
 
-            foreach (ElementTheme theme in new[] { ElementTheme.Light, ElementTheme.Dark })
+            const ElementTheme theme = ElementTheme.Dark;
+            string suffix = theme.ToString().ToLowerInvariant();
+            Grid root = CreateRoot(theme);
+            var feed = new LiveMessageFeed();
+            feed.AppendMessage("Opened Notepad", new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero));
+            feed.AppendMessage("Could not verify Submit action", new DateTimeOffset(2026, 10, 18, 12, 0, 1, TimeSpan.Zero));
+            var health = new CoreHealthIndicator { IsConnected = true, PingLatencyMs = 12 };
+            var notice = new ToastNotification();
+            notice.Show("Could not verify Submit action", InfoBarSeverity.Warning, TimeSpan.FromMinutes(1));
+            var policy = new PolicyBlockNotice { ToolName = "invoke_control", MatchedRule = "Target changed", IsNoticeOpen = true };
+            var newStack = new StackPanel { Spacing = 20, Margin = new Thickness(28, 24, 28, 32) };
+            newStack.Children.Add(health);
+            newStack.Children.Add(feed);
+            newStack.Children.Add(notice);
+            newStack.Children.Add(new TextBlock { Text = "Existing notice for comparison", Margin = new Thickness(0, 20, 0, 0) });
+            newStack.Children.Add(policy);
+            AddColumn(root, new DashboardPage(), "Existing Dashboard", 0);
+            AddColumn(root, newStack, "New status components", 1);
+            window.Content = root;
+            await CaptureAsync(root, Path.Combine(output, $"status-{suffix}.png"));
+
+            root = CreateRoot(theme);
+            AddColumn(root, new SettingsPage(), "Existing Settings", 0);
+            AddColumn(root, new SetupWizard(), "New setup wizard", 1);
+            window.Content = root;
+            await CaptureAsync(root, Path.Combine(output, $"setup-{suffix}.png"));
+
+            root = CreateRoot(theme);
+            var perceptionPanel = new Grid { Margin = new Thickness(28, 24, 28, 32) };
+            var target = new Button { Content = "Submit", Width = 100, Height = 32,
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(30, 30, 0, 0) };
+            var marker = new OcrMatchIndicator();
+            perceptionPanel.Children.Add(target);
+            perceptionPanel.Children.Add(marker);
+            var verification = new PostClickVerifyIndicator { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 220, 0, 0) };
+            verification.ShowResult(false, "ocr_rescan", "Expected transition not observed");
+            perceptionPanel.Children.Add(verification);
+            AddColumn(root, new PolicyBlockNotice { IsNoticeOpen = true, ToolName = "invoke_control", MatchedRule = "Target changed" }, "Existing policy notice", 0);
+            AddColumn(root, perceptionPanel, "OCR match and verification", 1);
+            window.Content = root;
+            await Task.Delay(100);
+            marker.ShowMatch("Submit", 0.95, new Windows.Foundation.Rect(30, 30, 100, 32),
+                new Windows.Foundation.Point(1200, 300), DateTimeOffset.UtcNow.AddSeconds(3));
+            await CaptureAsync(root, Path.Combine(output, $"perception-{suffix}.png"));
+
+            root = CreateRoot(theme);
+            window.Content = root;
+            await Task.Delay(100);
+            var approval = new RiskApprovalDialog
             {
-                string suffix = theme.ToString().ToLowerInvariant();
-                Grid root = CreateRoot(theme);
-                var feed = new LiveMessageFeed();
-                feed.AppendMessage("Opened Notepad", new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero));
-                feed.AppendMessage("Could not verify Submit action", new DateTimeOffset(2026, 10, 18, 12, 0, 1, TimeSpan.Zero));
-                var health = new CoreHealthIndicator { IsConnected = true, PingLatencyMs = 12 };
-                var notice = new ToastNotification();
-                notice.Show("Could not verify Submit action", InfoBarSeverity.Warning, TimeSpan.FromMinutes(1));
-                var policy = new PolicyBlockNotice { ToolName = "invoke_control", MatchedRule = "Target changed", IsNoticeOpen = true };
-                var newStack = new StackPanel { Spacing = 20, Margin = new Thickness(28, 24, 28, 32) };
-                newStack.Children.Add(health);
-                newStack.Children.Add(feed);
-                newStack.Children.Add(notice);
-                newStack.Children.Add(new TextBlock { Text = "Existing notice for comparison", Margin = new Thickness(0, 20, 0, 0) });
-                newStack.Children.Add(policy);
-                AddColumn(root, new DashboardPage(), "Existing Dashboard", 0);
-                AddColumn(root, newStack, "New status components", 1);
-                window.Content = root;
-                await CaptureAsync(root, Path.Combine(output, $"status-{suffix}.png"));
+                XamlRoot = root.XamlRoot,
+                RequestedTheme = theme,
+                ToolName = "restart_request",
+                RiskClass = "HIGH",
+                SanitizedArguments = "Requested system restart"
+            };
+            var showingApproval = approval.ShowAsync();
+            await CaptureAsync(approval, Path.Combine(output, $"approval-{suffix}.png"));
+            approval.Hide();
+            await showingApproval;
 
-                root = CreateRoot(theme);
-                AddColumn(root, new SettingsPage(), "Existing Settings", 0);
-                AddColumn(root, new SetupWizard(), "New setup wizard", 1);
-                window.Content = root;
-                await CaptureAsync(root, Path.Combine(output, $"setup-{suffix}.png"));
-
-                root = CreateRoot(theme);
-                var perceptionPanel = new Grid { Margin = new Thickness(28, 24, 28, 32) };
-                var target = new Button { Content = "Submit", Width = 100, Height = 32,
-                    HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
-                    Margin = new Thickness(30, 30, 0, 0) };
-                var marker = new OcrMatchIndicator();
-                perceptionPanel.Children.Add(target);
-                perceptionPanel.Children.Add(marker);
-                var verification = new PostClickVerifyIndicator { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 220, 0, 0) };
-                verification.ShowResult(false, "ocr_rescan", "Expected transition not observed");
-                perceptionPanel.Children.Add(verification);
-                AddColumn(root, new PolicyBlockNotice { IsNoticeOpen = true, ToolName = "invoke_control", MatchedRule = "Target changed" }, "Existing policy notice", 0);
-                AddColumn(root, perceptionPanel, "OCR match and verification", 1);
-                window.Content = root;
-                await Task.Delay(100);
-                marker.ShowMatch("Submit", 0.95, new Windows.Foundation.Rect(30, 30, 100, 32),
-                    new Windows.Foundation.Point(1200, 300), DateTimeOffset.UtcNow.AddSeconds(3));
-                await CaptureAsync(root, Path.Combine(output, $"perception-{suffix}.png"));
-
-                root = CreateRoot(theme);
-                window.Content = root;
-                await Task.Delay(100);
-                var approval = new RiskApprovalDialog
-                {
-                    XamlRoot = root.XamlRoot,
-                    RequestedTheme = theme,
-                    ToolName = "restart_request",
-                    RiskClass = "HIGH",
-                    SanitizedArguments = "Requested system restart"
-                };
-                var showingApproval = approval.ShowAsync();
-                await CaptureAsync(approval, Path.Combine(output, $"approval-{suffix}.png"));
-                approval.Hide();
-                await showingApproval;
-
-                var error = new CriticalErrorDialog
-                {
-                    XamlRoot = root.XamlRoot,
-                    RequestedTheme = theme,
-                    ErrorMessage = "The resident core disconnected. Restart the core to continue.",
-                    SanitizedDetails = "IPC connection closed.",
-                    CanRestart = true
-                };
-                var showingError = error.ShowAsync();
-                await CaptureAsync(error, Path.Combine(output, $"critical-{suffix}.png"));
-                error.Hide();
-                await showingError;
-            }
+            var error = new CriticalErrorDialog
+            {
+                XamlRoot = root.XamlRoot,
+                RequestedTheme = theme,
+                ErrorMessage = "The resident core disconnected. Restart the core to continue.",
+                SanitizedDetails = "IPC connection closed.",
+                CanRestart = true
+            };
+            var showingError = error.ShowAsync();
+            await CaptureAsync(error, Path.Combine(output, $"critical-{suffix}.png"));
+            error.Hide();
+            await showingError;
             Console.WriteLine($"Visual review renders: {output}");
         }
 

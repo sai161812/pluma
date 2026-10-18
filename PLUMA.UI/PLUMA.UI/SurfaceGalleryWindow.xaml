@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="PLUMA · UI surface gallery">
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
-    <Grid x:Name="GalleryRoot" Padding="28,24" RowSpacing="16"
+    <Grid x:Name="GalleryRoot" RequestedTheme="Dark" Padding="28,24" RowSpacing="16"
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -19,17 +19,8 @@
                        Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
-        <Grid Grid.Row="1" ColumnSpacing="16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <ComboBox x:Name="SurfacePicker" Header="Surface" HorizontalAlignment="Stretch"
-                      DisplayMemberPath="Label" SelectionChanged="OnSurfaceChanged" />
-            <ComboBox x:Name="ThemePicker" Grid.Column="1" Header="Theme" Width="160"
-                      SelectionChanged="OnThemeChanged" SelectedIndex="0">
-                <ComboBoxItem Content="System" /><ComboBoxItem Content="Light" /><ComboBoxItem Content="Dark" />
-            </ComboBox>
-        </Grid>
+        <ComboBox x:Name="SurfacePicker" Grid.Row="1" Header="Surface" HorizontalAlignment="Stretch"
+                  DisplayMemberPath="Label" SelectionChanged="OnSurfaceChanged" />
         <StackPanel x:Name="PreviewActions" Grid.Row="2" Orientation="Horizontal" Spacing="8" />
         <ScrollViewer x:Name="PreviewScroll" Grid.Row="3" HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">

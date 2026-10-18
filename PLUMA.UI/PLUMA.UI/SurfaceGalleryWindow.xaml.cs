@@ -64,13 +64,6 @@ namespace PLUMA.UI
             if (SurfacePicker.SelectedItem is SurfaceGalleryItem surface) ShowSurface(surface.Id);
         }
 
-        private void OnThemeChanged(object sender, SelectionChangedEventArgs args)
-        {
-            if (GalleryRoot == null) return;
-            GalleryRoot.RequestedTheme = ThemePicker.SelectedIndex switch
-            { 1 => ElementTheme.Light, 2 => ElementTheme.Dark, _ => ElementTheme.Default };
-        }
-
         private void AddAction(string text, Action action)
         {
             var button = new Button { Content = text, IsEnabled = !_exporting };
@@ -250,7 +243,6 @@ namespace PLUMA.UI
             foreach (var child in PreviewActions.Children)
                 if (child is Control control) control.IsEnabled = false;
             SurfacePicker.IsEnabled = false;
-            ThemePicker.IsEnabled = false;
             PreviewHost.IsHitTestVisible = false;
             PreviewActions.IsHitTestVisible = false;
             try
@@ -258,47 +250,44 @@ namespace PLUMA.UI
                 using var report = new StreamWriter(Path.Combine(outputDirectory, "gallery-report.txt")) { AutoFlush = true };
                 report.WriteLine("Actual WinUI component previews. Fixture data only; no backend or microphone.");
                 report.WriteLine($"Started {DateTimeOffset.Now:O}");
-                foreach (ElementTheme theme in new[] { ElementTheme.Light, ElementTheme.Dark })
+                const ElementTheme theme = ElementTheme.Dark;
+                GalleryRoot.RequestedTheme = theme;
+                foreach (SurfaceGalleryItem item in SurfaceGalleryCatalog.Items)
                 {
-                    ThemePicker.SelectedIndex = theme == ElementTheme.Light ? 1 : 2;
-                    GalleryRoot.RequestedTheme = theme;
-                    foreach (SurfaceGalleryItem item in SurfaceGalleryCatalog.Items)
+                    token.ThrowIfCancellationRequested();
+                    if (SurfacePicker.SelectedIndex == item.Id - 1) ShowSurface(item.Id);
+                    else SurfacePicker.SelectedIndex = item.Id - 1;
+                    PreviewScroll.ChangeView(0, 0, null, true);
+                    await Task.Delay(250, token);
+                    FrameworkElement renderTarget = GalleryRoot;
+                    Windows.Foundation.IAsyncOperation<ContentDialogResult>? showing = null;
+                    if (_dialogFactory != null)
                     {
-                        token.ThrowIfCancellationRequested();
-                        if (SurfacePicker.SelectedIndex == item.Id - 1) ShowSurface(item.Id);
-                        else SurfacePicker.SelectedIndex = item.Id - 1;
-                        PreviewScroll.ChangeView(0, 0, null, true);
-                        await Task.Delay(250, token);
-                        FrameworkElement renderTarget = GalleryRoot;
-                        Windows.Foundation.IAsyncOperation<ContentDialogResult>? showing = null;
-                        if (_dialogFactory != null)
-                        {
-                            _dialog = _dialogFactory();
-                            _dialog.XamlRoot = GalleryRoot.XamlRoot;
-                            _dialog.RequestedTheme = theme;
-                            showing = _dialog.ShowAsync();
-                            await Task.Delay(200, token);
-                            renderTarget = _dialog;
-                        }
-                        if (_flashPreview != null)
-                        {
-                            // A still of the existing animation's documented peak, for inspection.
-                            _flashPreview.Visibility = Visibility.Visible;
-                            ((FrameworkElement)_flashPreview.FindName("FlashLayer")).Opacity = 0.15;
-                        }
-                        string filename = $"surface-{item.Id:00}-{theme.ToString().ToLowerInvariant()}.png";
-                        await ExportElementAsync(renderTarget, Path.Combine(outputDirectory, filename), token);
-                        if (showing != null)
-                        {
-                            _dialog?.Hide();
-                            await showing;
-                            _dialog = null;
-                        }
-                        await report.WriteLineAsync($"PASS {filename}: {item.Name}");
+                        _dialog = _dialogFactory();
+                        _dialog.XamlRoot = GalleryRoot.XamlRoot;
+                        _dialog.RequestedTheme = theme;
+                        showing = _dialog.ShowAsync();
+                        await Task.Delay(200, token);
+                        renderTarget = _dialog;
                     }
+                    if (_flashPreview != null)
+                    {
+                        // A still of the existing animation's documented peak, for inspection.
+                        _flashPreview.Visibility = Visibility.Visible;
+                        ((FrameworkElement)_flashPreview.FindName("FlashLayer")).Opacity = 0.15;
+                    }
+                    string filename = $"surface-{item.Id:00}-{theme.ToString().ToLowerInvariant()}.png";
+                    await ExportElementAsync(renderTarget, Path.Combine(outputDirectory, filename), token);
+                    if (showing != null)
+                    {
+                        _dialog?.Hide();
+                        await showing;
+                        _dialog = null;
+                    }
+                    await report.WriteLineAsync($"PASS {filename}: {item.Name}");
                 }
                 await AuditFormattingAsync(outputDirectory, token);
-                await report.WriteLineAsync("52 component renders exported. Formatting audit passed; see formatting-checks.txt. Placement and wiring remain undecided.");
+                await report.WriteLineAsync("26 dark component renders exported. Formatting audit passed; see formatting-checks.txt. Placement and wiring remain undecided.");
                 WritePreviewIndex(outputDirectory);
             }
             finally
@@ -307,11 +296,9 @@ namespace PLUMA.UI
                 if (!_closed)
                 {
                     SurfacePicker.IsEnabled = true;
-                    ThemePicker.IsEnabled = true;
                     PreviewHost.IsHitTestVisible = true;
                     PreviewActions.IsHitTestVisible = true;
-                    ThemePicker.SelectedIndex = 0;
-                    GalleryRoot.RequestedTheme = ElementTheme.Default;
+                    GalleryRoot.RequestedTheme = ElementTheme.Dark;
                     if (SurfacePicker.SelectedIndex == 15) ShowSurface(16);
                     else SurfacePicker.SelectedIndex = 15;
                 }
@@ -347,11 +334,11 @@ namespace PLUMA.UI
             string html = """
                 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
                 <title>PLUMA UI surface previews</title>
-                <style>body{font:16px system-ui;margin:24px;background:#f3f3f3;color:#202020}header{display:flex;gap:16px;align-items:center;flex-wrap:wrap}select{font:inherit;padding:8px;max-width:100%}img{display:block;max-width:100%;height:auto;margin-top:20px;border:1px solid #888}p{max-width:80ch}</style>
+                <style>body{font:16px system-ui;margin:24px;color-scheme:dark;background:#202020;color:#fff}header{display:flex;gap:16px;align-items:center;flex-wrap:wrap}select{font:inherit;padding:8px;max-width:100%}img{display:block;max-width:100%;height:auto;margin-top:20px;border:1px solid #888}p{max-width:80ch}</style>
                 <h1>PLUMA UI surface previews</h1><p>Actual WinUI renders with preview data. This gallery does not decide where a surface will appear or connect it to the backend. Animation previews are still frames; the native gallery includes replay buttons.</p>
-                <header><label>Surface <select id="surface">OPTIONS</select></label><label>Theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><a id="full" href="surface-16-light.png" target="_blank">Open full-size image</a></header>
-                <img id="preview" src="surface-16-light.png" alt="OCR Match Indicator native WinUI preview">
-                <script>const surface=document.getElementById('surface'),theme=document.getElementById('theme'),preview=document.getElementById('preview'),full=document.getElementById('full');function update(){const path='surface-'+surface.value+'-'+theme.value+'.png';preview.src=path;full.href=path;preview.alt=surface.selectedOptions[0].text+' · '+theme.value;document.body.style.background=theme.value==='dark'?'#202020':'#f3f3f3';document.body.style.color=theme.value==='dark'?'#fff':'#202020'}surface.addEventListener('change',update);theme.addEventListener('change',update);</script></html>
+                <header><label>Surface <select id="surface">OPTIONS</select></label><a id="full" href="surface-16-dark.png" target="_blank">Open full-size image</a></header>
+                <img id="preview" src="surface-16-dark.png" alt="OCR Match Indicator native WinUI preview">
+                <script>const surface=document.getElementById('surface'),preview=document.getElementById('preview'),full=document.getElementById('full');function update(){const path='surface-'+surface.value+'-dark.png';preview.src=path;full.href=path;preview.alt=surface.selectedOptions[0].text+' dark preview'}surface.addEventListener('change',update);</script></html>
                 """;
             File.WriteAllText(Path.Combine(outputDirectory, "index.html"), html.Replace("OPTIONS", options.ToString()));
         }
