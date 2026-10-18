@@ -21,6 +21,8 @@ namespace PLUMA.UI
             bounded.CancelAfter(TimeSpan.FromSeconds(90));
             CancellationToken token=bounded.Token;
             using var report=new StreamWriter(Path.Combine(directory,"popup-stack-audit.txt")) {AutoFlush=true};
+            report.WriteLine($"Windows animation preference: {_host.MotionEnabled}. This explicit owned-fixture audit enables motion without changing Windows settings.");
+            _host.AnimationPreferenceOverride=true;
             int checks=0;
             var frames=new System.Collections.Generic.List<PopupWindowSnapshot[]>();
             bool visibleLayoutsReady=true;
@@ -165,9 +167,10 @@ namespace PLUMA.UI
             _host.Clear(); await Settle();
 
             // Change only this fixture's reported work area; never alter Windows display/taskbar settings.
+            Check(visibleLayoutsReady,"every sampled visible native frame has a ready client layout");
             _host.Dispose();
             var placement=new AuditPlacement(new PopupDesktopPlacement(WinRT.Interop.WindowNative.GetWindowHandle(this),DispatcherQueue));
-            _host=new PopupStackHost(this,placement);
+            _host=new PopupStackHost(this,placement) {AnimationPreferenceOverride=true};
             placement.ForceTaskbar(false);
             Check(_host.Present("taskbar",24,CreateFixture(24),persistent:true),"taskbar glide fixture admitted");
             await Settle();
@@ -214,9 +217,10 @@ namespace PLUMA.UI
                 "unverifiable native geometry releases owned cards and timers");
             _host.Dispose();
             Check(placement.Disposed,"native geometry fixture releases its event adapter");
-            _host=new PopupStackHost(this);
+            _host=new PopupStackHost(this) {AnimationPreferenceOverride=true};
 
             _host.SuppressAnimations=true;
+            report.WriteLine("Motion-disabled fixture: 50 native creation/layout/disposal lifecycles.");
             for(int cycle=0;cycle<50;cycle++)
             {
                 var notice=new ToastNotification(); notice.Show($"Lifecycle {cycle}");

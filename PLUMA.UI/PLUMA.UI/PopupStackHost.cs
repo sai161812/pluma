@@ -50,11 +50,12 @@ namespace PLUMA.UI
         public PopupDesktop? Desktop => _desktop;
         internal bool TimerRunning => _timer.IsRunning;
         internal bool MotionEnabled => Animate;
+        internal bool? AnimationPreferenceOverride { get; set; }
         internal event Action<IReadOnlyList<PopupWindowSnapshot>>? FramePresented;
         internal nint HandleFor(string key) => _entries.TryGetValue(key,out var entry) ? entry.Window?.Handle ?? 0 : 0;
         internal IEnumerable<PopupCardWindow> Windows => _entries.Values.Select(e=>e.Window).OfType<PopupCardWindow>();
         private static double Now => Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency;
-        private bool Animate => !SuppressAnimations && _settings.AnimationsEnabled;
+        private bool Animate => !SuppressAnimations && (AnimationPreferenceOverride ?? _settings.AnimationsEnabled);
 
         public PopupStackHost(Window owner, IPopupDesktopPlacement? placement = null)
         {
