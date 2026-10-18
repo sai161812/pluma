@@ -166,6 +166,13 @@ namespace PLUMA.UI
             double chromeWidth = chrome?.Width / desktop.Scale ?? _chromeWidth;
             double chromeHeight = chrome?.Height / desktop.Scale ?? _chromeHeight;
             PopupClassSize profile = PopupSizing.ForSurface(entry.Surface);
+            if(entry.Surface is 17 or 19 or 24)
+            {
+                // The native InfoBar template aligns its background at the top. Fill the fixed
+                // notice viewport with that existing template, including its themed border.
+                var border=(Thickness)Application.Current.Resources["InfoBarBorderThickness"];
+                entry.Content.Resources["InfoBarMinHeight"]=Math.Max(0,profile.HeightDips-border.Top-border.Bottom);
+            }
             double width = Math.Max(1,Math.Min(profile.WidthDips,area.Width/desktop.Scale-chromeWidth));
             entry.Content.MinWidth = 0;
             entry.Content.MinHeight = profile.HeightDips;

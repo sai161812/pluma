@@ -130,6 +130,9 @@ namespace PLUMA.UI
                 PopupClassSize profile=PopupSizing.ForSurface(surface);
                 Check(_host.Windows.All(window=>Math.Abs(window.Root.ActualWidth-profile.WidthDips)<=1 && Math.Abs(window.Root.ActualHeight-profile.HeightDips)<=1),
                     $"surface {surface} matches its stable class client dimensions");
+                if(surface is 17 or 19 or 24)
+                    Check(_host.Windows.All(window=>NoticeBackgroundHeight(window.HostedContent!)>=profile.HeightDips-1),
+                        $"surface {surface} native InfoBar background fills its class viewport");
                 foreach(var window in _host.Windows) await CaptureCardAsync(window,Path.Combine(directory,$"surface-{surface:00}-dark.png"),token);
                 _host.Clear(); await Settle();
             }
@@ -235,6 +238,18 @@ namespace PLUMA.UI
             report.WriteLine($"{checks} native popup checks passed.");
             report.WriteLine("Physical taskbar hover/reveal, other real monitor DPI settings, and subjective motion still require interactive review; pure simulations are separate evidence.");
             if(!_closed) _status.Text=$"{checks} native popup checks passed. Audit output is saved.";
+        }
+
+        private static double NoticeBackgroundHeight(DependencyObject root)
+        {
+            if(root is InfoBar bar && VisualTreeHelper.GetChildrenCount(bar)>0 && VisualTreeHelper.GetChild(bar,0) is FrameworkElement background)
+                return background.ActualHeight;
+            for(int index=0;index<VisualTreeHelper.GetChildrenCount(root);index++)
+            {
+                double height=NoticeBackgroundHeight(VisualTreeHelper.GetChild(root,index));
+                if(height>0) return height;
+            }
+            return 0;
         }
 
         private sealed class AuditPlacement : IPopupDesktopPlacement
