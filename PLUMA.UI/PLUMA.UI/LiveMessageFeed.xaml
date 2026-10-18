@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PLUMA.UI.LiveMessageFeed"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PLUMA.UI">
+    <Grid RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="Live messages" Style="{StaticResource SubtitleTextBlockStyle}" />
+        <Grid Grid.Row="1">
+            <TextBlock x:Name="EmptyText" Text="No messages"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <ListView x:Name="MessageList" SelectionMode="None" MaxHeight="320"
+                      HorizontalContentAlignment="Stretch" AutomationProperties.Name="Live messages">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:LiveMessageEntry">
+                        <Grid ColumnSpacing="12" Padding="0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{x:Bind DisplayTime}" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Grid.Column="1" Text="{x:Bind Message}" TextWrapping="Wrap"
+                                       Style="{StaticResource BodyTextBlockStyle}" IsTextSelectionEnabled="True" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+    </Grid>
+</UserControl>

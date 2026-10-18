@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <ApplicationManifest>../PLUMA.UI/app.manifest</ApplicationManifest>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="TestApp.xaml" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+    <Page Include="../PLUMA.UI/LiveMessageFeed.xaml" Link="LiveMessageFeed.xaml" />
+    <Page Include="../PLUMA.UI/CoreHealthIndicator.xaml" Link="CoreHealthIndicator.xaml" />
+    <Page Include="../PLUMA.UI/ToastNotification.xaml" Link="ToastNotification.xaml" />
+    <Page Include="../PLUMA.UI/CriticalErrorDialog.xaml" Link="CriticalErrorDialog.xaml" />
+    <Page Include="../PLUMA.UI/SetupWizard.xaml" Link="SetupWizard.xaml" />
+    <Compile Include="../PLUMA.UI/LiveMessageFeed.xaml.cs" Link="LiveMessageFeed.xaml.cs" />
+    <Compile Include="../PLUMA.UI/CoreHealthIndicator.xaml.cs" Link="CoreHealthIndicator.xaml.cs" />
+    <Compile Include="../PLUMA.UI/ToastNotification.xaml.cs" Link="ToastNotification.xaml.cs" />
+    <Compile Include="../PLUMA.UI/CriticalErrorDialog.xaml.cs" Link="CriticalErrorDialog.xaml.cs" />
+    <Compile Include="../PLUMA.UI/SetupWizard.xaml.cs" Link="SetupWizard.xaml.cs" />
+    <Compile Include="../PLUMA.UI/LiveMessageBuffer.cs" Link="LiveMessageBuffer.cs" />
+    <Compile Include="../PLUMA.UI/SetupChecklist.cs" Link="SetupChecklist.cs" />
+  </ItemGroup>
+</Project>

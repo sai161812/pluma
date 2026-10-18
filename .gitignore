@@ -30,3 +30,7 @@ models/
 # Test artifacts
 .pytest_cache/
 *.log
+
+# Generated UI test harness output
+PLUMA.UI/*.Tests/bin/
+PLUMA.UI/*.Tests/obj/

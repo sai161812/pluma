@@ -67,6 +67,11 @@
     <Page Include="PolicyBlockNotice.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="CancellationAnimation.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
     <Page Include="WorkerTerminationFlash.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="LiveMessageFeed.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="CoreHealthIndicator.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="ToastNotification.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="CriticalErrorDialog.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
+    <Page Include="SetupWizard.xaml" Generator="MSBuild:Compile" XamlRuntime="WinUI" />
   </ItemGroup>
   <ItemGroup>
     <None Update="CancellationAnimation.xaml">
