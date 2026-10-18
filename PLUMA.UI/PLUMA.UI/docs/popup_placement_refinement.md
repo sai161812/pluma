@@ -1,7 +1,7 @@
 # Lower popup placement and consistent class sizes
 
 **Latest integration verification (2026-10-19):** the refinement and subsequent
-native startup/InfoBar-height corrections pass **658 native popup checks, 195
+native startup/InfoBar-height corrections pass **661 native popup checks, 195
 formatting checks and 35 native control checks** on the hosted Windows runner.
 All class renders were exported and inspected. Exact commits, run, commands and
 remaining physical Windows 11 acceptance are in

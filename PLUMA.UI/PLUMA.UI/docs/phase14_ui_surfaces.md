@@ -12,7 +12,7 @@ wiring references below remain future integration references.
 
 Owner refinement (2026-10-19): lower the stack while the taskbar is hidden,
 glide up/down with reveal/hide, and keep identical sizes within each notification
-class. The integration now passes 658 hosted native popup checks, 195 formatting
+class. The integration now passes 661 hosted native popup checks, 195 formatting
 checks and 35 control checks. Local signing restrictions and remaining physical
 Windows 11 acceptance are recorded in
 [ui_integration_review.md](ui_integration_review.md). See

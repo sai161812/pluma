@@ -27,7 +27,7 @@ The shared desktop stack is implemented in `PopupStackHost`, with an isolated
 native placement adapter and pure queue/layout model. The owner subsequently
 requested a lower hidden-taskbar anchor, reveal/hide glide and stable class
 sizes. Current integration verification passes 64,537 pure layout checks,
-**658 native popup checks, 195 formatting checks and 35 UI checks**, with all
+**661 native popup checks, 195 formatting checks and 35 UI checks**, with all
 26 Dark gallery surfaces and 15 floating classes rendered. Current evidence is
 in [ui_integration_review.md](ui_integration_review.md); the local Windows
 Application Control restriction and remaining physical Windows 11 checks are

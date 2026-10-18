@@ -33,8 +33,8 @@ pwsh -File ./PLUMA.UI/verify-ui.ps1
 
 ## Executed hosted verification
 
-[Run 5](https://github.com/sai161812/pluma/actions/runs/39158908362), head `d312ac6`,
-completed successfully: **658 native popup, 195 formatting and 35 native control
+[Run 8](https://github.com/sai161812/pluma/actions/runs/39159608742), head `d52dd7e`,
+completed successfully: **661 native popup, 195 formatting and 35 native control
 checks**, all 26 Dark gallery renders, all 15 floating class renders, and the
 64,537/30/15 pure regression checks. Both native projects built with zero
 warnings/errors. See [ui_integration_review.md](ui_integration_review.md) for
@@ -43,6 +43,11 @@ the exact source, environment, hash, corrections and artifact location.
 The initial hosted job failed its client-width assertion; it is retained as
 failure evidence. A diagnostic rerun passed, then the startup layout gate and
 native InfoBar height were corrected and passed the current expanded audit.
+Review of the runner's disabled Windows animation preference also exposed a
+coverage gap. Only the explicit owned-fixture audit now enables motion through
+an internal override, so measured intermediate fade/reflow/glide frames are
+required. A separate 50-lifecycle fixture disables motion. Normal hosts retain
+the system preference; no Windows setting is changed.
 Successful process start or a historical passing run never substitutes for a
 completed report for the source being reviewed.
 

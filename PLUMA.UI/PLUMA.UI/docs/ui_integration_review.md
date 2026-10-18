@@ -98,13 +98,13 @@ on head `d312ac657106eb0690153f1bb6ffeb8ac38ae4de`, tested as PR merge
 `002a9606b1ca1653c67a5dd22bdf4532f262ab06`. Windows Server build 26100,
 .NET SDK 10.0.402 / runtime 8.0.32, x64, 96 DPI, interactive session:
 
-| Current check | Result |
+| Run 5 check | Result |
 |---|---|
 | Popup layout model | 64,537 checks pass across 5,000 scenarios |
 | Surface contracts / audio visualizer | 30 / 15 checks pass |
 | Visible-copy scan | 33 compiled XAML files pass |
 | UI / native control builds | Both have 0 warnings, 0 errors |
-| Native popup audit | 658 checks pass, including first-layout readiness, class dimensions, InfoBar background height, taskbar-fixture glide and 50 lifecycles |
+| Native popup audit | 658 checks pass, including first-layout readiness, class dimensions, InfoBar background height, taskbar-fixture endpoints and 50 lifecycles; Windows motion was disabled |
 | Native all-surface formatting | 195 checks pass, including long words, Unicode, enlarged text, caption alignment and transcript scrolling |
 | Native control runner | 35 checks pass, exit code 0 |
 | Exported fixture renders | All 26 gallery surfaces and 15 floating classes present; 58 PNGs including stress fixtures |
@@ -115,8 +115,36 @@ fixture renders are in the `windows-ui-verification` artifact (seven-day
 retention), downloaded locally under `output/ci-artifacts/run-39158908362/`.
 All 26 gallery surfaces and 15 class renders were visually inspected, with
 the three corrected InfoBar renders inspected again. No desktop was captured.
-The executable SHA-256 is
+The run 5 executable SHA-256 is
 `EBBF365597A0292BEF1BE5B1E62AA189FF1C5B0D672C3D966F7A7562307EEA72`.
+
+### Required motion coverage
+
+Report review found that Windows animations were disabled on the hosted runner.
+Run 5 therefore established placement endpoints and the motion-disabled path,
+but did not execute its conditional intermediate-motion assertions. The explicit
+owned-fixture audit now overrides that preference internally, without changing
+Windows settings. Normal app/preview hosts keep the default null override and
+continue honoring Windows. The audit still explicitly disables motion for its
+50 creation/layout/disposal lifecycles. Intermediate-motion assertions are now
+unconditional in the animated part of the audit.
+
+[Run 8](https://github.com/sai161812/pluma/actions/runs/39159608742), head
+`d52dd7e735cc11e8bbf75761a203dc3863972051`, tested as PR merge
+`9db2e140112c66e89e37c6e05b6bdb51727486b0`, passes **661 native popup checks**.
+Its native opacity readback contains intermediate fade frames; native rectangles
+contain intermediate reflow and upward/downward taskbar-fixture glide positions.
+Dismissal during reflow stays non-overlapping, and every sampled visible frame
+has a loaded client layout matching the native rectangle. The same run passes
+**195 formatting, 35 control and 64,537/30/15 pure checks**, the 33-file copy scan,
+both clean builds and all render-count gates. Environment remains Windows build
+26100 / runtime 8.0.32 / 96 DPI. Fixture geometry does not test physical taskbar
+interaction or the compositor on the owner's laptop.
+
+Latest complete artifacts are downloaded under
+`output/ci-artifacts/run-39159608742/`, with all 58 PNGs and pass reports.
+The executable SHA-256 is
+`B47A8FBB136C911CA3B3CCC6B3143EDC4198E1EABE85CE906BB8102A4686A632`.
 
 ## Draft status and remaining gate
 

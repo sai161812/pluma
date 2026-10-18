@@ -5,7 +5,7 @@ Scope: owner-directed appearance and message formatting before placement/wiring.
 
 **Latest placement refinement (2026-10-19):** lower hidden-taskbar positioning,
 reveal/hide glide and stable notification-class sizes are implemented and pass
-64,537 pure checks and the expanded hosted **658 native popup checks**. The
+64,537 pure checks and the expanded hosted **661 native popup checks**. The
 integration also reran all **195 native formatting checks and 35 control checks**,
 and exported all 26 Dark surfaces and 15 floating class renders. Startup layout
 and fixed InfoBar background height corrections are included. See

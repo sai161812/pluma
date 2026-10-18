@@ -1,7 +1,7 @@
 # Popup stack implementation and audit
 
 **Historical baseline:** the owner refined placement and class sizes on
-2026-10-19. The latest hosted integration passes **658 native popup checks,
+2026-10-19. The latest hosted integration passes **661 native popup checks,
 195 formatting checks and 35 control checks**; exact source/run evidence and the
 remaining physical Windows 11 checks are in
 [ui_integration_review.md](ui_integration_review.md). Source changes and the
