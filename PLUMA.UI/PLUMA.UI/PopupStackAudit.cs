@@ -46,7 +46,7 @@ namespace PLUMA.UI
                 var cards=_host.Snapshot().Where(p=>!p.Exiting && p.Opacity>0.01).ToArray();
                 PopupRect area=PopupStackLayout.ContentArea(_host.Desktop!);
                 Check(cards.All(p=>area.Contains(p.Bounds,1)),"actual native window rectangles remain in the safe area");
-                foreach(var window in _host.Windows.Where(w=>w.WasShown))
+                foreach(var window in _host.Windows.Where(w=>w.WasShown && w.Alpha>0.01))
                 {
                     Check(window.IsLayoutReady,"visible popup has loaded its native client layout");
                     report.WriteLine($"CLIENT content {window.HostedContent?.ActualWidth:0.##}x{window.HostedContent?.ActualHeight:0.##}; root {window.Root.ActualWidth:0.##}x{window.Root.ActualHeight:0.##}; frame {window.ChromePixels}; raster {window.Root.XamlRoot?.RasterizationScale}; monitor scale {_host.Desktop!.Scale}; native DPI {PopupDesktopPlacement.Native.GetDpiForWindow(window.Handle)}; loaded {window.Root.IsLoaded}; bounds {window.ReadBounds()}");
