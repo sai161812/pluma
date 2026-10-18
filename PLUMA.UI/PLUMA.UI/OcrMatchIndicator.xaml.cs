@@ -36,6 +36,12 @@ namespace PLUMA.UI
                 hostBounds.X < 0 || hostBounds.Y < 0 || hostBounds.Width <= 0 || hostBounds.Height <= 0 || remaining <= TimeSpan.Zero)
                 return;
 
+            // Collapsed controls can have zero ActualWidth/Height before their first arrange.
+            // Explicit host constraints still reject an out-of-bounds snapshot immediately.
+            double hostWidth = double.IsFinite(Width) ? Width : ActualWidth;
+            double hostHeight = double.IsFinite(Height) ? Height : ActualHeight;
+            if ((hostWidth > 0 && hostBounds.Right > hostWidth) || (hostHeight > 0 && hostBounds.Bottom > hostHeight)) return;
+
             // Never extend a snapshot's lifetime. The host must also hide on target/window changes.
             _expiresAt = remaining > TimeSpan.FromSeconds(3) ? now.AddSeconds(3) : snapshotExpiresAt;
             remaining = _expiresAt - now;
@@ -45,6 +51,7 @@ namespace PLUMA.UI
             Visibility = Visibility.Visible;
             _expiryTimer.Interval = remaining;
             _expiryTimer.Start();
+            UpdateLayout();
             ApplyLayout();
         }
 

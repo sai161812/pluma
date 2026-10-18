@@ -89,7 +89,8 @@ namespace PLUMA.UI
                             $"{prefix} {label}: foreground follows the dark theme");
                         Check(message.DisplayText == PopupText.Message(longMessage) && message.FontSize >= 12,
                             $"{prefix} {label}: full readable content retained at {message.FontSize}px");
-                        Check(message.ActualWidth > 0 && message.ActualHeight <= message.MaxHeight + 1 &&
+                        Check(message.ActualWidth > 0 && message.ActualWidth <= Math.Min(message.MaxWidth, GalleryRoot.ActualWidth) + 1 &&
+                              message.ActualHeight <= message.MaxHeight + 1 &&
                               scroll.ScrollableWidth <= 1 && message.MessageBlock.ActualWidth <= scroll.ViewportWidth + 1 &&
                               message.MessageBlock.TextWrapping == TextWrapping.Wrap && message.MessageBlock.MaxLines == 0 &&
                               message.MessageBlock.TextTrimming == TextTrimming.None,

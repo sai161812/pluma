@@ -112,14 +112,17 @@ namespace PLUMA.UI.Tests
             Check(double.IsNaN(health.PingLatencyMs), "reconnection requires a fresh latency measurement");
             health.PingLatencyMs = double.PositiveInfinity;
             Check(((TextBlock)health.FindName("LatencyText")).Visibility == Visibility.Collapsed, "invalid latency hidden");
-            health.Resources.ThemeDictionaries["Dark"] = new ResourceDictionary
-            {
-                ["SystemFillColorSuccessBrush"] = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 40, 50, 60))
-            };
+            // Compare with a native theme-resource probe. Runtime dictionary insertion after
+            // resource resolution is not an OS theme change and was an invalid fixture.
+            var themeProbe = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                "<Border xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Background='{ThemeResource SystemFillColorSuccessBrush}'/>");
+            root.Children.Add(themeProbe);
             root.RequestedTheme = ElementTheme.Dark;
             await Task.Delay(100);
-            Check(((SolidColorBrush)((InfoBadge)health.FindName("StatusBadge")).Background).Color.R == 40,
+            Check(health.ActualTheme == ElementTheme.Dark &&
+                ((SolidColorBrush)((InfoBadge)health.FindName("StatusBadge")).Background).Color.Equals(((SolidColorBrush)themeProbe.Background).Color),
                 "status brush follows dark theme resources");
+            root.Children.Remove(themeProbe);
 
             var notice = new ToastNotification();
             root.Children.Add(notice);

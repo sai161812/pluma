@@ -25,6 +25,9 @@ namespace PLUMA.UI
         {
             InitializeComponent();
             MinWidth = 0;
+            // InfoBar measures arbitrary content with an unbounded horizontal constraint.
+            // Keep that first measure finite so unbroken words wrap before native layout.
+            MaxWidth = 460;
             MaxHeight = 96;
             HorizontalContentAlignment = HorizontalAlignment.Stretch;
             VerticalContentAlignment = VerticalAlignment.Stretch;
