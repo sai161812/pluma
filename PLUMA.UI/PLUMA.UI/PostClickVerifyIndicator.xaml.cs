@@ -14,7 +14,7 @@ namespace PLUMA.UI
             Title = verified ? "Verified" : "Unverified";
             Severity = verified ? InfoBarSeverity.Success : InfoBarSeverity.Error;
             string method = PopupText.Label(verificationMethod);
-            Message = string.IsNullOrWhiteSpace(sanitizedDetail) ? method : $"{method}. {PopupText.Message(sanitizedDetail)}";
+            NoticeText.Text = string.IsNullOrWhiteSpace(sanitizedDetail) ? method : $"{method}. {PopupText.Message(sanitizedDetail)}";
             IsOpen = true;
         }
 
@@ -22,7 +22,7 @@ namespace PLUMA.UI
         {
             IsOpen = false;
             Title = string.Empty;
-            Message = string.Empty;
+            NoticeText.Text = string.Empty;
             Severity = InfoBarSeverity.Error;
         }
 

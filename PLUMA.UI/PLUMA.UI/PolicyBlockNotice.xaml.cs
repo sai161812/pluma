@@ -86,7 +86,8 @@ namespace PLUMA.UI
         {
             string toolName = PopupText.Label(ToolName);
             string matchedRule = PopupText.Message(MatchedRule);
-            Message = string.IsNullOrWhiteSpace(toolName)
+            if (NoticeText == null) return;
+            NoticeText.Text = string.IsNullOrWhiteSpace(toolName)
                 ? matchedRule
                 : string.IsNullOrWhiteSpace(matchedRule) ? toolName : $"{toolName}. {matchedRule}";
         }

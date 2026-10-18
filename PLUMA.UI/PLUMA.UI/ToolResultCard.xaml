@@ -3,6 +3,7 @@
     x:Class="PLUMA.UI.ToolResultCard"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PLUMA.UI"
     Width="420"
     MinWidth="0"
     UseLayoutRounding="True">
@@ -36,13 +37,10 @@
             </Grid>
 
             <StackPanel Grid.Row="1" Spacing="4">
-                <TextBlock Text="quarterly report.pdf opened successfully"
+                <local:PopupMessageText Text="quarterly report.pdf opened successfully"
                            FontFamily="Segoe UI Variable"
                            FontSize="16"
-                           FontWeight="SemiBold"
-                           TextWrapping="Wrap"
-                           TextTrimming="CharacterEllipsis"
-                           MaxLines="3" />
+                           FontWeight="SemiBold" MaxHeight="96" />
                 <TextBlock Text="Tool · Open file"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -66,13 +64,12 @@
                                Style="{StaticResource CaptionTextBlockStyle}" />
                 </StackPanel>
 
-                <TextBlock x:Name="ErrorCodeText"
+                <local:PopupMessageText x:Name="ErrorCodeText"
                            Grid.Column="1"
                            Visibility="Collapsed"
                            HorizontalAlignment="Right"
-                           TextTrimming="CharacterEllipsis"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                           FontSize="12"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" MaxHeight="96" />
             </Grid>
         </Grid>
     </Border>
