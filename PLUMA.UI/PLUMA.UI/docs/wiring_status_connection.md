@@ -44,6 +44,12 @@ targets `ui-polish-integration`; PR 1 and `main` remain unmerged/unchanged.
   are retained. A native icon button supplies the necessary explicit refresh.
   Its two-row layout keeps the health value aligned with adjacent card values;
   a native control assertion verifies their vertical positions within one pixel.
+- `PopupStackHost.cs` / `PopupCardWindow.cs`: regression audit exposed an existing
+  content-replacement readiness gap. A reused native window now keeps its new
+  content transparent and pauses display lifetime until content is Loaded and
+  native/XAML bounds match, then uses the existing entry fade. Identity, order,
+  class sizes and dark styles remain unchanged. The placement contract records
+  this gate; native checks cover same-class and progress-to-STOP replacement.
 
 ## Verification
 
@@ -105,9 +111,16 @@ seconds, retaining the same one-pixel end-position assertion and recording
 offset/extent/wait diagnostics. Popup production code and thresholds are unchanged.
 The complete pipeline must still pass; a retry or successful build is not a substitute.
 
+[Run 12](https://github.com/sai161812/pluma/actions/runs/39242420900) passed IPC and
+both builds but found an unready visible popup frame before the gallery stage.
+Inspection found reused windows could replace content/resize at nonzero opacity.
+The readiness fix above extends the first-entry gate to replacements, adds two
+direct assertions and records dimensions/Loaded state for any unready frame.
+Required popup checks are now 663; the per-frame readiness condition is retained.
+
 The final current-head result and artifact link are recorded in
 [PR 2](https://github.com/sai161812/pluma/pull/2), whose Windows UI verification
-check must pass with 37 IPC, 661 popup, 195 formatting and 42 control checks,
+check must pass with 37 IPC, 663 popup, 195 formatting and 42 control checks,
 alongside the pure checks and 58 render exports. This keeps the evidence tied
 to the actual PR head instead of treating an earlier run as final verification.
 

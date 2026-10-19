@@ -96,6 +96,14 @@ namespace PLUMA.UI
                     Detach(entry);
                     entry.Content = content; entry.Surface = surface;
                     entry.Closing = false;
+                    // A reused HWND may change class dimensions. Keep its new content
+                    // transparent until native client layout is ready, just like first entry.
+                    if (entry.Window != null)
+                    {
+                        entry.Window.SetAlpha(0);
+                        entry.Moving = false; entry.Waiting = true;
+                        _state.SetDisplayed(key, false);
+                    }
                     entry.Window?.SetContent(content);
                     entry.Target = default;
                 }
@@ -295,10 +303,10 @@ namespace PLUMA.UI
                     }
                     else if(entry.Target!=place.Bounds)
                     {
-                        if(snap || !entry.Window.WasShown)
+                        if(snap || !entry.Window.WasShown || entry.Waiting)
                         {
                             entry.Window.Place(place.Bounds); entry.Target=place.Bounds; entry.Moving=false;
-                            if(entry.Window.WasShown) { entry.Window.SetAlpha(1); _state.SetDisplayed(entry.Key,true); }
+                            if(entry.Window.WasShown && !entry.Waiting) { entry.Window.SetAlpha(1); _state.SetDisplayed(entry.Key,true); }
                         }
                         else StartMotion(entry,place.Bounds,1,200,motionStart);
                     }
