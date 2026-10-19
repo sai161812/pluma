@@ -172,7 +172,6 @@ def test_failed_worker_cleanup_requires_residual_state(isolated_supervisor):
         f"Cleanup failure became {capsule.state.value}; worker reference retained: {capsule.worker_controller is worker}")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-05: FAST result overwrites STOPPED_WITH_RESIDUAL with STOPPED")
 def test_fast_stop_preserves_supervisor_residual_outcome(isolated_supervisor, monkeypatch):
     from pluma.core.request import InputMode, PlumaRequest
     from pluma.core.router import RouteResult

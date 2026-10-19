@@ -1,17 +1,18 @@
 # Backend audit before action wiring
 
-Current status after P04 (2026-10-19): BA-01 through BA-04 pass bounded gates
-with ordinary passing audit regressions. Five findings remain open, reproduced
-by seven raw assertion failures. [P04 cleanup evidence and retention contract](../../../docs/completion/p04_evidence.md),
-[P03 Windows worker evidence](../../../docs/completion/p03_evidence.md),
+Current status after P05 (2026-10-19): BA-01 through BA-05 pass bounded gates
+with ordinary passing audit regressions. Four findings remain open, reproduced
+by six raw assertion failures. [P05 result/history evidence](../../../docs/completion/p05_evidence.md),
+[P04 cleanup evidence](../../../docs/completion/p04_evidence.md),
+[P03 worker evidence](../../../docs/completion/p03_evidence.md),
 [P02 latch/isolation evidence](../../../docs/completion/p02_evidence.md) and
-[P01 admission evidence](../../../docs/completion/p01_evidence.md) supersede
-old next-fix advice/counts below. Action entry stays disabled; P05/BA-05
-terminal-result/history consistency is next. BA-08's nonterminal failure
-injection now follows the actual ROLLING_BACK state boundary because P04
-handles resource errors as residuals; its guard/assertion/marker are unchanged.
-The original audit below remains historical evidence for its named source,
-not certification of the backend.
+[P01 admission evidence](../../../docs/completion/p01_evidence.md) supersede old
+next-fix advice/counts below. P05 projects supervisor state and rollback facts
+through results, execute IPC and atomic SQLite readback. The separate STOP
+acknowledgement remains BA-08. Action entry stays disabled; **P06/BA-06 runtime
+shutdown drain is next**. P06 was not started. P04's BA-08 nonterminal fixture
+boundary and its original guard/assertion/marker remain unchanged. The original
+audit below is historical evidence for its named source, not backend certification.
 
 Date: 2026-10-19. Requested scope: inspect the backend used by `ui-wiring`,
 reproduce suspected defects, preserve existing work/appearance and record the

@@ -1,6 +1,71 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-19, P04 verified cleanup and residual ownership
+## Current checkpoint: 2026-10-19, P05 authoritative terminal outcomes
+
+This checkpoint supersedes earlier next-step/count statements. Locked source
+requirements and the native dark UI are unchanged. This is a bounded gate,
+not full STOP, backend, device, installed-artifact or release acceptance.
+
+- **P05 bounded gate passed: BA-05 repaired; P01-P04 preserved.** Started clean
+  on local/remote `ui-wiring` at `8956cb7ec669df89b79e98c411e4c90f63016be0`.
+  Coverage passed before editing. Prerequisites freshly passed **111 checks in
+  13.72s**. Original BA-05 reproduced: **1 failed in 0.63s**, supervisor residual
+  overwritten by returned/history STOPPED. Original assertion is unchanged;
+  only its strict marker is removed.
+- [P05 evidence and terminal contract](docs/completion/p05_evidence.md) records
+  exact commands, source blobs, reports, SQLite/Windows facts, failure fixtures,
+  remaining gaps and recovery. Five runtime files, three test files and four
+  handoff/evidence documents change. All inherited P01-P04 assertions remain;
+  FAST's old mock call-count check now asserts authoritative atomic terminal
+  state/evidence. Intermediate failures/corrections are recorded.
+- All routes project the supervisor's state, finished/pending finalization,
+  persistence flag, residual and redacted rollback/cleanup facts. FAST failure
+  and multi-step STOP/failure share its existing cleanup owner. No independent
+  route terminal write or second rollback overwrites residual truth. Last-step
+  STOP and terminal commitment share the short admission boundary; repeated
+  finalization preserves outcome, timestamp and evidence. Incomplete cleanup
+  remains nonterminal with pending copy; no stopped/success claim is fabricated.
+- Terminal state, cleanup journal and resource mirror persist atomically and
+  are read back. Failure makes success FAILED or clean STOP residual, records
+  fixed persistence evidence and queues a conservative retry after the original
+  write. Real blocked-writer tests prove late writes cannot be the last stale
+  success. Unavailable storage reports `terminal_persisted=false`; explicit
+  later reconciliation preserves state without repeating cleanup/rollback.
+- Execute IPC adds factual completion/persistence/residual/rollback fields;
+  authenticated native pipe and recent-history readback pass. Existing STOP
+  acknowledgements remain BA-08 for P08. No runtime shutdown/voice/protocol/UI
+  milestone was started. Action entry stays disabled.
+- Final focused: **228 passed in 22.34s**, including **45 new outcome cases**.
+  Relevant isolated regressions: **553 passed, 3 skipped, 1 deselected,
+  6 xfailed in 36.87s**. Prerequisites rechecked **111 passed in 10.89s**;
+  owned-worker containment **3 passed in 2.95s**. Raw audit: **6 failed,
+  9 passed in 0.64s**. Matrix: **298 source items / 324 rows**. Windows 11
+  build 26200 / Python 3.12.10 / pytest 8.3.3. Fixture keys remaining: zero;
+  all 115 FAST cases have explicit desktop-isolation properties. Retain the
+  P02 isolation correction. Skips/exclusion/xfails are not acceptance.
+- Real file conflicts/partial rollback, reopened SQLite, aborted transactions,
+  delayed queued commits and authenticated owned native pipes are verified.
+  Planner/perception/device adapters are inert, audio emulated; existing real
+  P03/P04 worker/descendant/unrelated-process checks pass unchanged. No physical
+  microphone/model/OCR/hotkey, full unit/product/install or p95 claim is made.
+- **Four findings remain: BA-06 through BA-09, six raw failures.** Runtime
+  shutdown, capture/empty voice capsule, typed truthful STOP acknowledgements
+  and conditional initial credential privacy remain. Full tool/model/screen/
+  voice/UI/recovery/security/release gates remain in the matrix. No requirement
+  or acceptance limitation is waived.
+- P05 is committed/pushed on `ui-wiring`. PR 1/2 remain draft/open/unmerged;
+  main remains `6dbf589`, integration `9544752`. Pre-P05 recovery is
+  `8956cb7ec669df89b79e98c411e4c90f63016be0`; inspect in a new detached
+  worktree. Existing tags/worktrees/archive/stash are preserved; no merge,
+  worktree switch, destructive cleanup, force push or security bypass.
+- **Next safe milestone: P06 only, BA-06 bounded runtime shutdown/drain.**
+  Reproduce its original assertion before editing; reject work, latch/cancel,
+  drain handlers and retained terminal/unpublished-preparation owners, verify
+  cleanup, persist outcomes, close registry before storage, and test repeated
+  bounded close. P10 combines real descendant/failure/ledger paths after all
+  nine audit repairs. P06 was not started. Do not advance or enable actions.
+
+## Previous checkpoint: 2026-10-19, P04 verified cleanup and residual ownership
 
 This checkpoint supersedes earlier next-step/count statements. Locked source
 requirements and the native dark UI are unchanged. This is a bounded gate,

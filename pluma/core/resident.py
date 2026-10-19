@@ -171,6 +171,12 @@ class ResidentCore:
                     "route": res.route.value if hasattr(res.route, "value") else str(res.route),
                     "message": res.user_message,
                     "duration_ms": res.duration_ms,
+                    "completion_verified": res.completion_verified,
+                    "terminal_persisted": res.terminal_persisted,
+                    "has_residual": res.has_residual,
+                    "rollback_performed": res.rollback_performed,
+                    "rollback_success": res.rollback_success,
+                    "cleanup_evidence": res.cleanup_evidence,
                 }
             elif self.on_request_callback:
                 callback_res = self.on_request_callback(pluma_req)

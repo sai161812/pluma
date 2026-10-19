@@ -280,6 +280,24 @@ class ActivityLedger:
         The independent journal also accepts unpublished preparations. Mirror
         into resources only when task history exists, in the same transaction.
         """
+        self._write_cleanup(task_id, entries)
+
+    def finalize_task(self, task_id: str, *, final_state: str, completed_at: str,
+                      stop_reason: Optional[str], error_code: Optional[str],
+                      entries: List[Dict[str, Any]]) -> None:
+        """Atomically store the supervisor's terminal outcome and evidence.
+
+        The readback includes history, independent journal and resource mirror.
+        A missing task row is an error, never a fabricated successful history.
+        """
+        from pluma.core.task_supervisor import TaskState, _TERMINAL_STATES
+        if TaskState(final_state) not in _TERMINAL_STATES:
+            raise ValueError("Terminal ledger state required.")
+        fields = (final_state, completed_at, stop_reason, error_code)
+        self._write_cleanup(task_id, entries, terminal=fields)
+
+    def _write_cleanup(self, task_id: str, entries: List[Dict[str, Any]], *,
+                       terminal: Optional[tuple] = None) -> None:
         from pluma.core.cleanup import CleanupEvidence, latest_unresolved
         checks = [CleanupEvidence.model_validate(item) for item in entries]
         complete = not latest_unresolved(checks)
@@ -289,7 +307,7 @@ class ActivityLedger:
         record_id = "cleanup:" + task_id
         now = _now_iso()
         released = now if complete else None
-        self._db.execute_transaction([
+        statements = [
             ("""INSERT OR REPLACE INTO cleanup_reports
                (task_id, recorded_at, released_at, metadata_json) VALUES (?, ?, ?, ?)""",
              (task_id, now, released, encoded)),
@@ -297,10 +315,21 @@ class ActivityLedger:
                (id, task_id, resource_type, ownership, created_at, released_at, metadata_json)
                SELECT ?, task_id, 'cleanup_report', 'PLUMA_CREATED', ?, ?, ? FROM tasks WHERE task_id = ?""",
              (record_id, now, released, encoded, task_id)),
-        ], timeout_s=2.0)
+        ]
+        if terminal is not None:
+            statements.append(("""UPDATE tasks SET final_state = ?, completed_at = ?,
+                                stop_reason = ?, error_code = ? WHERE task_id = ?""",
+                               (*terminal, task_id)))
+        self._db.execute_transaction(statements, timeout_s=2.0)
         row = self._db.execute_read_one("SELECT metadata_json FROM cleanup_reports WHERE task_id = ?", (task_id,))
         if row is None or json.loads(row[0]) != metadata:
             raise RuntimeError("Cleanup ledger readback failed.")
+        if terminal is not None:
+            row = self._db.execute_read_one("""SELECT t.final_state, t.completed_at, t.stop_reason,
+                t.error_code, r.metadata_json FROM tasks t JOIN resources r ON r.task_id = t.task_id
+                WHERE t.task_id = ? AND r.id = ?""", (task_id, record_id))
+            if row is None or tuple(row[:4]) != terminal or json.loads(row[4]) != metadata:
+                raise RuntimeError("Terminal ledger readback failed.")
 
     def insert_resource(self, record: ResourceRecord) -> None:
         """Insert a claimed or created resource row."""

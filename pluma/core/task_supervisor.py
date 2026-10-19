@@ -120,10 +120,39 @@ class TaskCapsule(BaseModel):
 
     cleanup_evidence: List[CleanupEvidence] = Field(default_factory=list)
     cleanup_finalized: bool = False
+    terminal_persisted: Optional[bool] = None
+    terminal_ready: Any = Field(default_factory=threading.Event, exclude=True)
 
     @property
     def cleanup_pending(self) -> bool:
         return bool(latest_unresolved(self.cleanup_evidence))
+
+    def outcome_details(self) -> Dict[str, Any]:
+        """Deterministic, redacted facts shared by result and IPC projections."""
+        from pluma.memory.redaction import redact_sensitive_data
+        rollback = [item for item in self.cleanup_evidence if item.kind == "rollback"]
+        return {
+            "final_state": self.state.value,
+            "completion_verified": self.terminal_ready.is_set(),
+            "terminal_persisted": self.terminal_persisted,
+            "has_residual": self.cleanup_pending,
+            "rollback_performed": bool(rollback) and not rollback[-1].code.startswith("ROLLBACK_DEFERRED"),
+            "rollback_success": rollback[-1].verified if rollback else None,
+            "cleanup_evidence": redact_sensitive_data([item.model_dump() for item in self.cleanup_evidence]),
+        }
+
+    def terminal_summary(self) -> str:
+        if not self.terminal_ready.is_set():
+            return "Task cleanup is still pending."
+        if self.state == TaskState.STOPPED_WITH_RESIDUAL:
+            return "Task stopped. Residual effects or unverified cleanup remain."
+        if self.state == TaskState.STOPPED:
+            return "Task stopped. Cleanup verified."
+        if self.state == TaskState.FAILED:
+            return "Task failed. Cleanup or history could not be verified." if self.cleanup_pending else "Task failed."
+        if self.state == TaskState.SUCCEEDED:
+            return "Task completed successfully."
+        return "Task was interrupted."
 
     # Job Object wrapper for process containment (not serializable)
     job_object: Any = Field(default=None, exclude=True)
@@ -288,7 +317,7 @@ class TaskSupervisor:
         with self._lock:
             terminal_ids = [
                 tid for tid, cap in self._tasks.items()
-                if cap.state in _TERMINAL_STATES and not cap.cleanup_pending
+                if cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set() and not cap.cleanup_pending
             ]
             if len(terminal_ids) <= limit:
                 return 0
@@ -371,16 +400,92 @@ class TaskSupervisor:
         with self._lock:
             capsule = self._get_task(task_id)
             self._transition(capsule, new_state)
-            if new_state in _TERMINAL_STATES and self._ledger:
+            if new_state in _TERMINAL_STATES:
+                self._persist_terminal(capsule)
+                capsule.terminal_ready.set()
+                self.prune_terminal_tasks()
+
+    def bind_execution(self, ledger: Any = None, rollback_engine: Any = None) -> None:
+        """Keep route execution and terminal persistence on the same owners."""
+        if ledger is not None:
+            if self._ledger is not None and self._ledger is not ledger:
+                raise ValueError("Task supervisor already has a different ledger.")
+            self._ledger = ledger
+        if self._rollback_engine is None and rollback_engine is not None:
+            self._rollback_engine = rollback_engine
+
+    def finalize_task(self, task_id: str, requested: TaskState) -> TaskCapsule:
+        """Project one authoritative outcome; never overwrite an earlier STOP.
+
+        Terminal commitment and STOP claiming share the short admission lock.
+        An overlapping cleanup is awaited outside the resource/state lock. A
+        bounded wait that expires exposes the actual nonterminal state.
+        """
+        if requested not in _TERMINAL_STATES:
+            raise ValueError("A terminal state is required.")
+        with self._lock:
+            capsule = self._get_task(task_id)
+            if capsule.state in _TERMINAL_STATES:
+                if capsule.terminal_ready.is_set() and capsule.terminal_persisted is False:
+                    self._persist_terminal(capsule)
+                return capsule
+            if capsule.state not in (TaskState.STOPPING, TaskState.ROLLING_BACK):
                 try:
-                    self._ledger.update_task(
-                        task_id,
-                        final_state=capsule.state.value,
-                        completed_at=datetime.now(timezone.utc).isoformat(),
-                        _timeout_s=2.0,
-                    )
-                except Exception as e:
-                    logger.error("Failed to update task %s final state in ledger: %s", task_id, e)
+                    self._transition(capsule, requested)
+                except (TaskCancelledError, InvalidTaskTransition):
+                    if not capsule.cancellation_token.is_cancelled:
+                        raise
+                    # Latch/STOP claim won the commitment race.
+                else:
+                    self._persist_terminal(capsule)
+                    capsule.terminal_ready.set()
+                    self.prune_terminal_tasks()
+                    return capsule
+        self.stop_task(task_id)
+        capsule.terminal_ready.wait(timeout=5.0)
+        return capsule
+
+    def fail_task_with_rollback(self, task_id: str) -> TaskCapsule:
+        """Use the STOP cleanup owner for failed multi-step recovery too."""
+        with self._admission_lock:
+            capsule = self._get_task(task_id)
+            capsule.cancellation_token.cancel(StopReason.INTERNAL_ERROR)
+            claimed = self._claim_stop_cleanup(capsule)
+        if claimed:
+            self._cleanup_stopped_task(capsule, capsule.cancellation_token.reason, 0, failed=True)
+        else:
+            capsule.terminal_ready.wait(timeout=5.0)
+        return capsule
+
+    def _persist_terminal(self, capsule: TaskCapsule) -> None:
+        if self._ledger is None:
+            return
+        # Queued SQLite writes can commit after an acknowledgement timeout.
+        # A conservative retry is queued AFTER that write, with the same owner
+        # and timestamp. A route must never enqueue its former local outcome.
+        for attempt in range(2):
+            try:
+                self._ledger.finalize_task(
+                    capsule.task_id, final_state=capsule.state.value,
+                    completed_at=capsule.completed_at.isoformat(),
+                    stop_reason=capsule.cancellation_token.reason.value if capsule.cancellation_token.reason else None,
+                    error_code=("TERMINAL_PERSISTENCE_UNVERIFIED" if capsule.terminal_persisted is False
+                                else "TOOL_FAILED" if capsule.state == TaskState.FAILED else None),
+                    entries=[item.model_dump() for item in capsule.cleanup_evidence],
+                )
+                capsule.terminal_persisted = True
+                return
+            except Exception:
+                capsule.terminal_persisted = False
+                if attempt == 0:
+                    if not any(item.code == "TERMINAL_PERSISTENCE_UNVERIFIED" for item in capsule.cleanup_evidence):
+                        capsule.cleanup_evidence.append(CleanupEvidence(resource_id="terminal-ledger:" + capsule.task_id,
+                            kind="persistence", code="TERMINAL_PERSISTENCE_UNVERIFIED"))
+                    with self._admission_lock:
+                        if capsule.state == TaskState.SUCCEEDED:
+                            capsule.state = TaskState.FAILED
+                        elif capsule.state == TaskState.STOPPED:
+                            capsule.state = TaskState.STOPPED_WITH_RESIDUAL
 
     def mark_succeeded(self, task_id: str) -> None:
         self.transition(task_id, TaskState.SUCCEEDED)
@@ -406,7 +511,7 @@ class TaskSupervisor:
         self._transition(capsule, TaskState.STOPPING)
         return True
 
-    def _cleanup_stopped_task(self, capsule: TaskCapsule, reason: StopReason, grace_s: float) -> None:
+    def _cleanup_stopped_task(self, capsule: TaskCapsule, reason: StopReason, grace_s: float, *, failed: bool = False) -> None:
         """One STOP claim, with positive evidence before clean terminal state."""
         task_id = capsule.task_id
         if grace_s > 0:
@@ -457,23 +562,14 @@ class TaskSupervisor:
 
         self._persist_cleanup_report(capsule)
         final_state = TaskState.STOPPED_WITH_RESIDUAL if capsule.cleanup_pending else TaskState.STOPPED
-        if self._ledger is not None:
-            try:
-                self._ledger.update_task(task_id, _timeout_s=2.0, final_state=final_state.value,
-                    completed_at=datetime.now(timezone.utc).isoformat(), stop_reason=reason.value)
-            except Exception:
-                # P05 owns authoritative result/ledger reconciliation. Preserve
-                # this P04 persistence failure rather than dropping its evidence.
-                capsule.cleanup_evidence.append(CleanupEvidence(resource_id="terminal-ledger:" + task_id,
-                    kind="persistence", code="TERMINAL_PERSISTENCE_UNVERIFIED"))
-                final_state = TaskState.STOPPED_WITH_RESIDUAL
-                try:
-                    self._ledger.record_cleanup(task_id, [item.model_dump() for item in capsule.cleanup_evidence])
-                except Exception:
-                    pass  # the in-memory failure/reference remains retained
+        if failed and reason == StopReason.INTERNAL_ERROR:
+            final_state = TaskState.FAILED
         capsule.cleanup_finalized = True
         with self._lock:
             self._transition(capsule, final_state)
+            self._persist_terminal(capsule)
+            capsule.terminal_ready.set()
+            self.prune_terminal_tasks()
 
     def _persist_cleanup_report(self, capsule: TaskCapsule) -> None:
         if self._ledger is None:
@@ -575,6 +671,8 @@ class TaskSupervisor:
                 raise InvalidTaskTransition(
                     f"Cannot transition from {capsule.state.value} to {new_state.value}"
                 )
+            if new_state in (TaskState.SUCCEEDED, TaskState.FAILED) and not capsule.cleanup_finalized:
+                capsule.cancellation_token.raise_if_cancelled()
             capsule.state = new_state
             if new_state == TaskState.RUNNING and capsule.started_at is None:
                 capsule.started_at = datetime.now(timezone.utc)
@@ -591,6 +689,7 @@ class TaskSupervisor:
                     with self._admission_lock:
                         capsule.state = (TaskState.FAILED if new_state == TaskState.SUCCEEDED
                                          else TaskState.STOPPED_WITH_RESIDUAL)
+                capsule.cleanup_finalized = True
             # Unresolved handles/evidence must survive terminal pruning. No
             # computed, unregistered directory is recursively deleted here.
             self.prune_terminal_tasks()
