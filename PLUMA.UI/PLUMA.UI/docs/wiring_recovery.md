@@ -10,15 +10,17 @@ separate checkout. Run these commands in PowerShell, using a new destination
 directory and branch name if the example names already exist:
 
 ```powershell
-git -C D:\Workspace\DEVEL\PLUMA-ui-wiring fetch origin --tags
-git -C D:\Workspace\DEVEL\PLUMA-ui-wiring worktree add -b recovery/pre-ui-wiring D:\Workspace\DEVEL\PLUMA-before-wiring pre-ui-wiring-2026-10-19
+git -C D:\Workspace\DEVEL\PLUMA fetch origin --tags
+git -C D:\Workspace\DEVEL\PLUMA worktree add -b recovery/pre-ui-wiring D:\Workspace\DEVEL\PLUMA-before-wiring pre-ui-wiring-2026-10-19
 git -C D:\Workspace\DEVEL\PLUMA-before-wiring rev-parse HEAD
 git -C D:\Workspace\DEVEL\PLUMA-before-wiring status --short
 ```
 
 The expected HEAD is `04bc1fb7d1efa1744b1027a51ce10e3b3ef7eccc` and the new
-worktree should be clean. Existing wiring commits, uncommitted work and the
-original dirty `ui-polish` worktree remain available. No reset, clean, deletion
+worktree should be clean. Existing wiring commits and uncommitted work remain
+available. The original `ui-polish` generated-file edits are preserved in the
+local stash named in [the cleanup record](../../../docs/workspace_cleanup.md).
+No reset, clean, deletion
 or force push is needed. The original UI integration also remains at
 `9544752` on `ui-polish-integration`.
 
