@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -98,7 +99,13 @@ namespace PLUMA.UI
                         Check(scroll.ScrollableHeight > 0 && AutomationProperties.GetName(scroll) == message.DisplayText,
                             $"{prefix} {label}: overflow is scrollable and accessible");
                         scroll.ChangeView(null, scroll.ScrollableHeight, null, true);
-                        await Task.Delay(30, token);
+                        // ChangeView is asynchronous even with animation disabled. Read back the
+                        // actual native offset within a bound instead of assuming one frame is enough.
+                        var scrolling = Stopwatch.StartNew();
+                        while (Math.Abs(scroll.VerticalOffset - scroll.ScrollableHeight) > 1 &&
+                               scrolling.Elapsed < TimeSpan.FromSeconds(2))
+                            await Task.Delay(20, token);
+                        report.WriteLine($"SCROLL {prefix} {label}: offset {scroll.VerticalOffset:0.###}; end {scroll.ScrollableHeight:0.###}; waited {scrolling.Elapsed.TotalMilliseconds:0}ms");
                         Check(Math.Abs(scroll.VerticalOffset - scroll.ScrollableHeight) <= 1,
                             $"{prefix} {label}: last line can be reached");
                     }
