@@ -75,7 +75,10 @@ class RollbackEngine:
             try:
                 db_records = self._query.available_undo_records_for_task(task_id)
             except Exception as e:
-                logger.error("Failed to query available undo records for task %s: %s", task_id, e)
+                logger.error("Failed to query undo records for task %s", task_id)
+                failed += 1
+                step_results.append(RollbackStepResult(ok=False, action="undo_query",
+                    message="Undo records could not be read.", error="UNDO_QUERY_FAILED"))
 
         if db_records:
             # Reverse order is already guaranteed by ORDER BY step_index DESC
@@ -114,6 +117,10 @@ class RollbackEngine:
                 step_results.append(step_res)
                 if step_res.ok:
                     succeeded += 1
+                    # Remove only the exact pre-state whose verified rollback
+                    # and ledger consumption succeeded. Never discard a conflict.
+                    if memory_undo_stack is not None and undo_data in memory_undo_stack:
+                        memory_undo_stack.remove(undo_data)
                 else:
                     failed += 1
 
@@ -142,7 +149,9 @@ class RollbackEngine:
         all_ok = (failed == 0)
         has_residual = (failed > 0)
 
-        if attempted == 0:
+        if attempted == 0 and has_residual:
+            summary = "Rollback records could not be verified. Residual effects are unknown."
+        elif attempted == 0:
             summary = "No reversible actions to rollback."
         elif all_ok:
             summary = f"Rollback: successfully restored {succeeded} action{'s' if succeeded != 1 else ''}."

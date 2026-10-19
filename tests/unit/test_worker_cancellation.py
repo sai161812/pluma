@@ -325,7 +325,15 @@ def test_failed_cleanup_retains_owned_references_and_can_retry(controller, failu
     proc = SimpleNamespace(pid=123, exitcode=1, is_alive=lambda: alive[0], kill=kill, join=lambda **kw: None)
     conn = SimpleNamespace(close=close)
     controller._proc, controller._conn = proc, conn
-    controller._worker_job = SimpleNamespace(terminate=terminate, close=lambda: None)
+    job_closed = [False]
+    # Explicit readback on the double; a call return is no longer evidence.
+    type_job = type("OwnedJobDouble", (), {
+        "terminate": staticmethod(terminate),
+        "close": lambda self: job_closed.__setitem__(0, True),
+        "active_process_count": lambda self: 1 if failure == "job" and fail[0] else 0,
+        "is_closed": property(lambda self: job_closed[0]),
+    })
+    controller._worker_job = type_job()
     with pytest.raises((OSError, RuntimeError)):
         controller.terminate_and_join()
     assert controller._proc is proc and controller._conn is conn and controller._stop.is_set()

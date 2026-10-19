@@ -23,6 +23,7 @@ if sys.platform == "win32":
 
     # Constants
     JobObjectExtendedLimitInformation = 9
+    JobObjectBasicAccountingInformation = 1
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
     PROCESS_ALL_ACCESS = 0x1FFFFF
 
@@ -34,6 +35,14 @@ if sys.platform == "win32":
             ("ReadTransferCount", ctypes.c_ulonglong),
             ("WriteTransferCount", ctypes.c_ulonglong),
             ("OtherTransferCount", ctypes.c_ulonglong),
+        ]
+
+    class JOBOBJECT_BASIC_ACCOUNTING_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("TotalUserTime", ctypes.c_longlong), ("TotalKernelTime", ctypes.c_longlong),
+            ("ThisPeriodTotalUserTime", ctypes.c_longlong), ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
+            ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+            ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD),
         ]
 
     class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
@@ -75,6 +84,11 @@ if sys.platform == "win32":
 
     kernel32.TerminateJobObject.restype = wintypes.BOOL
     kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+
+    kernel32.QueryInformationJobObject.restype = wintypes.BOOL
+    kernel32.QueryInformationJobObject.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD, wintypes.LPVOID,
+    ]
 
     kernel32.OpenProcess.restype = wintypes.HANDLE
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -191,7 +205,22 @@ class WindowsJobObject:
         result = kernel32.TerminateJobObject(self._handle, exit_code)
         if not result:
             err = ctypes.get_last_error()
-            logger.debug("TerminateJobObject returned false (error %s)", err)
+            raise JobObjectError(f"TerminateJobObject failed with error {err}")
+
+    def active_process_count(self) -> int:
+        """Positive live-kernel readback, including descendants after root exit."""
+        if self._handle is None:
+            raise JobObjectError("Closed job cannot establish process absence.")
+        info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
+        if not kernel32.QueryInformationJobObject(
+            self._handle, JobObjectBasicAccountingInformation, ctypes.byref(info), ctypes.sizeof(info), None,
+        ):
+            raise JobObjectError("Job process readback failed.")
+        return int(info.ActiveProcesses)
+
+    @property
+    def is_closed(self) -> bool:
+        return self._handle is None
 
     def close(self) -> None:
         """Close the Job Object handle.
@@ -200,7 +229,8 @@ class WindowsJobObject:
         processes that are still running.
         """
         if self._handle is not None:
-            kernel32.CloseHandle(self._handle)
+            if not kernel32.CloseHandle(self._handle):
+                raise JobObjectError("Job handle closure failed.")
             self._handle = None
 
     def __enter__(self) -> "WindowsJobObject":

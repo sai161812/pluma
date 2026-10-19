@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
+from pluma.core.cleanup import CleanupEvidence, cleanup_job, latest_unresolved
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,13 @@ class TaskCapsule(BaseModel):
     steps: List[TaskStep] = Field(default_factory=list)
     owned_resources: List[OwnedResource] = Field(default_factory=list)
 
+    cleanup_evidence: List[CleanupEvidence] = Field(default_factory=list)
+    cleanup_finalized: bool = False
+
+    @property
+    def cleanup_pending(self) -> bool:
+        return bool(latest_unresolved(self.cleanup_evidence))
+
     # Job Object wrapper for process containment (not serializable)
     job_object: Any = Field(default=None, exclude=True)
 
@@ -145,6 +153,14 @@ class TaskCapsule(BaseModel):
         metadata: Optional[Dict[str, Any]] = None,
     ) -> OwnedResource:
         """Register an owned resource directly on this task capsule."""
+        metadata = dict(metadata or {})
+        if ownership == ResourceOwnership.PLUMA_CREATED and resource_type in ("temp_dir", "temp_file") and external_id:
+            from pathlib import Path
+            from pluma.core.ownership import capture_temp_identity
+            try:
+                metadata["cleanup_identity"] = capture_temp_identity(Path(external_id))
+            except (OSError, ValueError):
+                pass
         res = OwnedResource(
             resource_type=resource_type,
             ownership=ownership,
@@ -154,47 +170,83 @@ class TaskCapsule(BaseModel):
         self.owned_resources.append(res)
         return res
 
-    def close_resources(self) -> None:
-        """Close and release unmanaged OS handles such as Windows Job Objects."""
+    def close_resources(self, *, stopping: bool = False) -> List[CleanupEvidence]:
+        """Clean only owned handles; retain unknown/failed ownership for retry."""
+        checks = []
+        worker = self.worker_controller
+        worker_errors = []
+        if worker is not None:
+            try:
+                worker.terminate_and_join()
+            except Exception:
+                worker_errors.append("WORKER_TERMINATION_FAILED")
         if self.job_object is not None:
-            try:
-                self.job_object.close()
-            except Exception as e:
-                logger.debug("Error closing job object for task %s: %s", self.task_id, e)
-            finally:
+            check = cleanup_job(self.job_object, "task-job:" + self.task_id, terminate=True)
+            checks.append(check)
+            if check.verified:
                 self.job_object = None
-
-        # Cleanly close handles of any persistent application Job Objects (kill_on_close=False, app stays open)
         for res in self.owned_resources:
-            persistent_job = res.metadata.get("persistent_job")
-            if persistent_job is not None:
+            if res.ownership != ResourceOwnership.PLUMA_CREATED:
+                continue
+            job = res.metadata.get("persistent_job")
+            if job is None:
+                continue
+            if stopping:
+                check = cleanup_job(job, "persistent-job:" + res.resource_id, terminate=True)
+            else:
+                check = CleanupEvidence(resource_id="persistent-job:" + res.resource_id,
+                                        kind="job", code="PERSISTENT_HANDLE_CLOSE_UNVERIFIED")
                 try:
-                    persistent_job.close()
-                except Exception as e:
-                    logger.debug("Error closing persistent app job for task %s: %s", self.task_id, e)
-                finally:
-                    res.metadata["persistent_job"] = None
-
-        # Clean up or recycle task-owned worker controller
-        if getattr(self, "worker_controller", None) is not None:
+                    job.close()  # kill_on_close=False, preserve deliberately launched app
+                    check.verified = job.is_closed is True
+                except Exception:
+                    check.errors.append("JOB_CLOSE_FAILED")
+                if check.verified:
+                    check.code = "PERSISTENT_HANDLE_CLOSED_APP_PRESERVED"
+            checks.append(check)
+            if check.verified:
+                res.metadata["persistent_job"] = None
+        if worker is not None:
+            identity = {"task_id": self.task_id}
+            recorded = getattr(worker, "worker_identity", None)
+            if isinstance(recorded, dict):
+                identity.update({k: recorded[k] for k in ("pid", "creation_time", "command_class", "ownership", "exit_code") if k in recorded})
+            verified = False
             try:
+                verified = worker.verify_cleanup() is True
+            except Exception:
+                worker_errors.append("WORKER_READBACK_FAILED")
+            owned_checks = getattr(worker, "cleanup_evidence", None)
+            if isinstance(owned_checks, list):
+                checks.extend(item for item in owned_checks if isinstance(item, CleanupEvidence))
+            if verified:
                 registry = getattr(self, "_tool_registry", None)
                 if registry is not None:
-                    registry.cleanup_task(self.task_id, recycle=True)
-                else:
-                    self.worker_controller.terminate_and_join()
-            except Exception as e:
-                logger.debug("Error cleaning up worker controller for task %s: %s", self.task_id, e)
-            finally:
+                    try:
+                        registry.cleanup_task(self.task_id, recycle=False)
+                    except Exception:
+                        worker_errors.append("REGISTRY_WORKER_RELEASE_FAILED")
+                        verified = False
+            check = CleanupEvidence(resource_id="worker:" + self.task_id, kind="worker", identity=identity,
+                verified=verified, code="WORKER_ABSENCE_VERIFIED" if verified else "WORKER_CLEANUP_UNVERIFIED",
+                errors=worker_errors)
+            checks.append(check)
+            if verified:
                 self.worker_controller = None
-
-        # Clear task-scoped snapshot registry to free memory and invalidate stale refs
         if self.snapshot_registry is not None:
+            check = CleanupEvidence(resource_id="snapshots:" + self.task_id, kind="snapshots", code="SNAPSHOT_RELEASE_UNVERIFIED")
             try:
                 self.snapshot_registry.clear()
+                if len(self.snapshot_registry) != 0:
+                    raise RuntimeError("Snapshot release readback failed.")
+                self.snapshot_registry = None
+                check.verified = True
+                check.code = "SNAPSHOTS_RELEASED"
             except Exception:
-                pass
-            self.snapshot_registry = None
+                check.errors.append("SNAPSHOT_RELEASE_FAILED")
+            checks.append(check)
+        self.cleanup_evidence.extend(checks)
+        return checks
 
 
 
@@ -221,6 +273,7 @@ class TaskSupervisor:
         self._paths = paths
         self._max_retained_terminal_tasks = max_retained_terminal_tasks
         self._tasks: Dict[str, TaskCapsule] = {}
+        self._retained_preparations: Dict[str, TaskCapsule] = {}
         self._lock = threading.RLock()
         # Short publication/state/latch boundary. Never hold this lock during
         # resource construction, grace, worker I/O, rollback or final cleanup.
@@ -235,7 +288,7 @@ class TaskSupervisor:
         with self._lock:
             terminal_ids = [
                 tid for tid, cap in self._tasks.items()
-                if cap.state in _TERMINAL_STATES
+                if cap.state in _TERMINAL_STATES and not cap.cleanup_pending
             ]
             if len(terminal_ids) <= limit:
                 return 0
@@ -288,6 +341,10 @@ class TaskSupervisor:
                 # returned. Do not publish a stale request as new active work.
                 capsule.cancellation_token.cancel(StopReason.USER_STOP)
         capsule.close_resources()
+        if capsule.cleanup_pending:
+            with self._admission_lock:
+                self._retained_preparations[capsule.task_id] = capsule
+            self._persist_cleanup_report(capsule)
         raise TaskCancelledError("Task creation was cancelled by global STOP.")
 
 
@@ -318,8 +375,9 @@ class TaskSupervisor:
                 try:
                     self._ledger.update_task(
                         task_id,
-                        final_state=new_state.value,
+                        final_state=capsule.state.value,
                         completed_at=datetime.now(timezone.utc).isoformat(),
+                        _timeout_s=2.0,
                     )
                 except Exception as e:
                     logger.error("Failed to update task %s final state in ledger: %s", task_id, e)
@@ -349,93 +407,117 @@ class TaskSupervisor:
         return True
 
     def _cleanup_stopped_task(self, capsule: TaskCapsule, reason: StopReason, grace_s: float) -> None:
-        """Existing owned cleanup path, called only by the stop-claim owner."""
+        """One STOP claim, with positive evidence before clean terminal state."""
         task_id = capsule.task_id
-        
         if grace_s > 0:
             time.sleep(grace_s)
-        
-        # 3. Terminate unresponsive PLUMA-owned Job Object workers and launched applications
-        if getattr(capsule, "worker_controller", None) is not None:
-            try:
-                capsule.worker_controller.terminate_and_join()
-            except Exception as e:
-                logger.error("Failed to terminate worker controller for %s: %s", task_id, e)
-            finally:
-                capsule.worker_controller = None
-
-        if capsule.job_object:
-            try:
-                capsule.job_object.terminate(exit_code=1)
-                capsule.job_object.close()
-                capsule.job_object = None
-            except Exception as e:
-                logger.error("Failed to terminate job object for %s: %s", task_id, e)
-
-        # Terminate any persistent application Job Objects launched by this task
-        for res in capsule.owned_resources:
-            persistent_job = res.metadata.get("persistent_job")
-            if persistent_job is not None:
-                try:
-                    persistent_job.terminate(exit_code=1)
-                    persistent_job.close()
-                except Exception as e:
-                    logger.error("Failed to terminate persistent app job for %s: %s", task_id, e)
-                finally:
-                    res.metadata["persistent_job"] = None
-
-
-        # 4. Rollback safe reversible actions in reverse order (Spec §13)
-        has_residual = any(u.get("non_undoable", False) for u in capsule.undo_stack)
+        capsule.close_resources(stopping=True)
         with self._lock:
             self._transition(capsule, TaskState.ROLLING_BACK)
 
-        if self._rollback_engine is not None:
+        # An executor whose absence is unknown can still mutate files. Preserve
+        # pre-state/temp resources; never race rollback/deletion against it.
+        unsafe = any(item.kind in ("worker", "job") for item in latest_unresolved(capsule.cleanup_evidence))
+        irreversible = any(item.get("non_undoable", False) for item in capsule.undo_stack)
+        if irreversible:
+            capsule.cleanup_evidence.append(CleanupEvidence(resource_id="commits:" + task_id,
+                kind="irreversible", code="NON_UNDOABLE_EFFECT_REMAINS"))
+        if unsafe:
+            capsule.cleanup_evidence.append(CleanupEvidence(resource_id="rollback:" + task_id,
+                kind="rollback", code="ROLLBACK_DEFERRED_WORKER_UNVERIFIED"))
+            self._defer_temporary_resources(capsule, "TEMP_CLEANUP_DEFERRED_WORKER_UNVERIFIED")
+        else:
+            rollback = CleanupEvidence(resource_id="rollback:" + task_id, kind="rollback", code="ROLLBACK_UNVERIFIED")
             try:
-                rollback_res = self._rollback_engine.rollback_task(
-                    task_id=task_id,
-                    cancellation_token=capsule.cancellation_token,
-                    memory_undo_stack=capsule.undo_stack,
-                )
-                if rollback_res.has_residual:
-                    has_residual = True
-            except Exception as e:
-                logger.error("Rollback execution error on task %s: %s", task_id, e)
-                has_residual = True
-        elif capsule.undo_stack:
-            # Fallback basic rollback if engine not injected
+                from pluma.rollback.engine import RollbackEngine, RollbackResult
+                engine = self._rollback_engine or RollbackEngine()
+                reversible = [item for item in capsule.undo_stack if not item.get("non_undoable", False)]
+                remaining = list(reversible)
+                result = engine.rollback_task(task_id=task_id, cancellation_token=capsule.cancellation_token,
+                                               memory_undo_stack=remaining)
+                if not isinstance(result, RollbackResult):
+                    raise ValueError("Rollback evidence missing")
+                rollback.verified = (result.all_ok is True and result.has_residual is False
+                    and result.steps_failed == 0 and result.steps_attempted == result.steps_succeeded
+                    and not remaining)
+                rollback.identity = {"attempted": result.steps_attempted, "succeeded": result.steps_succeeded,
+                                     "failed": result.steps_failed,
+                                     "actions": [item.action for item in result.step_results]}
+                rollback.code = "ROLLBACK_VERIFIED" if rollback.verified else "ROLLBACK_RESIDUAL"
+                for item in reversible:
+                    if item not in remaining and item in capsule.undo_stack:
+                        capsule.undo_stack.remove(item)
+            except Exception:
+                rollback.errors.append("ROLLBACK_FAILED")
+            capsule.cleanup_evidence.append(rollback)
+            if rollback.verified:
+                self._cleanup_temporary_resources(capsule)
+            else:
+                self._defer_temporary_resources(capsule, "TEMP_CLEANUP_DEFERRED_ROLLBACK_UNVERIFIED")
+
+        self._persist_cleanup_report(capsule)
+        final_state = TaskState.STOPPED_WITH_RESIDUAL if capsule.cleanup_pending else TaskState.STOPPED
+        if self._ledger is not None:
             try:
-                from pluma.rollback.recipes import RollbackRecipes
-                recipes = RollbackRecipes()
-                for undo_item in reversed(capsule.undo_stack):
-                    action_name = undo_item.get("action", "")
-                    res = recipes.apply(action_name, undo_item)
-                    if not res.ok:
-                        has_residual = True
-            except Exception as e:
-                logger.error("Basic fallback rollback error on task %s: %s", task_id, e)
-                has_residual = True
-        
-        # 5. Close/delete task-owned temporary resources
-        if self._registry:
-            self._registry.cleanup_task_resources(task_id)
-        
-        # 6. Mark final state
-        final_state = TaskState.STOPPED_WITH_RESIDUAL if has_residual else TaskState.STOPPED
+                self._ledger.update_task(task_id, _timeout_s=2.0, final_state=final_state.value,
+                    completed_at=datetime.now(timezone.utc).isoformat(), stop_reason=reason.value)
+            except Exception:
+                # P05 owns authoritative result/ledger reconciliation. Preserve
+                # this P04 persistence failure rather than dropping its evidence.
+                capsule.cleanup_evidence.append(CleanupEvidence(resource_id="terminal-ledger:" + task_id,
+                    kind="persistence", code="TERMINAL_PERSISTENCE_UNVERIFIED"))
+                final_state = TaskState.STOPPED_WITH_RESIDUAL
+                try:
+                    self._ledger.record_cleanup(task_id, [item.model_dump() for item in capsule.cleanup_evidence])
+                except Exception:
+                    pass  # the in-memory failure/reference remains retained
+        capsule.cleanup_finalized = True
         with self._lock:
             self._transition(capsule, final_state)
 
-        # 7. Update ledger if present
-        if self._ledger:
+    def _persist_cleanup_report(self, capsule: TaskCapsule) -> None:
+        if self._ledger is None:
+            return
+        try:
+            self._ledger.record_cleanup(capsule.task_id, [item.model_dump() for item in capsule.cleanup_evidence])
+        except Exception:
+            capsule.cleanup_evidence.append(CleanupEvidence(resource_id="ledger:" + capsule.task_id,
+                kind="persistence", code="CLEANUP_PERSISTENCE_UNVERIFIED"))
             try:
-                self._ledger.update_task(
-                    task_id,
-                    final_state=final_state.value,
-                    completed_at=datetime.now(timezone.utc).isoformat(),
-                    stop_reason=reason.value,
-                )
-            except Exception as e:
-                logger.error("Failed to update task %s final state in ledger: %s", task_id, e)
+                self._ledger.record_cleanup(capsule.task_id, [item.model_dump() for item in capsule.cleanup_evidence])
+            except Exception:
+                pass  # retain ownership/evidence even while storage is unavailable
+
+    def _cleanup_temporary_resources(self, capsule: TaskCapsule) -> None:
+        if any(item.kind in ("worker", "job") for item in latest_unresolved(capsule.cleanup_evidence)):
+            self._defer_temporary_resources(capsule, "TEMP_CLEANUP_DEFERRED_WORKER_UNVERIFIED")
+            return
+        from pluma.core.ownership import cleanup_resources
+        checks = cleanup_resources(capsule.owned_resources)
+        capsule.cleanup_evidence.extend(checks)
+        if self._registry is not None:
+            try:
+                result = self._registry.cleanup_task_resources(capsule.task_id)
+                if not isinstance(result, list) or any(not isinstance(item, CleanupEvidence) for item in result):
+                    raise ValueError("Resource cleanup evidence missing")
+                capsule.cleanup_evidence.extend(result)
+            except Exception:
+                capsule.cleanup_evidence.append(CleanupEvidence(resource_id="registry:" + capsule.task_id,
+                    kind="resources", code="RESOURCE_CLEANUP_UNVERIFIED"))
+                self._defer_temporary_resources(capsule, "REGISTRY_RESOURCE_CLEANUP_UNVERIFIED")
+
+    def _defer_temporary_resources(self, capsule: TaskCapsule, code: str) -> None:
+        from pluma.core.ownership import cleanup_resources
+        resources = list(capsule.owned_resources)
+        if self._registry is not None:
+            try:
+                resources.extend(self._registry.get_owned_resources(capsule.task_id))
+            except Exception:
+                capsule.cleanup_evidence.append(CleanupEvidence(resource_id="registry-identity:" + capsule.task_id,
+                    kind="resources", code="RESOURCE_IDENTITY_READBACK_UNAVAILABLE"))
+        capsule.cleanup_evidence.extend(cleanup_resources(resources, deferred=True))
+        capsule.cleanup_evidence.append(CleanupEvidence(resource_id="temporary:" + capsule.task_id,
+            kind="resources", code=code))
 
     def get_active_tasks(self) -> List[TaskCapsule]:
         """Return all tasks in non-terminal states."""
@@ -499,24 +581,16 @@ class TaskSupervisor:
             if new_state in _TERMINAL_STATES:
                 capsule.completed_at = datetime.now(timezone.utc)
         if new_state in _TERMINAL_STATES:
-            # 1. Cleanly close and release Job Object handles on terminal transition
-            capsule.close_resources()
-
-            # 2. Clean up task temp directory
-            try:
-                from pluma.config.paths import get_paths
-                paths_inst = self._paths or get_paths()
-                task_dir = paths_inst.task_temp_dir(capsule.task_id)
-                if task_dir.exists():
-                    import shutil
-                    shutil.rmtree(task_dir, ignore_errors=True)
-            except Exception:
-                pass
-
-            # 3. Clean up process registry tracking
-            if self._registry and hasattr(self._registry, "cleanup_task_resources"):
-                try:
-                    self._registry.cleanup_task_resources(capsule.task_id)
-                except Exception:
-                    pass
+            if not capsule.cleanup_finalized:
+                capsule.close_resources(stopping=new_state in (TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL))
+                self._cleanup_temporary_resources(capsule)
+                self._persist_cleanup_report(capsule)
+                if capsule.cleanup_pending and new_state in (TaskState.SUCCEEDED, TaskState.STOPPED):
+                    # Finalize this same terminal operation conservatively;
+                    # cleanup failure cannot establish success/clean STOP.
+                    with self._admission_lock:
+                        capsule.state = (TaskState.FAILED if new_state == TaskState.SUCCEEDED
+                                         else TaskState.STOPPED_WITH_RESIDUAL)
+            # Unresolved handles/evidence must survive terminal pruning. No
+            # computed, unregistered directory is recursively deleted here.
             self.prune_terminal_tasks()

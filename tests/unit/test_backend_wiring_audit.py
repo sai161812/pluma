@@ -37,6 +37,13 @@ class FakeJob:
     def close(self):
         self.closed = True
 
+    def active_process_count(self):
+        return 0  # inert fixture owns no operating-system process
+
+    @property
+    def is_closed(self):
+        return self.closed
+
 
 class EmptyArgs(BaseModel):
     pass
@@ -155,7 +162,6 @@ def test_stop_during_prestate_prevents_executor_start(isolated_supervisor):
     assert not calls, f"Executor started after the latch was set: {calls}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-04: termination failure is discarded and clean STOPPED is reported")
 def test_failed_worker_cleanup_requires_residual_state(isolated_supervisor):
     capsule = isolated_supervisor.create_task("audit-cleanup-failure")
     worker = Mock()
@@ -263,8 +269,15 @@ def test_ipc_stop_reply_distinguishes_residual_cleanup(isolated_supervisor, monk
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-08: failed stop still appears in IPC stopped_tasks")
 def test_ipc_stop_reply_does_not_claim_nonterminal_task_stopped(isolated_supervisor, monkeypatch):
     capsule = isolated_supervisor.create_task("audit-ipc-failed-cleanup")
-    cleanup = Mock(side_effect=RuntimeError("Audit fixture cleanup failed"))
-    isolated_supervisor._registry = SimpleNamespace(cleanup_task_resources=cleanup)
+    # P04 now converts resource-cleanup errors into terminal residual evidence.
+    # Keep BA-08's separate nonterminal IPC assertion by injecting an unexpected
+    # failure at the state boundary, after the actual ROLLING_BACK transition.
+    transition = isolated_supervisor._transition
+    def fail_after_rollback(capsule, state):
+        transition(capsule, state)
+        if state == TaskState.ROLLING_BACK:
+            raise RuntimeError("Audit fixture nonterminal boundary failure")
+    monkeypatch.setattr(isolated_supervisor, "_transition", fail_after_rollback)
     core = bare_resident(isolated_supervisor)
     monkeypatch.setattr(task_supervisor, "time", SimpleNamespace(sleep=lambda seconds: None))
     response = core.handle_ipc_command({"command": "stop"})

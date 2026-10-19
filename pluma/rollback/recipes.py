@@ -79,6 +79,11 @@ def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
             if backup_path.exists():
                 shutil.move(str(backup_path), str(dst))
 
+        if not src.exists() or (not backup_path_str and dst.exists()):
+            raise RuntimeError("Move rollback postcondition failed.")
+        if backup_path_str and (Path(backup_path_str).exists() or not dst.exists()):
+            raise RuntimeError("Backup restoration postcondition failed.")
+
         return RollbackStepResult(
             ok=True,
             action="move_file",
@@ -128,6 +133,8 @@ def _recipe_rename_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
             )
 
         curr.rename(orig)
+        if not orig.exists() or curr.exists():
+            raise RuntimeError("Rename rollback postcondition failed.")
         return RollbackStepResult(
             ok=True,
             action="rename_file",
@@ -175,6 +182,8 @@ def _recipe_create_folder(undo_data: Dict[str, Any]) -> RollbackStepResult:
                 error="Directory not empty.",
             )
         p.rmdir()
+        if p.exists():
+            raise RuntimeError("Folder rollback postcondition failed.")
         return RollbackStepResult(
             ok=True,
             action="create_folder",
@@ -196,8 +205,13 @@ def _recipe_set_volume(undo_data: Dict[str, Any]) -> RollbackStepResult:
     prev_muted = undo_data.get("previous_muted")
 
     try:
-        from pluma.tools.audio import _set_audio_endpoint_volume
-        _set_audio_endpoint_volume(level=prev_vol, mute=prev_muted)
+        from pluma.tools.audio import _set_audio_endpoint_volume, _get_audio_endpoint_volume
+        if not _set_audio_endpoint_volume(level=prev_vol, mute=prev_muted):
+            raise RuntimeError("Volume rollback was refused.")
+        observed = _get_audio_endpoint_volume()
+        if (observed is None or (prev_vol is not None and abs(observed["volume"] - prev_vol) > 1)
+                or (prev_muted is not None and observed["muted"] != prev_muted)):
+            raise RuntimeError("Volume rollback postcondition failed.")
         return RollbackStepResult(
             ok=True,
             action="set_volume",
@@ -218,8 +232,12 @@ def _recipe_mute(undo_data: Dict[str, Any]) -> RollbackStepResult:
     prev_muted = undo_data.get("previous_muted", False)
 
     try:
-        from pluma.tools.audio import _set_audio_endpoint_volume
-        _set_audio_endpoint_volume(mute=prev_muted)
+        from pluma.tools.audio import _set_audio_endpoint_volume, _get_audio_endpoint_volume
+        if not _set_audio_endpoint_volume(mute=prev_muted):
+            raise RuntimeError("Mute rollback was refused.")
+        observed = _get_audio_endpoint_volume()
+        if observed is None or observed["muted"] != prev_muted:
+            raise RuntimeError("Mute rollback postcondition failed.")
         return RollbackStepResult(
             ok=True,
             action="mute",

@@ -147,7 +147,7 @@ class ActivityLedger:
             ),
         )
 
-    def update_task(self, task_id: str, **fields: Any) -> None:
+    def update_task(self, task_id: str, *, _timeout_s: Optional[float] = None, **fields: Any) -> None:
         """Update one or more fields on an existing task row.
 
         Only the following fields may be updated:
@@ -168,6 +168,7 @@ class ActivityLedger:
         self._db.execute_write(
             f"UPDATE tasks SET {set_clause} WHERE task_id = ?",
             values,
+            timeout_s=_timeout_s,
         )
 
     # -- Action recording --
@@ -272,6 +273,34 @@ class ActivityLedger:
 
 
     # -- Resources --
+
+    def record_cleanup(self, task_id: str, entries: List[Dict[str, Any]]) -> None:
+        """Persist a redacted cleanup snapshot and verify its SQLite readback.
+
+        The independent journal also accepts unpublished preparations. Mirror
+        into resources only when task history exists, in the same transaction.
+        """
+        from pluma.core.cleanup import CleanupEvidence, latest_unresolved
+        checks = [CleanupEvidence.model_validate(item) for item in entries]
+        complete = not latest_unresolved(checks)
+        metadata = redact_sensitive_data({"version": 1, "complete": complete,
+                                           "entries": [item.model_dump() for item in checks]})
+        encoded = json.dumps(metadata)
+        record_id = "cleanup:" + task_id
+        now = _now_iso()
+        released = now if complete else None
+        self._db.execute_transaction([
+            ("""INSERT OR REPLACE INTO cleanup_reports
+               (task_id, recorded_at, released_at, metadata_json) VALUES (?, ?, ?, ?)""",
+             (task_id, now, released, encoded)),
+            ("""INSERT OR REPLACE INTO resources
+               (id, task_id, resource_type, ownership, created_at, released_at, metadata_json)
+               SELECT ?, task_id, 'cleanup_report', 'PLUMA_CREATED', ?, ?, ? FROM tasks WHERE task_id = ?""",
+             (record_id, now, released, encoded, task_id)),
+        ], timeout_s=2.0)
+        row = self._db.execute_read_one("SELECT metadata_json FROM cleanup_reports WHERE task_id = ?", (task_id,))
+        if row is None or json.loads(row[0]) != metadata:
+            raise RuntimeError("Cleanup ledger readback failed.")
 
     def insert_resource(self, record: ResourceRecord) -> None:
         """Insert a claimed or created resource row."""
@@ -406,6 +435,11 @@ class ActivityQuery:
             (task_id,),
         )
         return [dict(r) for r in rows]
+
+    def cleanup_report_for_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Read cleanup evidence even if task preparation never published."""
+        row = self._db.execute_read_one("SELECT * FROM cleanup_reports WHERE task_id = ?", (task_id,))
+        return dict(row) if row else None
 
     def screen_events_for_task(self, task_id: str) -> List[Dict[str, Any]]:
         """Return all screen events for a task."""

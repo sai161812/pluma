@@ -17,6 +17,7 @@ from pluma.core.cancellation import StopReason, TaskCancelledError
 from pluma.core.task_supervisor import InvalidTaskTransition, TaskState, TaskSupervisor
 from pluma.memory.activity import ActivityLedger, ActivityQuery, TaskRecord
 from pluma.memory.db import DbConnection
+from pluma.rollback.engine import RollbackResult
 from pluma.tools.base import RiskClass, ToolSpec, ToolResult, VerifyResult
 from pluma.tools.registry import ToolRegistry
 
@@ -31,6 +32,17 @@ class Job:
 
     def close(self):
         self.closed = True
+
+    def active_process_count(self):
+        return 0  # this inert job contains no actual processes
+
+    @property
+    def is_closed(self):
+        return self.closed
+
+
+def empty_rollback(task_id):
+    return RollbackResult(task_id, True, 0, 0, 0)
 
 
 @pytest.fixture
@@ -75,14 +87,14 @@ def test_blocked_first_cleanup_cannot_leave_later_task_admitting(supervisor, mon
     if phase == "grace":
         monkeypatch.setattr(module, "time", SimpleNamespace(sleep=lambda seconds: observe()))
     elif phase == "worker":
-        capsules[0].worker_controller = SimpleNamespace(terminate_and_join=observe)
+        capsules[0].worker_controller = SimpleNamespace(terminate_and_join=observe, verify_cleanup=lambda: True)
     elif phase == "rollback":
         def rollback(**kwargs):
             observe()
-            return SimpleNamespace(has_residual=False)
+            return empty_rollback(kwargs["task_id"])
         supervisor._rollback_engine = SimpleNamespace(rollback_task=rollback)
     else:
-        supervisor._registry = SimpleNamespace(cleanup_task_resources=lambda task_id: observe())
+        supervisor._registry = SimpleNamespace(cleanup_task_resources=lambda task_id: (observe() or []))
 
     registry = ToolRegistry()
     registry.register(ToolSpec(name="stop_probe", description="P02 inert counter.", args_schema=EmptyArgs,
@@ -163,7 +175,7 @@ def test_overlapping_global_stops_do_not_duplicate_cleanup_or_reopen_admission(s
             wait(release)
 
     for index, capsule in enumerate(capsules):
-        capsule.worker_controller = SimpleNamespace(terminate_and_join=lambda index=index: terminate(index))
+        capsule.worker_controller = SimpleNamespace(terminate_and_join=lambda index=index: terminate(index), verify_cleanup=lambda: True)
     with ThreadPoolExecutor(max_workers=2) as callers:
         first = callers.submit(supervisor.stop_all_active_tasks)
         try:
@@ -193,7 +205,7 @@ def test_task_stop_then_global_latches_other_tasks_and_preserves_first_reason(su
         entered.set()
         wait(release)
 
-    first.worker_controller = SimpleNamespace(terminate_and_join=terminate)
+    first.worker_controller = SimpleNamespace(terminate_and_join=terminate, verify_cleanup=lambda: True)
     with ThreadPoolExecutor(max_workers=2) as callers:
         single = callers.submit(supervisor.stop_task, first.task_id, StopReason.TASK_TIMEOUT, 0)
         try:
@@ -218,7 +230,7 @@ def test_repeated_stop_during_rollback_does_not_reenter_cleanup(supervisor):
         calls.append(kwargs["task_id"])
         entered.set()
         wait(release)
-        return SimpleNamespace(has_residual=False)
+        return empty_rollback(kwargs["task_id"])
 
     supervisor._rollback_engine = SimpleNamespace(rollback_task=rollback)
     with ThreadPoolExecutor(max_workers=2) as callers:
@@ -298,7 +310,7 @@ def test_new_request_during_stop_allocates_no_job(supervisor, monkeypatch):
         wait(release)
 
     monkeypatch.setattr("pluma.core.job_object.WindowsJobObject", allocate)
-    capsule.worker_controller = SimpleNamespace(terminate_and_join=terminate)
+    capsule.worker_controller = SimpleNamespace(terminate_and_join=terminate, verify_cleanup=lambda: True)
     with ThreadPoolExecutor(max_workers=1) as callers:
         stopping = callers.submit(supervisor.stop_all_active_tasks)
         try:
@@ -382,12 +394,13 @@ def test_cleanup_error_does_not_omit_later_tasks_or_leave_global_admission_close
         observations.append((first.stop_latch_set, later.stop_latch_set))
         if task_id == first.task_id:
             raise RuntimeError("Owned injected resource cleanup failure")
+        return []
 
     supervisor._registry = SimpleNamespace(cleanup_task_resources=cleanup)
     assert supervisor.stop_all_active_tasks() == [first.task_id, later.task_id]
     assert all(all(values) for values in observations)
     assert later.state == TaskState.STOPPED
-    assert first.state == TaskState.ROLLING_BACK  # existing BA-08; no fake clean result
+    assert first.state == TaskState.STOPPED_WITH_RESIDUAL  # P04 now records the cleanup failure
     assert supervisor._global_stop_depth == 0
     assert task(supervisor, "explicit-next", True).state == TaskState.RUNNING
 

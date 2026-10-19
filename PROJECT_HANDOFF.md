@@ -1,6 +1,85 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-19, P03 interruptible owned workers
+## Current checkpoint: 2026-10-19, P04 verified cleanup and residual ownership
+
+This checkpoint supersedes earlier next-step/count statements. Locked source
+requirements and the native dark UI are unchanged. This is a bounded gate,
+not full STOP, backend, device, installed-artifact or release acceptance.
+
+- **P04 bounded gate passed: BA-04 repaired; P01-P03 preserved.** Started clean
+  on local/remote `ui-wiring` at `f6543d1a1df622e8f7d2a64131cd49d32343a298`.
+  Coverage passed before editing. Prerequisites freshly passed **72 checks in
+  12.67s**. Original BA-04 reproduced first: **1 failed in 0.42s**, clean
+  STOPPED despite termination failure and lost worker reference. The original
+  assertion is unchanged; its strict marker is removed.
+- [P04 evidence and cleanup contract](docs/completion/p04_evidence.md) records
+  exact commands, tested blobs, reports, verified Windows/SQLite facts, failure
+  injections, limits, recovery and next gate. Typed cleanup evidence combines
+  worker/root, Job Object, temporary resource, snapshot, rollback, irreversible
+  effect and persistence readback. Errors use fixed factual codes, not raw
+  exception bodies or tool arguments. Unresolved handles/identity survive
+  terminal cleanup, registry close/acquisition and pruning.
+- Native jobs read active-process count before handle closure; failures remain
+  owned. A termination exception can resolve only through positive fallback
+  absence/closure readback. Worker cleanup retains P03's original process
+  handles, task/PID/creation/class identity, bounded I/O and shared latch.
+  No new detached helper, model/capture workload or name/PID killer is added.
+- Unknown worker/job absence defers rollback and temporary deletion. Partial
+  rollback preserves remaining pre-state. Registered temps capture identity,
+  reject changed/missing/reparse identity, and read absence before release;
+  pre-existing resources and unregistered computed task paths are untouched.
+  Existing file/audio rollback recipes read postconditions; database undo
+  consumes only matching restored memory pre-state. Deferred resource identity
+  is retained in reports for later inspection.
+- Clean STOP requires resolved evidence; otherwise core state is
+  STOPPED_WITH_RESIDUAL. Ordinary successful-terminal cleanup failures become
+  FAILED. Failed unpublished preparations remain tracked without publishing a
+  stale task. Migration 0002 journals redacted reports independently of task
+  history insertion, atomically mirrors existing task resources and reads the
+  journal back. This stores no fabricated command/input mode. Queue writes have
+  two-second acknowledgement bounds; storage failure retains evidence and
+  prevents clean core completion. Returned/history reconciliation remains P05.
+- Final focused: **183 passed in 20.10s**, including 38 new cleanup cases and
+  seven existing database migration/WAL/writer cases. Relevant regressions with
+  explicit desktop isolation: **507 passed, 3 skipped, 1 deselected, 7 xfailed
+  in 36.94s**. Additional owned-worker containment: **3 passed in 3.60s**.
+  Raw audit: **7 failed, 8 passed in 0.88s**. Matrix: **298 source items /
+  324 rows**. Windows 11 build 26200 / Python 3.12.10 / pytest 8.3.3; isolated
+  storage, owned processes/jobs/files/pipes, SQLite and inert/audio emulation.
+  Fixture keys remaining: zero. All 115 FAST cases have desktop-isolation tags;
+  retain P02's isolation correction. Skips/exclusion/xfails are not acceptance.
+- Real supervisor cleanup reads root/descendant exit, unrelated fixture
+  survival, empty/closed jobs, absent late effects and SQLite cleanup/state
+  back. Failures cover unknown worker exit, live/query/close failures, no-op
+  deletion/rollback, conflicts, pre-existing ownership, pruning, repeated STOP,
+  snapshot failure, unpublished preparation, persistence/redaction and bounded
+  acknowledgement. No full unit/product/device/install or hotkey/p95 claim.
+- P02/P03 inert doubles now expose explicit readback. P02's former expected
+  ROLLING_BACK after resource error now requires factual residual state; latch
+  and ordering assertions remain. BA-08's old resource-error setup ceased to
+  be nonterminal after P04, so its injection now fails after the actual
+  ROLLING_BACK boundary; original guard/assertion/strict marker remain. P08 is
+  still defective. An initial new test's missing verifier was corrected; all
+  intermediate reports are retained under ignored output/p04.
+- **Five findings remain: BA-05 through BA-09, seven raw failures.** FAST
+  returned/history residual truth, runtime drain, voice capture/empty-capsule,
+  IPC outcome truth and initial credential privacy remain. Full tool/model/
+  voice/screen/native-device/recovery and release gates remain in the matrix.
+  UI action entry stays disabled. Core evidence alone does not repair results.
+- P04 is committed/pushed on `ui-wiring`. PR 1/2 remain draft/open/unmerged;
+  main remains `6dbf589`, integration `9544752`. Pre-P04 recovery is
+  `f6543d1a1df622e8f7d2a64131cd49d32343a298`; inspect in a new detached
+  worktree. Existing tags/worktrees/archive/stash are preserved; no merge,
+  worktree switch, destructive cleanup, force push or security bypass.
+- **Next safe milestone: P05 only, BA-05 authoritative terminal projection.**
+  Reproduce `test_fast_stop_preserves_supervisor_residual_outcome` with
+  `--runxfail`; align returned results/history with supervisor state and residual
+  details, test racing STOP, partial/non-undoable effects and storage failures.
+  P06 must include retained terminal/preparation owners in shutdown drain;
+  P10 reruns combined P01-P09 Windows/failure/ledger paths and handle lifecycles.
+  P05 was not started. Do not advance automatically or enable actions.
+
+## Previous checkpoint: 2026-10-19, P03 interruptible owned workers
 
 This checkpoint supersedes earlier next-step/count statements below. The master
 specification is unchanged. This is a bounded gate, not complete STOP, backend,

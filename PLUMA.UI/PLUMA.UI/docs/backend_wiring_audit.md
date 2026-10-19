@@ -1,14 +1,17 @@
 # Backend audit before action wiring
 
-Current status after P03 (2026-10-19): BA-03 admission, BA-01 latch-all and
-BA-02 owned-worker interruption are repaired with ordinary passing regressions.
-Six findings remain open, reproduced by eight raw failures.
-[P03 Windows worker evidence and lifetime contract](../../../docs/completion/p03_evidence.md),
+Current status after P04 (2026-10-19): BA-01 through BA-04 pass bounded gates
+with ordinary passing audit regressions. Five findings remain open, reproduced
+by seven raw assertion failures. [P04 cleanup evidence and retention contract](../../../docs/completion/p04_evidence.md),
+[P03 Windows worker evidence](../../../docs/completion/p03_evidence.md),
 [P02 latch/isolation evidence](../../../docs/completion/p02_evidence.md) and
 [P01 admission evidence](../../../docs/completion/p01_evidence.md) supersede
-old next-fix advice/counts below. Action entry stays disabled; P04/BA-04
-cleanup readback and failure retention is next. The original audit below remains
-historical evidence for its named source, not certification of the backend.
+old next-fix advice/counts below. Action entry stays disabled; P05/BA-05
+terminal-result/history consistency is next. BA-08's nonterminal failure
+injection now follows the actual ROLLING_BACK state boundary because P04
+handles resource errors as residuals; its guard/assertion/marker are unchanged.
+The original audit below remains historical evidence for its named source,
+not certification of the backend.
 
 Date: 2026-10-19. Requested scope: inspect the backend used by `ui-wiring`,
 reproduce suspected defects, preserve existing work/appearance and record the

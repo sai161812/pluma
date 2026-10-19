@@ -200,6 +200,7 @@ class DbConnection:
         params: Sequence[Any] = (),
         *,
         wait: bool = True,
+        timeout_s: Optional[float] = None,
     ) -> Optional[int]:
         """Enqueue a write statement.
 
@@ -211,7 +212,10 @@ class DbConnection:
         result_q: Optional[queue.SimpleQueue] = queue.SimpleQueue() if wait else None
         self._write_queue.put(_WriteTask(sql, params, result_q))
         if wait and result_q is not None:
-            outcome = result_q.get()
+            try:
+                outcome = result_q.get(timeout=timeout_s)
+            except queue.Empty as exc:
+                raise TimeoutError("Ledger write acknowledgement timed out.") from exc
             if isinstance(outcome, Exception):
                 raise outcome
             return outcome  # lastrowid
@@ -338,6 +342,7 @@ class DbConnection:
         statements: List[Tuple[str, Sequence[Any]]],
         *,
         wait: bool = True,
+        timeout_s: Optional[float] = None,
     ) -> None:
         """Execute a list of (sql, params) tuples in a single transaction."""
         if not self._open:
@@ -346,7 +351,10 @@ class DbConnection:
         task = _TransactionTask(statements, result_q)
         self._write_queue.put(task)
         if wait and result_q is not None:
-            outcome = result_q.get()
+            try:
+                outcome = result_q.get(timeout=timeout_s)
+            except queue.Empty as exc:
+                raise TimeoutError("Ledger transaction acknowledgement timed out.") from exc
             if isinstance(outcome, Exception):
                 raise outcome
 

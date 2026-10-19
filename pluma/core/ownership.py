@@ -12,11 +12,100 @@ import os
 import shutil
 import sys
 from pathlib import Path
+import stat
 from typing import Any, Dict, List, Optional
 
 from pluma.core.task_supervisor import OwnedResource, ResourceOwnership
 
 logger = logging.getLogger(__name__)
+
+
+def capture_temp_identity(path: Path) -> Dict[str, int]:
+    info = path.lstat()
+    if getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+        raise ValueError("Reparse point cannot be claimed as temporary storage.")
+    return {"device": info.st_dev, "inode": info.st_ino,
+            "size": info.st_size, "mtime_ns": info.st_mtime_ns}
+
+
+def subprocess_absent(pid: int, creation_time: Optional[int]) -> bool:
+    """Read only; a replacement PID is never terminated or otherwise touched."""
+    if sys.platform != "win32" or type(creation_time) is not int:
+        return False
+    import _winapi
+    from types import SimpleNamespace
+    from pluma.core.job_object import owned_process_creation_time
+    try:
+        handle = _winapi.OpenProcess(0x100000 | 0x1000, False, pid)
+    except OSError as exc:
+        return exc.winerror == 87  # absent PID, not access denied/unavailable
+    try:
+        if _winapi.WaitForSingleObject(handle, 0) == _winapi.WAIT_OBJECT_0:
+            return True
+        return owned_process_creation_time(SimpleNamespace(sentinel=handle)) != creation_time
+    finally:
+        _winapi.CloseHandle(handle)
+
+
+def cleanup_resources(resources: List[OwnedResource], *, deferred: bool = False):
+    from pluma.core.cleanup import CleanupEvidence
+    evidence = []
+    for res in resources:
+        if res.ownership != ResourceOwnership.PLUMA_CREATED:
+            continue
+        identity = {"resource_type": res.resource_type, "external_id": res.external_id,
+                    "temp_identity": res.metadata.get("cleanup_identity"),
+                    "creation_time": res.metadata.get("creation_time", res.metadata.get("creation_time_ns")),
+                    "command_class": res.metadata.get("command_class")}
+        check = CleanupEvidence(resource_id=res.resource_id, kind="resource", identity=identity,
+                                code="RESOURCE_CLEANUP_UNVERIFIED")
+        if res.released_at is not None:
+            check.verified = True
+            check.code = "RESOURCE_OWNERSHIP_ALREADY_RELEASED"
+            evidence.append(check)
+            continue  # the same path/PID may now belong to a different resource
+        if deferred:
+            check.code = "RESOURCE_CLEANUP_DEFERRED"
+            evidence.append(check)
+            continue
+        if res.resource_type in ("temp_dir", "temp_file") and res.external_id:
+            path = Path(res.external_id)
+            try:
+                try:
+                    current = capture_temp_identity(path)
+                except FileNotFoundError:
+                    current = None
+                expected = res.metadata.get("cleanup_identity")
+                if current is None:
+                    check.verified = True
+                elif not expected or any(current[k] != expected.get(k) for k in ("device", "inode")):
+                    check.code = "TEMP_IDENTITY_CHANGED_OR_MISSING"
+                elif res.resource_type == "temp_file" and any(current[k] != expected.get(k) for k in ("size", "mtime_ns")):
+                    check.code = "TEMP_FILE_CHANGED"
+                else:
+                    if res.resource_type == "temp_dir":
+                        shutil.rmtree(path)
+                    else:
+                        path.unlink()
+                    try:
+                        path.lstat()
+                    except FileNotFoundError:
+                        check.verified = True
+            except Exception:
+                check.errors.append("TEMP_CLEANUP_OR_READBACK_FAILED")
+        elif res.resource_type == "subprocess" and res.external_id:
+            try:
+                check.verified = subprocess_absent(int(res.external_id), identity["creation_time"])
+            except Exception:
+                check.errors.append("PROCESS_READBACK_FAILED")
+        else:
+            check.code = "RESOURCE_CLEANUP_ADAPTER_UNAVAILABLE"
+        if check.verified:
+            from datetime import datetime, timezone
+            check.code = "RESOURCE_ABSENCE_VERIFIED"
+            res.released_at = datetime.now(timezone.utc)
+        evidence.append(check)
+    return evidence
 
 if sys.platform == "win32":
     import ctypes
@@ -92,7 +181,8 @@ class OwnershipRegistry:
         """
         from pluma.config.paths import get_paths
         temp_dir = get_paths().task_temp_dir(task_id)
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        # Never take ownership of an already existing user/recovery directory.
+        temp_dir.mkdir(parents=True, exist_ok=False)
         
         self.register_resource(
             task_id=task_id,
@@ -133,11 +223,17 @@ class OwnershipRegistry:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> OwnedResource:
         """Register any resource (file, tab, process, etc.)."""
+        safe_metadata = dict(metadata or {})
+        if ownership == ResourceOwnership.PLUMA_CREATED and resource_type in ("temp_dir", "temp_file") and external_id:
+            try:
+                safe_metadata["cleanup_identity"] = capture_temp_identity(Path(external_id))
+            except (OSError, ValueError):
+                pass  # unknown identity is retained and fails cleanup closed
         resource = OwnedResource(
             resource_type=resource_type,
             ownership=ownership,
             external_id=external_id,
-            metadata=metadata or {},
+            metadata=safe_metadata,
         )
         
         if task_id not in self._resources_by_task:
@@ -179,27 +275,10 @@ class OwnershipRegistry:
             
         return current_time == expected_creation_time
 
-    def cleanup_task_resources(self, task_id: str) -> None:
+    def cleanup_task_resources(self, task_id: str):
         """Close/delete PLUMA_CREATED temp directories and files.
         
         Does not terminate processes (TaskSupervisor does that via Job Objects).
         Leaves PREEXISTING resources untouched.
         """
-        resources = self.get_owned_resources(task_id, ResourceOwnership.PLUMA_CREATED)
-        for res in resources:
-            if res.resource_type == "temp_dir" and res.external_id:
-                path = Path(res.external_id)
-                if path.exists() and path.is_dir():
-                    try:
-                        shutil.rmtree(path)
-                        logger.debug("Cleaned up temp_dir: %s", path)
-                    except Exception as e:
-                        logger.error("Failed to clean temp_dir %s: %s", path, e)
-            elif res.resource_type == "temp_file" and res.external_id:
-                path = Path(res.external_id)
-                if path.exists() and path.is_file():
-                    try:
-                        path.unlink()
-                        logger.debug("Cleaned up temp_file: %s", path)
-                    except Exception as e:
-                        logger.error("Failed to clean temp_file %s: %s", path, e)
+        return cleanup_resources(self.get_owned_resources(task_id, ResourceOwnership.PLUMA_CREATED))

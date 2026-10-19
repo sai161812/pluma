@@ -225,6 +225,7 @@ class TaskWorkerController:
         self._cancellation_token: Optional[CancellationToken] = None
         self._worker_job: Any = None
         self.worker_identity: Optional[Dict[str, Any]] = None
+        self.cleanup_evidence: List[Any] = []
 
     def _is_stopped(self) -> bool:
         return self._stop.is_set() or (
@@ -302,8 +303,12 @@ class TaskWorkerController:
             # Closing the worker-only kill-on-close job also covers descendants
             # after a normally exited root; it never closes the capsule's job.
             if job is not None:
-                job.terminate()
-                job.close()
+                from pluma.core.cleanup import cleanup_job
+                evidence = cleanup_job(job, "worker-job:" + self._bound_task_id, terminate=True,
+                                       timeout_s=max(0, deadline - time.monotonic()))
+                self.cleanup_evidence.append(evidence)
+                if not evidence.verified:
+                    raise RuntimeError("Owned worker Job Object cleanup was not verified.")
                 self._worker_job = None
             if proc is not None and proc.pid is not None:
                 if proc.is_alive():
@@ -318,6 +323,19 @@ class TaskWorkerController:
                 self._conn = None
             # Retain the exited Process for identity/readback. Its native handles
             # follow its normal multiprocessing finalizer/object lifetime.
+        finally:
+            self._cleanup_lock.release()
+
+    def verify_cleanup(self) -> bool:
+        """Read back complete controller cleanup; never infer from a return code."""
+        if not self._startup_done.is_set():
+            return False
+        if not self._cleanup_lock.acquire(timeout=self.CLEANUP_S):
+            return False
+        try:
+            proc = self._proc
+            return (self._conn is None and self._worker_job is None
+                    and (proc is None or proc.pid is None or not proc.is_alive()))
         finally:
             self._cleanup_lock.release()
 
@@ -434,11 +452,14 @@ class ToolRegistry:
             if task_id in self._worker_controllers:
                 return self._worker_controllers[task_id]
             while self._idle_workers:
-                candidate = self._idle_workers.pop()
+                candidate = self._idle_workers[-1]
                 # A completed capsule may retain a controller reference. Never
                 # retag it so a delayed old-task disposal can kill a new task.
                 # The inherited task gate already requires a fresh process.
                 candidate.terminate_and_join()
+                if candidate.verify_cleanup() is not True:
+                    raise RuntimeError("Idle worker cleanup is unverified.")
+                self._idle_workers.pop()
             ctrl = TaskWorkerController(task_id=task_id)
             self._worker_controllers[task_id] = ctrl
             return ctrl
@@ -446,28 +467,40 @@ class ToolRegistry:
     def cleanup_task(self, task_id: str, recycle: bool = False) -> None:
         """Terminate and clean up worker process associated with task_id."""
         with self._lock:
-            ctrl = self._worker_controllers.pop(task_id, None)
+            ctrl = self._worker_controllers.get(task_id)
             if ctrl is not None:
                 if recycle and ctrl._proc and ctrl._proc.is_alive() and len(self._idle_workers) < 4:
                     self._idle_workers.append(ctrl)
                 else:
                     ctrl.terminate_and_join()
+                    if ctrl.verify_cleanup() is not True:
+                        raise RuntimeError("Task worker cleanup is unverified.")
+                self._worker_controllers.pop(task_id, None)
 
     def close(self) -> None:
         """Terminate all worker processes and release resources."""
         with self._lock:
-            for ctrl in list(self._worker_controllers.values()):
+            failures = []
+            for task_id, ctrl in list(self._worker_controllers.items()):
                 try:
                     ctrl.terminate_and_join()
+                    if ctrl.verify_cleanup() is not True:
+                        raise RuntimeError("Task worker cleanup is unverified.")
                 except Exception:
-                    pass
-            self._worker_controllers.clear()
-            for ctrl in self._idle_workers:
+                    failures.append(task_id)
+                else:
+                    self._worker_controllers.pop(task_id, None)
+            for ctrl in list(self._idle_workers):
                 try:
                     ctrl.terminate_and_join()
+                    if ctrl.verify_cleanup() is not True:
+                        raise RuntimeError("Idle worker cleanup is unverified.")
                 except Exception:
-                    pass
-            self._idle_workers.clear()
+                    failures.append(ctrl.task_id)
+                else:
+                    self._idle_workers.remove(ctrl)
+            if failures:
+                raise RuntimeError("Owned worker cleanup remains unverified.")
 
     def __len__(self) -> int:
         with self._lock:
