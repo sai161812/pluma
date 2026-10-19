@@ -3,8 +3,13 @@
 **Current progress:** the owner authorized wiring after this preparation.
 Step 1 now implements authenticated read-only dashboard status; see
 [the implementation and checks](wiring_status_connection.md) and
-[the pushed recovery checkpoint](wiring_recovery.md). Full wiring, backend audit
-and physical/release acceptance remain open. The original preparation below is
+[the pushed recovery checkpoint](wiring_recovery.md). A subsequent
+[bounded backend audit](backend_wiring_audit.md) reproduced nine findings;
+273 existing regressions and four audit controls pass, while eleven required
+behavior assertions fail. Keep action entry disabled until the recorded STOP,
+cleanup, voice/shutdown and credential issues are addressed. This audit does
+not certify the whole backend. Full wiring and physical/release acceptance
+remain open. The original preparation below is
 retained with its original baseline and branch state.
 
 Prepared 2026-10-19 before wiring. This is repository preparation and a source
