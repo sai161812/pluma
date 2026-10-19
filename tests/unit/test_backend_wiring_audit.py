@@ -87,7 +87,6 @@ def test_global_stop_latches_every_task_before_first_grace(isolated_supervisor, 
     assert at_grace and all(at_grace[0]), f"First cleanup grace observed stop latches {at_grace}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-02: worker termination waits behind the execution lock")
 def test_worker_stop_interrupts_outstanding_response_wait():
     entered, release, stopped = threading.Event(), threading.Event(), threading.Event()
     errors = []
@@ -102,7 +101,9 @@ def test_worker_stop_interrupts_outstanding_response_wait():
             return False
 
     controller = TaskWorkerController("audit-owned-controller")
-    controller._proc = SimpleNamespace(is_alive=lambda: True, kill=lambda: None, join=lambda **kw: None)
+    exited = threading.Event()
+    controller._proc = SimpleNamespace(pid=1, exitcode=0, is_alive=lambda: not exited.is_set(),
+                                       kill=exited.set, join=lambda **kw: None)
     controller._conn = Connection()
 
     def execute():

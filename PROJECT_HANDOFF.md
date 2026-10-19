@@ -1,6 +1,75 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-19, P02 global latch-all
+## Current checkpoint: 2026-10-19, P03 interruptible owned workers
+
+This checkpoint supersedes earlier next-step/count statements below. The master
+specification is unchanged. This is a bounded gate, not complete STOP, backend,
+UI, device, installed-artifact or release acceptance.
+
+- **P03 bounded gate passed: BA-02 repaired; P01/P02 preserved.** Started clean
+  on local/remote `ui-wiring` at `f303f231b825cad151fcf0846b3966e6ccc4a2a2`.
+  Coverage passed before editing; prerequisites freshly passed **45 checks in
+  3.21s**. Original BA-02 reproduced first: **1 failed in 0.50s**, STOP unable
+  to acquire the controller during the outstanding response wait.
+- [P03 evidence and worker lifetime contract](docs/completion/p03_evidence.md)
+  records exact commands, tested blobs, isolated reports, real Windows readback,
+  review, limitations and recovery. Request serialization is separate from
+  short lifetime state and bounded cleanup locks. STOP latches before waiting;
+  parent overlapped message-pipe sends/reads check deadline/cancellation, with
+  bounded drain/close. No detached I/O or cleanup helper thread is introduced.
+- Workers receive a cooperative view of the shared task latch. Explicit
+  disposal wakes parent cancellation waiters. Startup and cleanup failures
+  retain controller ownership for retry; a pending synchronous OS launch
+  reports a bounded failure until its original caller can finish cleanup.
+  No ToolCall is sent before identity and both Job Object assignments succeed.
+  Root exit is read back; the original Process/creation identity is retained.
+- Identity/readback and Job Object assignment use the original native process
+  handle, avoiding a PID lookup/reuse race. Worker-only jobs contain descendants;
+  shared capsule jobs are preserved. Idle pool acquisition uses a new controller
+  rather than retagging one an earlier task could still reference. Force
+  termination targets owned handles/jobs only. Same-task disposed restart is
+  rejected; repeated/concurrent disposal remains bounded.
+- Twenty-six new cases cover actual Windows pending writes/reads and hung/
+  cooperative workers, full request pipes and response timeouts, owned descendant
+  exit with an unrelated fixture surviving, startup races, PID substitution,
+  failure/retry, pool ownership, repeated disposal and SQLite cancellation
+  readback. BA-02's original 150ms assertion is unchanged; its process double
+  now records killed exit for readback, and its strict marker is removed.
+  Review caught/fixed an intermediate parent-cancel regression without changing
+  P01's assertion. P01 cancellation/tests and P02 supervisor/tests are unchanged.
+- Final focused: **126 passed in 14.48s**. Relevant regressions with explicit
+  `-p tests.fixtures.desktop_isolation`: **468 passed, 3 skipped, 1 deselected,
+  8 xfailed in 28.50s**. Additional owned-worker containment: **3 passed in
+  2.89s**. Raw audit: **8 failed, 7 passed in 0.67s**. Matrix: **298 source
+  items / 324 rows**. Windows 11 build 26200 / Python 3.12.10 / pytest 8.3.3;
+  isolated user-local storage, test/audio emulation, owned fixtures; zero
+  fixture keys remaining. All 115 FAST cases carry the isolation property.
+  Skips, elevation exclusion, emulation and expected failures are not acceptance
+  passes or approved limitations. Retain P02's inherited isolation correction.
+- Actual controller cancellation-to-disposal observations were 63ms hung / 78ms
+  cooperative against 30-second tool deadlines. Root/descendant exit, cooperative
+  marker/exit code, absent late effects and unrelated fixture liveness were read
+  back. These are single fixture observations, not hotkey/loaded-device p95 or
+  whole-supervisor latency. P10 must rerun them through combined P01-P09 task,
+  rollback, cleanup, ledger/IPC and runtime/voice paths; P26 measures performance.
+- **Six findings remain: BA-04 through BA-09 (eight raw failures).** In
+  particular supervisor/registry reference loss and aggregate cleanup readback
+  remain defective; controller exceptions do not establish clean STOPPED.
+  FAST residual truth, runtime/voice drain, IPC truth and initial credential
+  privacy remain open. Action entry remains disabled; native dark UI unchanged.
+- P03 is committed/pushed on `ui-wiring`; PR 1 and PR 2 remain draft/open and
+  unmerged. Main remains `6dbf589`; UI integration remains `9544752`. No
+  worktree switch, merge, force push, destructive cleanup or security bypass.
+  Pre-P03 recovery: `f303f231b825cad151fcf0846b3966e6ccc4a2a2`; inspect in a
+  new detached worktree. Existing recovery tags/archive/stash/worktrees remain.
+- **Next safe milestone: P04 only, BA-04 cleanup readback and retention.**
+  Reproduce `test_failed_worker_cleanup_requires_residual_state` with
+  `--runxfail`; preserve failure/identity until verified absence, combine
+  worker/job/resource/rollback evidence and persist factual residual state.
+  Use P03's retained identity and pending-cleanup failure paths. P04 was not
+  started. Do not advance automatically or enable UI actions.
+
+## Previous checkpoint: 2026-10-19, P02 global latch-all
 
 This checkpoint supersedes earlier next-step/count/isolation statements below.
 The master specification is unchanged; this is a bounded milestone, not full

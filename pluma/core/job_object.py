@@ -82,10 +82,32 @@ if sys.platform == "win32":
     kernel32.CloseHandle.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.GetProcessTimes.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+    ]
+
 
 class JobObjectError(Exception):
     """Raised when a Job Object operation fails."""
     pass
+
+
+def owned_process_creation_time(process: Any) -> int:
+    """Read identity through a Windows multiprocessing Process's owned handle.
+
+    A PID lookup could identify a replacement after an early startup crash.
+    Windows multiprocessing's sentinel is the original process handle.
+    """
+    if sys.platform != "win32":
+        raise JobObjectError("Owned worker identity requires Windows.")
+    creation, exited, kernel, user = (wintypes.FILETIME() for _ in range(4))
+    if not kernel32.GetProcessTimes(process.sentinel, ctypes.byref(creation),
+                                   ctypes.byref(exited), ctypes.byref(kernel), ctypes.byref(user)):
+        raise JobObjectError("Owned worker creation identity could not be read.")
+    return (creation.dwHighDateTime << 32) | creation.dwLowDateTime
 
 
 class WindowsJobObject:
@@ -132,6 +154,13 @@ class WindowsJobObject:
             pid_or_popen: The process ID or a subprocess.Popen instance.
         """
         if self._handle is None:
+            return
+
+        if hasattr(pid_or_popen, "sentinel"):
+            # multiprocessing retains the original handle even if its PID exits
+            # or is reused. Never reopen that PID for worker containment.
+            if not kernel32.AssignProcessToJobObject(self._handle, pid_or_popen.sentinel):
+                raise JobObjectError("Owned-handle Job Object assignment failed.")
             return
 
         if hasattr(pid_or_popen, "pid"):

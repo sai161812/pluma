@@ -1,12 +1,14 @@
 # Backend audit before action wiring
 
-Current status after P02 (2026-10-19): BA-03 admission and BA-01 latch-all are
-repaired with ordinary passing regressions. Seven findings remain open,
-reproduced by nine raw failures. [P02 evidence and latch contract](../../../docs/completion/p02_evidence.md)
-and [P01 admission evidence](../../../docs/completion/p01_evidence.md)
-supersede the old next-fix advice/counts below. Action entry stays disabled;
-P03/BA-02 is next. The original audit below remains historical
-evidence for its named source, not certification of the repaired backend.
+Current status after P03 (2026-10-19): BA-03 admission, BA-01 latch-all and
+BA-02 owned-worker interruption are repaired with ordinary passing regressions.
+Six findings remain open, reproduced by eight raw failures.
+[P03 Windows worker evidence and lifetime contract](../../../docs/completion/p03_evidence.md),
+[P02 latch/isolation evidence](../../../docs/completion/p02_evidence.md) and
+[P01 admission evidence](../../../docs/completion/p01_evidence.md) supersede
+old next-fix advice/counts below. Action entry stays disabled; P04/BA-04
+cleanup readback and failure retention is next. The original audit below remains
+historical evidence for its named source, not certification of the backend.
 
 Date: 2026-10-19. Requested scope: inspect the backend used by `ui-wiring`,
 reproduce suspected defects, preserve existing work/appearance and record the
