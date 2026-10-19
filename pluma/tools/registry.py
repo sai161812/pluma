@@ -22,13 +22,16 @@ import sys
 import threading
 import time
 import uuid
-from typing import Any, Callable, Dict, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, TYPE_CHECKING
 
 
 from dataclasses import dataclass, field
 from pydantic import BaseModel, ValidationError
 
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
+
+if TYPE_CHECKING:
+    from pluma.core.cancellation import CancellationToken, ExecutorAdmission
 
 # Bounded thread pool — used only for read-only tools when process isolation is unavailable
 _GLOBAL_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
@@ -109,8 +112,31 @@ class WorkerTaskContext:
         )
 
 
-def _worker_process_loop(conn: Any) -> None:
+def _invoke_executor(
+    executor_fn: Callable[..., Any],
+    args: Dict[str, Any],
+    task_context: Any,
+    admission: Any,
+) -> ToolResult:
+    """Worker-side entry: finish preparation, then admit immediately at invocation.
+
+    Both execution paths use this wrapper. The cancellation/admission lock is
+    held only for the entry decision, never across a callable or external wait.
+    """
+    takes_context = len(inspect.signature(executor_fn).parameters) > 1
+    if admission is not None:
+        admission.admit_executor()
+    if takes_context:
+        return executor_fn(args, task_context)
+    return executor_fn(args)
+
+
+def _worker_process_loop(
+    conn: Any, task_id: Optional[str] = None,
+    admission: Optional[ExecutorAdmission] = None,
+) -> None:
     """Persistent worker process loop that executes tool requests."""
+    from pluma.core.cancellation import TaskCancelledError
     while True:
         try:
             if not conn.poll(None):
@@ -119,18 +145,15 @@ def _worker_process_loop(conn: Any) -> None:
             if msg == "STOP" or msg is None:
                 break
             executor_fn, args, worker_req = msg
+            if worker_req.task_id is not None and worker_req.task_id != task_id:
+                raise ValueError("Worker request does not belong to this task.")
             if getattr(worker_req, "env_overrides", None):
                 os.environ.update(worker_req.env_overrides)
             worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
             worker_ctx.undo_stack = list(worker_req.undo_stack)
             worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
             
-            import inspect
-            sig = inspect.signature(executor_fn)
-            if len(sig.parameters) > 1:
-                res = executor_fn(args, worker_ctx)
-            else:
-                res = executor_fn(args)
+            res = _invoke_executor(executor_fn, args, worker_ctx, admission)
                 
             undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
             resp = WorkerResponse(
@@ -140,6 +163,11 @@ def _worker_process_loop(conn: Any) -> None:
                 final_undo_stack=worker_ctx.undo_stack,
             )
             conn.send(("ok", resp))
+        except TaskCancelledError:
+            try:
+                conn.send(("cancelled", "Task was stopped before executor admission."))
+            except Exception:
+                break
         except Exception as exc:
             try:
                 conn.send(("error", str(exc)))
@@ -154,21 +182,27 @@ class TaskWorkerController:
         self._lock = threading.Lock()
         self._proc: Optional[multiprocessing.Process] = None
         self._conn: Optional[Any] = None
+        self._admission: Optional[ExecutorAdmission] = None
 
-    def _ensure_worker_started(self, job_object: Any = None) -> None:
-        if self._proc is not None and self._proc.is_alive() and self._conn is not None:
+    def _ensure_worker_started(
+        self, job_object: Any = None,
+        admission: Optional[ExecutorAdmission] = None,
+    ) -> None:
+        if (self._proc is not None and self._proc.is_alive()
+                and self._conn is not None and self._admission is admission):
             return
         self._terminate_internal()
         parent_conn, child_conn = multiprocessing.Pipe()
         proc = _MP_CONTEXT.Process(
             target=_worker_process_loop,
-            args=(child_conn,),
+            args=(child_conn, self.task_id, admission),
             daemon=True,
         )
         proc.start()
         child_conn.close()
         self._proc = proc
         self._conn = parent_conn
+        self._admission = admission
 
         if job_object is not None and proc.pid is not None:
             try:
@@ -208,9 +242,18 @@ class TaskWorkerController:
         worker_req: WorkerRequest,
         timeout_s: float,
         job_object: Any = None,
+        cancellation_token: Optional[CancellationToken] = None,
     ) -> Tuple[str, Any]:
+        if worker_req.task_id is not None and worker_req.task_id != self.task_id:
+            return ("error", "Worker request does not belong to this task.")
+        admission = cancellation_token.process_admission() if cancellation_token is not None else None
         with self._lock:
-            self._ensure_worker_started(job_object=job_object)
+            # Recheck after serialization waits. The child checks the inherited
+            # live gate again after startup/receive/preparation, not a snapshot
+            # or a stale permission granted by this parent thread.
+            if cancellation_token is not None:
+                cancellation_token.raise_if_cancelled()
+            self._ensure_worker_started(job_object=job_object, admission=admission)
             try:
                 self._conn.send((executor_fn, validated_args, worker_req))
             except Exception as send_err:
@@ -453,8 +496,12 @@ class ToolRegistry:
         policy_engine: Any = None,
     ) -> ToolResult:
         """Execute a tool call with validation, policy check, cancellation check, verification, and undo capture."""
+        from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
+        token = getattr(task_context, "cancellation_token", None)
+        if token is not None:
+            token.raise_if_cancelled()
 
         # 1. Policy check
         active_policy = policy_engine or self._policy_engine
@@ -475,8 +522,10 @@ class ToolRegistry:
                 )
 
         # 2. Check cancellation latch before starting
-        if spec.cancellable and task_context and hasattr(task_context, "cancellation_token"):
-            task_context.cancellation_token.raise_if_cancelled()
+        # Cancellability describes in-flight work; it never exempts admission
+        # from the task latch, including a STOP during a confirmation wait.
+        if token is not None:
+            token.raise_if_cancelled()
 
         # 3. Capture pre-mutation undo data BEFORE mutation occurs
         pre_undo_data = None
@@ -486,6 +535,9 @@ class ToolRegistry:
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning("Failed to build pre-mutation undo data for %s: %s", tool_name, e)
+
+        if token is not None:
+            token.raise_if_cancelled()
 
         # 4. Execution with killable process isolation, timeout enforcement and duration measurement
         start_t = time.perf_counter()
@@ -583,6 +635,7 @@ class ToolRegistry:
                     worker_req,
                     timeout_s,
                     job_object=getattr(task_context, "job_object", None) if task_context else None,
+                    cancellation_token=token,
                 )
                 if status == "ok" and isinstance(payload, WorkerResponse):
                     result = payload.result
@@ -637,6 +690,8 @@ class ToolRegistry:
                         task_context.undo_stack.append(payload.undo_data)
                 elif status == "ok" and isinstance(payload, ToolResult):
                     result = payload
+                elif status == "cancelled":
+                    result = ToolResult.failure(tool_name, str(payload), error_code="TASK_CANCELLED")
                 elif status == "timeout":
                     duration_ms = (time.perf_counter() - start_t) * 1000.0
                     if task_context and hasattr(task_context, "cancellation_token"):
@@ -657,6 +712,8 @@ class ToolRegistry:
                     )
                 else:
                     result = ToolResult.failure(tool_name, str(payload))
+            except TaskCancelledError:
+                result = ToolResult.failure(tool_name, "Task was stopped before executor admission.", error_code="TASK_CANCELLED")
             except Exception as mp_exc:
                 result = ToolResult.failure(
                     tool_name,
@@ -667,12 +724,9 @@ class ToolRegistry:
         if result is None and not use_process_isolation:
             # Execute in-process with thread pool executor and timeout enforcement
             try:
-                import inspect
-                sig = inspect.signature(spec.executor)
-                if len(sig.parameters) > 1:
-                    future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args, task_context)
-                else:
-                    future = _GLOBAL_TOOL_EXECUTOR.submit(spec.executor, validated_args)
+                future = _GLOBAL_TOOL_EXECUTOR.submit(
+                    _invoke_executor, spec.executor, validated_args, task_context, token,
+                )
                 try:
                     result = future.result(timeout=timeout_s)
                 except (TimeoutError, concurrent.futures.TimeoutError):
@@ -684,6 +738,8 @@ class ToolRegistry:
                         error_code="TOOL_TIMEOUT",
                         duration_ms=duration_ms,
                     )
+            except TaskCancelledError:
+                result = ToolResult.failure(tool_name, "Task was stopped before executor admission.", error_code="TASK_CANCELLED")
             except Exception as e:
                 duration_ms = (time.perf_counter() - start_t) * 1000.0
                 result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)

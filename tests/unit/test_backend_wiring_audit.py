@@ -133,7 +133,6 @@ def test_worker_stop_interrupts_outstanding_response_wait():
     assert interrupted, "STOP could not acquire the controller until the outstanding response wait ended"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-03: STOP during pre-state capture does not block executor dispatch")
 def test_stop_during_prestate_prevents_executor_start(isolated_supervisor):
     capsule = isolated_supervisor.create_task("audit-prestate")
     calls = []

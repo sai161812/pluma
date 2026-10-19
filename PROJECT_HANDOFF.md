@@ -1,6 +1,64 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-19, P00 requirements/evidence map
+## Current checkpoint: 2026-10-19, P01 executor admission
+
+This checkpoint supersedes the P00 next-step/count statements below. The master
+specification remains immutable; this is a bounded work packet, not completion
+of the STOP system, backend, UI or release.
+
+- **P01 bounded gate passed: BA-03 repaired.** Before editing, P00 coverage
+  passed and the clean local/remote `ui-wiring` checkout was
+  `81cd450e8991f549f7605bebfb9231cf1e063452`. The raw reproduction failed with
+  `Executor started after the latch was set: [True]` (**1 failed in 0.54s**).
+- [P01 evidence and admission contract](docs/completion/p01_evidence.md) records
+  exact commands, tested runtime/test blob hashes, environment, outputs,
+  verification/SQLite/undo evidence, recovery and next gate. Reports, JUnit and
+  working-file SHA-256 hashes remain ignored under `output/p01/`.
+- `pluma/tools/registry.py` now invokes registered executors through the same
+  worker-side admission wrapper for thread and process paths. Parent checks
+  after policy/pre-state/controller waits do not grant a stale queued permit.
+  Noncancellable metadata cannot bypass the latch. Rejected entry returns
+  unverified cancellation, without inventing an effect or undo record.
+- `CancellationToken` serializes thread admission with cancel and lazily
+  publishes a native manual-reset Windows event for owned process workers.
+  The zero-time worker kernel read is ordered against SetEvent without a
+  child-held lock. Native handles are inherited during spawn and finalized
+  with their lifetime. A call admitted before the latch is already in flight;
+  no lock is held through its body. P03 still owns interrupting active waits.
+- The original BA-03 assertion is unchanged and its xfail marker is removed.
+  Twenty-one new admission cases cover policy/pre-state waits, queued thread
+  cancellation/timeout, late worker preparation/startup/receive, task ownership,
+  successful verification/undo/SQLite, failure readback and handle lifetime.
+  Actual Job Object-contained spawned workers prove live gate inheritance,
+  cancellation before marker creation, controller rebinding and latch safety
+  after owned worker crash. Their exit is read back after fixture cleanup.
+- Focused suite: **78 passed in 6.90s**. Relevant regressions: **418 passed,
+  3 skipped, 1 deselected, 10 xfailed in 22.10s**. Raw audit: **10 failed,
+  5 passed in 0.79s**. Windows 11 build 26200 / Python 3.12.10 / pytest 8.3.3;
+  isolated user-local storage, owned inert fixtures, test/audio emulation.
+  Existing corpus skips and the unexecuted elevation operation are recorded,
+  not acceptance passes or approved limitations. No full unit/product/device/
+  install suite or hotkey p95 is claimed. Remaining fixture keys: zero.
+- [Live requirements matrix](docs/completion/requirements_matrix.md) still
+  validates **298 source items / 324 rows**. BA-03 is implemented for its
+  bounded gate; full F-08/G-02 and P10 integration remain open. Eight backend
+  findings remain: BA-01/02/04/05/06/07/08/09, with ten failing assertions.
+  No remaining assertion was weakened or defect marker removed.
+- Active folder remains `D:\Workspace\DEVEL\PLUMA`, branch `ui-wiring`.
+  Meaningful P01 changes are committed/pushed there. PR 1 and PR 2 remain
+  draft/open and unmerged; `main` stays `6dbf589`. UI source/design and disabled
+  action entry are unchanged. No automatic progression or worktree switch.
+- Pre-P01 recovery: `81cd450e8991f549f7605bebfb9231cf1e063452`; use a new
+  detached worktree as documented in P01 evidence. Existing recovery tags,
+  archive/stash and detached audit worktree are preserved. No reset/clean/
+  force push or security-policy bypass.
+- **Next safe milestone: P02 only, BA-01 latch-all ordering.** Reproduce
+  `test_global_stop_latches_every_task_before_first_grace` with `--runxfail`.
+  Latch every affected CREATED/RUNNING task before any cleanup/grace wait;
+  cover simultaneous STOP/racing requests and preserve P01 admission evidence.
+  Keep action entry disabled. P02 must pass before P03; neither was started.
+
+## Previous checkpoint: 2026-10-19, P00 requirements/evidence map
 
 This dated checkpoint supersedes historical completion claims, test counts and
 next-phase instructions below. The master specification remains authoritative.

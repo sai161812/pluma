@@ -1,5 +1,12 @@
 # Backend audit before action wiring
 
+Current status after P01 (2026-10-19): BA-03 is repaired with ordinary passing
+admission regressions. Eight findings remain open, reproduced by ten raw
+failures. [P01 evidence and admission contract](../../../docs/completion/p01_evidence.md)
+supersedes the BA-03 next-fix advice and counts below. Action entry stays
+disabled; P02/BA-01 is next. The original audit below remains historical
+evidence for its named source, not certification of the repaired backend.
+
 Date: 2026-10-19. Requested scope: inspect the backend used by `ui-wiring`,
 reproduce suspected defects, preserve existing work/appearance and record the
 next safe implementation step. This is an audit report, not production fixes
