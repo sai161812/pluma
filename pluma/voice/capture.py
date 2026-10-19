@@ -95,6 +95,21 @@ class AudioCapture:
                 if remaining > 0:
                     self._buffer.extend(pcm_chunk[:remaining])
 
+    def cancel(self) -> None:
+        """Discard transient audio and retain the stream on failed closure."""
+        with self._lock:
+            self._is_recording = False
+            self._buffer.clear()
+            stream = self._stream
+        if stream is not None:
+            stream.abort()
+            stream.close()
+            if stream.closed is not True:
+                raise RuntimeError("Capture stream closure is unverified.")
+            with self._lock:
+                if self._stream is stream:
+                    self._stream = None
+
     def stop_and_get(self, cancellation_token: Optional[Any] = None) -> bytes:
         """Stop capture stream, return raw PCM bytes, and clear memory buffer."""
         with self._lock:

@@ -31,6 +31,8 @@ class VoiceLifecycleManager:
         self._state = "COLD"  # COLD | LOADING | WARM | TRANSCRIBING
         self._lock = threading.Lock()
         self._unload_timer: Optional[threading.Timer] = None
+        self._closing = False
+        self._timers = set()
 
     @property
     def state(self) -> str:
@@ -51,6 +53,8 @@ class VoiceLifecycleManager:
 
     def _schedule_unload_timer(self) -> None:
         """Schedule automatic unload after idle_unload_seconds."""
+        if self._closing:
+            return
         self._cancel_unload_timer()
         if self.idle_unload_seconds > 0:
             self._unload_timer = threading.Timer(
@@ -58,10 +62,14 @@ class VoiceLifecycleManager:
                 self._on_idle_timeout,
             )
             self._unload_timer.daemon = True
+            self._timers = {timer for timer in self._timers if timer.is_alive()}
+            self._timers.add(self._unload_timer)
             self._unload_timer.start()
 
     def _on_idle_timeout(self) -> None:
         """Handler for idle unload timeout."""
+        if self._closing:
+            return
         logger.info("STT idle unload timeout reached (%0.1fs). Unloading model...", self.idle_unload_seconds)
         self.unload()
 
@@ -123,6 +131,12 @@ class VoiceLifecycleManager:
             self.adapter.unload()
             self._state = "COLD"
 
+    def begin_shutdown(self) -> None:
+        self._closing = True
+        for timer in self._timers.copy():
+            timer.cancel()
+
     def shutdown(self) -> None:
         """Shutdown lifecycle manager and release all timers and resources."""
+        self.begin_shutdown()
         self.unload()

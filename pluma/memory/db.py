@@ -113,6 +113,8 @@ class DbConnection:
         self._write_queue: queue.Queue = queue.Queue()
         self._writer_thread: Optional[threading.Thread] = None
         self._open = False
+        self._close_lock = threading.RLock()
+        self._closing = False
 
     @property
     def is_open(self) -> bool:
@@ -163,25 +165,31 @@ class DbConnection:
         if self._writer_init_error is not None:
             raise self._writer_init_error
 
+        self._closing = False
         self._open = True
         logger.debug("DbConnection opened: %s", self._db_path)
 
 
-    def close(self) -> None:
-        """Flush all pending writes and close both connections."""
-        if not self._open:
-            return
-        # Signal the writer to stop after draining the queue.
-        # The writer thread closes the write connection itself when it exits.
-        self._write_queue.put(_SENTINEL)
+    def close(self, timeout_s: float = 1.0) -> None:
+        """Drain the writer before closing connections; retain on uncertainty."""
+        with self._close_lock:
+            if not self._open:
+                return
+            if not self._closing:
+                self._closing = True
+                self._write_queue.put(_SENTINEL)
         if self._writer_thread:
-            self._writer_thread.join(timeout=10)
-        # Read connection: only close separately if it's not the write connection
-        # (for :memory: DBs, read_conn IS write_conn after writer thread sets it).
-        if self._read_conn is not None and self._read_conn is not self._write_conn:
-            self._read_conn.close()
-        self._open = False
-        logger.debug("DbConnection closed: %s", self._db_path)
+            self._writer_thread.join(timeout=timeout_s)
+            if self._writer_thread.is_alive():
+                raise TimeoutError("Storage writer remains active.")
+        with self._close_lock:
+            if not self._open:
+                return
+            if self._read_conn is not None:
+                self._read_conn.close()
+            self._read_conn = None
+            self._write_conn = None
+            self._open = False
 
     def __enter__(self) -> "DbConnection":
         self.open()
@@ -210,7 +218,10 @@ class DbConnection:
         if not self._open:
             raise RuntimeError("DbConnection is not open.")
         result_q: Optional[queue.SimpleQueue] = queue.SimpleQueue() if wait else None
-        self._write_queue.put(_WriteTask(sql, params, result_q))
+        with self._close_lock:
+            if self._closing or not self._open:
+                raise RuntimeError("Storage is shutting down.")
+            self._write_queue.put(_WriteTask(sql, params, result_q))
         if wait and result_q is not None:
             try:
                 outcome = result_q.get(timeout=timeout_s)
@@ -235,7 +246,10 @@ class DbConnection:
         result_q: Optional[queue.SimpleQueue] = queue.SimpleQueue() if wait else None
         # Use a special sentinel with a callable payload.
         task = _WriteManyTask(sql, params_list, result_q)
-        self._write_queue.put(task)
+        with self._close_lock:
+            if self._closing or not self._open:
+                raise RuntimeError("Storage is shutting down.")
+            self._write_queue.put(task)
         if wait and result_q is not None:
             outcome = result_q.get()
             if isinstance(outcome, Exception):
@@ -349,7 +363,10 @@ class DbConnection:
             raise RuntimeError("DbConnection is not open.")
         result_q: Optional[queue.SimpleQueue] = queue.SimpleQueue() if wait else None
         task = _TransactionTask(statements, result_q)
-        self._write_queue.put(task)
+        with self._close_lock:
+            if self._closing or not self._open:
+                raise RuntimeError("Storage is shutting down.")
+            self._write_queue.put(task)
         if wait and result_q is not None:
             try:
                 outcome = result_q.get(timeout=timeout_s)

@@ -81,17 +81,45 @@ class ResidentCore:
 
         self._hotkey_thread: Optional[threading.Thread] = None
         self._running = False
+        from pluma.core.shutdown import WorkGate
+        self._entry_gate = WorkGate()
 
     def _on_voice_press(self) -> None:
+        # Bare fixtures initialize lazily; production creates the gate at startup.
+        from pluma.core.shutdown import WorkGate
+        from pluma.core.cancellation import TaskCancelledError
+        if not hasattr(self, "_entry_gate"):
+            self._entry_gate = WorkGate()
+        try:
+            with self._entry_gate.enter():
+                return self._admitted_on_voice_press()
+        except TaskCancelledError:
+            return {"status": "error", "message": ("Runtime is shutting down." if self._entry_gate.closing
+                                                    else "Task was cancelled.")}
+
+    def _admitted_on_voice_press(self) -> None:
         """Handle push-to-talk key down event."""
         logger.info("Voice push-to-talk activated. Starting audio capture...")
-        self._current_voice_capsule = self.supervisor.create_task_capsule(request_id="voice-req")
+        self._current_voice_capsule = self.supervisor.create_task_capsule(request_id="voice-req", history_expected=False)
         if self.audio_capture is not None:
             # We don't currently pass cancellation token to start(), but we can if audio_capture supports it.
             # Spec says "Propagate the same cancellation token to ... STT, OCR, UI waits, shell/CLI calls and tool workers."
             self.audio_capture.start()
 
     def _on_voice_release(self) -> None:
+        # Bare fixtures initialize lazily; production creates the gate at startup.
+        from pluma.core.shutdown import WorkGate
+        from pluma.core.cancellation import TaskCancelledError
+        if not hasattr(self, "_entry_gate"):
+            self._entry_gate = WorkGate()
+        try:
+            with self._entry_gate.enter():
+                return self._admitted_on_voice_release()
+        except TaskCancelledError:
+            return {"status": "error", "message": ("Runtime is shutting down." if self._entry_gate.closing
+                                                    else "Task was cancelled.")}
+
+    def _admitted_on_voice_release(self) -> None:
         """Handle push-to-talk key release event."""
         logger.info("Voice push-to-talk released. Finalizing capture and processing audio...")
         capsule = getattr(self, "_current_voice_capsule", None)
@@ -142,6 +170,19 @@ class ResidentCore:
 
 
     def handle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:
+        # Bare fixtures initialize lazily; production creates the gate at startup.
+        from pluma.core.shutdown import WorkGate
+        from pluma.core.cancellation import TaskCancelledError
+        if not hasattr(self, "_entry_gate"):
+            self._entry_gate = WorkGate()
+        try:
+            with self._entry_gate.enter():
+                return self._admittedhandle_ipc_command(req)
+        except TaskCancelledError:
+            return {"status": "error", "message": ("Runtime is shutting down." if self._entry_gate.closing
+                                                    else "Task was cancelled.")}
+
+    def _admittedhandle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming IPC commands."""
         cmd = req.get("command")
 
@@ -279,18 +320,48 @@ class ResidentCore:
             self._hotkey_thread = threading.Thread(target=self._hotkey_loop, daemon=True, name="HotkeyThread")
             self._hotkey_thread.start()
 
-    def stop(self) -> None:
-        """Stop the resident core, voice listener, and IPC server."""
+    def begin_shutdown(self) -> None:
+        from pluma.core.shutdown import WorkGate
+        if not hasattr(self, "_entry_gate"):
+            self._entry_gate = WorkGate()
+        self._entry_gate.begin_shutdown()
         self._running = False
-        self.ipc.stop()
+        if hasattr(self.ipc, "begin_shutdown"):
+            self.ipc.begin_shutdown()
 
+    def cancel_capture(self) -> None:
+        """Shutdown discards capture. STOP/press/release parity is P07."""
+        capture = getattr(self, "audio_capture", None)
+        if capture is not None:
+            if hasattr(capture, "cancel"):
+                capture.cancel()
+            else:
+                capture.stop_and_get()  # inert legacy capture fixture
+
+    def stop(self) -> None:
+        """Reject entry, cancel capture and verify all resident handlers exit."""
+        self.begin_shutdown()
+        self.cancel_capture()
         if self.voice_enabled and self.voice_activation is not None:
             self.voice_activation.stop()
-            if self.voice_pipeline is not None and hasattr(self.voice_pipeline, "lifecycle"):
-                self.voice_pipeline.lifecycle.shutdown()
-
         if sys.platform == "win32" and self._hotkey_thread and self._hotkey_thread.is_alive():
             import ctypes
             user32 = ctypes.WinDLL("user32")
-            user32.PostThreadMessageW(self._hotkey_thread.ident, 0x0012, 0, 0)
+            user32.PostThreadMessageW(self._hotkey_thread.native_id, 0x0012, 0, 0)
             self._hotkey_thread.join(timeout=1.0)
+            if self._hotkey_thread.is_alive():
+                raise RuntimeError("Hotkey owner remains active.")
+        self.ipc.stop()
+        if not self._entry_gate.wait_idle(1.0):
+            raise RuntimeError("Resident handlers remain active.")
+        self.cancel_capture()  # an admitted press may have crossed the first cancel
+        if self.voice_enabled and self.voice_pipeline is not None and hasattr(self.voice_pipeline, "lifecycle"):
+            lifecycle = self.voice_pipeline.lifecycle
+            lifecycle.shutdown()
+            for timer in getattr(lifecycle, "_timers", set()).copy():
+                timer.join(timeout=1.0)
+                if timer.is_alive():
+                    raise RuntimeError("Voice lifecycle owner remains active.")
+            adapter = getattr(lifecycle, "adapter", None)
+            if adapter is not None and adapter.is_loaded is not False:
+                raise RuntimeError("Voice unload remains unverified.")

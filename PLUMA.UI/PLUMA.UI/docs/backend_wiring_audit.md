@@ -1,18 +1,20 @@
 # Backend audit before action wiring
 
-Current status after P05 (2026-10-19): BA-01 through BA-05 pass bounded gates
-with ordinary passing audit regressions. Four findings remain open, reproduced
-by six raw assertion failures. [P05 result/history evidence](../../../docs/completion/p05_evidence.md),
+Current status after P06 (2026-10-20): BA-01 through BA-06 pass bounded gates
+with ordinary passing audit regressions. Three findings remain, reproduced by
+five raw assertion failures. [P06 shutdown/drain evidence](../../../docs/completion/p06_evidence.md),
+[P05 outcome evidence](../../../docs/completion/p05_evidence.md),
 [P04 cleanup evidence](../../../docs/completion/p04_evidence.md),
 [P03 worker evidence](../../../docs/completion/p03_evidence.md),
 [P02 latch/isolation evidence](../../../docs/completion/p02_evidence.md) and
 [P01 admission evidence](../../../docs/completion/p01_evidence.md) supersede old
-next-fix advice/counts below. P05 projects supervisor state and rollback facts
-through results, execute IPC and atomic SQLite readback. The separate STOP
-acknowledgement remains BA-08. Action entry stays disabled; **P06/BA-06 runtime
-shutdown drain is next**. P06 was not started. P04's BA-08 nonterminal fixture
-boundary and its original guard/assertion/marker remain unchanged. The original
-audit below is historical evidence for its named source, not backend certification.
+next-fix advice/counts below. Shutdown now retains/drains owners and closes
+storage after verified outcomes; a pending/unverified stage keeps it owned.
+Ordinary voice STOP/empty capture remains BA-07, STOP acknowledgement remains
+BA-08, initial credential privacy remains BA-09. Action entry stays disabled;
+**P07/BA-07 voice capture lifetime is next**. P07 was not started. Remaining
+original assertions/setup/strict markers are unchanged. The original audit
+below is historical evidence for its named source, not backend certification.
 
 Date: 2026-10-19. Requested scope: inspect the backend used by `ui-wiring`,
 reproduce suspected defects, preserve existing work/appearance and record the

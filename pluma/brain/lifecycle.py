@@ -52,6 +52,8 @@ class LlmLifecycleManager:
         self._state = LlmLifecycleState.COLD
         self._lock = threading.Lock()
         self._idle_timer: Optional[threading.Timer] = None
+        self._closing = False
+        self._timers = set()
 
     @property
     def state(self) -> LlmLifecycleState:
@@ -140,12 +142,16 @@ class LlmLifecycleManager:
 
     def _schedule_idle_unload(self) -> None:
         """Schedule automatic unload after idle_unload_seconds."""
+        if self._closing:
+            return
         if self.idle_unload_seconds > 0:
             self._idle_timer = threading.Timer(
                 self.idle_unload_seconds,
                 self._idle_unload_callback,
             )
             self._idle_timer.daemon = True
+            self._timers = {timer for timer in self._timers if timer.is_alive()}
+            self._timers.add(self._idle_timer)
             self._idle_timer.start()
 
     def _cancel_idle_timer(self) -> None:
@@ -154,6 +160,8 @@ class LlmLifecycleManager:
             self._idle_timer = None
 
     def _idle_unload_callback(self) -> None:
+        if self._closing:
+            return
         with self._lock:
             if self._state != LlmLifecycleState.WARM:
                 return
@@ -172,8 +180,14 @@ class LlmLifecycleManager:
             self._state = LlmLifecycleState.COLD
         logger.info("LlmLifecycleManager: LLM model unloaded (COLD).")
 
+    def begin_shutdown(self) -> None:
+        self._closing = True
+        for timer in self._timers.copy():
+            timer.cancel()
+
     def shutdown(self) -> None:
         """Immediately unload the LLM model and cancel any pending idle timer."""
+        self.begin_shutdown()
         self._cancel_idle_timer()
         with self._lock:
             if self._state in (LlmLifecycleState.WARM, LlmLifecycleState.GENERATING):

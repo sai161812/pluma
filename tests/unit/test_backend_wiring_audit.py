@@ -209,7 +209,6 @@ def test_fast_stop_preserves_supervisor_residual_outcome(isolated_supervisor, mo
         f"Supervisor {capsule.state.value}; returned {result.final_state}; ledger {stored}")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-06: runtime close does not stop active capsules or close the tool registry")
 def test_runtime_close_drains_active_task_and_registry(isolated_supervisor):
     capsule = isolated_supervisor.create_task("audit-runtime-close")
     isolated_supervisor.start_task(capsule.task_id)

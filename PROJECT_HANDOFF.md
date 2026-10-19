@@ -1,6 +1,78 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-19, P05 authoritative terminal outcomes
+## Current checkpoint: 2026-10-20, P06 owned shutdown before storage
+
+This checkpoint supersedes earlier next-step/count statements. Locked source
+requirements and native dark UI are unchanged. This is a bounded gate, not full
+STOP, backend, device, installed-artifact, recovery or release acceptance.
+
+- **P06 bounded gate passed: BA-06 repaired; P01-P05 preserved.** Started clean
+  on local/remote `ui-wiring` at `3d56551e12058a1e8ce969d337108529389284ce`.
+  Matrix passed before editing. Prerequisites freshly passed **157 checks in
+  16.32s**. Original BA-06 reproduced **1 failed in 0.52s**, task RUNNING,
+  latch unset, worker/job/registry undrained. Original assertion is unchanged;
+  only its strict marker is removed. Work crossed midnight from October 19.
+- [P06 evidence and shutdown contract](docs/completion/p06_evidence.md) records
+  exact commands, blobs, environment, real native/SQLite facts, failed fixtures,
+  remaining gaps and recovery. Fourteen runtime files, two test files and four
+  handoff/evidence documents change; no inherited P01-P05 test assertion changes.
+- Shutdown rejects all entry and latches tasks/preparations first. It owns one
+  serialized stage worker across bounded close calls, drains capture/tasks/
+  handlers/registry/futures, reads retained ownership and terminal history back,
+  verifies model/timer unload, then closes storage. A slow/unverified stage
+  retains its worker/store and returns incomplete; repeated/concurrent close
+  shares/resumes the same owner. The host waits for verified close before
+  claiming clean shutdown. The five-second default is an acknowledgement
+  budget, not forced termination of arbitrary Python/device work.
+- Tool/planner futures remain tracked after result timeout and retain capsules
+  through pruning. Unknown absence defers rollback/temp deletion; verified
+  shutdown records remaining pre-state/residuals without silently repeating
+  inverses. Futures stay with the capsule until supervisor readback; callbacks
+  do not change terminal evidence after persistence. Existing P01/P02 latch,
+  executor admission and original process-handle ownership remain.
+- Native IPC retains and joins client/accept owners. Shutdown wakes only its
+  own pending named listener and serializes native connection closure. Capture
+  cancellation discards audio and retains a failed native stream; an admitted
+  late press is cancelled after handler drain. Activation/hotkey/model timers
+  require exit readback. No microphone/model/user desktop action was started.
+- Cancelled capture with no transcript stores actual terminal/STOP facts in the
+  independent cleanup journal without fabricating command text or a tasks row.
+  Normal execution still requires P05 task-history readback. SQLite queues one
+  close sentinel behind admitted writes, refuses later writes, and keeps
+  connection ownership on writer timeout. Persistence failure blocks closure.
+- Final focused **286 passed in 21.02s**, including **46 new shutdown cases**
+  and inherited lifecycle/capture checks. Isolated regressions **612 passed,
+  3 skipped, 1 deselected, 5 xfailed in 34.39s**. Prerequisites rechecked
+  **157 passed in 12.70s**; owned containment **3 passed in 2.97s**; startup/
+  recovery fixtures **5 passed in 0.46s**. Raw audit **5 failed, 10 passed in
+  0.57s**. Matrix **298 source items / 324 rows**. Windows 11 build 26200 /
+  Python 3.12.10 / pytest 8.3.3. Fixture keys remaining zero; all 115 FAST
+  cases have desktop-isolation properties. Keep the P02 isolation correction;
+  skips/exclusion/xfails are not acceptance. Thread exceptions fail final tests.
+- Real runtime shutdown verifies owned root/descendant exit, unrelated fixture
+  survival, absent late effects, released jobs, native pipe handler/accept exit
+  and reopened SQLite outcomes. Capture/model adapters are inert; the process
+  fixture uses inert policy, not policy acceptance. No full unit/product/device/
+  install, physical voice/GPU/hotkey, fifty-cycle soak or p95 claim is made.
+- **Three findings remain: BA-07 through BA-09, five raw failures.** Ordinary
+  voice STOP/empty capture, typed truthful STOP acknowledgements and initial
+  credential privacy remain. Broader mandatory tools, model/screen/STT/device/
+  UI/recovery/security/performance/release gates stay open. No requirement or
+  acceptance limitation is waived. Action entry remains disabled.
+- P06 is committed/pushed on `ui-wiring`; PR 1/2 remain draft/open/unmerged.
+  Main remains `6dbf589`, integration `9544752`. Pre-P06 recovery is
+  `3d56551e12058a1e8ce969d337108529389284ce`; inspect in a new detached
+  worktree. Existing worktrees/tags/archive/stash remain; no merge, worktree
+  switch, destructive cleanup, force push or security bypass.
+- **Next safe milestone: P07 only, BA-07 voice capture/capsule lifetime.**
+  Reproduce both original assertions first; connect cancellation, finalize all
+  empty/denied/failed/cancelled paths and serialize press/release/STOP/shutdown.
+  Preserve the capsule into STT/execution, transient audio and cold models.
+  Inert tests are not P14/P19 physical voice acceptance. P10 later combines all
+  nine audit repairs and native failure/ledger/handle paths. P07 was not started.
+  Do not advance automatically or enable actions.
+
+## Previous checkpoint: 2026-10-19, P05 authoritative terminal outcomes
 
 This checkpoint supersedes earlier next-step/count statements. Locked source
 requirements and the native dark UI are unchanged. This is a bounded gate,

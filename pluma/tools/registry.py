@@ -445,10 +445,15 @@ class ToolRegistry:
         self._policy_engine = policy_engine
         self._worker_controllers: Dict[str, TaskWorkerController] = {}
         self._idle_workers: List[TaskWorkerController] = []
+        from pluma.core.shutdown import WorkGate
+        self.work_gate = WorkGate()
 
     def get_worker(self, task_id: str) -> TaskWorkerController:
         """Acquire an exclusive, dedicated task-owned worker controller."""
         with self._lock:
+            if self.work_gate.closing:
+                from pluma.core.cancellation import TaskCancelledError
+                raise TaskCancelledError("Runtime is shutting down.")
             if task_id in self._worker_controllers:
                 return self._worker_controllers[task_id]
             while self._idle_workers:
@@ -479,6 +484,9 @@ class ToolRegistry:
 
     def close(self) -> None:
         """Terminate all worker processes and release resources."""
+        self.begin_shutdown()
+        if not self.work_gate.wait_idle(1.0):
+            raise RuntimeError("Registry calls or executor futures remain active.")
         with self._lock:
             failures = []
             for task_id, ctrl in list(self._worker_controllers.items()):
@@ -501,6 +509,13 @@ class ToolRegistry:
                     self._idle_workers.remove(ctrl)
             if failures:
                 raise RuntimeError("Owned worker cleanup remains unverified.")
+
+    def begin_shutdown(self) -> None:
+        self.work_gate.begin_shutdown()
+
+    def submit_owned(self, fn, *args, task_id=None, command_class="tool", _task_context=None, **kwargs):
+        return self.work_gate.submit(_GLOBAL_TOOL_EXECUTOR, fn, *args,
+                                     task_id=task_id, command_class=command_class, _task_context=_task_context, **kwargs)
 
     def __len__(self) -> int:
         with self._lock:
@@ -642,6 +657,18 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def execute(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        task_context: Any = None,
+        ledger: Any = None,
+        step_index: int = 0,
+        policy_engine: Any = None,
+    ) -> ToolResult:
+        with self.work_gate.enter():
+            return self._execute_call(tool_name, arguments, task_context, ledger, step_index, policy_engine)
+
+    def _execute_call(
         self,
         tool_name: str,
         arguments: Dict[str, Any],
@@ -879,8 +906,9 @@ class ToolRegistry:
         if result is None and not use_process_isolation:
             # Execute in-process with thread pool executor and timeout enforcement
             try:
-                future = _GLOBAL_TOOL_EXECUTOR.submit(
+                future = self.submit_owned(
                     _invoke_executor, spec.executor, validated_args, task_context, token,
+                    task_id=getattr(task_context, "task_id", None), _task_context=task_context,
                 )
                 try:
                     result = future.result(timeout=timeout_s)

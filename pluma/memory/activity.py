@@ -296,13 +296,26 @@ class ActivityLedger:
         fields = (final_state, completed_at, stop_reason, error_code)
         self._write_cleanup(task_id, entries, terminal=fields)
 
+    def finalize_pre_execution(self, task_id: str, *, final_state: str, completed_at: str,
+                               stop_reason: Optional[str], error_code: Optional[str],
+                               entries: List[Dict[str, Any]]) -> None:
+        """Journal a capture cancelled before a request/transcript exists."""
+        from pluma.core.task_supervisor import TaskState, _TERMINAL_STATES
+        if TaskState(final_state) not in _TERMINAL_STATES:
+            raise ValueError("Terminal pre-execution state required.")
+        self._write_cleanup(task_id, entries, pre_execution={"final_state": final_state,
+            "completed_at": completed_at, "stop_reason": stop_reason, "error_code": error_code})
+
     def _write_cleanup(self, task_id: str, entries: List[Dict[str, Any]], *,
-                       terminal: Optional[tuple] = None) -> None:
+                       terminal: Optional[tuple] = None,
+                       pre_execution: Optional[Dict[str, Any]] = None) -> None:
         from pluma.core.cleanup import CleanupEvidence, latest_unresolved
         checks = [CleanupEvidence.model_validate(item) for item in entries]
         complete = not latest_unresolved(checks)
         metadata = redact_sensitive_data({"version": 1, "complete": complete,
                                            "entries": [item.model_dump() for item in checks]})
+        if pre_execution is not None:
+            metadata["pre_execution_outcome"] = redact_sensitive_data(pre_execution)
         encoded = json.dumps(metadata)
         record_id = "cleanup:" + task_id
         now = _now_iso()

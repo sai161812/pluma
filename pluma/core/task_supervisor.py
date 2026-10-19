@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 import uuid
+import weakref
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -121,6 +122,9 @@ class TaskCapsule(BaseModel):
     cleanup_evidence: List[CleanupEvidence] = Field(default_factory=list)
     cleanup_finalized: bool = False
     terminal_persisted: Optional[bool] = None
+    history_expected: bool = True
+    owned_work: Dict[str, Any] = Field(default_factory=dict, exclude=True)
+    work_lock: Any = Field(default_factory=threading.RLock, exclude=True)
     terminal_ready: Any = Field(default_factory=threading.Event, exclude=True)
 
     @property
@@ -202,6 +206,14 @@ class TaskCapsule(BaseModel):
     def close_resources(self, *, stopping: bool = False) -> List[CleanupEvidence]:
         """Clean only owned handles; retain unknown/failed ownership for retry."""
         checks = []
+        with self.work_lock:
+            for resource_id, work in list(self.owned_work.items()):
+                verified = work["future"] is not None and work["future"].done()
+                self.cleanup_evidence.append(CleanupEvidence(resource_id=resource_id, kind="worker",
+                    code="INPROCESS_WORK_EXITED" if verified else "INPROCESS_WORK_PENDING",
+                    verified=verified, identity=work["identity"]))
+                if verified:
+                    self.owned_work.pop(resource_id, None)
         worker = self.worker_controller
         worker_errors = []
         if worker is not None:
@@ -310,6 +322,10 @@ class TaskSupervisor:
         self._admission_lock = threading.RLock()
         self._global_stop_depth = 0
         self._stop_generation = 0
+        self._closing = False
+        self._preparing = 0
+        from pluma.core.shutdown import WorkGate
+        self.execution_gate = WorkGate()
 
     def prune_terminal_tasks(self, keep_count: Optional[int] = None) -> int:
         """Evict oldest terminal tasks from memory to prevent memory leaks."""
@@ -317,7 +333,7 @@ class TaskSupervisor:
         with self._lock:
             terminal_ids = [
                 tid for tid, cap in self._tasks.items()
-                if cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set() and not cap.cleanup_pending
+                if cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set() and not cap.cleanup_pending and not cap.owned_work
             ]
             if len(terminal_ids) <= limit:
                 return 0
@@ -336,18 +352,31 @@ class TaskSupervisor:
         """Create a new TaskCapsule in CREATED state."""
         return self.create_task_capsule(request_id=request_id)
 
-    def create_task_capsule(self, task_id: Optional[str] = None, request_id: str = "req-default") -> TaskCapsule:
+    def create_task_capsule(self, task_id: Optional[str] = None, request_id: str = "req-default", *, history_expected: bool = True) -> TaskCapsule:
+        with self._admission_lock:
+            if self._closing:
+                raise TaskCancelledError("Runtime is shutting down.")
+            self._preparing += 1
+            generation = self._stop_generation
+        try:
+            return self._prepare_task_capsule(task_id, request_id, history_expected, generation)
+        finally:
+            with self._admission_lock:
+                self._preparing -= 1
+
+    def _prepare_task_capsule(self, task_id: Optional[str], request_id: str, history_expected: bool, generation: int) -> TaskCapsule:
         """Create a new TaskCapsule in CREATED state, optionally with explicit task_id."""
         with self._admission_lock:
-            if self._global_stop_depth:
-                raise TaskCancelledError("New task rejected while global STOP is in progress.")
-            generation = self._stop_generation
+            if self._global_stop_depth or self._closing or generation != self._stop_generation:
+                raise TaskCancelledError("New task rejected across STOP or shutdown.")
         with self._lock:
             self.prune_terminal_tasks()
-            capsule = TaskCapsule(request_id=request_id)
+            capsule = TaskCapsule(request_id=request_id, history_expected=history_expected)
             if task_id:
                 capsule.task_id = task_id
 
+            capsule.cancellation_token.task_id = capsule.task_id
+            capsule.cancellation_token._capsule = weakref.ref(capsule)
             # Create a Job Object for this task's worker tree
             try:
                 from pluma.core.job_object import WindowsJobObject
@@ -363,7 +392,7 @@ class TaskSupervisor:
                 logger.debug("Failed to create SnapshotRegistry for task %s: %s", capsule.task_id, e)
 
             with self._admission_lock:
-                if not self._global_stop_depth and generation == self._stop_generation:
+                if not self._closing and not self._global_stop_depth and generation == self._stop_generation:
                     self._tasks[capsule.task_id] = capsule
                     return capsule
                 # Preparation straddled a STOP, even if its cleanup has already
@@ -382,7 +411,7 @@ class TaskSupervisor:
         with self._lock:
             capsule = self._get_task(task_id)
             with self._admission_lock:
-                if self._global_stop_depth:
+                if self._global_stop_depth or self._closing:
                     capsule.cancellation_token.cancel(StopReason.USER_STOP)
                 capsule.cancellation_token.raise_if_cancelled()
                 self._transition(capsule, TaskState.RUNNING)
@@ -465,7 +494,8 @@ class TaskSupervisor:
         # and timestamp. A route must never enqueue its former local outcome.
         for attempt in range(2):
             try:
-                self._ledger.finalize_task(
+                persist = self._ledger.finalize_task if capsule.history_expected else self._ledger.finalize_pre_execution
+                persist(
                     capsule.task_id, final_state=capsule.state.value,
                     completed_at=capsule.completed_at.isoformat(),
                     stop_reason=capsule.cancellation_token.reason.value if capsule.cancellation_token.reason else None,
@@ -614,6 +644,53 @@ class TaskSupervisor:
         capsule.cleanup_evidence.extend(cleanup_resources(resources, deferred=True))
         capsule.cleanup_evidence.append(CleanupEvidence(resource_id="temporary:" + capsule.task_id,
             kind="resources", code=code))
+
+    def begin_shutdown(self) -> None:
+        """Permanently reject admission and latch all owners before any drain."""
+        with self._admission_lock:
+            if not self._closing:
+                self._closing = True
+                self._stop_generation += 1
+            for cap in list(self._tasks.values()) + list(self._retained_preparations.values()):
+                if cap.state not in _TERMINAL_STATES or cap.cleanup_pending:
+                    cap.cancellation_token.cancel(StopReason.USER_STOP)
+        self.execution_gate.begin_shutdown()
+
+    def drain_shutdown_tasks(self) -> None:
+        with self._admission_lock:
+            capsules = list(self._tasks.values())
+        for cap in capsules:
+            if cap.state not in _TERMINAL_STATES:
+                self.stop_task(cap.task_id, grace_s=0)
+                if not cap.terminal_ready.wait(1.0):
+                    raise RuntimeError("Task finalization remains pending.")
+
+    def finalize_shutdown(self) -> None:
+        """Read back retained owners and persist after callers have drained."""
+        if not self.execution_gate.wait_idle(1.0):
+            raise RuntimeError("Execution handlers remain active.")
+        with self._lock:
+            with self._admission_lock:
+                if self._preparing:
+                    raise RuntimeError("Task preparation remains active.")
+                capsules = list(self._tasks.values())
+                preparations = list(self._retained_preparations.values())
+            for cap in capsules + preparations:
+                if cap.worker_controller is not None or cap.job_object is not None or cap.snapshot_registry is not None or cap.owned_work:
+                    cap.close_resources(stopping=True)
+                if cap in preparations:
+                    if self._ledger is not None:
+                        self._ledger.record_cleanup(cap.task_id, [item.model_dump() for item in cap.cleanup_evidence])
+                else:
+                    if cap.state not in _TERMINAL_STATES or not cap.terminal_ready.is_set():
+                        raise RuntimeError("Task outcome remains pending.")
+                    self._persist_terminal(cap)
+                    if self._ledger is not None and cap.terminal_persisted is not True:
+                        raise RuntimeError("Terminal history remains unverified.")
+                persistent_jobs = [r for r in cap.owned_resources if r.ownership == ResourceOwnership.PLUMA_CREATED
+                                   and r.metadata.get("job_object") is not None]
+                if cap.worker_controller is not None or cap.job_object is not None or persistent_jobs or cap.owned_work:
+                    raise RuntimeError("Owned worker or job remains unverified.")
 
     def get_active_tasks(self) -> List[TaskCapsule]:
         """Return all tasks in non-terminal states."""

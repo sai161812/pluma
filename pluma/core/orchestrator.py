@@ -140,6 +140,10 @@ class Orchestrator:
 
     def execute(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None) -> TaskExecutionResult:
         """Execute *request* through the full command lifecycle across all routes."""
+        with self._supervisor.execution_gate.enter():
+            return self._execute_request(request, capsule)
+
+    def _execute_request(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None) -> TaskExecutionResult:
         wall_start = time.perf_counter()
 
         # 1. Use provided Task Capsule or create one
@@ -152,6 +156,7 @@ class Orchestrator:
             task_id, request.request_id, request.input_mode.value, redact_string(request.text[:120]),
         )
 
+        capsule.history_expected = True
         # 2. Insert task record into Activity Ledger
         if self._ledger:
             try:
