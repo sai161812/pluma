@@ -1,5 +1,44 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
+## Current checkpoint: 2026-10-19
+
+This dated checkpoint supersedes historical completion claims, test counts and
+next-phase instructions below. The master specification remains authoritative.
+
+- Active development folder: `D:\Workspace\DEVEL\PLUMA`, branch `ui-wiring`.
+  The former `PLUMA-ui-wiring` checkout remains detached at audited `55b625c`;
+  the `main` and UI integration worktrees are retained separately.
+- Dark native UI and authenticated read-only dashboard status are implemented.
+  Command entry remains disabled; action/voice/event/settings/history wiring
+  and physical/release acceptance are unfinished.
+- [Backend audit](PLUMA.UI/PLUMA.UI/docs/backend_wiring_audit.md): nine open
+  findings (eight P1, one conditional P2), reproduced by eleven assertions.
+  Selected evidence: 277 passes, eleven strict expected failures, one excluded
+  elevation operation. Raw `--runxfail` produces eleven failures and four passes.
+  These are open defects, not backend certification.
+- [Completion prompts](PLUMA_COMPLETION_PROMPTS.md) define the remaining work
+  against the existing specification/build/acceptance documents. Start with
+  P00's current requirements/evidence map, then P01's BA-03 STOP admission fix.
+  Execute one bounded prompt per task; do not start later milestones automatically.
+- Requested workspace cleanup archives obsolete root patch scripts and generated
+  output, retains historical records under `docs/history`, and keeps the owner's
+  previously untracked capability note in ignored `docs/local`.
+  [Cleanup/recovery record](docs/workspace_cleanup.md) names the backups and stash.
+- GitHub recovery tags: `pre-ui-wiring-2026-10-19` at `04bc1fb` and
+  `pre-project-cleanup-2026-10-19` at `55b625c`. Original branch histories and
+  local generated-file state are preserved. No PR is merged by this preparation.
+- Cleanup/guide verification: eight housekeeping checks passed (including 46
+  resolved local links, 34 ordered prompts, 72 numbered acceptance IDs and 26
+  surface IDs); packaging regressions **2 passed in 0.41s**; visible-copy source
+  scan **33 compiled XAML files passed**. Helper output/package checks used
+  mocked execution and inert binaries, not real acceptance or a distributable.
+  Details and commands are in the cleanup record. Backend/tests/UI runtime and
+  locked requirement documents remain unchanged from audited `55b625c`.
+
+The sections below are retained historical engineering records. Their older
+"COMPLETED", "Certified Stable" and "next Phase 11" statements do not override
+this checkpoint or the current audit.
+
 > **CRITICAL PERMANENT DIRECTIVE FOR ALL AGENTS**
 >
 > `PROJECT_HANDOFF.md` is the **authoritative, permanent live save-state** for PLUMA.

@@ -1,5 +1,13 @@
 # UI wiring handoff
 
+Workspace update after the requested cleanup: active `ui-wiring` development is
+now in `D:\Workspace\DEVEL\PLUMA`. The former `PLUMA-ui-wiring` worktree is
+detached at `55b625c`, preserving its existing evidence. The original generated
+`ui-polish` edits are preserved in a local stash; all branch histories remain.
+See [cleanup/recovery](../../../docs/workspace_cleanup.md) and the
+[completion prompts](../../../PLUMA_COMPLETION_PROMPTS.md). Earlier workspace
+paths and branch-state descriptions below are historical preparation records.
+
 **Current progress:** the owner authorized wiring after this preparation.
 Step 1 now implements authenticated read-only dashboard status; see
 [the implementation and checks](wiring_status_connection.md) and

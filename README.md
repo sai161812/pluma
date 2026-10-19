@@ -6,11 +6,11 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state:** the automation core, safety model, local reasoning path, packaging, and release hardening are implemented. The final Windows UI and UI-to-core integration are still in progress.
+> **Current state (2026-10-19):** the dark native UI and read-only dashboard status connection are implemented. A bounded backend audit reproduced nine open safety/lifecycle findings. Action entry stays disabled while these are repaired; full backend, wiring and release acceptance remain open. Start with [the completion prompts](PLUMA_COMPLETION_PROMPTS.md), [the current audit](PLUMA.UI/PLUMA.UI/docs/backend_wiring_audit.md) and [the live handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
-There is no polished screenshot or GIF in the repository yet because the final Windows shell is not complete. The `pluma/ui` package currently defines the functional contracts for command entry, task state, confirmations, STOP, Activity Ledger access, settings, and errors; the creator-directed visual layer is still being integrated.
+Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production action, voice, events, history and settings connections remain in progress.
 
 A real interaction recording should be added here once that UI path is complete. Until then, the repository evidence is the implementation, tests, release artifacts, and verification logs rather than a mocked interface.
 
@@ -207,7 +207,7 @@ python -m pytest tests
 
 The test tree includes unit, regression, adversarial, Windows-specific adapter/Job Object/grounding checks, benchmark and memory/soak tests, plus routing, policy, rollback, IPC, UI-grounding, and lifecycle coverage.
 
-The final release verification report dated **August 28, 2026** records:
+The historical verification report dated **August 28, 2026** records the following older baseline. It does not establish current release readiness; the [October backend audit](PLUMA.UI/PLUMA.UI/docs/backend_wiring_audit.md) records eleven failing required-behavior assertions across nine findings.
 
 | Result | Value |
 |---|---:|
@@ -232,8 +232,9 @@ python build_release.py
 
 ### Verification evidence
 
-- [`FINAL_RELEASE_REPORT.md`](FINAL_RELEASE_REPORT.md) — final verification matrix and packaged artifacts
-- [`ACCEPTANCE_TEST_RAW_LOG.txt`](ACCEPTANCE_TEST_RAW_LOG.txt) — raw acceptance-test output
+- [Current backend audit](PLUMA.UI/PLUMA.UI/docs/backend_wiring_audit.md) — findings, reproductions, limits and next safe fix
+- [Historical release report](docs/history/FINAL_RELEASE_REPORT.md) — older verification claims and packaged-artifact record
+- [Historical raw output](docs/history/ACCEPTANCE_TEST_RAW_LOG.txt) — retained evidence from the older run
 - [`PLUMA_ACCEPTANCE_TESTS.md`](PLUMA_ACCEPTANCE_TESTS.md) — acceptance gates and expected behavior
 - [`PLUMA_MASTER_SPEC.md`](PLUMA_MASTER_SPEC.md) — product and engineering specification
 - [`PLUMA_TECH_STACK.md`](PLUMA_TECH_STACK.md) — implementation/runtime contract
@@ -253,6 +254,9 @@ These are product boundaries, not hidden roadmap items:
 ## Project references
 
 For deeper implementation detail:
+
+- [Completion prompts](PLUMA_COMPLETION_PROMPTS.md) — ordered work prompts, completion gates and maintenance handoff
+- [Workspace cleanup and recovery](docs/workspace_cleanup.md) — preserved archives, Git checkpoints and current folder layout
 
 - [`PLUMA_BUILD_PLAN.md`](PLUMA_BUILD_PLAN.md) — ordered implementation phases
 - [`AGENTS.md`](AGENTS.md) — architecture and safety constraints used during implementation
