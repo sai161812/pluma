@@ -77,7 +77,6 @@ def probe_spec(executor, undo_builder=None, verifier=None):
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-01: global STOP latches tasks sequentially after cleanup")
 def test_global_stop_latches_every_task_before_first_grace(isolated_supervisor, monkeypatch):
     supervisor = isolated_supervisor
     capsules = [supervisor.create_task(str(i)) for i in range(2)]

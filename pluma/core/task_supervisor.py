@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from pluma.core.cancellation import CancellationToken, StopReason
+from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +222,12 @@ class TaskSupervisor:
         self._max_retained_terminal_tasks = max_retained_terminal_tasks
         self._tasks: Dict[str, TaskCapsule] = {}
         self._lock = threading.RLock()
+        # Short publication/state/latch boundary. Never hold this lock during
+        # resource construction, grace, worker I/O, rollback or final cleanup.
+        # Code needing both locks acquires _lock before _admission_lock.
+        self._admission_lock = threading.RLock()
+        self._global_stop_depth = 0
+        self._stop_generation = 0
 
     def prune_terminal_tasks(self, keep_count: Optional[int] = None) -> int:
         """Evict oldest terminal tasks from memory to prevent memory leaks."""
@@ -238,7 +244,8 @@ class TaskSupervisor:
             excess = len(terminal_ids) - limit
             to_remove = terminal_ids[:excess]
             for tid in to_remove:
-                cap = self._tasks.pop(tid, None)
+                with self._admission_lock:
+                    cap = self._tasks.pop(tid, None)
                 if cap is not None:
                     cap.close_resources()
             return len(to_remove)
@@ -249,6 +256,10 @@ class TaskSupervisor:
 
     def create_task_capsule(self, task_id: Optional[str] = None, request_id: str = "req-default") -> TaskCapsule:
         """Create a new TaskCapsule in CREATED state, optionally with explicit task_id."""
+        with self._admission_lock:
+            if self._global_stop_depth:
+                raise TaskCancelledError("New task rejected while global STOP is in progress.")
+            generation = self._stop_generation
         with self._lock:
             self.prune_terminal_tasks()
             capsule = TaskCapsule(request_id=request_id)
@@ -269,15 +280,26 @@ class TaskSupervisor:
             except Exception as e:
                 logger.debug("Failed to create SnapshotRegistry for task %s: %s", capsule.task_id, e)
 
-            self._tasks[capsule.task_id] = capsule
-            return capsule
+            with self._admission_lock:
+                if not self._global_stop_depth and generation == self._stop_generation:
+                    self._tasks[capsule.task_id] = capsule
+                    return capsule
+                # Preparation straddled a STOP, even if its cleanup has already
+                # returned. Do not publish a stale request as new active work.
+                capsule.cancellation_token.cancel(StopReason.USER_STOP)
+        capsule.close_resources()
+        raise TaskCancelledError("Task creation was cancelled by global STOP.")
 
 
     def start_task(self, task_id: str) -> None:
         """Transition task from CREATED to RUNNING."""
         with self._lock:
             capsule = self._get_task(task_id)
-            self._transition(capsule, TaskState.RUNNING)
+            with self._admission_lock:
+                if self._global_stop_depth:
+                    capsule.cancellation_token.cancel(StopReason.USER_STOP)
+                capsule.cancellation_token.raise_if_cancelled()
+                self._transition(capsule, TaskState.RUNNING)
 
     def get_task(self, task_id: str) -> TaskCapsule:
         with self._lock:
@@ -310,25 +332,25 @@ class TaskSupervisor:
 
     def stop_task(self, task_id: str, reason: StopReason = StopReason.USER_STOP, grace_s: float = 0.5) -> None:
         """Execute the deterministic STOP sequence (Spec §12.2)."""
-        with self._lock:
+        with self._admission_lock:
             capsule = self._get_task(task_id)
-            
-            if capsule.state in frozenset({TaskState.STOPPED, TaskState.STOPPING, 
-                                           TaskState.STOPPED_WITH_RESIDUAL, TaskState.ABORTED_BY_CRASH,
-                                           TaskState.SUCCEEDED, TaskState.FAILED}):
-                # Already terminal or stopping.
-                # Spec §12.1: "The latch is set even if the state transition fails (already terminal)."
-                capsule.cancellation_token.cancel(reason)
-                return
-
-            # 1. Atomic task.stop_latch = true (and request graceful cancellation)
             capsule.cancellation_token.cancel(reason)
-            
-            # 2. Transition state (blocks new ToolCalls/replans)
-            self._transition(capsule, TaskState.STOPPING)
-            
-        # The following steps are executed outside the lock to avoid deadlocks 
-        # during cleanup or rollback.
+            if not self._claim_stop_cleanup(capsule):
+                return
+        self._cleanup_stopped_task(capsule, reason, grace_s)
+
+    def _claim_stop_cleanup(self, capsule: TaskCapsule) -> bool:
+        """Claim once under _admission_lock, after the token is latched."""
+        if capsule.state in _TERMINAL_STATES or capsule.state in (
+            TaskState.STOPPING, TaskState.ROLLING_BACK,
+        ):
+            return False
+        self._transition(capsule, TaskState.STOPPING)
+        return True
+
+    def _cleanup_stopped_task(self, capsule: TaskCapsule, reason: StopReason, grace_s: float) -> None:
+        """Existing owned cleanup path, called only by the stop-claim owner."""
+        task_id = capsule.task_id
         
         if grace_s > 0:
             time.sleep(grace_s)
@@ -427,15 +449,35 @@ class TaskSupervisor:
             ]
 
     def stop_all_active_tasks(self) -> List[str]:
-        """Emergency stop for all non-terminal tasks. Returns list of stopped task IDs."""
-        with self._lock:
-            active_ids = [cap.task_id for cap in self.get_active_tasks()]
-        for tid in active_ids:
-            try:
-                self.stop_task(tid)
-            except Exception as e:
-                logger.error("Error stopping task %s during stop_all: %s", tid, e)
-        return active_ids
+        """Latch the whole affected set before any cleanup; return candidate IDs.
+
+        Publication is serialized with the snapshot/latches. Requests preparing
+        across this generation are rejected; creation while a global STOP is
+        active is rejected. New explicit requests can proceed after it returns.
+        Overlapping calls share cleanup claims and keep admission closed until
+        the last global caller finishes. Candidate IDs are not terminal proof
+        (the separate STOP result/IPC contract is repaired in P08).
+        """
+        registered = False
+        try:
+            with self._admission_lock:
+                self._global_stop_depth += 1
+                registered = True
+                self._stop_generation += 1
+                affected = [cap for cap in self._tasks.values() if cap.state not in _TERMINAL_STATES]
+                for capsule in affected:
+                    capsule.cancellation_token.cancel(StopReason.USER_STOP)
+                claimed = [cap for cap in affected if self._claim_stop_cleanup(cap)]
+            for capsule in claimed:
+                try:
+                    self._cleanup_stopped_task(capsule, StopReason.USER_STOP, 0.5)
+                except Exception as e:
+                    logger.error("Error stopping task %s during stop_all: %s", capsule.task_id, e)
+            return [cap.task_id for cap in affected]
+        finally:
+            if registered:
+                with self._admission_lock:
+                    self._global_stop_depth -= 1
 
     def _get_task(self, task_id: str) -> TaskCapsule:
         if task_id not in self._tasks:
@@ -443,16 +485,20 @@ class TaskSupervisor:
         return self._tasks[task_id]
 
     def _transition(self, capsule: TaskCapsule, new_state: TaskState) -> None:
-        allowed = _TRANSITIONS.get(capsule.state, frozenset())
-        if new_state not in allowed:
-            raise InvalidTaskTransition(
-                f"Cannot transition from {capsule.state.value} to {new_state.value}"
-            )
-        capsule.state = new_state
-        if new_state == TaskState.RUNNING and capsule.started_at is None:
-            capsule.started_at = datetime.now(timezone.utc)
+        # All state writers share the short latch boundary. Terminal resource
+        # work below must not delay a global/single-task latch on another task.
+        with self._admission_lock:
+            allowed = _TRANSITIONS.get(capsule.state, frozenset())
+            if new_state not in allowed:
+                raise InvalidTaskTransition(
+                    f"Cannot transition from {capsule.state.value} to {new_state.value}"
+                )
+            capsule.state = new_state
+            if new_state == TaskState.RUNNING and capsule.started_at is None:
+                capsule.started_at = datetime.now(timezone.utc)
+            if new_state in _TERMINAL_STATES:
+                capsule.completed_at = datetime.now(timezone.utc)
         if new_state in _TERMINAL_STATES:
-            capsule.completed_at = datetime.now(timezone.utc)
             # 1. Cleanly close and release Job Object handles on terminal transition
             capsule.close_resources()
 

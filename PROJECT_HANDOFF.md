@@ -1,6 +1,71 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-19, P01 executor admission
+## Current checkpoint: 2026-10-19, P02 global latch-all
+
+This checkpoint supersedes earlier next-step/count/isolation statements below.
+The master specification is unchanged; this is a bounded milestone, not full
+STOP, backend, UI or release completion.
+
+- **P02 bounded gate passed: BA-01 repaired; P01 preserved.** Started clean on
+  local/remote `ui-wiring` at `eab9d8d70ce2abbf45e0171501678a3c41736299`.
+  Coverage passed before editing, and P01 prerequisites freshly passed
+  **22 checks in 2.68s**. BA-01 reproduced first: **1 failed in 0.58s**, first
+  cleanup observed `[(True, False), (True, True)]`.
+- [P02 evidence and latch/request contract](docs/completion/p02_evidence.md)
+  records exact commands, tested blobs, isolated reports, timings, limitations,
+  recovery and the next gate. Global STOP now latches every affected
+  nonterminal capsule before state claims or cleanup. A short state/publication
+  lock is never held for resource construction, grace, worker I/O, rollback or
+  cleanup. Existing cleanup remains owned by its single STOPPING claim, including
+  overlapping STOP calls and repeated STOP during ROLLING_BACK.
+- Requests published before STOP are included. Creation during global STOP is
+  rejected before allocation; preparation crossing a STOP generation is rejected
+  before publication and its prepared resources closed. Fresh explicit commands
+  can proceed after all global callers return. No queued retry, detached cleanup
+  branch or second cancellation tree is introduced. Terminal tasks are preserved.
+- Twenty-two new controlled ordering cases cover blocked cleanup phases,
+  later-task registry admission, native worker events, simultaneous/global/task
+  STOP, terminal states, preparation/publication/start/success races, failure,
+  empty/repeated STOP and real SQLite readback. P01's execution source/tests
+  remain unchanged. BA-01's original assertion remains; only its marker is removed.
+- Final focused checks: **100 passed in 7.45s**. Final relevant regressions,
+  explicitly loading the desktop-isolation plugin: **441 passed, 3 skipped,
+  1 deselected, 9 xfailed in 21.94s**. Raw audit: **9 failed, 6 passed in 0.84s**.
+  Windows 11 build 26200 / Python 3.12.10 / pytest 8.3.3; isolated user-local
+  storage, test/audio emulation and owned fixtures. Existing skips/unexecuted
+  elevation and expected failures are not acceptance or approved limitations.
+  No complete product/device/install suite is claimed. Fixture keys remaining: zero.
+- **Test-isolation correction:** an earlier inherited FAST regression run was
+  executed before review found its clipboard/window/app-close helpers could
+  reach the real desktop. Prior desktop state was not captured; no no-impact
+  or restoration claim is made. P01 used the same inherited sub-suite; its
+  evidence now carries a correction. The final P02 run loads
+  `-p tests.fixtures.desktop_isolation`, with in-memory clipboard, no target
+  window and blocked desktop termination for FAST cases. This is fixture
+  route/orchestration evidence, not native desktop acceptance. Use that plugin
+  for future bounded runs of this suite; retain the original logs as disclosed.
+- Controlled latch acknowledgement was recorded separately from cleanup in
+  JUnit (0.196-2.381 ms to first cleanup boundary across four single fixture
+  observations). These are not real hotkey/p95 or loaded-device measurements.
+  Actual combined Windows descendant/cleanup and latency gates remain P10/P26.
+- The [matrix](docs/completion/requirements_matrix.md) remains complete:
+  **298 source items / 324 rows**. BA-01 and BA-03 pass bounded gates; seven
+  findings remain (BA-02, BA-04 through BA-09), with nine raw failures. Typed
+  acknowledgement/terminal truth remains P08; candidate IDs are not clean STOP
+  proof. Action entry stays disabled; native dark UI and locked requirements
+  are unchanged.
+- Active folder/branch remain `D:\Workspace\DEVEL\PLUMA` / `ui-wiring`.
+  P02 changes are committed/pushed there; PR 1 and PR 2 stay draft/unmerged,
+  `main` stays `6dbf589`. Recovery point before P02:
+  `eab9d8d70ce2abbf45e0171501678a3c41736299`; inspect in a new detached
+  worktree as documented. Existing tags/archive/stash/worktrees are preserved.
+- **Next safe milestone: P03 only, BA-02 interruptible owned-worker waits.**
+  Reproduce `test_worker_stop_interrupts_outstanding_response_wait` using
+  `--runxfail`, then separate execution serialization from cancellation and
+  termination ownership. Preserve P01/P02 and bounded, verified owned cleanup.
+  P03 was not started; do not advance automatically or enable UI actions.
+
+## Previous checkpoint: 2026-10-19, P01 executor admission
 
 This checkpoint supersedes the P00 next-step/count statements below. The master
 specification remains immutable; this is a bounded work packet, not completion

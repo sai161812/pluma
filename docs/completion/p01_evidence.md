@@ -3,6 +3,13 @@
 Date: 2026-10-19 (Asia/Calcutta). Bounded outcome: BA-03 repaired. P02 was not
 started. This is not complete STOP, backend, voice, UI or release acceptance.
 
+Correction recorded during P02: the earlier regression suite's FAST desktop
+fixtures did not fully isolate clipboard/window/app-close operations. The
+no-desktop-effects statement below does not apply to that inherited sub-suite;
+prior desktop state was not captured, so no restoration/no-impact claim is made.
+[P02 evidence](p02_evidence.md) records the issue and an explicit inert desktop
+plugin/rerun, preserving P01 admission checks. Original counts remain historical.
+
 ## Prerequisites and source
 
 - Started from clean `ui-wiring`, local and remote
