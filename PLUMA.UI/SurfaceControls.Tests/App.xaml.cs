@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
@@ -56,6 +57,35 @@ namespace PLUMA.UI.Tests
 
         private async Task RunChecks(StackPanel root)
         {
+            var dashboard = new DashboardPage();
+            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Disconnected" &&
+                ((ListView)dashboard.FindName("RecentActivityList")).Items.Count == 0 &&
+                !((AutoSuggestBox)dashboard.FindName("CommandInput")).IsEnabled,
+                "production dashboard starts disconnected with no fabricated activity or executable command entry");
+            var core = new FakeCoreStatusClient();
+            dashboard.AttachCoreClient(core);
+            root.Children.Add(dashboard);
+            await Task.Delay(120);
+            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Connected" &&
+                ((TextBlock)dashboard.FindName("TaskStateText")).Text == "2 active tasks" &&
+                ((TextBlock)dashboard.FindName("RouteText")).Text == "Unavailable", "dashboard projects only verified core status fields");
+            int probes = core.Calls; await Task.Delay(120);
+            Check(core.Calls == probes, "dashboard health has no background polling loop");
+            core.Next = CoreStatusResult.Failed(CoreConnectionFailure.Timeout);
+            await Click((Button)dashboard.FindName("CoreRefreshButton"));
+            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Disconnected" &&
+                ((TextBlock)dashboard.FindName("TaskStateText")).Text == "Unavailable", "failed refresh clears stale connected state");
+            core.Next = new(new(true, 0, true, 1), CoreConnectionFailure.None);
+            await Click((Button)dashboard.FindName("CoreRefreshButton"));
+            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Connected" &&
+                ((TextBlock)dashboard.FindName("TaskStateText")).Text == "Idle", "explicit refresh reconnects and displays supplied idle state");
+            core.Stall = true;
+            ((IInvokeProvider)FrameworkElementAutomationPeer.CreatePeerForElement((Button)dashboard.FindName("CoreRefreshButton")).GetPattern(PatternInterface.Invoke)).Invoke();
+            await Task.Delay(30);
+            root.Children.Remove(dashboard); await Task.Delay(100);
+            Check(core.Cancelled, "navigation cancels and observes the dashboard-owned connection check");
+            await core.DisposeAsync();
+
             var marker = new OcrMatchIndicator { Width = 600, Height = 240 };
             root.Children.Add(marker);
             await Task.Delay(100);
@@ -176,6 +206,22 @@ namespace PLUMA.UI.Tests
             Check(showing.Status == Windows.Foundation.AsyncStatus.Started, "failure stays visible while host verifies recovery");
             dialog.Hide();
             await showing;
+        }
+
+        private sealed class FakeCoreStatusClient : ICoreStatusClient
+        {
+            internal CoreStatusResult Next = new(new(true, 2, true, 1), CoreConnectionFailure.None);
+            internal int Calls;
+            internal bool Stall, Cancelled;
+            public async Task<CoreStatusResult> GetStatusAsync(CancellationToken token)
+            {
+                Calls++;
+                if (Stall)
+                    try { await Task.Delay(Timeout.Infinite, token); }
+                    catch (OperationCanceledException) { Cancelled = true; throw; }
+                return Next;
+            }
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }
 
         private static Button FindButton(DependencyObject root, string content)

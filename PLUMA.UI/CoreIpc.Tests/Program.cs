@@ -127,6 +127,9 @@ internal static class Program
                 Check((await client.GetStatusAsync(default)).Status != null, "explicit refresh reconnects after server restart");
         }
 
+        // Seed only fixture credentials with an explicit user owner, including on elevated CI hosts.
+        CreatePrivateDirectory(Path.Combine(Root, "Pluma"));
+        WritePrivateKey(Path.Combine(Root, "Pluma", "ipc_secret.key"));
         await using (var python = await PythonServer.StartAsync(PipeName()))
         await using (var client = new CoreIpcClient(Options(python.Name, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
         {
