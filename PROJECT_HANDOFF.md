@@ -1,10 +1,25 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-19
+## Current checkpoint: 2026-10-19, P00 requirements/evidence map
 
 This dated checkpoint supersedes historical completion claims, test counts and
 next-phase instructions below. The master specification remains authoritative.
 
+- **P00 documentation gate passed.** The
+  [live requirements matrix](docs/completion/requirements_matrix.md) contains
+  324 traceable rows covering 298 extracted source items plus 26 cross-cutting
+  contracts/optional items: all 72 A-H cases, seven I metrics, 17 J bullets,
+  18 section-28 checkboxes, 73 section-21 tool names, 26 UI surfaces, nine BA
+  findings, eight locked capabilities, 14 engineering laws, 39 build-plan gate
+  bullets and 15 owner placement cases. No product phase or release is marked
+  complete. All requirement definitions remain unchanged.
+- [P00 evidence and recovery](docs/completion/p00_evidence.md) records the
+  inspected source `88078bb3c625f0a741b329144f747bbb3fa1dd69`, actual GitHub
+  state, source/test/build hashes, commands/results, historical-claim review,
+  source findings and the prioritized bounded P01 packet. The documentation
+  checker imports no PLUMA runtime; seven inert negative probes reject omitted
+  requirements, altered wording, invalid status/owner/evidence, duplicate IDs
+  and malformed rows. Coverage is documentation evidence, not runtime acceptance.
 - Active development folder: `D:\Workspace\DEVEL\PLUMA`, branch `ui-wiring`.
   The former `PLUMA-ui-wiring` checkout remains detached at audited `55b625c`;
   the `main` and UI integration worktrees are retained separately.
@@ -13,12 +28,33 @@ next-phase instructions below. The master specification remains authoritative.
   and physical/release acceptance are unfinished.
 - [Backend audit](PLUMA.UI/PLUMA.UI/docs/backend_wiring_audit.md): nine open
   findings (eight P1, one conditional P2), reproduced by eleven assertions.
-  Selected evidence: 277 passes, eleven strict expected failures, one excluded
-  elevation operation. Raw `--runxfail` produces eleven failures and four passes.
-  These are open defects, not backend certification.
+  Fresh P00 audit: **4 passed, 11 xfailed in 1.03s**; raw `--runxfail`:
+  **11 failed, 4 passed in 0.90s**. Relevant bounded regressions:
+  **277 passed, 1 deselected, 11 xfailed in 9.06s**. Windows 11 build 26200,
+  Python 3.12.10 / pytest 8.3.3, isolated user-local storage; audio/test mode
+  fixtures, one unexecuted elevation operation. Reports/command vectors/JUnit
+  are ignored under `output/p00/`; remaining fixture credentials: zero.
+  These are open defects, not backend/device/full-suite certification.
+- Fresh source inspection identifies additional required gaps, mapped to their
+  later packets: absent catalog ToolSpecs and placeholder browser/process/
+  terminal modules; configured step limit not propagated; MEDIUM explicit
+  intent and material approval/elevation wiring; clipboard readback and undo
+  evidence; real model/STT/OCR cancellation/ONNX/device evidence; effective
+  configuration and missing UI events/settings/history. Inspection findings
+  require bounded reproduction before repairs and are not extra reproduced BA
+  findings. Optional output/wake modes do not make voice input optional.
+- Current GitHub query: `main` remains `6dbf589`; PR 1 is draft/open into
+  `main`, PR 2 is draft/open from `ui-wiring` into `ui-polish-integration`.
+  P00 changes are committed/pushed on the existing `ui-wiring` branch; no merge,
+  retarget, force push or worktree switch. Hosted native run `39243181549`
+  remains source-specific evidence (head `64559bd`, tested merge `b333e746`),
+  not a fresh P00 physical UI test. See the evidence record for its build hash.
 - [Completion prompts](PLUMA_COMPLETION_PROMPTS.md) define the remaining work
-  against the existing specification/build/acceptance documents. Start with
-  P00's current requirements/evidence map, then P01's BA-03 STOP admission fix.
+  against the existing specification/build/acceptance documents. **Next safe
+  step: execute P01 only**, first reproducing BA-03 with `--runxfail`, then
+  repair actual thread/process executor admission versus STOP during pre-state
+  capture/queued work. Keep action entry disabled. P01 must pass its bounded
+  gate before P02; P00 did not begin that repair.
   Execute one bounded prompt per task; do not start later milestones automatically.
 - Requested workspace cleanup archives obsolete root patch scripts and generated
   output, retains historical records under `docs/history`, and keeps the owner's
@@ -27,6 +63,17 @@ next-phase instructions below. The master specification remains authoritative.
 - GitHub recovery tags: `pre-ui-wiring-2026-10-19` at `04bc1fb` and
   `pre-project-cleanup-2026-10-19` at `55b625c`. Original branch histories and
   local generated-file state are preserved. No PR is merged by this preparation.
+- Pre-P00 recovery source: `88078bb3c625f0a741b329144f747bbb3fa1dd69`.
+  Inspect it in a new detached worktree as described in P00 evidence; do not
+  reset the active branch or apply archived generated state over current source.
+- P00 verification: `python docs/completion/verify_requirements_matrix.py`
+  reports **298 source items, 324 traceable rows**, all required wording,
+  ownership/status/evidence cells and local links valid; ignored
+  `python output/p00/check_matrix.py` passes **seven negative probes**.
+  `git diff --check` passes. A separate final diff review checks scope, secrets,
+  fabricated success, misleading test claims and preservation of production
+  sources/locked documents. No full product suite, device/performance/install
+  gate or owner-approved limitation is claimed.
 - Cleanup/guide verification: eight housekeeping checks passed (including 46
   resolved local links, 34 ordered prompts, 72 numbered acceptance IDs and 26
   surface IDs); packaging regressions **2 passed in 0.41s**; visible-copy source
