@@ -101,20 +101,19 @@
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="{ThemeResource OverlayCornerRadius}">
-                    <StackPanel Spacing="8">
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <TextBlock Text="Core health" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
-                            <Button x:Name="CoreRefreshButton" Grid.Column="1" Click="OnRefreshCore" IsEnabled="False"
-                                    Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="4"
-                                    AutomationProperties.Name="Refresh core connection" ToolTipService.ToolTip="Refresh core connection">
-                                <SymbolIcon Symbol="Refresh" />
-                            </Button>
-                        </Grid>
-                        <TextBlock x:Name="CoreHealthText" Text="Disconnected"
+                    <Grid ColumnSpacing="8" RowSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <TextBlock Text="Core health" Style="{StaticResource CaptionTextBlockStyle}" />
+                        <Button x:Name="CoreRefreshButton" Grid.Column="1" Grid.RowSpan="2" VerticalAlignment="Top"
+                                Click="OnRefreshCore" IsEnabled="False" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="4"
+                                AutomationProperties.Name="Refresh core connection" ToolTipService.ToolTip="Refresh core connection">
+                            <SymbolIcon Symbol="Refresh" />
+                        </Button>
+                        <TextBlock x:Name="CoreHealthText" Grid.Row="1" Text="Disconnected"
                                    FontSize="18"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
+                    </Grid>
                 </Border>
             </Grid>
 

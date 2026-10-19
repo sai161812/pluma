@@ -69,6 +69,9 @@ namespace PLUMA.UI.Tests
             Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Connected" &&
                 ((TextBlock)dashboard.FindName("TaskStateText")).Text == "2 active tasks" &&
                 ((TextBlock)dashboard.FindName("RouteText")).Text == "Unavailable", "dashboard projects only verified core status fields");
+            double taskTop = ((TextBlock)dashboard.FindName("TaskStateText")).TransformToVisual(dashboard).TransformPoint(new Windows.Foundation.Point()).Y;
+            double healthTop = ((TextBlock)dashboard.FindName("CoreHealthText")).TransformToVisual(dashboard).TransformPoint(new Windows.Foundation.Point()).Y;
+            Check(Math.Abs(taskTop - healthTop) <= 1, "core refresh action preserves alignment with adjacent status text");
             int probes = core.Calls; await Task.Delay(120);
             Check(core.Calls == probes, "dashboard health has no background polling loop");
             core.Next = CoreStatusResult.Failed(CoreConnectionFailure.Timeout);
