@@ -1,5 +1,12 @@
 # UI wiring handoff
 
+**Current progress:** the owner authorized wiring after this preparation.
+Step 1 now implements authenticated read-only dashboard status; see
+[the implementation and checks](wiring_status_connection.md) and
+[the pushed recovery checkpoint](wiring_recovery.md). Full wiring, backend audit
+and physical/release acceptance remain open. The original preparation below is
+retained with its original baseline and branch state.
+
 Prepared 2026-10-19 before wiring. This is repository preparation and a source
 inventory, not an implementation of the IPC adapter or a release-completion claim.
 
@@ -11,7 +18,7 @@ inventory, not an implementation of the IPC adapter or a release-completion clai
 | `archive/main-before-ui-sync-20261019-90aa05e` | Preserves the former local `main` at `90aa05e`, including its 49 local-only commits. Local archive; no force push or history deletion. |
 | `ui-polish` | Original source/history retained at `9150e81`, matching GitHub. Existing generated/IDE changes and unrelated untracked files remain in the original workspace. |
 | `ui-polish-integration` | Verified UI at `9544752d1af4d675b50ff7aa8e99fb27da9c722f`, matching GitHub. [PR 1](https://github.com/sai161812/pluma/pull/1) remains draft. |
-| `ui-wiring` | New branch based on verified UI commit `9544752`; its first change is this document only. |
+| `ui-wiring` | Based on verified UI commit `9544752`; initially documentation-only, now contains step 1 described above. |
 | `sai` | Pre-existing branch left unchanged. |
 
 Use `D:\Workspace\DEVEL\PLUMA-ui-wiring` for subsequent wiring work.
@@ -20,10 +27,12 @@ on `ui-polish-integration`. Do not switch or clean the original dirty worktree
 to prepare wiring. Do not push the archived local history into `main` or replace
 the original `ui-polish` history.
 
-The wiring branch currently depends on the unmerged UI integration. Finish the
+The wiring branch depends on the unmerged UI integration. The owner subsequently
+authorized starting wiring against that branch; its draft PR is stacked on
+`ui-polish-integration`, without merging either PR. Finish the
 recorded UI acceptance gate before merging PR 1. After that merge, reconcile the
-wiring branch with the actual resulting `main` commit before opening its
-implementation PR; do not assume a particular merge strategy or commit SHA.
+wiring branch with the actual resulting `main` commit before retargeting its
+existing implementation PR; do not assume a particular merge strategy or commit SHA.
 
 ## Executed baseline
 
@@ -140,4 +149,5 @@ Wiring is the next implementation work, followed by these physical checks and
 end-to-end/regression/release acceptance in `PLUMA_ACCEPTANCE_TESTS.md` and
 `PLUMA_MASTER_SPEC.md` section 28. Neither a rendered surface nor a passing
 transport response makes the whole product done. This preparation does not
-merge PR 1, mark Phase 14 complete or start wiring code.
+merge PR 1 or mark Phase 14 complete. Original preparation did not start wiring
+code; subsequent authorized step 1 is recorded in the progress link above.
