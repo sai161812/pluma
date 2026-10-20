@@ -102,6 +102,10 @@ class ToolSpec(BaseModel):
 
     # Execution contract
     timeout_s: float = Field(gt=0, le=300, description="Hard wall-clock timeout in seconds.")
+    process_isolated: bool = Field(
+        default=False,
+        description="Require a killable owned worker; never fall back to an in-process call.",
+    )
     executor: Callable[..., "ToolResult"] = Field(
         description="Callable that performs the action. Injected by the adapter layer."
     )

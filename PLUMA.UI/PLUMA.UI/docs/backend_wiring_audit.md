@@ -1,5 +1,12 @@
 # Backend audit before action wiring
 
+P11 process checkpoint: [E19](../../../docs/completion/p11_process_inspection.md)
+adds bounded native READ process enumeration/information/usage. Final focused
+560 passes; isolated regression 878 passes / 3 skips / 1 excluded elevation;
+raw audit 15, containment 3, recovery 5 passes. P11 remains in progress; P12
+is expressly forbidden and action entry remains disabled. Process control and
+remaining catalog/inverse gaps are still mandatory.
+
 P11 remaining-work checkpoint: [E18 policy boundary](../../../docs/completion/p11_policy_boundary.md)
 records exact-call MEDIUM approval, bounded owned policy waits, denied-action
 history and fail-closed pre-state. 503 focused / 821 regression / 15 raw audit

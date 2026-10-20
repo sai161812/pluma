@@ -74,6 +74,8 @@ SYSTEM_CLIPBOARD_TOOLS = [
     "undo_last",
     "stop_current",
     "list_processes",
+    "process_info",
+    "process_usage",
     "get_process_status",
     "kill_process",
 ]

@@ -837,7 +837,7 @@ class ToolRegistry:
         # Isolate high-risk/launcher tools, blocking metadata reads and tasks with active workers
         use_process_isolation = False
         isolated_tools = {"file_info", "open_app", "slow_tool", "run_powershell_script", "execute_terminal_command", "kill_process"}
-        if spec.risk_class == RiskClass.HIGH or tool_name in isolated_tools or getattr(task_context, "worker_controller", None) is not None:
+        if spec.process_isolated or spec.risk_class == RiskClass.HIGH or tool_name in isolated_tools or getattr(task_context, "worker_controller", None) is not None:
             try:
                 import pickle
                 pickle.dumps(spec.executor)
@@ -846,6 +846,14 @@ class ToolRegistry:
                 use_process_isolation = True
             except Exception:
                 use_process_isolation = False
+
+        if spec.process_isolated and not use_process_isolation:
+            refused = ToolResult.failure(
+                tool_name, "Required owned worker could not accept the tool call.",
+                error_code="PROCESS_ISOLATION_FAILED",
+            )
+            return _record_no_execution(ledger, task_context, step_index, tool_name,
+                validated_args, effective_risk, approval_state, refused)
 
         if use_process_isolation:
             try:
@@ -1101,6 +1109,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.clipboard import CLIPBOARD_TOOL_SPECS
     from pluma.tools.files import FILE_TOOL_SPECS
     from pluma.tools.system import SYSTEM_TOOL_SPECS
+    from pluma.tools.processes import PROCESS_TOOL_SPECS
     from pluma.tools.ui import ALL_UI_TOOLS
     from pluma.tools.windows import WINDOW_TOOL_SPECS
 
@@ -1110,6 +1119,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + WINDOW_TOOL_SPECS
         + AUDIO_TOOL_SPECS
         + SYSTEM_TOOL_SPECS
+        + PROCESS_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS
         + ALL_UI_TOOLS
     )

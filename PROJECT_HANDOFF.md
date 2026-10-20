@@ -1,6 +1,39 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, remaining P11 in progress: policy boundary
+## Current checkpoint: 2026-10-20, remaining P11 in progress: process inspection
+
+P11 remains authorized; **P12 is forbidden** until the owner instructs otherwise.
+This checkpoint does not finish P11 or enable command entry.
+
+- Started clean at `0e64caa03eaf03f74952722a2341566a63a69506`, local/remote
+  ui-wiring. Four worktrees, main/integration, archive/stash/tags preserved.
+  GitHub connector rechecked PRs 1/2: draft/open/unmerged. gh is unavailable.
+- Before edits: **368 prerequisite passes in 49.25s** using the isolated native
+  environment. [Process evidence E19](docs/completion/p11_process_inspection.md)
+  implements list_processes/process_info/process_usage: strict bounded READ tools,
+  original native process handle and creation-time checks around observations,
+  no command lines/environments, actual unavailable entries and truncation,
+  required killable owned worker with fail-closed serialization, factual history.
+- Five runtime files and one new test file; no UI, P12, dependency or immutable
+  requirement change. Native Windows workers/Jobs/SQLite and reopened history
+  cover text/voice requests; voice/STT/planner are inert seams, not device evidence.
+- New checks **57 passed in 21.06s**; final focused **560 passed / 1 excluded
+  in 79.64s**; regressions **878 passed / 3 skipped / 1 excluded in 89.02s**;
+  raw audit **15 passed in 0.43s**; containment **3 passed in 3.24s**; recovery
+  **5 passed in 0.66s**. Final source hashes match, fixture key counts zero;
+  all 115 FAST cases are isolated. Skips/excluded elevation are not acceptance.
+- Only three catalog rows close: totals 4 IMPLEMENTED / 46 MISSING / 4 DEFECTIVE /
+  19 UNVERIFIED. Native access denial/PID reuse are injected, not forced OS events.
+  No inspected process is changed or killed. Process control remains missing.
+- Continue P11 under the existing instruction: pending mutation/effect journal,
+  safe inverse/conflicts, remaining file/app/window/process/audio/system/clipboard/
+  browser/terminal/memory/control catalog gaps and A/D/H evidence. No blanket waiver.
+  Next safe milestone remains a bounded P11 gap; do not start P12 or ask for a
+  new instruction between already authorized P11 blocks. No merge/action enabling.
+- Recovery before this block: `0e64caa03eaf03f74952722a2341566a63a69506` in a
+  separate detached worktree. Commit/push ui-wiring only.
+
+## Previous checkpoint: 2026-10-20, remaining P11 in progress: policy boundary
 
 The owner has explicitly authorized **finishing all remaining P11 work**, while
 forbidding P12. This overrides earlier requests for a separate instruction before
