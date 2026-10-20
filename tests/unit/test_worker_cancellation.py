@@ -4,6 +4,7 @@ All processes, pipes and files belong to these fixtures. No desktop apps,
 clipboard, microphone or model are used. This is not P10's combined gate.
 """
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 import multiprocessing
 from pathlib import Path
@@ -395,6 +396,19 @@ class EmptyArgs(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+@contextmanager
+def owned_registry_execution(registry, capsule, ledger):
+    """Cancel before pool join even when a startup assertion raises."""
+    with ThreadPoolExecutor(1) as pool:
+        executing = pool.submit(registry.execute, "worker_probe", {}, capsule, ledger=ledger)
+        try:
+            yield executing
+        finally:
+            capsule.cancellation_token.cancel()
+            if capsule.worker_controller is not None:
+                capsule.worker_controller.terminate_and_join()
+
+
 def test_registry_cancellation_is_unverified_and_persisted(tmp_path):
     capsule = TaskCapsule(request_id="p03-ledger")
     capsule.job_object = WindowsJobObject()
@@ -408,8 +422,7 @@ def test_registry_cancellation_is_unverified_and_persisted(tmp_path):
         risk_class=RiskClass.HIGH, timeout_s=30, executor=OwnedProbe(str(tmp_path)),
         verifier=lambda result: VerifyResult(ok=False, method="state", detail="Marker absent.")))
     try:
-        with ThreadPoolExecutor(1) as pool:
-            executing = pool.submit(registry.execute, "worker_probe", {}, capsule, ledger=ledger)
+        with owned_registry_execution(registry, capsule, ledger) as executing:
             await_file(tmp_path / "entered", executing)
             capsule.cancellation_token.cancel()
             capsule.worker_controller.terminate_and_join()
@@ -423,3 +436,29 @@ def test_registry_cancellation_is_unverified_and_persisted(tmp_path):
         registry.close()
         capsule.close_resources()
         db.close()
+
+
+def test_registry_startup_assertion_drains_before_pool_join(tmp_path):
+    capsule = TaskCapsule(request_id="p10-startup-failure")
+    capsule.job_object = WindowsJobObject()
+    registry = runner.ToolRegistry()
+    registry.register(ToolSpec(name="worker_probe", description="Owned failure fixture",
+        args_schema=EmptyArgs, risk_class=RiskClass.HIGH, timeout_s=30,
+        executor=OwnedProbe(str(tmp_path)),
+        verifier=lambda result: VerifyResult(ok=False, method="state", detail="No effect expected.")))
+    class StartupAssertion(Exception):
+        pass
+    try:
+        began = time.monotonic()
+        with pytest.raises(StartupAssertion):
+            with owned_registry_execution(registry, capsule, None) as executing:
+                await_file(tmp_path / "entered", executing)
+                proc = capsule.worker_controller._proc
+                raise StartupAssertion("Injected startup observation failure")
+        assert time.monotonic() - began < 6  # does not wait for the 30-second tool
+        assert capsule.stop_latch_set and not proc.is_alive()
+        assert capsule.worker_controller.verify_cleanup() is True
+        assert executing.done() and not (tmp_path / "late").exists()
+    finally:
+        registry.close()
+        capsule.close_resources()

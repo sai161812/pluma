@@ -1,5 +1,17 @@
 # Backend audit before action wiring
 
+P10 revalidation (2026-10-20): **bounded gate passed**, after owner-authorized
+follow-up. Fresh prerequisites 313 passed; final focused 413 passed; isolated
+regressions 739 passed / 3 skipped / 1 excluded elevation operation; raw audit
+15 passed with xfail handling bypassed. Four combined native FAST/SMART cases
+verify STOP, no next action/replan, Job descendants/identity, pre-existing fixture
+survival, real rollback/conflict accounting, memory/result/SQLite/IPC agreement
+and verified shutdown. [E16 evidence](../../../docs/completion/p10_revalidation.md)
+records the fixture drain fix, standby correlation and exact scope. Runtime/UI
+source is unchanged; command entry stays disabled. No unresolved BA xfail or
+covered safety blocker remains. P11 is next on separate instruction; no merge
+or automatic progression. Earlier checkpoints below retain their dated context.
+
 P10 checkpoint (2026-10-20): **blocked at prerequisites**, 1 failed / 312 passed.
 The owned worker entry marker was absent before cancellation was issued; root
 cause and anomalous elapsed time remain unverified. Raw audit still passes all

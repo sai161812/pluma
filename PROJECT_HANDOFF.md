@@ -1,6 +1,55 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P10 blocked at prerequisites
+## Current checkpoint: 2026-10-20, P10 owned Windows safety revalidated
+
+**P10 bounded gate passed after the owner authorized diagnosis and continuation.**
+Action entry remains disabled. P11 has not started; no automatic progression.
+
+- Started clean on local/remote `ui-wiring` at
+  `792e13a24cd47c7a7ba677ad48c77d460233e5e9` (blocked evidence checkpoint).
+  The original failing case passed unchanged in isolation (1 in 1.27s), then
+  P01-P09 prerequisites passed **313 in 36.16s**, before tracked edits.
+- Read-only failed-fixture SQLite identifies TOOL_TIMEOUT. Windows System
+  Kernel-Power events show Modern Standby entering at 08:12:46 UTC and exiting
+  at 08:17:40 UTC, overlapping the original run and ending near its failure.
+  Host suspension is supported as an explanation for the elapsed-time anomaly;
+  the exact worker state is not reconstructed. No power/security setting changed.
+  The original failed evidence remains intact, not retroactively declared passed.
+- Fixed the fixture's demonstrable cleanup ordering weakness: startup assertion
+  failure now cancels/drains the original owned worker before joining its thread
+  pool. A new native assertion-failure test verifies exit and no late effect.
+  Existing startup/STOP/verification/ledger assertions and deadlines are retained.
+  No production runtime or immutable requirement changed.
+- Four combined real Windows cases cover FAST/SMART, successful file inverse
+  and preserved conflict; registered typed execution, native Jobs/root/descendant
+  handles/creation identity, authenticated STOP, no next action/replan, actual
+  rollback and retained undo/residual data, memory/result/SQLite/resource mirror/
+  IPC agreement, reopened history and verified storage-last runtime shutdown.
+  A separate pre-existing fixture process/file survives STOP and runtime close.
+- Final focused **413 passed in 46.34s**; isolated regressions **739 passed,
+  3 skipped, 1 deselected in 63.38s**; raw audit `--runxfail` **15 passed in
+  0.65s**; native containment **3 passed in 3.60s**; recovery **5 passed in 0.71s**.
+  All 115 FAST cases carry isolation tags; all final source hashes match and
+  fixture key counts are zero. Skips/excluded elevation are not acceptance.
+- [P10 revalidation evidence (E16)](docs/completion/p10_revalidation.md) records
+  commands, source identities, separate latch/reply/terminal observations and
+  fixture limits, including one corrected new-fixture schema/setup error.
+  Matrix **298 source items / 324 rows** and diff/link/scope review pass.
+- No unresolved BA expected failure or newly reproduced safety blocker remains
+  in the covered paths. Device/model/UI/browser-tab/reboot, complete tool-policy,
+  performance/soak, packaging/install and release acceptance remain mandatory.
+  Fixture policy/router/model seams are disclosed; no real user app, physical
+  audio/screen capture, unrestricted shell or system-changing elevation ran.
+- Commit/push remains confined to `ui-wiring`, PRs 1/2 draft/open/unmerged;
+  main `6dbf589`, integration `9544752`, other worktrees/archive/stash/tags retained.
+  Pre-follow-up recovery: `792e13a24cd47c7a7ba677ad48c77d460233e5e9`;
+  pre-P10 runtime recovery: `b0e486a0ce323da66be630ac55048b756f9f6182`.
+- **Next safe milestone: P11 only after a separate instruction.** Select one
+  bounded mandatory catalog/policy/verification/undo gap using the matrix;
+  H-03 explicit intent for MEDIUM policy is a recorded candidate. Do not enable
+  command entry, merge or start P11 automatically. No requirement is waived.
+
+## Previous checkpoint: 2026-10-20, P10 blocked at prerequisites
 
 **P10 is incomplete. Do not advance to P11 or enable action entry.** Its explicit
 failure rule, "Record failures as blockers and stop", was applied before any
