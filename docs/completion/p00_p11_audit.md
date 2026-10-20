@@ -1,0 +1,128 @@
+# Overall P00-P11 completion audit
+
+2026-10-20, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+This corrects any earlier statement that P11 was finished. Commits, tool names
+and large passing test counts are not substitutes for the prompt's gate.
+
+## Scope and method
+
+Audited PLUMA_COMPLETION_PROMPTS shared contract and P00-P11 prompts against the
+immutable master, AGENTS, build plan, acceptance A/D/G/H, current source/default
+registry, requirements matrix and dated evidence. Preserve the approved native
+dark UI, disabled action entry, other worktrees/recovery points and draft PRs.
+No P12 UIA/OCR/input implementation or later milestone is authorized here.
+
+Fresh inventory uses default ToolSpec registration without executing tools.
+`output/p11_verification/catalog-audit.json` records all 73 source names, current
+registration, risk, timeout, required-process flag, builder and verifier. Matrix
+checker independently validates 298 source items and 324 traceable rows.
+Fresh safety/functional regressions and native owned fixtures verify the pending
+P11 repair. Full device/UI/ML/performance/install/release acceptance is outside
+these bounded checks and is not silently counted as passed.
+
+## Milestone verdicts
+
+| Prompt | Verdict | Evidence and practical limit |
+|---|---|---|
+| P00 | Bounded inventory gate passes | Complete source/matrix traceability, actual registry reconciliation; defects and missing tools stay visible. |
+| P01 | Bounded BA-03 gate passes | E06/E16 and executor-admission regressions; original BA assertion retained. E25 strengthens interrupted thread/proof handling. |
+| P02 | Bounded BA-01 gate passes | E07/E16, latch-all/global STOP ordering including blocked first cleanup. |
+| P03 | Bounded BA-02 gate passes | E08/E16, real owned worker response interruption, original identities and Jobs. |
+| P04 | Bounded BA-04 gate passes | E09/E16, positive cleanup readback and retained failures/residuals. |
+| P05 | Bounded BA-05 state gate passes; broader factual cause defect found | E10/E16 authoritative state/result/history; separate successful native cleanup incorrectly records user_stop (R01 below). |
+| P06 | Bounded BA-06 gate passes | E11/E16 plus E22/E25 owned future/storage drain, including incomplete bounded close and later readback. |
+| P07 | Bounded BA-07 gate passes | E12/E16 voice capture/capsule cancellation and empty capture lifecycle; inert devices, not physical STT acceptance. |
+| P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
+| P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
+| P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E25 close individual gaps only. No eligibility for P12. |
+
+E06-E16 historical detail lives in the linked
+[requirements/evidence matrix](requirements_matrix.md). Final fresh results
+and source checkpoint follow below after verification finishes.
+
+## P11 catalog: actual remaining work
+
+All 73 exact catalog names: **30 registered / 43 unregistered**. Status across
+all rows: **9 implemented / 43 missing / 4 defective / 17 unverified**. Of the
+43 missing names, **16 are assigned to P12**. They were inspected, not implemented
+or declared optional. For the other 57 catalog entries relevant to this audit:
+**9 implemented / 27 missing / 4 defective / 17 unverified**.
+
+| P11 area | Missing exact tools |
+|---|---|
+| Windows | move_window, resize_window |
+| Files | open_file, copy_file, list_folder, safe_delete |
+| Processes | graceful_close_process, terminate_process |
+| Audio | set_default_audio_device |
+| System | lock, sleep_request, restart_request, shutdown_request |
+| Clipboard | clipboard_get, clipboard_set |
+| Terminal | run_command, run_powershell, open_terminal |
+| Browser | open_url, list_tabs, focus_tab, close_tab, download_status |
+| Agent/memory | save_preference, get_preference, create_routine, run_routine |
+
+Four defective catalog entries:
+
+- `clipboard_clear`: no independent readback/private undo pre-state.
+- `show_activity`: wrong fallback database location and swallowed read failures.
+- `undo_last`: memory pop before inverse success and unresolved DB/concurrent undo.
+- `stop_current`: cancels only the supplied capsule; not the required priority
+  global service operation with verified cleanup. Its old matrix gap paragraph
+  also incorrectly retained repaired BA findings; correct that text without
+  claiming this tool itself repaired.
+
+Seventeen unverified tools: open_app, close_app, focus_app, list_apps, app_status;
+list_windows, focus_window, minimize_window, maximize_window, restore_window;
+find_file, move_file, rename_file, create_folder; set_volume, mute, unmute.
+These need their recorded native identity, verification, inverse/conflict and
+complete-path evidence. Existing functions alone do not close their rows.
+
+Nine bounded implemented catalog READs: file_info, list_processes, process_info,
+process_usage, get_volume, list_audio_devices, battery_status, get_system_status,
+network_status. This is backend fixture evidence, not full-device certification.
+
+## Cross-cutting findings
+
+1. **R01: false user_stop cause on normal native worker disposal.** Reopened
+   owned success-fixture SQLite records SUCCEEDED / user_stop without a user
+   STOP. TaskCapsule cleanup calls worker termination, which cancels the parent
+   token. Preserve admission closure and cleanup while separating disposal from
+   genuine user/deadline cancellation; verify fresh memory/result/SQLite outcomes.
+2. P11's native mutation identity/conflict-safe inverses and irreversible commit
+   evidence remain incomplete. Pending journals prevent false clean success but
+   do not supply missing usable inverses or impossible rollback.
+3. E25 bounds supported verification and legacy caller waits; blocking native
+   legacy adapters/rollback and complete catalog ownership/cleanup still need work.
+4. Backend ADMIN dispatch/allowlisted broker integration and the required native
+   confirmation wiring/evidence are incomplete. Native UI portions belong to
+   P16; this does not waive P11's backend portions. Excluded elevation is not a pass.
+5. Argument/plan error privacy and catalog-wide policy/schema verification are
+   not fully certified by the bounded private-error fixes. No blanket H07 claim.
+6. Configured plan maximum A-05 remains a recorded P13 defect (hard cap 20 works,
+   configured default 8 is not passed through production validation). This audit
+   records it; it does not begin P13 or pretend all A/D/H rows are green.
+
+Owner decisions already resolved: managed Edge/Chrome profiles/CDP; Unicode
+text/file-list/bitmap clipboard with private in-memory undo; fixed read-only
+Windows diagnostics plus explicitly configured, confirmed project commands.
+See [scope decisions](p11_scope_decisions.md). No repeated clarification needed
+for those choices and no owner-approved acceptance waiver exists.
+
+## Current verification and next safe work
+
+Fresh reviewed-source evidence is [E25](p11_verification_ownership.md): 783
+focused passes / 1 excluded; 1101 isolated regressions / 3 skipped / 1 excluded;
+15 raw audit passes with --runxfail; 3 containment; 5 recovery; 39 authenticated
+native Python/C# IPC checks. Actual exits zero, final source hashes match,
+fixture keys zero, all 115 FAST cases isolated. Exact commands/log/JUnit/JSON are
+in ignored output/p11_verification. The unhandled/blocked/protocol reproductions
+are retained. These checks pass while P11's completion gate still fails.
+
+Checkpoint is the ui-wiring commit containing this audit, parent `2c5abf5`.
+Main/integration and four worktrees remain preserved; PRs 1/2 were rechecked
+open/draft/unmerged in E24. R01 is currently open and is the next bounded fix. Failed reproductions/setup mistakes remain in E25; no
+repeat-until-green claim, skipped requirements or amended history hides them.
+
+Next safe milestone remains P11: fix R01, then close defective tools and bounded
+catalog/inverse/irreversible/backend gates, with separate tested commits. Do not
+call P11 complete until its required rows pass. P12 remains expressly forbidden.

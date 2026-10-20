@@ -444,6 +444,18 @@ def _capture_prestate(args, context, *, builder, tool):
                               factual_message="Pre-state captured before execution.")
 
 
+def _check_postcondition(args, context, *, verifier, tool):
+    """Internal ToolSpec phase; worker responses contain only typed proof."""
+    try:
+        proof = verifier(args["observation"])
+        if not isinstance(proof, VerifyResult):
+            raise TypeError("Invalid postcondition proof.")
+        return ToolResult.success(tool, data={"verification": proof.model_dump()}, verified=False,
+                                  factual_message="Postcondition check completed.")
+    except Exception:
+        return ToolResult.failure(tool, "Postcondition verification failed.", "POSTCONDITION_FAILED")
+
+
 def _record_no_execution(ledger, task_context, step_index, tool_name, arguments, risk, decision, result):
     if ledger is not None and task_context is not None:
         from pluma.memory.activity import ActionRecord
@@ -615,6 +627,79 @@ class ToolRegistry:
         except Exception:
             return ToolResult.failure(spec.name, "Safe pre-state could not be captured. No action was executed.",
                                       error_code="UNDO_PRESTATE_FAILED")
+
+    def _owned_verification(self, spec, observation, context, token, timeout_s):
+        from functools import partial
+        from pluma.core.cancellation import StopReason, TaskCancelledError
+
+        def failed(code):
+            return VerifyResult(ok=False, method="owned_verification", detail={
+                "TASK_CANCELLED": "Task stopped before postcondition verification completed.",
+                "TOOL_TIMEOUT": "Postcondition verification exceeded the tool deadline.",
+            }.get(code, "Postcondition verification failed.")), code
+
+        deadline = time.monotonic() + max(0, timeout_s)
+        check = partial(_check_postcondition, verifier=spec.verifier, tool=spec.name)
+        args = {"observation": observation}
+        task_id = getattr(context, "task_id", None)
+        try:
+            if token is not None:
+                token.raise_if_cancelled()
+            if timeout_s > 0:
+                if spec.process_isolated:
+                    request = WorkerRequest(task_id, spec.name, args, timeout_s,
+                        env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")})
+                    controller = getattr(context, "worker_controller", None)
+                    if controller is None:
+                        controller = self.get_worker(task_id or f"transient-{uuid.uuid4()}")
+                    if context is not None:
+                        context.worker_controller = controller
+                        context._tool_registry = self
+                    status, payload = controller.execute_call(check, args, request, timeout_s,
+                        job_object=getattr(context, "job_object", None), cancellation_token=token)
+                    if status == "cancelled":
+                        return failed("TASK_CANCELLED")
+                    if status not in ("ok", "timeout"):
+                        return failed("POSTCONDITION_FAILED")
+                    if status == "ok" and not isinstance(payload, WorkerResponse):
+                        return failed("POSTCONDITION_FAILED")
+                    response = payload.result if status == "ok" else None
+                else:
+                    future = self.submit_owned(_invoke_executor, check, args, context, token,
+                        task_id=task_id, command_class="verification", _task_context=context)
+                    try:
+                        while True:
+                            if token is not None:
+                                token.raise_if_cancelled()
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                future.cancel()
+                                response = None
+                                break
+                            try:
+                                response = future.result(timeout=min(.05, remaining))
+                                break
+                            except concurrent.futures.TimeoutError:
+                                continue
+                    except TaskCancelledError:
+                        future.cancel()
+                        raise
+                if response is not None:
+                    if token is not None:
+                        token.raise_if_cancelled()
+                    if response.ok and response.tool == spec.name:
+                        proof = VerifyResult.model_validate(response.data["verification"], strict=True)
+                        return proof, None if proof.ok else "POSTCONDITION_FAILED"
+                    return failed("POSTCONDITION_FAILED")
+            if token is not None:
+                token.cancel(StopReason.TASK_TIMEOUT)
+                if token.reason != StopReason.TASK_TIMEOUT:
+                    return failed("TASK_CANCELLED")
+            return failed("TOOL_TIMEOUT")
+        except (TaskCancelledError, concurrent.futures.CancelledError):
+            return failed("TASK_CANCELLED")
+        except Exception:
+            return failed("POSTCONDITION_FAILED")
 
     def __len__(self) -> int:
         with self._lock:
@@ -926,6 +1011,8 @@ class ToolRegistry:
             try:
                 import pickle
                 pickle.dumps(spec.executor)
+                if spec.process_isolated:
+                    pickle.dumps(spec.verifier)
                 pickle.dumps(validated_args)
                 pickle.dumps(worker_req)
                 use_process_isolation = True
@@ -977,6 +1064,7 @@ class ToolRegistry:
                         error_code="MUTATION_JOURNAL_FAILED")
             worker_req.undo_stack = list(ctx_undo_stack) + [pending_mutation]
 
+        execution_started = time.perf_counter()
         if use_process_isolation:
             try:
                 controller_key = task_id or f"transient-{uuid.uuid4()}"
@@ -1078,27 +1166,48 @@ class ToolRegistry:
                         duration_ms=duration_ms,
                     )
                 else:
-                    result = ToolResult.failure(tool_name, str(payload))
+                    result = ToolResult.failure(tool_name, "Owned tool worker failed.")
             except TaskCancelledError:
                 execution_not_admitted = True
                 result = ToolResult.failure(tool_name, "Task was stopped before executor admission.", error_code="TASK_CANCELLED")
-            except Exception as mp_exc:
+            except Exception:
                 result = ToolResult.failure(
                     tool_name,
-                    f"Process isolation failed: {mp_exc}",
+                    "Owned tool worker execution failed.",
                     error_code="PROCESS_ISOLATION_FAILED",
                 )
 
         if result is None and not use_process_isolation:
             # Execute in-process with thread pool executor and timeout enforcement
             observation = {"started": False}
+            future = None
             try:
                 future = self.submit_owned(
                     _invoke_executor, spec.executor, validated_args, task_context, token, observation,
                     task_id=getattr(task_context, "task_id", None), _task_context=task_context,
                 )
                 try:
-                    result = future.result(timeout=timeout_s)
+                    deadline = time.monotonic() + timeout_s
+                    while True:
+                        if token is not None:
+                            token.raise_if_cancelled()
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise concurrent.futures.TimeoutError
+                        try:
+                            result = future.result(timeout=min(.05, remaining))
+                            break
+                        except concurrent.futures.TimeoutError:
+                            if future.done():
+                                # The callable raised TimeoutError; this is not
+                                # evidence that our wait budget expired. A normal
+                                # completion can also race the expired poll.
+                                try:
+                                    result = future.result()
+                                    break
+                                except concurrent.futures.TimeoutError:
+                                    raise RuntimeError("Tool executor failed.") from None
+                            continue
                 except (TimeoutError, concurrent.futures.TimeoutError):
                     execution_not_admitted = future.cancel()
                     if token is not None:
@@ -1111,13 +1220,17 @@ class ToolRegistry:
                         error_code="TOOL_TIMEOUT",
                         duration_ms=duration_ms,
                     )
-            except TaskCancelledError:
-                execution_not_admitted = not observation["started"]
-                result = ToolResult.failure(tool_name, "Task was stopped before executor admission.", error_code="TASK_CANCELLED")
-            except Exception as e:
+            except (TaskCancelledError, concurrent.futures.CancelledError):
+                # A running callable may have crossed admission immediately
+                # before STOP without publishing its observation yet. Only
+                # proven queue cancellation/completed non-entry can discard undo.
+                execution_not_admitted = (future is None or future.cancel()
+                    or (future.done() and not observation["started"]))
+                result = ToolResult.failure(tool_name, "Task stopped during tool execution. Effects may remain.", error_code="TASK_CANCELLED")
+            except Exception:
                 execution_not_admitted = not observation["started"]
                 duration_ms = (time.perf_counter() - start_t) * 1000.0
-                result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
+                result = ToolResult.failure(tool_name, "Tool execution failed.", duration_ms=duration_ms)
 
         duration_ms = (time.perf_counter() - start_t) * 1000.0
 
@@ -1126,18 +1239,22 @@ class ToolRegistry:
         # 5. Postcondition verification
         verified = result.verified
         verify_detail = result.verify_detail
+        verification_error = None
         if result.ok and spec.verifier:
             from pluma.verify.common import verify_noop
             if verified is False and spec.verifier is verify_noop:
                 pass
             else:
-                try:
-                    v_res = spec.verifier(result)
-                    verified = v_res.ok
-                    verify_detail = v_res
-                except Exception as e:
-                    verified = False
-                    verify_detail = VerifyResult(ok=False, method="verifier_exception", detail="Postcondition verification failed.")
+                verify_detail, verification_error = self._owned_verification(
+                    spec, result, task_context, token,
+                    timeout_s - (time.perf_counter() - execution_started))
+                verified = verify_detail.ok
+
+        duration_ms = (time.perf_counter() - start_t) * 1000.0
+        verification_message = {
+            "TASK_CANCELLED": "Task stopped before postcondition verification completed. Effects may remain.",
+            "TOOL_TIMEOUT": "Postcondition verification timed out. Effects may remain.",
+        }.get(verification_error, "Postcondition could not be verified.")
 
         # 6. Finalize undo record only on verified success
         undo_record = None
@@ -1151,13 +1268,13 @@ class ToolRegistry:
             ok=result.ok and verified,
             tool=tool_name,
             data=result.data,
-            factual_message=("Postcondition could not be verified." if result.ok and not verified else result.factual_message),
+            factual_message=(verification_message if result.ok and not verified else result.factual_message),
             verified=verified,
             verify_detail=verify_detail,
             duration_ms=duration_ms,
             adapter_used=result.adapter_used or "native",
-            error=("Postcondition could not be verified." if result.ok and not verified else result.error),
-            error_code=("POSTCONDITION_FAILED" if result.ok and not verified else result.error_code),
+            error=(verification_message if result.ok and not verified else result.error),
+            error_code=((verification_error or "POSTCONDITION_FAILED") if result.ok and not verified else result.error_code),
             undo_record=undo_record,
         )
 
@@ -1183,9 +1300,9 @@ class ToolRegistry:
                     undo_available = ledger.finish_mutation(prepared_row, action_rec,
                         undo_record or pending_mutation, not_executed=execution_not_admitted)
                 else:
-                    row_id = ledger.insert_action(action_rec)
+                    row_id = ledger.insert_action(action_rec, _timeout_s=2.0)
                     if undo_record and row_id is not None:
-                        ledger.insert_undo_record(UndoRecord(action_row_id=row_id, undo_data=undo_record))
+                        ledger.insert_undo_record(UndoRecord(action_row_id=row_id, undo_data=undo_record), _timeout_s=2.0)
             except Exception:
                 logging.getLogger(__name__).error("Execution history could not be verified.")
                 return ToolResult.failure(tool_name,

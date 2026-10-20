@@ -213,7 +213,10 @@ class MultiStepOrchestrator:
 
                 # An unverified history commit must not retry an already
                 # applied effect. Preserve its journal and end this capsule.
-                if tool_result.error_code in ("LEDGER_WRITE_FAILED", "MUTATION_JOURNAL_FAILED"):
+                with capsule.work_lock:
+                    uncertain_effect = any(item.get("action") == "pending_mutation" for item in capsule.undo_stack)
+                if (tool_result.error_code in ("LEDGER_WRITE_FAILED", "MUTATION_JOURNAL_FAILED")
+                        or (not tool_result.ok and uncertain_effect)):
                     return self._handle_failure(capsule, executed_records, start_time,
                         replan_count, tool_result.error or "Execution history could not be verified.")
 
@@ -354,8 +357,7 @@ class MultiStepOrchestrator:
         """Handle STOP triggered during execution: reverse rollback & terminal transition."""
         task_id = capsule.task_id
         from pluma.core.cancellation import StopReason
-        timed_out = (capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
-            and any(record.result.error_code in ("TOOL_TIMEOUT", "POLICY_TIMEOUT") for record in executed_records))
+        timed_out = capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
         if timed_out:
             reason = "Tool execution timed out."
             self.supervisor.fail_task_with_rollback(task_id)

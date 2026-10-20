@@ -1,6 +1,50 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, remaining P11: native system/network reads
+## Current checkpoint: 2026-10-20, overall P00-P11 audit and owned verification
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** The owner's renewed request is an
+honest overall P00-P11 audit, completion of remaining P11 work and tested commits.
+An earlier claim that P11 was finished was inaccurate; do not repeat it.
+
+- [Overall audit](docs/completion/p00_p11_audit.md) reconciles prompts, source,
+  registry, matrix and evidence. P00-P10 original bounded gates remain supported
+  by fresh regression/raw/native evidence; this is not product certification.
+- Exact catalog: 73 names, 30 registered / 43 unregistered. Sixteen missing
+  perception/input entries belong to P12 and remain untouched. Other 57:
+  **9 IMPLEMENTED / 27 MISSING / 4 DEFECTIVE / 17 UNVERIFIED**. Browser/terminal,
+  clipboard, file/process/power and memory tools still require work. No waiver.
+- [E25](docs/completion/p11_verification_ownership.md) repairs synchronous
+  unbounded verifier/caller waits, late proof success, unsafe discard during an
+  admission-observation race, SMART retry of uncertain effects, timeout cause
+  after history failure, and unhandled private exceptions. Required verification
+  uses the same native owned worker; legacy Futures stay owned until actual exit.
+- Reproductions: blocked verifier 1 failed; private/false-timeout errors 4 failed.
+  Expanded fixtures initially had 6 post-cleanup timing assumptions and then
+  3 missing-observer wiring errors; preserved and corrected without xfail/skip or
+  deadline relaxation. Final boundary **77 passed in 50.94s**, including 22 new
+  cases. P01 admitted-body test is strengthened to interrupt caller before body
+  exit, drain it explicitly, block late verification and retain unknown pre-state.
+- Final-source focused **783 passed / 1 excluded in 103.29s**; isolated regression
+  **1101 passed / 3 skipped / 1 excluded in 126.22s**; raw audit **15 in 0.38s**,
+  containment **3 in 2.65s**, recovery **5 in 0.40s**. Native Python/C# IPC **39
+  passed in 7.183s**. Actual exits zero, final hashes match, fixture keys zero,
+  all 115 FAST cases isolated. Skips/elevation exclusion are not passes.
+- **Audit R01 is open:** successful owned native fixture's reopened SQLite says
+  SUCCEEDED / user_stop without user STOP. Normal worker disposal cancels its
+  parent token. Separate admission closure from factual cancellation cause and
+  verify fresh memory/result/history before closing the audit's next safety gap.
+- Three runtime files (registry, two orchestrators), new verification tests and
+  equivalent serializable existing fixtures. No user/device/settings mutation,
+  native UI/immutable-spec/dependency change or P12 work. Docs record limitations.
+- Terminal/browser/clipboard choices are already resolved in scope decisions.
+  Existing A/D/H backend/catalog gaps remain; later native UI/planner/device
+  assignments are recorded separately and not silently waived or implemented.
+- Started pushed ui-wiring `2c5abf5`. Commit/push ui-wiring only; preserve other
+  worktrees/main/integration/archives/stash/tags. Recovery: separate detached
+  worktree at `2c5abf5`. Next safe work is P11 R01, then defective catalog and
+  remaining typed tool/inverse/irreversible gates. P12 remains forbidden.
+
+## Previous checkpoint: 2026-10-20, remaining P11: native system/network reads
 
 P11 remains authorized and incomplete. **P12 is forbidden** until instructed.
 No action enabling, merge or requirement waiver.

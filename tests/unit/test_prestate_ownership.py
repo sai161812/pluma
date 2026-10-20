@@ -14,6 +14,7 @@ from pluma.memory.db import DbConnection
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.tools.registry import WorkerRequest
 from tests.unit.test_mutation_journal import EmptyArgs
+from tests.unit.test_mutation_journal import verify_fixture
 from tests.unit.test_runtime_shutdown import runtime, NATIVE_JOB, task, reopened
 from tests.unit.test_worker_cancellation import await_file, owned_noop
 
@@ -22,7 +23,7 @@ def register(registry, capture, execute, *, isolated=False, timeout=1):
     registry.register(ToolSpec(name='prestate_probe', description='Owned pre-state fixture',
         args_schema=EmptyArgs, risk_class=RiskClass.LOW, timeout_s=timeout,
         process_isolated=isolated, undo_builder=capture, executor=execute,
-        verifier=lambda result: VerifyResult(ok=result.ok, method='api', detail='Fixture readback.')))
+        verifier=verify_fixture))
 
 
 def test_blocked_thread_capture_returns_before_release_and_remains_owned(runtime):

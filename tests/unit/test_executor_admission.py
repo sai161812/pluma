@@ -208,29 +208,38 @@ def test_queued_timeout_is_cancelled_without_later_execution(task, monkeypatch):
 
 def test_stop_does_not_wait_for_admitted_tool_body(task):
     capsule, registry = task
-    entered, release, latched = threading.Event(), threading.Event(), threading.Event()
+    entered, release, latched, completed = (threading.Event() for _ in range(4))
+    checked = []
 
     def execute(args, context):
         assert not context.stop_latch_set
         entered.set()
         wait(release)
+        completed.set()
         return ToolResult.success("admission_probe", factual_message="Counter observed.")
 
     def stop():
         capsule.cancellation_token.cancel()
         latched.set()
 
-    registry.register(spec(execute))
+    def verify(result):
+        checked.append("verification")
+        return VerifyResult(ok=True, method="state", detail="Counter observed.")
+    registry.register(spec(execute, verifier=verify))
     with ThreadPoolExecutor(max_workers=2) as callers:
         executing = callers.submit(registry.execute, "admission_probe", {}, capsule)
         try:
             wait(entered)
             stopping = callers.submit(stop)
             wait(latched)  # body still blocked; not a physical latency claim
+            result = executing.result(1)
+            assert not result.ok and not result.verified and result.error_code == "TASK_CANCELLED"
+            assert not completed.is_set()
         finally:
             release.set()
         stopping.result(6)
-        assert executing.result(6).verified
+        wait(completed)
+        assert completed.is_set() and checked == []
     assert capsule.stop_latch_set
 
 

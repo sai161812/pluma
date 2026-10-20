@@ -1,5 +1,12 @@
 # Backend audit before action wiring
 
+Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT
+complete. E25 owns/bounds verification, interrupts legacy callers safely, retains
+uncertain effects and prevents late proof/replan/private exception success.
+Final 783 focused / 1101 isolated regression / 15 raw / 3 containment / 5 recovery /
+39 authenticated native IPC passes. R01 normal-disposal user_stop attribution and
+27 missing non-P12 tools remain open. P12 forbidden; action entry disabled.
+
 P11 system/network checkpoint: [E24](../../../docs/completion/p11_system_status.md)
 replaces fabricated CPU fallback, verifies system-volume/RAM/native sampling and
 adds bounded network_status with explicit unknown internet connectivity. Final

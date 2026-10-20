@@ -39,6 +39,14 @@ def sensitive_prestate(args, *, root):
     return dict(prestate(args, root=root), password='private-journal-fixture')
 
 
+def verify_fixture(result):
+    return VerifyResult(ok=result.ok, method='api', detail='Owned fixture readback.')
+
+
+def contradict_fixture(result):
+    return VerifyResult(ok=False, method='api', detail='Injected contradiction.')
+
+
 @dataclass
 class PartialRename:
     root: str
@@ -68,7 +76,7 @@ def setup(runtime, monkeypatch, root, finish='block', timeout=5):
     runtime.tool_registry.register(ToolSpec(name='journal_probe', description='Owned partial file mutation fixture',
         args_schema=EmptyArgs, risk_class=RiskClass.LOW, timeout_s=timeout, process_isolated=True,
         executor=PartialRename(str(root), finish), undo_builder=partial(prestate, root=str(root)),
-        verifier=lambda result: VerifyResult(ok=result.ok, method='api', detail='Owned fixture readback.')))
+        verifier=verify_fixture))
     plan = Plan(route=RouteMode.FAST, steps=[ToolCall(tool='journal_probe', arguments={}, purpose='Owned mutation')])
     runtime.orchestrator._router = SimpleNamespace(route=lambda req: RouteResult(
         route=RouteMode.FAST, reason='P11 owned journal fixture', plan=plan))
@@ -232,7 +240,7 @@ def test_atomic_completion_keeps_prepared_action_if_undo_update_fails(runtime, m
 def test_failed_verifier_retains_effect_and_does_not_emit_success_copy(runtime, monkeypatch, tmp_path):
     setup(runtime, monkeypatch, tmp_path, finish='success')
     spec = runtime.tool_registry.lookup('journal_probe')
-    monkeypatch.setattr(spec, 'verifier', lambda result: VerifyResult(ok=False, method='api', detail='Injected contradiction.'))
+    monkeypatch.setattr(spec, 'verifier', contradict_fixture)
     result = runtime.orchestrator.execute(PlumaRequest.from_text('Owned contradictory verification fixture'))
     cap = runtime.supervisor.get_task(result.task_id)
     tool = result.steps[0].result
