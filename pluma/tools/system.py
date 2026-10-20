@@ -50,7 +50,7 @@ class UndoLastArgs(BaseModel):
 
 class BatteryStatusArgs(BaseModel):
     """Arguments for battery_status."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
 
 
 # ---------------------------------------------------------------------------
@@ -348,58 +348,51 @@ SYSTEM_TOOL_SPECS: List[ToolSpec] = [
 # Battery Status (registered separately; requires no rewrite of the above)
 # ---------------------------------------------------------------------------
 
+class BatteryData(BaseModel):
+    model_config = {"extra": "forbid", "strict": True}
+    ac_connected: Optional[bool]
+    has_battery: Optional[bool]
+    percent: Optional[int] = Field(ge=0, le=100)
+    charging: Optional[bool]
+    battery_saver: Optional[bool]
+    remaining_seconds: Optional[int] = Field(ge=0)
+    full_seconds: Optional[int] = Field(ge=0)
+    native_status: Dict[str, int]
+
+
+def verify_battery_status(result: ToolResult) -> VerifyResult:
+    from pluma.adapters.power import decode_power_status
+    try:
+        data = BatteryData.model_validate(result.data).model_dump()
+        valid = result.ok and result.tool == "battery_status" and data == decode_power_status(data["native_status"])
+    except (ValueError, TypeError, KeyError):
+        valid = False
+    return VerifyResult(ok=valid, method="native_api", detail=(
+        "Native unsigned power fields and reported state agree." if valid else "Battery observation was not verified."))
+
+
 def execute_battery_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    """Query system battery/power state via Win32 GetSystemPowerStatus."""
-    data: Dict[str, Any] = {}
-
-    if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
-
-        class SYSTEM_POWER_STATUS(ctypes.Structure):
-            _fields_ = [
-                ("ACLineStatus", ctypes.c_byte),
-                ("BatteryFlag", ctypes.c_byte),
-                ("BatteryLifePercent", ctypes.c_byte),
-                ("SystemStatusFlag", ctypes.c_byte),
-                ("BatteryLifeTime", wintypes.DWORD),
-                ("BatteryFullLifeTime", wintypes.DWORD),
-            ]
-
-        sps = SYSTEM_POWER_STATUS()
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        ok = kernel32.GetSystemPowerStatus(ctypes.byref(sps))
-        if ok:
-            ac_line = sps.ACLineStatus        # 0=offline, 1=online, 255=unknown
-            pct = sps.BatteryLifePercent      # 0-100 or 255 if unknown
-            charging = ac_line == 1
-            has_battery = sps.BatteryFlag != 128  # 128 = no battery
-            data = {
-                "ac_connected": charging,
-                "has_battery": has_battery,
-                "percent": pct if pct != 255 else None,
-                "charging": charging and has_battery,
-            }
-            if pct == 255:
-                msg = "AC power, no battery detected."
-            elif charging:
-                msg = f"Battery at {pct}%, charging (AC connected)."
-            else:
-                msg = f"Battery at {pct}%, on battery power."
-        else:
-            data = {"ac_connected": None, "has_battery": None, "percent": None}
-            msg = "Battery status unavailable."
+    from pluma.adapters.power import read_battery_status
+    try:
+        data = BatteryData.model_validate(read_battery_status()).model_dump()
+    except NotImplementedError:
+        return ToolResult.failure("battery_status", "Native Windows battery status is unavailable.", "UNSUPPORTED_PLATFORM")
+    except Exception:
+        return ToolResult.failure("battery_status", "Native battery status could not be read.", "BATTERY_STATUS_FAILED")
+    if data["has_battery"] is False:
+        battery = "No system battery detected"
+    elif data["has_battery"] is None:
+        battery = "Battery presence unknown"
     else:
-        data = {"ac_connected": True, "has_battery": False, "percent": None}
-        msg = "Battery status: AC power (non-Windows stub)."
-
-    return ToolResult(
-        ok=True,
-        tool="battery_status",
-        data=data,
-        factual_message=msg,
-        verified=True,
-    )
+        battery = "Battery level unknown" if data["percent"] is None else f"Battery at {data['percent']}%"
+    charging = {True: "charging", False: "not charging", None: "charging status unknown"}[data["charging"]]
+    ac = {True: "AC connected", False: "AC disconnected", None: "AC status unknown"}[data["ac_connected"]]
+    result = ToolResult.success("battery_status", data=data, verified=False,
+        factual_message=f"{battery}, {charging}, {ac}.", adapter_used="native_api")
+    proof = verify_battery_status(result)
+    if not proof.ok:
+        return ToolResult.failure("battery_status", "Battery observation could not be verified.", "POSTCONDITION_FAILED")
+    return result.model_copy(update={"verified": True, "verify_detail": proof})
 
 
 SYSTEM_TOOL_SPECS.append(ToolSpec(
@@ -408,8 +401,9 @@ SYSTEM_TOOL_SPECS.append(ToolSpec(
     args_schema=BatteryStatusArgs,
     risk_class=RiskClass.READ,
     timeout_s=5.0,
+    process_isolated=True,
     executor=execute_battery_status,
-    verifier=verify_noop,
+    verifier=verify_battery_status,
     undo_builder=None,
     adapter_priority=[AdapterPriority.NATIVE_API],
     cancellable=True,

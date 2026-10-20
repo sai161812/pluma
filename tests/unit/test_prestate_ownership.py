@@ -223,4 +223,3 @@ def test_capture_consumes_execution_budget(runtime):
     assert cap.cancellation_token.reason == StopReason.TASK_TIMEOUT
     assert cap.undo_stack[0]['action'] == 'pending_mutation'
     assert runtime.tool_registry.work_gate.wait_idle(2)
-

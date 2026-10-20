@@ -1,5 +1,11 @@
 # Backend audit before action wiring
 
+P11 battery checkpoint: [E23](../../../docs/completion/p11_battery_status.md)
+repairs false charging/unknown/error success, adds required owned native reads
+and strict snapshot verification. Final 699 focused / 1017 isolated regressions /
+15 raw / 3 containment / 5 recovery passes. Only bounded battery READ closes;
+remaining P11 stays open, P12 forbidden and action entry disabled.
+
 P11 pre-state checkpoint: [E22](../../../docs/completion/p11_prestate_ownership.md)
 adds bounded owned capture, same-worker required isolation and retained thread/
 storage ownership. Final 661 focused / 979 isolated regression / 15 raw passes;

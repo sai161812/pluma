@@ -1,6 +1,48 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, remaining P11: owned bounded pre-state
+## Current checkpoint: 2026-10-20, remaining P11: native battery read
+
+P11 remains authorized and incomplete. **P12 is forbidden** until instructed.
+No action enabling, merge or requirement waiver.
+
+- Starting clean/pushed ui-wiring `19b3ad3`; its 661 focused / 979 isolated
+  regression / 15 raw / 3 containment / 5 recovery checks passed before edits.
+  [E23](docs/completion/p11_battery_status.md) reproduces three battery failures:
+  AC falsely implies charging, signed unknowns misreported, native failure returns
+  verified success (3 failed in 0.43s). Failed artifacts preserved.
+- New lazy native power adapter uses unsigned Windows fields and return-code
+  checks. Typed battery_status READ now requires a killable owned worker and
+  native snapshot verification. Charging is independent of AC; unknown states
+  stay null; invalid/failed/unsupported native observations fail closed.
+- Initial repaired test hit 3 fixture import errors from its fake DLL; importing
+  the adapter before installing the read fixture fixes setup without weakening
+  assertions. Corrected 3 passed, expanded 34 passed in 4.71s. Native text and
+  voice-mode FAST requests, native Jobs/original identity/exit, actual SQLite and
+  reopened history pass. Unknown/no-battery/errors/blocked calls are disclosed
+  fixtures. No power transition, settings or user state is changed; no microphone
+  or real STT claim.
+- Final-source focused **699 passed / 1 excluded in 106.74s**; isolated regression
+  **1017 passed / 3 skipped / 1 excluded in 130.30s**; raw audit **15 in 0.74s**,
+  containment **3 in 3.08s**, recovery **5 in 0.59s**. Actual exits zero, final
+  hashes match, fixture keys zero and all 115 FAST cases isolated. Skips and
+  elevation exclusion are not passes. No performance/soak/release claim.
+- Runtime changes: new power adapter and battery portion of system tools only.
+  New 34-case battery module. Removed the EOF blank line flagged by E22's staged
+  diff check; that earlier shell sequence incorrectly continued to commit after
+  the check. Formatting is corrected and freshly checked, with no history rewrite.
+- Catalog: **7 IMPLEMENTED / 44 MISSING / 4 DEFECTIVE / 18 UNVERIFIED**. Battery
+  bounded READ row is implemented, not the whole gate. System/network reads,
+  power requests, clipboard/browser/terminal, safe identities/inverses, verifier
+  bounds, irreversible evidence and remaining A/D/H requirements remain P11.
+- Terminal decision remains resolved: fixed read-only Windows diagnostics plus
+  explicitly configured, confirmed project commands. No unrestricted planner shell.
+- Commit/push ui-wiring only; preserve other worktrees/main/integration and all
+  recovery archives/stash/tags. PRs 1/2 last checked draft/open/unmerged in E22.
+  Recovery before this block: separate detached worktree at `19b3ad3`. Next safe
+  work: bounded native system/network read gap, then remaining P11. No fresh
+  instruction needed between P11 blocks. P12 is neither eligible nor authorized.
+
+## Previous checkpoint: 2026-10-20, remaining P11: owned bounded pre-state
 
 P11 remains authorized and incomplete. **P12 is forbidden** until instructed.
 Do not enable action entry, merge or waive requirements.
