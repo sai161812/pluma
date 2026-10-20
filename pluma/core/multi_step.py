@@ -347,7 +347,13 @@ class MultiStepOrchestrator:
     ) -> MultiStepExecutionResult:
         """Handle STOP triggered during execution: reverse rollback & terminal transition."""
         task_id = capsule.task_id
-        self.supervisor.stop_task(task_id)
+        from pluma.core.cancellation import StopReason
+        timed_out = (capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
+            and any(record.result.error_code == "TOOL_TIMEOUT" for record in executed_records))
+        if timed_out:
+            self.supervisor.fail_task_with_rollback(task_id)
+        else:
+            self.supervisor.stop_task(task_id)
         self.supervisor.finalize_task(task_id, TaskState.STOPPED)
         final_state = capsule.state
 

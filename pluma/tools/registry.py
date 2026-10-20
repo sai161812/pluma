@@ -398,6 +398,9 @@ class TaskWorkerController:
                 self.terminate_and_join()
                 return ("cancelled", "Task worker was stopped.")
             except TimeoutError:
+                from pluma.core.cancellation import StopReason
+                if cancellation_token is not None:
+                    cancellation_token.cancel(StopReason.TASK_TIMEOUT)
                 self.terminate_and_join()
                 return ("timeout", f"Tool execution timed out after {timeout_s:.3f}s")
             except Exception as exc:
@@ -784,9 +787,9 @@ class ToolRegistry:
         )
 
 
-        # Process isolation is mandatory for high-risk tools, external process launchers, or tasks with active workers
+        # Isolate high-risk/launcher tools, blocking metadata reads and tasks with active workers
         use_process_isolation = False
-        isolated_tools = {"open_app", "slow_tool", "run_powershell_script", "execute_terminal_command", "kill_process"}
+        isolated_tools = {"file_info", "open_app", "slow_tool", "run_powershell_script", "execute_terminal_command", "kill_process"}
         if spec.risk_class == RiskClass.HIGH or tool_name in isolated_tools or getattr(task_context, "worker_controller", None) is not None:
             try:
                 import pickle
@@ -875,10 +878,11 @@ class ToolRegistry:
                 elif status == "cancelled":
                     result = ToolResult.failure(tool_name, str(payload), error_code="TASK_CANCELLED")
                 elif status == "timeout":
+                    from pluma.core.cancellation import StopReason
                     duration_ms = (time.perf_counter() - start_t) * 1000.0
                     if task_context and hasattr(task_context, "cancellation_token"):
                         try:
-                            task_context.cancellation_token.cancel()
+                            task_context.cancellation_token.cancel(StopReason.TASK_TIMEOUT)
                         except Exception:
                             pass
                     if task_context and getattr(task_context, "job_object", None) is not None:

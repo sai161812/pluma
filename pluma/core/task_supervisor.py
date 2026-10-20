@@ -625,7 +625,7 @@ class TaskSupervisor:
 
         self._persist_cleanup_report(capsule)
         final_state = TaskState.STOPPED_WITH_RESIDUAL if capsule.cleanup_pending else TaskState.STOPPED
-        if failed and reason == StopReason.INTERNAL_ERROR:
+        if failed and reason in (StopReason.INTERNAL_ERROR, StopReason.TASK_TIMEOUT):
             final_state = TaskState.FAILED
         capsule.cleanup_finalized = True
         with self._lock:

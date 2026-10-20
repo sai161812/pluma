@@ -9,9 +9,9 @@ Boundary: No OS libs imported at module level.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import (
@@ -41,6 +41,37 @@ class FindFileArgs(BaseModel):
     pattern: str = Field(min_length=1, max_length=128, description="Glob search pattern (e.g. '*.txt').")
     max_depth: int = Field(default=5, ge=1, le=10, description="Maximum directory search depth.")
     max_results: int = Field(default=50, ge=1, le=200, description="Maximum number of matches to return.")
+
+
+class FileInfoArgs(BaseModel):
+    """One literal, fully qualified Windows filesystem path; no search/expansion."""
+    model_config = {"extra": "forbid", "strict": True}
+    path: str = Field(min_length=1, max_length=32767)
+
+    @field_validator("path")
+    @classmethod
+    def explicit_filesystem_path(cls, value: str) -> str:
+        from pathlib import PureWindowsPath
+        path = PureWindowsPath(value)
+        if (not path.is_absolute() or not value.strip() or "\0" in value
+                or str(path).startswith(("\\\\.\\", "\\\\?\\"))
+                or any(char in value for char in '*?"<>|')
+                or any(part in (".", "..") or part.endswith((".", " "))
+                       or ":" in part for part in path.parts[1:])
+                or any(PureWindowsPath(part).is_reserved() for part in path.parts[1:])):
+            raise ValueError("An explicit absolute filesystem path without patterns or device syntax is required.")
+        return value
+
+
+class FileInfoData(BaseModel):
+    """Native metadata only; directory size is not a recursive content total."""
+    model_config = {"extra": "forbid", "strict": True, "frozen": True}
+    path: str
+    kind: Literal["file", "directory"]
+    size_bytes: Optional[int] = Field(ge=0)
+    modified_ns: int
+    device: int = Field(ge=0)
+    file_id: int = Field(gt=0)
 
 
 class MoveFileArgs(BaseModel):
@@ -408,6 +439,65 @@ def execute_create_folder(args: Dict[str, Any], task_context: Any = None) -> Too
 # Verifiers
 # ---------------------------------------------------------------------------
 
+def _read_file_info(path: str, task_context: Any = None) -> Dict[str, Any]:
+    """Read metadata with native lstat, refusing reparse targets/ancestors."""
+    import stat
+    from pathlib import Path
+    target = Path(path)
+    token = getattr(task_context, "cancellation_token", None)
+    info = None
+    for component in (*reversed(target.parents), target):
+        if token is not None:
+            token.raise_if_cancelled()
+        current = component.lstat()
+        if stat.S_ISLNK(current.st_mode) or getattr(current, "st_file_attributes", 0) & 0x400:
+            raise ValueError("Reparse filesystem target is unsupported.")
+        if component == target:
+            info = current
+    if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+        raise ValueError("Filesystem target type is unsupported.")
+    if token is not None:
+        token.raise_if_cancelled()
+    return FileInfoData(path=str(target), kind="directory" if stat.S_ISDIR(info.st_mode) else "file",
+        size_bytes=None if stat.S_ISDIR(info.st_mode) else info.st_size,
+        modified_ns=info.st_mtime_ns, device=info.st_dev, file_id=info.st_ino).model_dump()
+
+
+def execute_file_info(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    """Return two matching native metadata observations, never file contents."""
+    try:
+        path = FileInfoArgs.model_validate(args).path
+        first = _read_file_info(path, task_context)
+        if _read_file_info(path, task_context) != first:
+            return ToolResult.failure("file_info", "File metadata changed during inspection.",
+                                      error_code="FILE_INFO_CHANGED")
+        return ToolResult.success("file_info", data=first, factual_message="File metadata read.",
+                                  verified=True, adapter_used="native_api")
+    except PermissionError:
+        return ToolResult.failure("file_info", "File metadata access was denied.", error_code="FILE_INFO_ACCESS_DENIED")
+    except FileNotFoundError:
+        return ToolResult.failure("file_info", "The filesystem target was not found.", error_code="FILE_INFO_NOT_FOUND")
+    except (ValueError, ValidationError):
+        return ToolResult.failure("file_info", "The filesystem target is unsupported or ambiguous.",
+                                  error_code="FILE_INFO_UNSUPPORTED")
+    except OSError:
+        return ToolResult.failure("file_info", "File metadata could not be read.", error_code="FILE_INFO_READ_FAILED")
+
+
+def verify_file_info(result: ToolResult) -> VerifyResult:
+    """Native reads occur in the owned worker; never repeat filesystem I/O here."""
+    try:
+        metadata = FileInfoData.model_validate(result.data)
+        FileInfoArgs(path=metadata.path)
+        consistent = ((metadata.kind == "file" and metadata.size_bytes is not None)
+                      or (metadata.kind == "directory" and metadata.size_bytes is None))
+        ok = result.ok and result.verified and result.adapter_used == "native_api" and consistent
+    except (ValueError, ValidationError):
+        ok = False
+    return VerifyResult(ok=ok, method="native_api", detail="Native metadata readback verified." if ok
+                        else "Native metadata readback was not verified.")
+
+
 def verify_list_files(result: ToolResult) -> VerifyResult:
     return verify_noop(result)
 
@@ -439,6 +529,18 @@ def verify_create_folder(result: ToolResult) -> VerifyResult:
 # ---------------------------------------------------------------------------
 
 FILE_TOOL_SPECS: List[ToolSpec] = [
+    ToolSpec(
+        name="file_info",
+        description="Read metadata for one explicit file or directory without reading its contents.",
+        args_schema=FileInfoArgs,
+        risk_class=RiskClass.READ,
+        timeout_s=5.0,
+        executor=execute_file_info,
+        verifier=verify_file_info,
+        undo_builder=None,
+        adapter_priority=[AdapterPriority.NATIVE_API],
+        cancellable=True,
+    ),
     ToolSpec(
         name="list_files",
         description="List files and directories within a folder with metadata.",

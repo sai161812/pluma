@@ -1,6 +1,59 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P10 owned Windows safety revalidated
+## Current checkpoint: 2026-10-20, P11 slice 1: typed file metadata
+
+**This bounded P11 slice passes; P11 as a whole remains incomplete.** P01-P10
+bounded gates remain green. No P12 eligibility, automatic next slice, UI enabling
+or merge is authorized by this checkpoint.
+
+- Started clean on local/remote `ui-wiring` at
+  `29fa6eb59f2aaa0b3322aaa966e28de97bce63bc`. Git/worktrees/origin and PRs 1/2
+  rechecked, draft/open/unmerged. Before tracked edits, P01-P10 prerequisites
+  **318 passed in 36.75s**, matrix **298 source items / 324 rows**.
+- Reviewed all 73 section-21 catalog rows across 13 categories and source ASTs
+  for 13 tool modules. Selected missing exact `file_info`, one required P11 gap.
+  H-03 explicit MEDIUM intent remains a recorded candidate, not waived or fixed.
+- `file_info` now has a strict absolute Windows path schema, READ policy tier,
+  five-second owned process budget, native metadata queries and deterministic
+  verified result. No file contents or directory listings are read/returned.
+  Unknown/relative/pattern/device/stream/reserved targets fail validation; missing,
+  denied, unsupported/reparse and changed observations cannot fabricate metadata.
+  SMART/DEEP file schema subsets expose it; FAST/screen-only subsets do not.
+- Actual process deadlines now latch task_timeout before disposal. FAST and
+  multi-step failure owners finalize actual TOOL_TIMEOUT as FAILED, retaining
+  the first cancellation reason and evidence. Explicit STOP semantics remain;
+  the inherited global timeout-reason STOP assertion is unchanged and passes.
+  Broader ordinary in-process timeout/catalog gaps remain open under D-09.
+- Final focused **481 passed, 1 deselected in 58.00s**; isolated regressions
+  **799 passed, 3 skipped, 1 deselected in 74.56s**; raw audit `--runxfail`
+  **15 passed in 0.76s**; native containment **3 passed in 3.60s**; recovery
+  **5 passed in 0.79s**. All 50 new file_info checks pass in final suites;
+  all 115 FAST cases have isolation tags, final source hashes match and fixture
+  key counts are zero. Excluded elevation/corpus skips are not acceptance.
+- [P11 file_info contract/evidence (E17)](docs/completion/p11_file_info.md)
+  records native file/directory/Unicode/junction/process/SQLite evidence, inert
+  voice/model/policy/error seams, intermediate timeout failures and the narrowed
+  repair. Six runtime files, one test and four evidence/handoff documents change.
+  Existing tests, immutable requirements, production UI and dependencies unchanged.
+- Metadata reads produce no undo record or persistent side effect. Native tests
+  read back unchanged files, real owned worker/job exit and reopened history;
+  blocked FAST/SMART deadline versus STOP agrees with task memory/result/ledger/
+  typed STOP receipts. Permission/I/O faults are injected, not claimed as actual
+  denied-token/native ACL acceptance. No real user app, capture, model or system
+  elevation operation was used. P10/other physical acceptance limits remain.
+- Only CAT-file_info moves from MISSING to bounded IMPLEMENTED. The full catalog
+  still has 49 MISSING, 4 DEFECTIVE and 19 UNVERIFIED entries across P11/P12/etc.
+  No locked requirement or limitation is waived. Detailed denied action logging,
+  original mutating catalog contracts, actual inference/device/UI, performance,
+  security/install/package and release gates remain mandatory.
+- Commit/push confined to `ui-wiring`; main `6dbf589`, integration `9544752`,
+  other worktrees/archive/stash/tags retained. Recovery before this slice:
+  `29fa6eb59f2aaa0b3322aaa966e28de97bce63bc` in a new detached worktree.
+- **Next safe milestone remains P11**, one separately instructed bounded gap;
+  H-03 explicit user intent for MEDIUM operations is still a priority candidate.
+  Do not advance to P12 or enable command entry. No next slice has started.
+
+## Previous checkpoint: 2026-10-20, P10 owned Windows safety revalidated
 
 **P10 bounded gate passed after the owner authorized diagnosis and continuation.**
 Action entry remains disabled. P11 has not started; no automatic progression.

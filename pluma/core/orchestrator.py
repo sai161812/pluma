@@ -209,7 +209,13 @@ class Orchestrator:
     def _project_result(self, capsule: TaskCapsule, result: TaskExecutionResult) -> TaskExecutionResult:
         requested = TaskState(result.final_state)
         if requested in (TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL):
-            self._supervisor.stop_task(capsule.task_id)
+            from pluma.core.cancellation import StopReason
+            timed_out = (capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
+                and any(step.result.error_code == "TOOL_TIMEOUT" for step in result.steps))
+            if timed_out:
+                self._supervisor.fail_task_with_rollback(capsule.task_id)
+            else:
+                self._supervisor.stop_task(capsule.task_id)
         if requested == TaskState.FAILED and not capsule.terminal_ready.is_set():
             self._supervisor.fail_task_with_rollback(capsule.task_id)
         if requested in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.STOPPED,

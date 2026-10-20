@@ -1,5 +1,15 @@
 # Backend audit before action wiring
 
+P11 slice 1 (2026-10-20): exact READ `file_info` implemented through typed
+validation/policy, task-owned process, native metadata and ledger verification.
+Covered process deadlines now preserve task_timeout and actual failure outcomes;
+explicit STOP remains unchanged. [E17 contract/evidence](../../../docs/completion/p11_file_info.md)
+records 481 focused / 799 regression passes, 15 raw audit passes and native
+checks with disclosed fixture limits. P11 as a whole remains open. No action
+entry, appearance, protocol, device or release gate is enabled by this slice.
+Next safe milestone is another bounded P11 gap on separate instruction, not P12.
+Earlier checkpoint paragraphs below retain their own dated source context.
+
 P10 revalidation (2026-10-20): **bounded gate passed**, after owner-authorized
 follow-up. Fresh prerequisites 313 passed; final focused 413 passed; isolated
 regressions 739 passed / 3 skipped / 1 excluded elevation operation; raw audit

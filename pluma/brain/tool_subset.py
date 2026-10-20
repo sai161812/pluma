@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Standard tool groupings
 FILE_TOOLS = [
+    "file_info",
     "list_files",
     "find_file",
     "move_file",
