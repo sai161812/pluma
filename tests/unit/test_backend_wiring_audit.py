@@ -228,7 +228,6 @@ def test_runtime_close_drains_active_task_and_registry(isolated_supervisor):
         f"worker drained={worker.terminate_and_join.called}; registry closed={runtime.tool_registry.close.called}")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-07: STOP does not stop microphone capture until key release")
 def test_voice_stop_closes_capture_without_key_release(isolated_supervisor):
     core = bare_resident(isolated_supervisor)
     capture = SimpleNamespace(recording=False)
@@ -242,7 +241,6 @@ def test_voice_stop_closes_capture_without_key_release(isolated_supervisor):
     assert not still_recording, "Task reached STOPPED while its capture remained recording"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-07: empty voice capture leaves a CREATED capsule active")
 def test_empty_voice_capture_finalizes_its_capsule(isolated_supervisor):
     core = bare_resident(isolated_supervisor)
     core.audio_capture = SimpleNamespace(start=lambda: None, stop_and_get=lambda: b"")

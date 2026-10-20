@@ -16,7 +16,6 @@ from pluma.core.ipc import IpcServer
 from pluma.core.ownership import OwnershipRegistry
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.task_supervisor import TaskSupervisor
-from pluma.memory.redaction import redact_string
 
 if TYPE_CHECKING:
     from pluma.voice.activation import VoiceActivation
@@ -24,6 +23,7 @@ if TYPE_CHECKING:
     from pluma.voice.pipeline import VoicePipeline
 
 logger = logging.getLogger(__name__)
+_VOICE_INIT_LOCK = threading.Lock()
 
 # Hotkey identifiers
 HOTKEY_ID_TEXT = 1
@@ -83,6 +83,8 @@ class ResidentCore:
         self._running = False
         from pluma.core.shutdown import WorkGate
         self._entry_gate = WorkGate()
+        self._voice_lock = threading.Lock()
+        self._voice_session = None
 
     def _on_voice_press(self) -> None:
         # Bare fixtures initialize lazily; production creates the gate at startup.
@@ -97,14 +99,41 @@ class ResidentCore:
             return {"status": "error", "message": ("Runtime is shutting down." if self._entry_gate.closing
                                                     else "Task was cancelled.")}
 
+    def _voice_state_lock(self):
+        # Bare audit fixtures bypass __init__; creation is serialized as well.
+        with _VOICE_INIT_LOCK:
+            if not hasattr(self, "_voice_lock"):
+                self._voice_lock = threading.Lock()
+            return self._voice_lock
+
     def _admitted_on_voice_press(self) -> None:
-        """Handle push-to-talk key down event."""
-        logger.info("Voice push-to-talk activated. Starting audio capture...")
-        self._current_voice_capsule = self.supervisor.create_task_capsule(request_id="voice-req", history_expected=False)
-        if self.audio_capture is not None:
-            # We don't currently pass cancellation token to start(), but we can if audio_capture supports it.
-            # Spec says "Propagate the same cancellation token to ... STT, OCR, UI waits, shell/CLI calls and tool workers."
-            self.audio_capture.start()
+        from pluma.voice.session import VoiceSession
+        with self._voice_state_lock():
+            previous = getattr(self, "_voice_session", None)
+            if previous is not None:
+                if not previous.released or not previous.idle:
+                    return
+                self.supervisor.refresh_voice_cleanup(previous.capsule)
+                if previous.capsule.voice_session is not None:
+                    return  # failed closure keeps the device and capsule owned
+                self._voice_session = None
+            capsule = self.supervisor.create_task_capsule(history_expected=False)
+            session = VoiceSession(capsule, self.audio_capture)
+            self._voice_session = session
+            self._current_voice_capsule = capsule
+        try:
+            self.supervisor.attach_voice_session(capsule, session)
+            session.start()
+        except Exception:
+            logger.warning("Voice capture could not start.")
+            session.finish_start()
+            if not capsule.terminal_ready.is_set():
+                if capsule.cancellation_token.is_cancelled:
+                    self.supervisor.stop_task(capsule.task_id, grace_s=0)
+                else:
+                    self.supervisor.fail_task_with_rollback(capsule.task_id)
+        finally:
+            self.supervisor.refresh_voice_cleanup(capsule)
 
     def _on_voice_release(self) -> None:
         # Bare fixtures initialize lazily; production creates the gate at startup.
@@ -120,53 +149,46 @@ class ResidentCore:
                                                     else "Task was cancelled.")}
 
     def _admitted_on_voice_release(self) -> None:
-        """Handle push-to-talk key release event."""
-        logger.info("Voice push-to-talk released. Finalizing capture and processing audio...")
-        capsule = getattr(self, "_current_voice_capsule", None)
-        self._current_voice_capsule = None
-        
-        if self.audio_capture:
-            raw_audio = self.audio_capture.stop_and_get()
-        else:
-            raw_audio = None
-
-        if capsule and capsule.cancellation_token.is_cancelled:
-            logger.info("Voice capture cancelled before release.")
-            self.supervisor.stop_task(capsule.task_id)
-            return
-
-        if self.audio_capture is None or self.voice_pipeline is None or not raw_audio:
-            logger.debug("No audio recorded during voice push-to-talk.")
-            return
-
-        try:
-            request = self.voice_pipeline.process_audio(
-                raw_audio, 
-                cancellation_token=capsule.cancellation_token if capsule else None
-            )
-            
-            if capsule and capsule.cancellation_token.is_cancelled:
-                logger.info("Task cancelled during STT.")
-                self.supervisor.stop_task(capsule.task_id)
+        with self._voice_state_lock():
+            session = getattr(self, "_voice_session", None)
+            if session is None or not session.claim_release():
                 return
-
-            if request is not None:
-                # Redact transcript at the log output boundary before emitting
-                safe_text = redact_string(request.text or "")
-                logger.info("Voice command produced PlumaRequest(%s): '%s'", request.input_mode.value, safe_text)
-                if self.orchestrator:
-                    self.orchestrator.execute(request, capsule=capsule)
-                elif self.on_request_callback:
-                    # In test mocks, the callback doesn't accept capsule, so just call it
-                    self.on_request_callback(request)
-            else:
-                logger.info("Voice processing produced no executable command (silence or clarification needed).")
-                if capsule:
-                    self.supervisor.stop_task(capsule.task_id)
-        except Exception as exc:
-            logger.error("Error executing voice pipeline: %s", exc)
-            if capsule:
-                self.supervisor.stop_task(capsule.task_id)
+        capsule = session.capsule
+        raw_audio = None
+        failed = False
+        dispatched = False
+        try:
+            raw_audio = session.stop_and_get()
+            capsule.cancellation_token.raise_if_cancelled()
+            if not raw_audio or self.voice_pipeline is None:
+                return
+            request = self.voice_pipeline.process_audio(
+                raw_audio, cancellation_token=capsule.cancellation_token)
+            raw_audio = None  # raw audio is never included in logs/history
+            capsule.cancellation_token.raise_if_cancelled()
+            if request is None:
+                return  # silence/low-confidence clarification, no guessed action
+            if self.orchestrator is None:
+                raise RuntimeError("Voice execution owner is unavailable.")
+            capsule.request_id = str(request.request_id)
+            dispatched = True
+            self.orchestrator.execute(request, capsule=capsule)
+        except Exception:
+            failed = not capsule.cancellation_token.is_cancelled
+            logger.warning("Voice request did not complete.")
+        finally:
+            raw_audio = None
+            session.finish_release()
+            if (not dispatched or failed) and not capsule.terminal_ready.is_set():
+                if failed:
+                    self.supervisor.fail_task_with_rollback(capsule.task_id)
+                else:
+                    self.supervisor.stop_task(capsule.task_id, grace_s=0)
+            self.supervisor.refresh_voice_cleanup(capsule)
+            with self._voice_state_lock():
+                if (getattr(self, "_voice_session", None) is session
+                        and session.idle and capsule.voice_session is None):
+                    self._voice_session = None
 
 
     def handle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:
@@ -330,7 +352,11 @@ class ResidentCore:
             self.ipc.begin_shutdown()
 
     def cancel_capture(self) -> None:
-        """Shutdown discards capture. STOP/press/release parity is P07."""
+        """Discard capture through the same owner used by task STOP."""
+        session = getattr(self, "_voice_session", None)
+        if session is not None:
+            session.cancel_capture()
+            return
         capture = getattr(self, "audio_capture", None)
         if capture is not None:
             if hasattr(capture, "cancel"):

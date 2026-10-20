@@ -1,6 +1,62 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P06 owned shutdown before storage
+## Current checkpoint: 2026-10-20, P07 voice capture ownership
+
+This checkpoint supersedes earlier next-step/count statements. Locked source
+requirements and native dark UI are unchanged. This bounded gate does not
+certify physical voice, the full backend, installed artifacts or release.
+
+- **P07 bounded gate passed: both BA-07 failures repaired; P01-P06 preserved.**
+  Started clean on local/remote `ui-wiring` at
+  `e5643210d2795ac9d542021ef7adf06df736bef4`. Matrix passed before edits;
+  prerequisites **204 passed in 22.30s**; original BA-07 raw reproductions
+  **2 failed in 0.57s**. Only those two expected-failure markers are removed;
+  original audit setup/assertions and inherited shutdown tests are unchanged.
+- [P07 evidence and capture contract](docs/completion/p07_evidence.md) records
+  exact commands, tested blobs, environment, verification, limits and recovery.
+  Four runtime files, three test files and four handoff/evidence files change.
+- Push-to-talk attaches one VoiceSession to its capsule before capture admission.
+  STOP closes/discards through that owner without key release. All global latches
+  still precede cleanup. Device operations serialize independently of STOP;
+  pending/failed capture or STT retains ownership and factual residual evidence,
+  blocks pruning/new capture and prevents complete shutdown/storage closure.
+  One retained cleanup worker bounds the STOP caller's wait; it cannot falsely
+  prove a hung native driver exited. P06 shutdown/entry ownership remains.
+- Empty, unavailable, denied/low-confidence, failed and cancelled paths finalize.
+  No transcript produces independent pre-execution journal facts without fake
+  command text/tasks rows. STT and ordinary registered execution use the same
+  capsule/token, with actual SQLite readback. Missing orchestration fails closed
+  instead of invoking a capsule-free voice callback. Text dispatch is unchanged.
+- Capture requires positive stream-close readback; failed closure retains its
+  handle, discards audio and supports verified retry. Stale callbacks cannot feed
+  another utterance. Missing device dependencies fail closed. Raw audio remains
+  transient, device/model imports lazy, driver exception details omitted. Explicit
+  inert fixtures replace reliance on an absent library to avoid a microphone.
+- Final focused **328 passed in 32.44s**, including **29 new voice cases**.
+  Isolated regressions **656 passed, 3 skipped, 1 deselected, 3 xfailed in
+  47.91s**; prerequisites rechecked **204 passed in 19.25s**; owned containment
+  **3 passed in 2.86s**; recovery **5 passed in 0.50s**. Raw audit **3 failed,
+  12 passed in 0.56s**. Matrix **298 source items / 324 rows**. Fixture keys zero;
+  all 115 FAST cases have desktop-isolation properties. Retain P02's historical
+  isolation correction. Thread exceptions are errors; skips/xfails are not passes.
+- Inert device/STT fixtures prove lifecycle races, actual registered voice/text
+  routing, no post-STOP executor start, 55 empty cycles and SQLite journal/history
+  facts. Inherited native owned process/descendant/pipe/recovery evidence passes.
+  This is not physical microphone/whisper.cpp/hotkey/overlay, full idle soak,
+  loaded p95, product/install or release acceptance; P14/P19 remain mandatory.
+  No requirement or acceptance limitation is waived. Action entry stays disabled.
+- **Two findings remain: BA-08 and BA-09, three raw failures.** Truthful typed
+  STOP acknowledgements and initial credential privacy remain. Broader tools,
+  native inference, screen, device/UI, security, performance and release gates
+  stay open. A pending/residual result is never a clean STOP claim.
+- P07 is committed/pushed on `ui-wiring`; PRs 1/2 remain draft/open/unmerged.
+  Main `6dbf589`, integration `9544752` and existing worktrees/tags/archive/stash
+  remain unchanged. Pre-P07 recovery: `e5643210d2795ac9d542021ef7adf06df736bef4`;
+  inspect in a new detached worktree. No merge or automatic progression.
+- **Next safe milestone: P08 only**, after its shared contract, P01-P07
+  prerequisites and fresh Git/PR checks. P08 has not started.
+
+## Previous checkpoint: 2026-10-20, P06 owned shutdown before storage
 
 This checkpoint supersedes earlier next-step/count statements. Locked source
 requirements and native dark UI are unchanged. This is a bounded gate, not full

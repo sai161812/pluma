@@ -9,10 +9,26 @@ from pluma.core.cancellation import CancellationToken
 from pluma.voice.capture import AudioCapture
 
 
-def test_sounddevice_not_imported_at_module_level() -> None:
+@pytest.fixture(autouse=True)
+def inert_device(monkeypatch):
+    # Explicit device seam: never depend on a missing library to avoid a mic.
+    from types import SimpleNamespace
+    class Stream:
+        closed = False
+        def start(self): pass
+        def stop(self): pass
+        def abort(self): pass
+        def close(self): self.closed = True
+    monkeypatch.setitem(sys.modules, "sounddevice", SimpleNamespace(RawInputStream=lambda **kw: Stream()))
+
+
+def test_sounddevice_not_imported_at_module_level(monkeypatch) -> None:
     """Verify that importing pluma.voice.capture does NOT import sounddevice."""
-    # Ensure sounddevice was not imported
+    # A fresh import must not pull in the lazy device dependency.
+    import importlib
+    monkeypatch.delitem(sys.modules, "sounddevice")
     import pluma.voice.capture
+    importlib.reload(pluma.voice.capture)
     assert "sounddevice" not in sys.modules, "sounddevice must not be imported at module level"
 
 

@@ -123,6 +123,7 @@ class TaskCapsule(BaseModel):
     cleanup_finalized: bool = False
     terminal_persisted: Optional[bool] = None
     history_expected: bool = True
+    voice_session: Any = Field(default=None, exclude=True)
     owned_work: Dict[str, Any] = Field(default_factory=dict, exclude=True)
     work_lock: Any = Field(default_factory=threading.RLock, exclude=True)
     terminal_ready: Any = Field(default_factory=threading.Event, exclude=True)
@@ -206,6 +207,12 @@ class TaskCapsule(BaseModel):
     def close_resources(self, *, stopping: bool = False) -> List[CleanupEvidence]:
         """Clean only owned handles; retain unknown/failed ownership for retry."""
         checks = []
+        session = self.voice_session
+        if session is not None:
+            check = session.cleanup(stopping=stopping)
+            checks.append(check)
+            if check.verified and session.idle:
+                self.voice_session = None
         with self.work_lock:
             for resource_id, work in list(self.owned_work.items()):
                 verified = work["future"] is not None and work["future"].done()
@@ -333,7 +340,7 @@ class TaskSupervisor:
         with self._lock:
             terminal_ids = [
                 tid for tid, cap in self._tasks.items()
-                if cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set() and not cap.cleanup_pending and not cap.owned_work
+                if cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set() and not cap.cleanup_pending and not cap.owned_work and cap.voice_session is None
             ]
             if len(terminal_ids) <= limit:
                 return 0
@@ -405,6 +412,26 @@ class TaskSupervisor:
             self._persist_cleanup_report(capsule)
         raise TaskCancelledError("Task creation was cancelled by global STOP.")
 
+
+    def attach_voice_session(self, capsule, session) -> None:
+        with self._admission_lock:
+            capsule.cancellation_token.raise_if_cancelled()
+            if self._closing or capsule.state != TaskState.CREATED:
+                raise TaskCancelledError("Voice task admission closed.")
+            capsule.voice_session = session
+
+    def refresh_voice_cleanup(self, capsule) -> None:
+        """Read back the retained voice owner after its admitted handler exits.
+
+        Preserve an earlier residual outcome; never repeat rollback or turn a
+        pending result into a fabricated clean STOP. Storage remains owned by
+        the resident entry gate throughout this readback.
+        """
+        with self._lock:
+            if capsule.terminal_ready.is_set() and capsule.voice_session is not None:
+                capsule.close_resources(stopping=capsule.cancellation_token.is_cancelled)
+                self._persist_terminal(capsule)
+                self.prune_terminal_tasks()
 
     def start_task(self, task_id: str) -> None:
         """Transition task from CREATED to RUNNING."""
@@ -676,7 +703,7 @@ class TaskSupervisor:
                 capsules = list(self._tasks.values())
                 preparations = list(self._retained_preparations.values())
             for cap in capsules + preparations:
-                if cap.worker_controller is not None or cap.job_object is not None or cap.snapshot_registry is not None or cap.owned_work:
+                if cap.worker_controller is not None or cap.job_object is not None or cap.snapshot_registry is not None or cap.owned_work or cap.voice_session is not None:
                     cap.close_resources(stopping=True)
                 if cap in preparations:
                     if self._ledger is not None:
@@ -689,7 +716,7 @@ class TaskSupervisor:
                         raise RuntimeError("Terminal history remains unverified.")
                 persistent_jobs = [r for r in cap.owned_resources if r.ownership == ResourceOwnership.PLUMA_CREATED
                                    and r.metadata.get("job_object") is not None]
-                if cap.worker_controller is not None or cap.job_object is not None or persistent_jobs or cap.owned_work:
+                if cap.worker_controller is not None or cap.job_object is not None or persistent_jobs or cap.owned_work or cap.voice_session is not None:
                     raise RuntimeError("Owned worker or job remains unverified.")
 
     def get_active_tasks(self) -> List[TaskCapsule]:
