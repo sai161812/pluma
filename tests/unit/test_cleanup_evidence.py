@@ -73,6 +73,9 @@ class Worker:
         if self.fail:
             raise RuntimeError("api_key=not-for-ledger")
 
+    def dispose_owned_worker(self):
+        self.terminate_and_join()
+
     def verify_cleanup(self):
         return self.absent
 

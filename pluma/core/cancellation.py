@@ -94,6 +94,10 @@ class CancellationToken:
     Thread-only tasks use a threading.Event. Process tasks publish a native
     manual-reset event as their canonical latch and inherit it at spawn.
     Once cancelled, the token stays cancelled — there is no resume.
+
+    Native worker disposal also seals admission, without requesting parent
+    cancellation. That fence has no reason or cancellation timestamp. A real
+    subsequent cancellation still records its first explicit cause.
     """
 
     def __init__(self) -> None:
@@ -119,12 +123,12 @@ class CancellationToken:
 
     @property
     def reason(self) -> Optional[StopReason]:
-        """The reason the latch was set, or None if not yet cancelled."""
+        """First explicit cancellation cause; None for disposal-only fencing."""
         return self._reason
 
     @property
     def cancelled_at(self) -> Optional[datetime]:
-        """UTC timestamp when the latch was first set, or None."""
+        """UTC time of first explicit cancellation, or None for disposal only."""
         return self._cancelled_at
 
     # ------------------------------------------------------------------
@@ -182,10 +186,11 @@ class CancellationToken:
     # ------------------------------------------------------------------
 
     def wait_for_cancel(self, timeout_s: Optional[float] = None) -> bool:
-        """Block until the latch is set or *timeout_s* elapses.
+        """Block until parent cancellation is requested or *timeout_s* elapses.
 
         Returns True if cancelled, False if the timeout elapsed first.
         Useful for workers that must poll with a sleep rather than a tight loop.
+        Disposal-only native admission fencing does not signal this waiter.
         """
         return self._event.wait(timeout=timeout_s)
 

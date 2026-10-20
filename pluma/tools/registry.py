@@ -427,6 +427,10 @@ class TaskWorkerController:
                 self._admission.cancel()
         self._terminate_internal()
 
+    def dispose_owned_worker(self) -> None:
+        """Seal admission and read back owned cleanup without inventing STOP."""
+        self.terminate_and_join(_cancel_parent=False)
+
 
 def _evaluate_owned_policy(policy, tool_name, arguments, default_risk, task_id, token):
     if token is not None:
@@ -510,7 +514,7 @@ class ToolRegistry:
                 # A completed capsule may retain a controller reference. Never
                 # retag it so a delayed old-task disposal can kill a new task.
                 # The inherited task gate already requires a fresh process.
-                candidate.terminate_and_join()
+                candidate.dispose_owned_worker()
                 if candidate.verify_cleanup() is not True:
                     raise RuntimeError("Idle worker cleanup is unverified.")
                 self._idle_workers.pop()
@@ -526,7 +530,7 @@ class ToolRegistry:
                 if recycle and ctrl._proc and ctrl._proc.is_alive() and len(self._idle_workers) < 4:
                     self._idle_workers.append(ctrl)
                 else:
-                    ctrl.terminate_and_join()
+                    ctrl.dispose_owned_worker()
                     if ctrl.verify_cleanup() is not True:
                         raise RuntimeError("Task worker cleanup is unverified.")
                 self._worker_controllers.pop(task_id, None)
@@ -540,7 +544,7 @@ class ToolRegistry:
             failures = []
             for task_id, ctrl in list(self._worker_controllers.items()):
                 try:
-                    ctrl.terminate_and_join()
+                    ctrl.dispose_owned_worker()
                     if ctrl.verify_cleanup() is not True:
                         raise RuntimeError("Task worker cleanup is unverified.")
                 except Exception:
@@ -549,7 +553,7 @@ class ToolRegistry:
                     self._worker_controllers.pop(task_id, None)
             for ctrl in list(self._idle_workers):
                 try:
-                    ctrl.terminate_and_join()
+                    ctrl.dispose_owned_worker()
                     if ctrl.verify_cleanup() is not True:
                         raise RuntimeError("Idle worker cleanup is unverified.")
                 except Exception:

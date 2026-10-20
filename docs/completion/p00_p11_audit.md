@@ -29,7 +29,7 @@ these bounded checks and is not silently counted as passed.
 | P02 | Bounded BA-01 gate passes | E07/E16, latch-all/global STOP ordering including blocked first cleanup. |
 | P03 | Bounded BA-02 gate passes | E08/E16, real owned worker response interruption, original identities and Jobs. |
 | P04 | Bounded BA-04 gate passes | E09/E16, positive cleanup readback and retained failures/residuals. |
-| P05 | Bounded BA-05 state gate passes; broader factual cause defect found | E10/E16 authoritative state/result/history; separate successful native cleanup incorrectly records user_stop (R01 below). |
+| P05 | Bounded BA-05 state gate passes; R01 repaired | E10/E16 authoritative state/result/history; R01 false disposal cause is repaired by E26 (below). |
 | P06 | Bounded BA-06 gate passes | E11/E16 plus E22/E25 owned future/storage drain, including incomplete bounded close and later readback. |
 | P07 | Bounded BA-07 gate passes | E12/E16 voice capture/capsule cancellation and empty capture lifecycle; inert devices, not physical STT acceptance. |
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
@@ -38,8 +38,7 @@ these bounded checks and is not silently counted as passed.
 | P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E25 close individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
-[requirements/evidence matrix](requirements_matrix.md). Final fresh results
-and source checkpoint follow below after verification finishes.
+[requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
 
 ## P11 catalog: actual remaining work
 
@@ -83,11 +82,12 @@ network_status. This is backend fixture evidence, not full-device certification.
 
 ## Cross-cutting findings
 
-1. **R01: false user_stop cause on normal native worker disposal.** Reopened
-   owned success-fixture SQLite records SUCCEEDED / user_stop without a user
-   STOP. TaskCapsule cleanup calls worker termination, which cancels the parent
-   token. Preserve admission closure and cleanup while separating disposal from
-   genuine user/deadline cancellation; verify fresh memory/result/SQLite outcomes.
+1. **R01 repaired in [E26](p11_worker_disposal.md): false disposal cause.**
+   Native FAST/SMART success now retains SUCCEEDED / NULL in reopened SQLite;
+   owned worker crashes finalize FAILED / internal_error. Disposal seals
+   admission and verifies owned cleanup without inventing user STOP. Genuine
+   STOP/deadline first causes remain unchanged. This closes one factual-history
+   defect, not the remaining catalog gate.
 2. P11's native mutation identity/conflict-safe inverses and irreversible commit
    evidence remain incomplete. Pending journals prevent false clean success but
    do not supply missing usable inverses or impossible rollback.
@@ -110,7 +110,15 @@ for those choices and no owner-approved acceptance waiver exists.
 
 ## Current verification and next safe work
 
-Fresh reviewed-source evidence is [E25](p11_verification_ownership.md): 783
+Current repair evidence is [E26](p11_worker_disposal.md): 792 focused passes /
+1 excluded; 1110 isolated regressions / 3 skipped / 1 excluded; 15 raw audit;
+3 containment; 5 recovery; 39 authenticated native IPC. Actual exits zero,
+final regression hashes match, focused runtime hashes match (later test alias
+recorded), fixture keys zero and 115/115 FAST cases isolated. Six independently
+reopened SQLite rows confirm success has no cancellation cause and failures
+record internal_error. Matrix 298 source items / 324 traceable rows PASS.
+
+Previous audit evidence is [E25](p11_verification_ownership.md): 783
 focused passes / 1 excluded; 1101 isolated regressions / 3 skipped / 1 excluded;
 15 raw audit passes with --runxfail; 3 containment; 5 recovery; 39 authenticated
 native Python/C# IPC checks. Actual exits zero, final source hashes match,
@@ -118,11 +126,12 @@ fixture keys zero, all 115 FAST cases isolated. Exact commands/log/JUnit/JSON ar
 in ignored output/p11_verification. The unhandled/blocked/protocol reproductions
 are retained. These checks pass while P11's completion gate still fails.
 
-Checkpoint is the ui-wiring commit containing this audit, parent `2c5abf5`.
+E25 checkpoint is `0c2e8e6`; E26 is the subsequent ui-wiring repair commit.
 Main/integration and four worktrees remain preserved; PRs 1/2 were rechecked
-open/draft/unmerged in E24. R01 is currently open and is the next bounded fix. Failed reproductions/setup mistakes remain in E25; no
+open/draft/unmerged again during E26. R01 is repaired in E26. Failed reproductions/setup
+mistakes remain in E25/E26; no
 repeat-until-green claim, skipped requirements or amended history hides them.
 
-Next safe milestone remains P11: fix R01, then close defective tools and bounded
+Next safe milestone remains P11: close defective tools and bounded
 catalog/inverse/irreversible/backend gates, with separate tested commits. Do not
 call P11 complete until its required rows pass. P12 remains expressly forbidden.

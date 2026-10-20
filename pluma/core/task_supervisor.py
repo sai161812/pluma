@@ -227,7 +227,11 @@ class TaskCapsule(BaseModel):
         worker_errors = []
         if worker is not None:
             try:
-                worker.terminate_and_join()
+                dispose = getattr(worker, "dispose_owned_worker", None)
+                if callable(dispose):
+                    dispose()
+                else:
+                    worker.terminate_and_join()
             except Exception:
                 worker_errors.append("WORKER_TERMINATION_FAILED")
         if self.job_object is not None:

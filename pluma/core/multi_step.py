@@ -361,6 +361,9 @@ class MultiStepOrchestrator:
         if timed_out:
             reason = "Tool execution timed out."
             self.supervisor.fail_task_with_rollback(task_id)
+        elif capsule.cancellation_token.reason in (None, StopReason.INTERNAL_ERROR):
+            reason = "Owned execution failed."
+            self.supervisor.fail_task_with_rollback(task_id)
         else:
             self.supervisor.stop_task(task_id)
         self.supervisor.finalize_task(task_id, TaskState.STOPPED)

@@ -1,6 +1,49 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, overall P00-P11 audit and owned verification
+## Current checkpoint: 2026-10-20, P00-P11 audit R01 repair
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** The renewed overall audit is
+[here](docs/completion/p00_p11_audit.md). P00-P10 original bounded gates retain
+supporting evidence; do not turn that statement into full-product certification.
+Earlier P11 completion claims remain superseded.
+
+- [E26](docs/completion/p11_worker_disposal.md) repairs audit R01: native owned
+  worker disposal seals admission and verifies cleanup without recording a fake
+  user STOP. Both FAST/SMART worker crashes finalize FAILED / internal_error;
+  successful disposal retains SUCCEEDED / NULL in reopened SQLite. Genuine STOP
+  and deadline preserve their first causes. No latch reset or cleanup waiver.
+- Runtime scope: registry, TaskCapsule, both orchestrators and cancellation
+  docstrings. New native disposal/history tests; existing cleanup Worker fixture
+  gains the disposal interface and BA runtime-close Mock aliases it to its
+  existing termination mock. Failure/readback and original BA assertions unchanged.
+- Corrected pre-edit reproduction: 5 failed / 4 passed. Initial test setup had
+  wrong PlanMode/ownership spellings (7 failed / 2 passed), transparently retained.
+  After repair 9 passed. First broad run: 791 passed / 1 failed / 1 excluded;
+  failure was the cleanup fixture's missing disposal method, now corrected.
+- First full regression: 1109 passed / 1 failed / 3 skipped / 1 excluded; bare
+  BA Mock interface wiring corrected, raw --runxfail then 15 passed.
+- Final focused 792 passed / 1 excluded (105.68s); isolated regression 1110
+  passed / 3 skipped / 1 excluded (161.90s); raw audit 15 (0.39s), containment
+  3 (3.95s), recovery 5 (0.60s), native Python/C# IPC 39 (7.057s wall). Actual
+  exits zero; final regression hashes match; focused runtime hashes match with
+  the documented later test alias. All 115 FAST cases isolated, fixture keys
+  zero. Independent reopened SQLite: 2 SUCCEEDED/NULL, 4 FAILED/internal_error.
+  Matrix 298 source items / 324 rows PASS. Skips/excluded elevation are not passes.
+- Catalog unchanged: 9 bounded READs / 27 missing non-P12 tools / 4 defective /
+  17 unverified. Sixteen P12 perception/input tools remain untouched. Backend
+  inverse/irreversible/ownership/privacy/elevation gates remain open. No waiver.
+- No native UI, immutable specification, dependencies or user/device settings
+  changed. Dark UI/action-entry boundary remains preserved. No P12 implementation.
+- Started at pushed ui-wiring `0c2e8e6`; commit/push this reviewed repair on
+  ui-wiring only. PRs 1/2 freshly checked draft/open/unmerged. Preserve
+  main/integration, all four worktrees and recovery data.
+  Recovery point: `0c2e8e6` in a separate detached worktree. Do not reset this one.
+- Next safe milestone remains P11. A concrete bounded next step is repairing
+  show_activity to use the task's actual ledger and fail closed on read errors,
+  with isolated SQLite evidence. Do not begin that block automatically and do
+  not start P12 without the owner's instruction.
+
+## Previous checkpoint: 2026-10-20, overall P00-P11 audit and owned verification
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** The owner's renewed request is an
 honest overall P00-P11 audit, completion of remaining P11 work and tested commits.

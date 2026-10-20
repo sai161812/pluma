@@ -211,7 +211,10 @@ class Orchestrator:
         if requested in (TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL):
             from pluma.core.cancellation import StopReason
             timed_out = capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
-            if timed_out:
+            # A broken worker seals native admission without a user request.
+            # Route that internal fence through failure cleanup, not user STOP.
+            internal_failure = capsule.cancellation_token.reason in (None, StopReason.INTERNAL_ERROR)
+            if timed_out or internal_failure:
                 self._supervisor.fail_task_with_rollback(capsule.task_id)
             else:
                 self._supervisor.stop_task(capsule.task_id)

@@ -213,6 +213,7 @@ def test_runtime_close_drains_active_task_and_registry(isolated_supervisor):
     capsule = isolated_supervisor.create_task("audit-runtime-close")
     isolated_supervisor.start_task(capsule.task_id)
     worker = Mock()
+    worker.dispose_owned_worker = worker.terminate_and_join
     capsule.worker_controller = worker
     job = capsule.job_object
     runtime = object.__new__(PlumaApplicationRuntime)
