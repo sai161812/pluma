@@ -43,6 +43,8 @@ UI_PERCEPTION_TOOLS = [
 ]
 
 AUDIO_TOOLS = [
+    "get_volume",
+    "list_audio_devices",
     "get_volume_status",
     "set_volume",
     "mute",

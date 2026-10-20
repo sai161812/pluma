@@ -1,6 +1,46 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, remaining P11 in progress: process inspection
+## Current checkpoint: 2026-10-20, remaining P11 in progress: native audio
+
+The owner's instruction to finish remaining P11 is active. **P12 is forbidden.**
+No action enabling, appearance work, merge or waiver is authorized.
+
+- Started clean/pushed ui-wiring at `f19f261`; its 560 focused / 878 regression /
+  15 raw / 3 containment / 5 recovery checks passed immediately before edits.
+  [Audio evidence E20](docs/completion/p11_audio_readback.md) records native
+  get_volume/list_audio_devices and compatible get_volume_status, strict schemas,
+  bounded owned workers, endpoint identity, factual unknown properties, COM cleanup.
+- Reproduced obsolete native adapter read failure and all three mutators claiming
+  verified success on missing readback. Fixed native interfaces and fail-closed
+  state/mode/endpoint readback; no requested-value substitute or test-mode fallback.
+  Fixture output/proof now explicitly says fixture/emulated. Native writes are
+  not exercised; set_volume/mute/unmute and undo remain UNVERIFIED.
+- First focused run: 621 passed / 1 failed / 1 excluded in 328.99s. SQLite records
+  verified device read followed by unverified worker cleanup, not a false clean
+  success. Kernel-Power events show Modern Standby 18:13:22..18:17:28 overlapping
+  the case. Failed artifacts preserved. Same case passed unchanged in 1.75s;
+  combined 622 passed in 98.75s before final nine added review checks.
+- Final focused **631 passed / 1 excluded in 94.13s**; isolated regressions
+  **949 passed / 3 skipped / 1 excluded in 126.04s** (runner wall 272.908s);
+  raw audit **15 in 0.77s**, containment **3 in 3.47s**, recovery **5 in 0.84s**.
+  Final source hashes match; pytest exits zero, fixture keys zero, 115 FAST
+  cases isolated. Skips/exclusion are not passes. No performance claim.
+- Ignored test runner requests temporary system execution only during commands
+  and restores its prior state in finally. No display/away mode, persistent
+  policy/security change or resident PLUMA feature. This does not guarantee
+  against Modern Standby or certify suspend/recovery. Native physical tests are
+  reads only; voice/STT/planner and write/error/COM fault seams are disclosed.
+- Catalog totals: 6 IMPLEMENTED / 44 MISSING / 4 DEFECTIVE / 19 UNVERIFIED.
+  All 73 remain mandatory. Continue already authorized P11: pending mutation
+  journal/partial effects, bounded pre-state, endpoint/file identity-safe inverse,
+  remaining catalog and A/D/H evidence. P11 is not complete, P12 not eligible.
+- Three runtime files and one new test; Windows dependencies installed only in
+  ignored native venv. Other branches/worktrees/archive/stash/tags preserved.
+  Commit/push ui-wiring only. Recovery before this block: `f19f261` in a separate
+  detached worktree. Next safe milestone: P11 mutation evidence/undo, no new
+  instruction needed between P11 blocks.
+
+## Previous checkpoint: 2026-10-20, remaining P11 in progress: process inspection
 
 P11 remains authorized; **P12 is forbidden** until the owner instructs otherwise.
 This checkpoint does not finish P11 or enable command entry.

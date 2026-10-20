@@ -1,5 +1,12 @@
 # Backend audit before action wiring
 
+P11 audio checkpoint: [E20](../../../docs/completion/p11_audio_readback.md) adds
+native get_volume/list_audio_devices and repairs missing-readback false success.
+Final 631 focused / 949 regression / 15 raw audit passes; 3 containment / 5 recovery.
+The initial standby-overlapped cleanup failure remains recorded, with unchanged
+reproduction and final-source verification. Audio writes/undo and other catalog
+gaps remain open. P11 continues; P12 is forbidden; action entry stays disabled.
+
 P11 process checkpoint: [E19](../../../docs/completion/p11_process_inspection.md)
 adds bounded native READ process enumeration/information/usage. Final focused
 560 passes; isolated regression 878 passes / 3 skips / 1 excluded elevation;
