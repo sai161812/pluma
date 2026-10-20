@@ -20,7 +20,8 @@ from pluma.tools import files
 from pluma.tools.base import ToolResult
 from pluma.tools.registry import ToolArgumentError, UnknownToolError
 from tests.unit.test_runtime_shutdown import runtime, NATIVE_JOB, reopened, task
-from tests.unit.test_worker_cancellation import OwnedProbe, await_file
+from tests.unit.test_worker_cancellation import OwnedProbe, await_file, owned_noop
+from pluma.tools.registry import WorkerRequest
 
 
 @pytest.mark.parametrize('arguments', [
@@ -184,17 +185,27 @@ def test_blocked_metadata_worker_is_owned_and_bounded(runtime, monkeypatch, tmp_
     # Inject blocked native work in the registered READ tool, preserving the
     # real process-isolation policy, capsule, controller, Jobs and timeout path.
     spec = runtime.tool_registry.lookup('file_info')
-    spec.executor = OwnedProbe(str(tmp_path))
-    spec.timeout_s = 10 if stop else 1
+    monkeypatch.setattr(spec, "executor", OwnedProbe(str(tmp_path)))
+    monkeypatch.setattr(spec, "timeout_s", 10 if stop else 1)
     route(runtime, {'path': str(tmp_path)}, route_mode)
     req = PlumaRequest.from_text('Blocked metadata fixture')
-    cap = runtime.supervisor.create_task(req.request_id)
+    cap = runtime.supervisor.create_task_capsule(request_id=req.request_id, history_expected=False)
+    # This case measures a blocked response deadline, separately from cold
+    # spawn/import. Warm the same task-owned worker with a bounded inert read.
+    controller = runtime.tool_registry.get_worker(cap.task_id)
+    cap.worker_controller = controller
+    cap._tool_registry = runtime.tool_registry
+    status, _ = controller.execute_call(owned_noop, {}, WorkerRequest(cap.task_id, 'worker_probe', {}, 6), 6,
+        job_object=cap.job_object, cancellation_token=cap.cancellation_token)
+    assert status == 'ok'
+    warmed_identity = dict(controller.worker_identity)
     with ThreadPoolExecutor(1) as pool:
         running = pool.submit(runtime.orchestrator.execute, req, cap)
         try:
             await_file(tmp_path / 'entered', running)
             controller = cap.worker_controller
             proc = controller._proc
+            assert controller.worker_identity == warmed_identity
             assert controller.worker_identity['task_id'] == cap.task_id
             if stop:
                 runtime.supervisor.stop_task(cap.task_id, grace_s=0)
@@ -204,6 +215,8 @@ def test_blocked_metadata_worker_is_owned_and_bounded(runtime, monkeypatch, tmp_
                 runtime.supervisor.stop_task(cap.task_id, grace_s=0)
     assert not result.success and not proc.is_alive() and controller.verify_cleanup() is True
     assert result.final_state == ('STOPPED' if stop else 'FAILED')
+    if not stop:
+        assert 'user request' not in (result.error or '').lower()
     assert result.steps[0].result.error_code == ('TASK_CANCELLED' if stop else 'TOOL_TIMEOUT')
     assert cap.cancellation_token.reason == (StopReason.USER_STOP if stop else StopReason.TASK_TIMEOUT)
     row = ActivityQuery(runtime.db).task_by_id(cap.task_id)
@@ -259,6 +272,10 @@ def test_denied_file_request_has_factual_history_without_exposing_target(runtime
     query = ActivityQuery(runtime.db)
     row = query.task_by_id(cap.task_id)
     assert row['final_state'] == 'FAILED' and cap.terminal_persisted is True
-    assert not query.actions_for_task(cap.task_id)  # existing runner returns before executor action logging
+    actions = query.actions_for_task(cap.task_id)
+    assert len(actions) == 1 and not actions[0]['verified']
+    assert json.loads(actions[0]['result_json']) == {'executed': False}
+    assert actions[0]['approval_state'] == 'DENY'
+    assert 'private-fixture-target' not in json.dumps(actions)
     assert 'private-fixture-target' not in json.dumps(row) and not target.exists()
     assert not query.available_undo_records_for_task(cap.task_id)

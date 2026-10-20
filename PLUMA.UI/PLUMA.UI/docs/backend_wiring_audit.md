@@ -1,5 +1,12 @@
 # Backend audit before action wiring
 
+P11 remaining-work checkpoint: [E18 policy boundary](../../../docs/completion/p11_policy_boundary.md)
+records exact-call MEDIUM approval, bounded owned policy waits, denied-action
+history and fail-closed pre-state. 503 focused / 821 regression / 15 raw audit
+passes; P11 remains in progress under the owner's instruction to finish its
+remaining work. P12 and UI action entry remain disabled. Earlier checkpoints
+below retain their original context, not current next-instruction requirements.
+
 P11 slice 1 (2026-10-20): exact READ `file_info` implemented through typed
 validation/policy, task-owned process, native metadata and ledger verification.
 Covered process deadlines now preserve task_timeout and actual failure outcomes;

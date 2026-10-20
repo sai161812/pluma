@@ -1,6 +1,47 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P11 slice 1: typed file metadata
+## Current checkpoint: 2026-10-20, remaining P11 in progress: policy boundary
+
+The owner has explicitly authorized **finishing all remaining P11 work**, while
+forbidding P12. This overrides earlier requests for a separate instruction before
+each P11 slice. Continue coherent P11 blocks with verification and commits;
+P11 is not complete, P12 remains ineligible and action entry remains disabled.
+
+- Clean starting source: 87634db93efe5e01c4c64e16dcf50cc7d404b372. Fresh Git/PR/
+  worktree checks preserve main/integration and draft/open/unmerged PRs 1/2.
+- Initial prerequisite: 367 passed / 1 failed; one-second metadata fixture expired
+  during cold import before its marker. Same owned worker is now prewarmed and
+  identity checked, retaining the one-second blocked execution deadline. SMART
+  actual timeout copy no longer says user request. Corrected prerequisites:
+  **368 passed in 51.99s** before policy feature edits.
+- [Policy evidence E18](docs/completion/p11_policy_boundary.md): MEDIUM requires
+  exact-call explicit host approval, strict scope/response validation, no session
+  blanket grant, and no lower-risk override bypass. Policy waits are bounded,
+  admitted/retained on the same capsule; late approval cannot dispatch after STOP.
+  Denials/failed pre-state now have sanitized executed=false action records;
+  successful action risk/approval fields reflect actual policy. Failed pre-state
+  no longer proceeds into a reversible mutation. Raw policy arguments are not logged.
+- Focused **503 passed / 1 excluded in 65.24s**; regressions **821 passed /
+  3 skipped / 1 excluded in 73.63s**; raw audit **15 passed in 0.64s**; containment
+  **3 passed in 3.56s**; recovery **5 passed in 0.70s**. Final hashes match, keys
+  zero, all 115 FAST cases tagged isolated. Skips/elevation exclusion are not passes.
+- New fault-injection fixture initially leaked a shared ToolSpec mutation;
+  scoped monkeypatch now restores it. Existing global STOP assertions unchanged.
+  Real approved owned-file move/rollback/reopened history pass; approval UI,
+  physical devices, browser and clipboard operations are not certified by this block.
+- Owner delegated browser and clipboard choices. [Scope decisions](docs/completion/p11_scope_decisions.md)
+  select native Edge/Chrome managed profiles/target IDs, preserving personal
+  profiles, and Unicode text/file lists/bitmap clipboard with in-memory undo.
+  These adapters still require implementation and native verification. Missing
+  declared Windows packages are being prepared only in ignored output/p11-native-env.
+- Continue remaining P11: mutation/partial-effect journaling and inverse/conflict
+  integrity, catalog implementations/adapters and A/D/H evidence. Do not treat
+  this safety checkpoint as completion or require another instruction for already
+  authorized P11 work. Do not start P12, enable command entry, merge or waive gaps.
+- Recovery before this block: 87634db93efe5e01c4c64e16dcf50cc7d404b372 in a new
+  detached worktree. Origin ui-wiring only; preserve other worktrees/archive/stash/tags.
+
+## Previous checkpoint: 2026-10-20, P11 slice 1: typed file metadata
 
 **This bounded P11 slice passes; P11 as a whole remains incomplete.** P01-P10
 bounded gates remain green. No P12 eligibility, automatic next slice, UI enabling

@@ -211,7 +211,7 @@ class Orchestrator:
         if requested in (TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL):
             from pluma.core.cancellation import StopReason
             timed_out = (capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
-                and any(step.result.error_code == "TOOL_TIMEOUT" for step in result.steps))
+                and any(step.result.error_code in ("TOOL_TIMEOUT", "POLICY_TIMEOUT") for step in result.steps))
             if timed_out:
                 self._supervisor.fail_task_with_rollback(capsule.task_id)
             else:

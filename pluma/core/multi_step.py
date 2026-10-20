@@ -349,8 +349,9 @@ class MultiStepOrchestrator:
         task_id = capsule.task_id
         from pluma.core.cancellation import StopReason
         timed_out = (capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
-            and any(record.result.error_code == "TOOL_TIMEOUT" for record in executed_records))
+            and any(record.result.error_code in ("TOOL_TIMEOUT", "POLICY_TIMEOUT") for record in executed_records))
         if timed_out:
+            reason = "Tool execution timed out."
             self.supervisor.fail_task_with_rollback(task_id)
         else:
             self.supervisor.stop_task(task_id)

@@ -424,6 +424,22 @@ class TaskWorkerController:
         self._terminate_internal()
 
 
+def _evaluate_owned_policy(policy, tool_name, arguments, default_risk, task_id, token):
+    if token is not None:
+        token.admit_executor()
+    return policy.evaluate(tool_name=tool_name, arguments=arguments, default_risk=default_risk, task_id=task_id)
+
+
+def _record_no_execution(ledger, task_context, step_index, tool_name, arguments, risk, decision, result):
+    if ledger is not None and task_context is not None:
+        from pluma.memory.activity import ActionRecord
+        ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
+            tool=tool_name, args_raw=arguments, risk=risk.value, adapter="policy",
+            approval_state=decision, verified=False, result_data={"executed": False},
+            error_detail={"code": result.error_code, "error": result.error}))
+    return result
+
+
 class UnknownToolError(KeyError):
     """Raised when a tool name is not found in the registry."""
 
@@ -688,23 +704,49 @@ class ToolRegistry:
         if token is not None:
             token.raise_if_cancelled()
 
-        # 1. Policy check
+        # Policy work is admitted and retained on the same capsule. A late
+        # approval after STOP/deadline is ignored; it cannot dispatch an action.
         active_policy = policy_engine or self._policy_engine
+        effective_risk = spec.risk_class
+        approval_state = "NOT_CONFIGURED"
         if active_policy is not None:
-            task_id = getattr(task_context, "task_id", None) if task_context else None
-            policy_eval = active_policy.evaluate(
-                tool_name=tool_name,
-                arguments=validated_args,
-                default_risk=spec.risk_class,
-                task_id=task_id,
-            )
+            task_id = getattr(task_context, "task_id", None)
+            policy_future = self.submit_owned(_evaluate_owned_policy, active_policy, tool_name,
+                validated_args, spec.risk_class, task_id, token, task_id=task_id,
+                command_class="policy", _task_context=task_context)
+            deadline = time.monotonic() + min(spec.timeout_s or 30.0, 30.0)
+            try:
+                while True:
+                    if token is not None:
+                        token.raise_if_cancelled()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        from pluma.core.cancellation import StopReason
+                        if token is not None:
+                            token.cancel(StopReason.TASK_TIMEOUT)
+                        policy_future.cancel()
+                        return _record_no_execution(ledger, task_context, step_index, tool_name,
+                            validated_args, effective_risk, "UNVERIFIED", ToolResult.failure(tool_name,
+                                "Policy decision timed out. No action was executed.", error_code="POLICY_TIMEOUT"))
+                    try:
+                        policy_eval = policy_future.result(timeout=min(0.05, remaining))
+                        break
+                    except concurrent.futures.TimeoutError:
+                        continue
+            except TaskCancelledError:
+                policy_future.cancel()
+                raise
+            except Exception:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, "UNVERIFIED", ToolResult.failure(tool_name,
+                        "Policy evaluation failed. No action was executed.", error_code="POLICY_FAILED"))
+            effective_risk = getattr(policy_eval, "risk_class", spec.risk_class)
             decision_val = getattr(policy_eval, "decision", None)
-            if decision_val != "ALLOW" and str(decision_val) not in ("ALLOW", "PolicyDecision.ALLOW"):
-                return ToolResult.failure(
-                    tool=tool_name,
-                    error=f"Blocked by policy: {policy_eval.reason}",
-                    error_code="POLICY_DENIED",
-                )
+            approval_state = getattr(decision_val, "value", str(decision_val))
+            if approval_state != "ALLOW":
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        "Blocked by policy: " + policy_eval.reason, error_code="POLICY_DENIED"))
 
         # 2. Check cancellation latch before starting
         # Cancellability describes in-flight work; it never exempts admission
@@ -718,8 +760,13 @@ class ToolRegistry:
             try:
                 pre_undo_data = spec.undo_builder(validated_args)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning("Failed to build pre-mutation undo data for %s: %s", tool_name, e)
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        "Safe pre-state could not be captured. No action was executed.", error_code="UNDO_PRESTATE_FAILED"))
+            if not isinstance(pre_undo_data, dict) or not pre_undo_data:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        "Safe pre-state was unavailable. No action was executed.", error_code="UNDO_PRESTATE_FAILED"))
 
         if token is not None:
             token.raise_if_cancelled()
@@ -984,7 +1031,8 @@ class ToolRegistry:
                     step_index=step_index,
                     tool=tool_name,
                     args_raw=validated_args,
-                    risk=spec.risk_class.value,
+                    risk=effective_risk.value,
+                    approval_state=approval_state,
                     adapter=final_result.adapter_used,
                     duration_ms=duration_ms,
                     result_data=final_result.data,
