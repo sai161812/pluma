@@ -211,6 +211,12 @@ class MultiStepOrchestrator:
                 )
                 executed_records.append(record)
 
+                # An unverified history commit must not retry an already
+                # applied effect. Preserve its journal and end this capsule.
+                if tool_result.error_code in ("LEDGER_WRITE_FAILED", "MUTATION_JOURNAL_FAILED"):
+                    return self._handle_failure(capsule, executed_records, start_time,
+                        replan_count, tool_result.error or "Execution history could not be verified.")
+
                 prior_results_for_replan.append({
                     "step_index": step_idx,
                     "tool": tool_call.tool,

@@ -507,6 +507,37 @@ def test_undo_query_failure_is_not_an_empty_success():
     assert result.factual_summary == "Rollback records could not be verified. Residual effects are unknown."
 
 
+def _close_owned_cleanup_fixture(registry, capsule, child_handle, unrelated):
+    """Attempt every owned teardown even when an earlier owner rejects close."""
+    import _winapi
+    try:
+        registry.close()
+    finally:
+        try:
+            capsule.close_resources(stopping=True)
+        finally:
+            try:
+                if child_handle is not None:
+                    _winapi.CloseHandle(child_handle)
+            finally:
+                try:
+                    unrelated.kill()
+                finally:
+                    unrelated.wait(3)
+
+
+def test_fixture_close_failure_still_drains_other_owned_resources():
+    calls = []
+    def fail():
+        calls.append('registry')
+        raise RuntimeError('Injected retained cleanup')
+    capsule = SimpleNamespace(close_resources=lambda **kwargs: calls.append('capsule'))
+    process = SimpleNamespace(kill=lambda: calls.append('kill'), wait=lambda timeout: calls.append('wait'))
+    with pytest.raises(RuntimeError, match='Injected retained cleanup'):
+        _close_owned_cleanup_fixture(SimpleNamespace(close=fail), capsule, None, process)
+    assert calls == ['registry', 'capsule', 'kill', 'wait']
+
+
 def test_real_supervisor_cleanup_reads_worker_and_descendant_absence(tmp_path):
     import _winapi
     supervisor = TaskSupervisor(paths=PlumaPaths(tmp_path / "local", tmp_path / "roaming"))
@@ -541,9 +572,4 @@ def test_real_supervisor_cleanup_reads_worker_and_descendant_absence(tmp_path):
             report = json.loads(query.resources_for_task(capsule.task_id)[0]["metadata_json"])
             assert report["complete"] and all(item["verified"] for item in report["entries"])
     finally:
-        registry.close()
-        capsule.close_resources(stopping=True)
-        if child_handle is not None:
-            _winapi.CloseHandle(child_handle)
-        unrelated.kill()
-        unrelated.wait(3)
+        _close_owned_cleanup_fixture(registry, capsule, child_handle, unrelated)

@@ -34,6 +34,14 @@ class RollbackStepResult:
 # Default recipe handlers
 # ---------------------------------------------------------------------------
 
+
+def _recipe_pending_mutation(undo_data: Dict[str, Any]) -> RollbackStepResult:
+    """Unknown partial effects are retained, never guessed at by a generic inverse."""
+    return RollbackStepResult(ok=False, action="pending_mutation",
+        message="Mutation outcome is unverified. Pre-state retained for safe recovery.",
+        error="MUTATION_OUTCOME_UNKNOWN", data={"operation_id": undo_data.get("operation_id"),
+            "tool": undo_data.get("tool"), "pre_state_retained": True})
+
 def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Restore a moved file or directory back to its source location, preserving any newer conflicting content."""
     src = Path(undo_data.get("source", ""))
@@ -265,6 +273,7 @@ class RollbackRecipes:
         self._register_defaults()
 
     def _register_defaults(self) -> None:
+        self.register("pending_mutation", _recipe_pending_mutation)
         self.register("move_file", _recipe_move_file)
         self.register("rename_file", _recipe_rename_file)
         self.register("create_folder", _recipe_create_folder)

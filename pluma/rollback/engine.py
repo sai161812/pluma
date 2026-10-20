@@ -119,8 +119,11 @@ class RollbackEngine:
                     succeeded += 1
                     # Remove only the exact pre-state whose verified rollback
                     # and ledger consumption succeeded. Never discard a conflict.
-                    if memory_undo_stack is not None and undo_data in memory_undo_stack:
-                        memory_undo_stack.remove(undo_data)
+                    if memory_undo_stack is not None:
+                        for item in list(memory_undo_stack):
+                            if (item == undo_data or (item.get("action") == "pending_mutation"
+                                    and item.get("action_row_id") == action_id)):
+                                memory_undo_stack.remove(item)
                 else:
                     failed += 1
 

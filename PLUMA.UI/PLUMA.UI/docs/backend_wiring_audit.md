@@ -1,5 +1,13 @@
 # Backend audit before action wiring
 
+P11 mutation checkpoint: [E21](../../../docs/completion/p11_mutation_journal.md)
+persists pre-state before dispatch, retains uncertain partial effects, finalizes
+one action atomically and refuses success/replan on unverified history. Final
+648 focused / 966 regression / 15 raw passes; containment 3 / recovery 5. Original
+cleanup-budget failure is retained with truthful residual evidence; fixture
+teardown now attempts all owners. Bounded pre-state capture and remaining catalog/
+inverse gates remain P11 work. P12 is forbidden; action entry stays disabled.
+
 P11 audio checkpoint: [E20](../../../docs/completion/p11_audio_readback.md) adds
 native get_volume/list_audio_devices and repairs missing-readback false success.
 Final 631 focused / 949 regression / 15 raw audit passes; 3 containment / 5 recovery.

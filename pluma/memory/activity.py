@@ -173,7 +173,7 @@ class ActivityLedger:
 
     # -- Action recording --
 
-    def insert_action(self, record: ActionRecord) -> int:
+    def insert_action(self, record: ActionRecord, *, _timeout_s: Optional[float] = None) -> int:
         """Insert an action row and return its integer row id."""
         sanitised_args = sanitise_args_for_ledger(record.tool, record.args_raw)
         sanitised_result = redact_sensitive_data(record.result_data) if record.result_data else None
@@ -199,13 +199,14 @@ class ActivityLedger:
                 result_json, int(record.verified), verify_json, error_json,
             ),
             wait=True,
+            timeout_s=_timeout_s,
         )
         record._row_id = row_id
         return row_id  # type: ignore[return-value]
 
     # -- Undo records --
 
-    def insert_undo_record(self, record: UndoRecord) -> None:
+    def insert_undo_record(self, record: UndoRecord, *, _timeout_s: Optional[float] = None) -> None:
         """Insert an undo record linked to an action row."""
         sanitised_undo = redact_sensitive_data(record.undo_data) if record.undo_data else None
         self._db.execute_write(
@@ -219,7 +220,51 @@ class ActivityLedger:
                 json.dumps(sanitised_undo) if sanitised_undo is not None else None,
                 int(record.available),
             ),
+            timeout_s=_timeout_s,
         )
+
+    def prepare_mutation(self, record: ActionRecord, pending: Dict[str, Any]) -> int:
+        """Acknowledge and read back durable pre-state before executor admission.
+
+        If either write fails, the caller must not dispatch. A crash between
+        these writes cannot leave a mutation because dispatch follows both.
+        """
+        row_id = self.insert_action(record, _timeout_s=2.0)
+        if type(row_id) is not int or row_id <= 0:
+            raise RuntimeError("Mutation action identity was not verified.")
+        self.insert_undo_record(UndoRecord(row_id, pending), _timeout_s=2.0)
+        row = ActivityQuery(self._db).undo_record_for_action(row_id)
+        expected = redact_sensitive_data(pending)
+        if not row or row['available'] != 1 or json.loads(row['undo_json']) != expected:
+            raise RuntimeError("Mutation pre-state was not durably verified.")
+        return row_id
+
+    def finish_mutation(self, row_id: int, record: ActionRecord,
+                        undo_data: Dict[str, Any], *, not_executed: bool = False) -> bool:
+        """Atomically finalize the original action and its inverse evidence.
+
+        Return whether undo remains available (a concurrent verified rollback
+        may have consumed it). Never create a second action for one attempt.
+        """
+        encode = lambda value: json.dumps(redact_sensitive_data(value)) if value is not None else None
+        statements = [(
+            """UPDATE actions SET adapter=?, ended_at=?, duration_ms=?, result_json=?,
+                   verified=?, verification_json=?, error_json=? WHERE id=? AND task_id=?""",
+            (record.adapter, record.ended_at or _now_iso(), record.duration_ms,
+             encode(record.result_data), int(record.verified), encode(record.verification_detail),
+             encode(record.error_detail), row_id, record.task_id)),
+            ("UPDATE undo_records SET undo_json=? WHERE action_id=?", (encode(undo_data), row_id))]
+        if not_executed:
+            statements.append(("UPDATE undo_records SET available=0 WHERE action_id=?", (row_id,)))
+        self._db.execute_transaction(statements, timeout_s=2.0)
+        row = ActivityQuery(self._db).undo_record_for_action(row_id)
+        action = self._db.execute_read_one("SELECT verified FROM actions WHERE id=? AND task_id=?",
+                                           (row_id, record.task_id))
+        if (not row or not action or action['verified'] != int(record.verified)
+                or json.loads(row['undo_json']) != redact_sensitive_data(undo_data)
+                or (not_executed and row['available'] != 0)):
+            raise RuntimeError("Mutation completion was not durably verified.")
+        return bool(row['available'])
 
     # Alias for convenient cross-caller use
     insert_undo = insert_undo_record

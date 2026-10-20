@@ -1,6 +1,64 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, remaining P11 in progress: native audio
+## Current checkpoint: 2026-10-20, remaining P11 in progress: mutation journal
+
+P11 remains authorized and incomplete. **P12 is forbidden** until the owner's
+instruction. Do not enable action entry, merge or waive missing requirements.
+
+- Started clean/pushed ui-wiring at `2f5e87c`. The preceding 631 focused / 949
+  regression / 15 raw / 3 containment / 5 recovery checks passed before edits.
+  [Mutation journal E21](docs/completion/p11_mutation_journal.md) reproduces an
+  actual owned rename left after STOP with zero undo records and persisted
+  STOPPED (1 failure in 1.76s). Failed artifacts preserved; owned worker drained.
+- Minimum pre-state now publishes/persists/readbacks before executor dispatch.
+  Verified success atomically upgrades the same action/inverse. Unknown partial
+  effects retain a non-executable pending recipe and residual outcome; no blind
+  inverse. History failure cannot report success or trigger SMART replan/next
+  step. Rejected admission consumes unused pre-state; thread deadlines latch
+  TASK_TIMEOUT. Failed verifier copy is factual; worker snapshots cannot erase
+  parent journals. Verified DB inverse can consume its exact pending memory row.
+- Five runtime files change (registry, activity, rollback engine/recipes,
+  multi-step); new 16-case journal tests and one existing cleanup fixture change.
+  No migration, dependency, UI or immutable contract change.
+- Expanded fixture run had 2 plan-schema setup failures / 12 passes; corrected
+  DIRECT to MULTI_STEP without changing product schema/assertions. Boundary set
+  passed 74. Initial focused: 644 passed / 1 failed / 1 excluded in 106.91s.
+  Existing native cleanup could not verify worker exit within budget: SQLite
+  correctly retained STOPPED_WITH_RESIDUAL, no matching queried standby events;
+  original identity absent on later read. Same case passed unchanged in 1.53s.
+- That fixture's finally skipped remaining cleanup after registry.close raised.
+  Nested finally now attempts every owned owner; injected-close ordering test
+  added. All original assertions/deadlines unchanged. Corrected focused 646
+  passed; final reopened-prestate/refusal assertions strengthened afterwards.
+- Before the last ordering review, 647 focused / 965 regression checks passed.
+  Review then deferred worker undo removal until final verification/history;
+  its added fixture required explicit MEDIUM host approval, not a risk downgrade.
+  Reviewed boundary 76 passed. Final-source focused **648 passed / 1 excluded
+  in 131.43s**; isolated regressions **966 passed / 3 skipped / 1 excluded in
+  114.77s**; raw audit **15 in 0.46s**, containment **3 in 3.17s**, recovery
+  **5 in 0.63s**. Final hashes match, pytest
+  exits zero, fixture keys zero, all 115 FAST cases isolated. Skips/exclusion are
+  not passes; initial failures remain documented. No performance/soak claim.
+- Real Windows Jobs/workers, owned file effects, actual inverse and reopened
+  SQLite prove the bounded boundary. Failure/SQL-trigger/planner seams explicit;
+  no user file/window/browser/clipboard/audio state changed. Temporary test-only
+  execution request restores in finally; no power/security policy change.
+- Catalog totals remain 6 IMPLEMENTED / 44 MISSING / 4 DEFECTIVE / 19 UNVERIFIED.
+  This is not full P11. Continue already authorized P11: bounded owned pre-state
+  capture, tool-specific identity/conflict-safe inverse, irreversible evidence and
+  remaining typed catalog/A/D/H gates. A pending partial effect with insufficient
+  identity evidence stays residual, not a promised rollback.
+- Pending owner clarification for terminal catalog: master forbids unrestricted
+  shell but does not select permitted command templates. Async question offers
+  fixed diagnostics plus configured/confirmed project commands, diagnostics only,
+  or an owner-provided allowlist. Do not assume an answer or implement dependent
+  terminal scope while pending; continue independent P11 safety work.
+- Next safe milestone: P11 bounded pre-state execution only, then remaining P11
+  gaps. No fresh instruction needed between authorized P11 blocks; do not start
+  P12. Recovery before this block: `2f5e87c` in a separate detached worktree.
+  Commit/push ui-wiring only; other worktrees/archive/stash/tags preserved.
+
+## Previous checkpoint: 2026-10-20, remaining P11 in progress: native audio
 
 The owner's instruction to finish remaining P11 is active. **P12 is forbidden.**
 No action enabling, appearance work, merge or waiver is authorized.

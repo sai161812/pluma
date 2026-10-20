@@ -26,6 +26,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, TYPE_CHECKING
 
 
 from dataclasses import dataclass, field
+from contextlib import nullcontext
 from pydantic import BaseModel, ValidationError
 
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
@@ -134,6 +135,7 @@ def _invoke_executor(
     args: Dict[str, Any],
     task_context: Any,
     admission: Any,
+    observation: Optional[Dict[str, bool]] = None,
 ) -> ToolResult:
     """Worker-side entry: finish preparation, then admit immediately at invocation.
 
@@ -143,6 +145,8 @@ def _invoke_executor(
     takes_context = len(inspect.signature(executor_fn).parameters) > 1
     if admission is not None:
         admission.admit_executor()
+    if observation is not None:
+        observation["started"] = True
     if takes_context:
         return executor_fn(args, task_context)
     return executor_fn(args)
@@ -855,6 +859,43 @@ class ToolRegistry:
             return _record_no_execution(ledger, task_context, step_index, tool_name,
                 validated_args, effective_risk, approval_state, refused)
 
+        # Publish pre-state before dispatch; never infer a safe inverse from an
+        # interrupted executor. STOP inspects owned work under the same lock.
+        pending_mutation = None
+        prepared_row = None
+        execution_not_admitted = False
+        undo_available = True
+        worker_consumed_undo = []
+        if pre_undo_data:
+            import copy
+            pending_mutation = {"action": "pending_mutation", "tool": tool_name,
+                "operation_id": str(uuid.uuid4()), "pre_state": copy.deepcopy(pre_undo_data)}
+            with getattr(task_context, "work_lock", nullcontext()):
+                if token is not None:
+                    token.raise_if_cancelled()
+                if task_context is not None and hasattr(task_context, "undo_stack"):
+                    task_context.undo_stack.append(pending_mutation)
+            if ledger is not None and task_context is not None:
+                from pluma.memory.activity import ActionRecord
+                prepared = ActionRecord(task_id=task_context.task_id, step_index=step_index,
+                    tool=tool_name, args_raw=validated_args, risk=effective_risk.value,
+                    approval_state=approval_state, result_data={"executed": None},
+                    error_detail={"code": "MUTATION_OUTCOME_PENDING",
+                                  "error": "Execution outcome has not been observed."})
+                try:
+                    prepared_row = ledger.prepare_mutation(prepared, pending_mutation)
+                    pending_mutation["action_row_id"] = prepared_row
+                except Exception:
+                    # Dispatch has not happened. Any partially acknowledged
+                    # database journal remains conservative, never executable.
+                    with getattr(task_context, "work_lock", nullcontext()):
+                        if pending_mutation in task_context.undo_stack:
+                            task_context.undo_stack.remove(pending_mutation)
+                    return ToolResult.failure(tool_name,
+                        "Mutation journal could not be verified. No action was executed.",
+                        error_code="MUTATION_JOURNAL_FAILED")
+            worker_req.undo_stack = list(ctx_undo_stack) + [pending_mutation]
+
         if use_process_isolation:
             try:
                 controller_key = task_id or f"transient-{uuid.uuid4()}"
@@ -922,12 +963,16 @@ class ToolRegistry:
                                 registry.register(ScreenSnapshot.model_validate(raw))
                             except Exception:
                                 pass
-                    # Propagate worker undo stack sync
+                    # A stale worker snapshot must not erase a retained journal.
+                    # Failed undo must not pop its pre-state in the parent.
                     if payload.final_undo_stack is not None and task_context and hasattr(task_context, "undo_stack"):
-                        task_context.undo_stack.clear()
-                        task_context.undo_stack.extend(payload.final_undo_stack)
-                    elif payload.undo_data and task_context and hasattr(task_context, "undo_stack") and payload.undo_data not in task_context.undo_stack:
-                        task_context.undo_stack.append(payload.undo_data)
+                        with getattr(task_context, "work_lock", nullcontext()):
+                            if tool_name == "undo_last" and result.ok and result.verified:
+                                worker_consumed_undo = [item for item in worker_req.undo_stack
+                                    if item not in payload.final_undo_stack]
+                            for item in payload.final_undo_stack:
+                                if item not in worker_req.undo_stack and item not in task_context.undo_stack:
+                                    task_context.undo_stack.append(item)
                 elif status == "ok" and isinstance(payload, ToolResult):
                     result = payload
                 elif status == "cancelled":
@@ -954,6 +999,7 @@ class ToolRegistry:
                 else:
                     result = ToolResult.failure(tool_name, str(payload))
             except TaskCancelledError:
+                execution_not_admitted = True
                 result = ToolResult.failure(tool_name, "Task was stopped before executor admission.", error_code="TASK_CANCELLED")
             except Exception as mp_exc:
                 result = ToolResult.failure(
@@ -964,15 +1010,19 @@ class ToolRegistry:
 
         if result is None and not use_process_isolation:
             # Execute in-process with thread pool executor and timeout enforcement
+            observation = {"started": False}
             try:
                 future = self.submit_owned(
-                    _invoke_executor, spec.executor, validated_args, task_context, token,
+                    _invoke_executor, spec.executor, validated_args, task_context, token, observation,
                     task_id=getattr(task_context, "task_id", None), _task_context=task_context,
                 )
                 try:
                     result = future.result(timeout=timeout_s)
                 except (TimeoutError, concurrent.futures.TimeoutError):
-                    future.cancel()
+                    execution_not_admitted = future.cancel()
+                    if token is not None:
+                        from pluma.core.cancellation import StopReason
+                        token.cancel(StopReason.TASK_TIMEOUT)
                     duration_ms = (time.perf_counter() - start_t) * 1000.0
                     result = ToolResult.failure(
                         tool_name,
@@ -981,8 +1031,10 @@ class ToolRegistry:
                         duration_ms=duration_ms,
                     )
             except TaskCancelledError:
+                execution_not_admitted = not observation["started"]
                 result = ToolResult.failure(tool_name, "Task was stopped before executor admission.", error_code="TASK_CANCELLED")
             except Exception as e:
+                execution_not_admitted = not observation["started"]
                 duration_ms = (time.perf_counter() - start_t) * 1000.0
                 result = ToolResult.failure(tool_name, str(e), duration_ms=duration_ms)
 
@@ -1004,7 +1056,7 @@ class ToolRegistry:
                     verify_detail = v_res
                 except Exception as e:
                     verified = False
-                    verify_detail = VerifyResult(ok=False, method="verifier_exception", detail=str(e))
+                    verify_detail = VerifyResult(ok=False, method="verifier_exception", detail="Postcondition verification failed.")
 
         # 6. Finalize undo record only on verified success
         undo_record = None
@@ -1012,21 +1064,19 @@ class ToolRegistry:
             undo_record = dict(pre_undo_data)
             if isinstance(result.data, dict) and "preserved_destination_backup" in result.data:
                 undo_record["preserved_destination_backup"] = result.data["preserved_destination_backup"]
-            if task_context and hasattr(task_context, "undo_stack"):
-                task_context.undo_stack.append(undo_record)
 
         # 7. Build final consolidated result
         final_result = ToolResult(
             ok=result.ok and verified,
             tool=tool_name,
             data=result.data,
-            factual_message=result.factual_message,
+            factual_message=("Postcondition could not be verified." if result.ok and not verified else result.factual_message),
             verified=verified,
             verify_detail=verify_detail,
             duration_ms=duration_ms,
             adapter_used=result.adapter_used or "native",
-            error=result.error if not (result.ok and verified) else None,
-            error_code=result.error_code if not (result.ok and verified) else None,
+            error=("Postcondition could not be verified." if result.ok and not verified else result.error),
+            error_code=("POSTCONDITION_FAILED" if result.ok and not verified else result.error_code),
             undo_record=undo_record,
         )
 
@@ -1048,12 +1098,31 @@ class ToolRegistry:
                     verification_detail=verify_detail.model_dump() if verify_detail else None,
                     error_detail={"error": final_result.error, "code": final_result.error_code} if final_result.error else None,
                 )
-                row_id = ledger.insert_action(action_rec)
-                if undo_record and row_id is not None:
-                    ledger.insert_undo_record(UndoRecord(action_row_id=row_id, undo_data=undo_record))
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error("Failed to record tool execution to Activity Ledger: %s", e)
+                if prepared_row is not None:
+                    undo_available = ledger.finish_mutation(prepared_row, action_rec,
+                        undo_record or pending_mutation, not_executed=execution_not_admitted)
+                else:
+                    row_id = ledger.insert_action(action_rec)
+                    if undo_record and row_id is not None:
+                        ledger.insert_undo_record(UndoRecord(action_row_id=row_id, undo_data=undo_record))
+            except Exception:
+                logging.getLogger(__name__).error("Execution history could not be verified.")
+                return ToolResult.failure(tool_name,
+                    "Execution history could not be verified. Effects may remain.", error_code="LEDGER_WRITE_FAILED")
+
+        if final_result.ok and final_result.verified and task_context is not None and worker_consumed_undo:
+            with getattr(task_context, "work_lock", nullcontext()):
+                for item in worker_consumed_undo:
+                    if item in task_context.undo_stack:
+                        task_context.undo_stack.remove(item)
+
+        if pending_mutation is not None and task_context is not None and hasattr(task_context, "undo_stack"):
+            with getattr(task_context, "work_lock", nullcontext()):
+                if pending_mutation in task_context.undo_stack:
+                    if execution_not_admitted or not undo_available:
+                        task_context.undo_stack.remove(pending_mutation)
+                    elif undo_record is not None:
+                        task_context.undo_stack[task_context.undo_stack.index(pending_mutation)] = undo_record
 
         return final_result
 
