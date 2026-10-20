@@ -1,5 +1,11 @@
 # Backend audit before action wiring
 
+P11 pre-state checkpoint: [E22](../../../docs/completion/p11_prestate_ownership.md)
+adds bounded owned capture, same-worker required isolation and retained thread/
+storage ownership. Final 661 focused / 979 isolated regression / 15 raw passes;
+containment 3 / recovery 5. Parent verifier bounds and remaining catalog/inverse
+gates stay open. P11 is incomplete, P12 forbidden and action entry disabled.
+
 P11 mutation checkpoint: [E21](../../../docs/completion/p11_mutation_journal.md)
 persists pre-state before dispatch, retains uncertain partial effects, finalizes
 one action atomically and refuses success/replan on unverified history. Final

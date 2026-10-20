@@ -1,6 +1,47 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, remaining P11 in progress: mutation journal
+## Current checkpoint: 2026-10-20, remaining P11: owned bounded pre-state
+
+P11 remains authorized and incomplete. **P12 is forbidden** until instructed.
+Do not enable action entry, merge or waive requirements.
+
+- Started clean/pushed ui-wiring at `f4eea7b`. [E22](docs/completion/p11_prestate_ownership.md)
+  reproduces caller-blocking pre-state outside the tool timer: corrected inert
+  fixture 1 failed in 1.71s. Initial fixture/result setup error and runner-name
+  mismatch are recorded, not counted as product evidence. Existing unchanged
+  regression subset passed 822 / 3 skipped / 1 excluded before runtime edits.
+- Capture now runs under capsule admission and owned lifetime. Required isolated
+  tools use their existing killable worker/Jobs; serialization failure refuses
+  without fallback. Legacy threads are tracked, bounded at the caller and retained
+  until actual exit. STOP cannot dispatch late capture results. Capture and
+  execution share the tool budget; policy/journal/cleanup waits remain separately
+  bounded. Known no-execution history now has a two-second acknowledgement budget.
+- Initial boundary 90 passed / 1 failed: privacy fixture local closure could not
+  serialize. Equivalent module-level partial preserves all redaction assertions.
+  Expanded 100 passed; reviewed boundary 101 passed. Thirteen new cases cover
+  actual native capture STOP/deadline/exit, same-PID capture/execution, retained
+  thread/storage ownership, no fallback, invalid/private errors and shared budget.
+- Final-source focused **661 passed / 1 excluded in 97.83s**; isolated regression
+  **979 passed / 3 skipped / 1 excluded in 125.54s**; raw audit **15 in 0.55s**,
+  containment **3 in 3.10s**, recovery **5 in 0.56s**. Actual exits zero, final
+  source hashes match, fixture keys zero, all 115 FAST cases isolated. Skips and
+  excluded elevation are not passes or native acceptance. No performance claim.
+- Only registry runtime changes; new tests plus serializable prior privacy fixture.
+  No UI/dependency/immutable-contract or user device/state changes. Real Jobs and
+  owned marker I/O are exercised; thread/error/history barriers are explicit.
+- Owner terminal decision is resolved: fixed read-only Windows diagnostics plus
+  explicitly configured, confirmed project commands. [Scope decisions](docs/completion/p11_scope_decisions.md)
+  records the answer. No unrestricted planner shell or planner-created permission.
+- Catalog remains **6 IMPLEMENTED / 44 MISSING / 4 DEFECTIVE / 19 UNVERIFIED**.
+  Parent verifier ownership/bounds, identities/conflict-safe inverse, irreversible
+  evidence and remaining catalog/A/D/H gates are still P11 work. D-09 remains open.
+- PRs 1/2 freshly rechecked draft/open/unmerged. Commit/push ui-wiring only;
+  main/integration, other worktrees, archives/stash/tags preserved. Recovery before
+  this block: separate detached worktree at `f4eea7b`. Next safe work remains P11,
+  bounded verification and native typed-tool/inverse gaps; no new instruction
+  needed between authorized P11 blocks. P12 is not eligible or authorized.
+
+## Previous checkpoint: 2026-10-20, remaining P11 in progress: mutation journal
 
 P11 remains authorized and incomplete. **P12 is forbidden** until the owner's
 instruction. Do not enable action entry, merge or waive missing requirements.
@@ -48,11 +89,10 @@ instruction. Do not enable action entry, merge or waive missing requirements.
   capture, tool-specific identity/conflict-safe inverse, irreversible evidence and
   remaining typed catalog/A/D/H gates. A pending partial effect with insufficient
   identity evidence stays residual, not a promised rollback.
-- Pending owner clarification for terminal catalog: master forbids unrestricted
-  shell but does not select permitted command templates. Async question offers
-  fixed diagnostics plus configured/confirmed project commands, diagnostics only,
-  or an owner-provided allowlist. Do not assume an answer or implement dependent
-  terminal scope while pending; continue independent P11 safety work.
+- Terminal scope is resolved by the owner's response: fixed read-only Windows
+  diagnostics plus explicitly configured, confirmed project commands. See
+  [scope decisions](docs/completion/p11_scope_decisions.md). No unrestricted
+  planner shell or planner-created command permission; implementation remains P11.
 - Next safe milestone: P11 bounded pre-state execution only, then remaining P11
   gaps. No fresh instruction needed between authorized P11 blocks; do not start
   P12. Recovery before this block: `2f5e87c` in a separate detached worktree.

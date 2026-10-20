@@ -29,6 +29,16 @@ isolated fixture context, preserving the user's actual clipboard.
 Primary format references: [Windows clipboard formats](https://learn.microsoft.com/en-gb/windows/desktop/dataxchg/clipboard-formats)
 and [Shell file-list formats](https://learn.microsoft.com/en-us/windows/win32/shell/clipboard).
 
+Terminal: the owner answered the command-template ambiguity with **"Fixed
+read-only Windows diagnostics plus explicitly configured, confirmed project
+commands (recommended)"**. Implement `run_command`/`run_powershell` as closed
+typed template/configuration references, never unrestricted planner strings.
+Project commands require explicit configuration and exact-call material-effect
+confirmation. Command configuration is trusted owner input, not planner-created
+permission. Bound output, time and owned process trees, preserve policy and
+readback, and record irreversible effects truthfully. This decision resolves
+scope; these catalog tools still require implementation and verification.
+
 Declared Windows dependencies may be exercised in an ignored project-local
 virtual environment; do not alter global Python, Windows policy or personal
 browser settings. No new visual design, P12 perception or UI command enabling.

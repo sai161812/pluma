@@ -35,6 +35,10 @@ def prestate(args, *, root):
             'new_path': str(Path(root) / 'after')}
 
 
+def sensitive_prestate(args, *, root):
+    return dict(prestate(args, root=root), password='private-journal-fixture')
+
+
 @dataclass
 class PartialRename:
     root: str
@@ -240,9 +244,7 @@ def test_failed_verifier_retains_effect_and_does_not_emit_success_copy(runtime, 
 def test_sensitive_prestate_is_redacted_before_first_effect_history(runtime, monkeypatch, tmp_path):
     setup(runtime, monkeypatch, tmp_path, finish='fail')
     spec = runtime.tool_registry.lookup('journal_probe')
-    def capture(args):
-        return dict(prestate(args, root=str(tmp_path)), password='private-journal-fixture')
-    monkeypatch.setattr(spec, 'undo_builder', capture)
+    monkeypatch.setattr(spec, 'undo_builder', partial(sensitive_prestate, root=str(tmp_path)))
     result = runtime.orchestrator.execute(PlumaRequest.from_text('Owned private prestate fixture'))
     cap = runtime.supervisor.get_task(result.task_id)
     query = ActivityQuery(runtime.db)

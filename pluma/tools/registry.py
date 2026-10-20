@@ -434,13 +434,27 @@ def _evaluate_owned_policy(policy, tool_name, arguments, default_risk, task_id, 
     return policy.evaluate(tool_name=tool_name, arguments=arguments, default_risk=default_risk, task_id=task_id)
 
 
+def _capture_prestate(args, context, *, builder, tool):
+    """Internal registered-tool phase; never a planner-callable capability."""
+    state = builder(args)
+    if not isinstance(state, dict) or not state:
+        return ToolResult.failure(tool, "Safe pre-state was unavailable. No action was executed.",
+                                  error_code="UNDO_PRESTATE_FAILED")
+    return ToolResult.success(tool, data={"pre_state": state}, verified=False,
+                              factual_message="Pre-state captured before execution.")
+
+
 def _record_no_execution(ledger, task_context, step_index, tool_name, arguments, risk, decision, result):
     if ledger is not None and task_context is not None:
         from pluma.memory.activity import ActionRecord
-        ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
-            tool=tool_name, args_raw=arguments, risk=risk.value, adapter="policy",
-            approval_state=decision, verified=False, result_data={"executed": False},
-            error_detail={"code": result.error_code, "error": result.error}))
+        try:
+            ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
+                tool=tool_name, args_raw=arguments, risk=risk.value, adapter="policy",
+                approval_state=decision, verified=False, result_data={"executed": False},
+                error_detail={"code": result.error_code, "error": result.error}), _timeout_s=2.0)
+        except Exception:
+            return ToolResult.failure(tool_name, "Action history could not be verified. No action was executed.",
+                                      error_code="LEDGER_WRITE_FAILED")
     return result
 
 
@@ -539,6 +553,68 @@ class ToolRegistry:
     def submit_owned(self, fn, *args, task_id=None, command_class="tool", _task_context=None, **kwargs):
         return self.work_gate.submit(_GLOBAL_TOOL_EXECUTOR, fn, *args,
                                      task_id=task_id, command_class=command_class, _task_context=_task_context, **kwargs)
+
+    def _owned_prestate(self, spec, arguments, context, token, timeout_s):
+        """Bound capture without detaching its worker/future from the capsule."""
+        from functools import partial
+        from pluma.core.cancellation import StopReason, TaskCancelledError
+        capture = partial(_capture_prestate, builder=spec.undo_builder, tool=spec.name)
+        task_id = getattr(context, "task_id", None)
+        deadline = time.monotonic() + timeout_s
+        try:
+            if spec.process_isolated:
+                import pickle
+                request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
+                    env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")})
+                # Required isolation fails closed before calling any builder.
+                try:
+                    pickle.dumps((capture, arguments, request))
+                except Exception:
+                    return ToolResult.failure(spec.name, "Required owned worker could not accept pre-state capture.",
+                                              error_code="PROCESS_ISOLATION_FAILED")
+                controller = getattr(context, "worker_controller", None)
+                if controller is None:
+                    controller = self.get_worker(task_id or f"transient-{uuid.uuid4()}")
+                if context is not None:
+                    context.worker_controller = controller
+                    context._tool_registry = self
+                status, payload = controller.execute_call(capture, arguments, request, timeout_s,
+                    job_object=getattr(context, "job_object", None), cancellation_token=token)
+                if status == "ok" and isinstance(payload, WorkerResponse):
+                    return payload.result
+                if status == "cancelled":
+                    return ToolResult.failure(spec.name, "Task stopped during pre-state capture. No action was executed.",
+                                              error_code="TASK_CANCELLED")
+                if status != "timeout":
+                    return ToolResult.failure(spec.name, "Safe pre-state could not be captured. No action was executed.",
+                                              error_code="UNDO_PRESTATE_FAILED")
+            else:
+                future = self.submit_owned(_invoke_executor, capture, arguments, context, token,
+                    task_id=task_id, command_class="prestate", _task_context=context)
+                try:
+                    while True:
+                        if token is not None:
+                            token.raise_if_cancelled()
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            future.cancel()  # Running capture remains owned until actual exit.
+                            break
+                        try:
+                            return future.result(timeout=min(.05, remaining))
+                        except concurrent.futures.TimeoutError:
+                            continue
+                except TaskCancelledError:
+                    future.cancel()
+                    raise
+            if token is not None:
+                token.cancel(StopReason.TASK_TIMEOUT)
+            return ToolResult.failure(spec.name, "Pre-state capture timed out. No action was executed.",
+                                      error_code="TOOL_TIMEOUT")
+        except TaskCancelledError:
+            raise
+        except Exception:
+            return ToolResult.failure(spec.name, "Safe pre-state could not be captured. No action was executed.",
+                                      error_code="UNDO_PRESTATE_FAILED")
 
     def __len__(self) -> int:
         with self._lock:
@@ -758,26 +834,31 @@ class ToolRegistry:
         if token is not None:
             token.raise_if_cancelled()
 
+        # Capture and execution share the declared tool budget. Policy and
+        # journal acknowledgements retain their separate bounded safety waits.
+        start_t = time.perf_counter()
+        timeout_s = spec.timeout_s
         # 3. Capture pre-mutation undo data BEFORE mutation occurs
         pre_undo_data = None
         if spec.undo_builder:
-            try:
-                pre_undo_data = spec.undo_builder(validated_args)
-            except Exception as e:
+            capture = self._owned_prestate(spec, validated_args, task_context, token, timeout_s)
+            if not capture.ok:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, capture)
+            pre_undo_data = capture.data["pre_state"]
+            timeout_s -= time.perf_counter() - start_t
+            if timeout_s <= 0:
+                from pluma.core.cancellation import StopReason
+                if token is not None:
+                    token.cancel(StopReason.TASK_TIMEOUT)
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
-                        "Safe pre-state could not be captured. No action was executed.", error_code="UNDO_PRESTATE_FAILED"))
-            if not isinstance(pre_undo_data, dict) or not pre_undo_data:
-                return _record_no_execution(ledger, task_context, step_index, tool_name,
-                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
-                        "Safe pre-state was unavailable. No action was executed.", error_code="UNDO_PRESTATE_FAILED"))
+                        "Pre-state capture exhausted the tool deadline. No action was executed.", error_code="TOOL_TIMEOUT"))
 
         if token is not None:
             token.raise_if_cancelled()
 
         # 4. Execution with killable process isolation, timeout enforcement and duration measurement
-        start_t = time.perf_counter()
-        timeout_s = spec.timeout_s if spec.timeout_s and spec.timeout_s > 0 else 30.0
         result: Optional[ToolResult] = None
 
         task_id = getattr(task_context, "task_id", None) if task_context else None
