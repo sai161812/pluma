@@ -1,6 +1,42 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P09 private Windows IPC credentials
+## Current checkpoint: 2026-10-20, P10 blocked at prerequisites
+
+**P10 is incomplete. Do not advance to P11 or enable action entry.** Its explicit
+failure rule, "Record failures as blockers and stop", was applied before any
+runtime/test edits or new combined acceptance fixtures.
+
+- Started clean on local/remote `ui-wiring` at
+  `b0e486a0ce323da66be630ac55048b756f9f6182` (P09). Main `6dbf589`, integration
+  `9544752`, all four worktrees and draft/open/unmerged PRs 1/2 were rechecked.
+- Prerequisites: **1 failed, 312 passed in 294.55s**, real pytest exit 1.
+  `test_registry_cancellation_is_unverified_and_persisted` failed waiting for
+  the owned worker's `entered` marker, before the test issued cancellation.
+  JUnit case duration **267.168s**, wrapper wall **300.364s**. The cause of the
+  missing marker and unexpectedly long duration is unverified; neither a STOP
+  defect nor harmless scheduling delay is established. No rerun/waiver applied.
+- Raw audit independently **15 passed in 0.46s**, using `--runxfail` to bypass
+  expected-failure handling. It does not override the failed prerequisite.
+  Matrix before/after documentation: **298 source items / 324 rows**.
+- [P10 blocked evidence (E15)](docs/completion/p10_evidence.md) records commands,
+  source identities, isolation, the exact failure, read-only fixture SQLite
+  observation and limitations. Both isolated runs left zero fixture key files.
+  Runtime/test sources, immutable requirements and native dark UI are unchanged.
+- Combined memory/result/ledger/IPC reconciliation, separate latch/cleanup
+  latency and additional owned Windows acceptance were **not completed**.
+  Earlier passing native cases in this run remain bounded evidence, not a pass
+  for the missing combined gate. No real user application, device, model or
+  system-changing elevation operation was intentionally exercised.
+- This documentation checkpoint is committed/pushed on `ui-wiring`; no merge.
+  Pre-P10 recovery is `b0e486a0ce323da66be630ac55048b756f9f6182`; inspect it in
+  a separate detached worktree. Existing archive/stash/tags/worktrees remain.
+- **Next safe milestone remains P10:** diagnose the failed owned-worker startup
+  and timing boundary in a bounded follow-up, preserve its assertions, then
+  re-establish P01-P09 prerequisites before combined acceptance. P11 is ineligible.
+  No owner-approved limitation exists. All later tool, device, inference,
+  screen, UI, performance, packaging and release gates remain mandatory.
+
+## Previous checkpoint: 2026-10-20, P09 private Windows IPC credentials
 
 This checkpoint supersedes earlier next-step/count statements. Locked source
 and native dark UI are unchanged. This bounded security/interoperability gate

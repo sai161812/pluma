@@ -1,5 +1,14 @@
 # Backend audit before action wiring
 
+P10 checkpoint (2026-10-20): **blocked at prerequisites**, 1 failed / 312 passed.
+The owned worker entry marker was absent before cancellation was issued; root
+cause and anomalous elapsed time remain unverified. Raw audit still passes all
+15 cases with xfail handling bypassed. This does not establish combined safety.
+[P10 failure evidence](../../../docs/completion/p10_evidence.md) records the stop
+condition. No runtime/test repair, new combined fixture or UI enabling occurred.
+Next safe milestone remains P10 diagnosis and prerequisite revalidation; P11
+is ineligible. The P09 record below is historical, not a current next-step claim.
+
 Current status after P09 (2026-10-20): BA-01 through BA-09 pass their bounded
 gates with ordinary audit regressions. Raw audit: **15 passed, no xfails**.
 [P09 credential evidence/contract](../../../docs/completion/p09_evidence.md)
