@@ -1,5 +1,16 @@
 # Wiring step 1: authenticated read-only core status
 
+P09 security checkpoint (2026-10-20): the Python credential factory now uses
+private atomic Windows creation and opened-handle owner/DACL/size verification.
+Existing invalid keys are refused, never repaired or rotated for tests. The
+production C# reader, native authenticated message framing and disabled action
+entry are unchanged. [P09 evidence/credential contract](../../../docs/completion/p09_evidence.md)
+records **39 IPC checks**, preserving the 37 original assertions plus null-DACL
+refusal and no preseeded Python key. Two real Python/C# round trips now use a
+factory-created key beneath inherited Users-read permissions. The current
+console IPC gate passes locally; no full native UI/physical/release rerun is
+claimed. The step-1 history below keeps its original source/count context.
+
 Owner authorized wiring on `ui-wiring` on 2026-10-19. The first bounded step
 connects dashboard health to the existing resident status command. It does not
 execute a command, start the resident core, activate the microphone or load a
@@ -120,7 +131,7 @@ Required popup checks are now 663; the per-frame readiness condition is retained
 
 The final current-head result and artifact link are recorded in
 [PR 2](https://github.com/sai161812/pluma/pull/2), whose Windows UI verification
-check must pass with 37 IPC, 663 popup, 195 formatting and 42 control checks,
+check must pass with 39 IPC after P09, 663 popup, 195 formatting and 42 control checks,
 alongside the pure checks and 58 render exports. This keeps the evidence tied
 to the actual PR head instead of treating an earlier run as final verification.
 

@@ -1,26 +1,29 @@
 # Backend audit before action wiring
 
-Current status after P08 (2026-10-20): BA-01 through BA-08 pass bounded gates
-with ordinary passing audit regressions. One finding remains, reproduced by
-one raw assertion failure: BA-09 first credential privacy. [P08 evidence](../../../docs/completion/p08_evidence.md)
-and the [STOP receipt contract](../../../docs/completion/p08_stop_protocol.md)
-define typed pending/stopped/residual/error outcomes, latch versus terminal
-proof, verified clean-only stopped_tasks, and retained bounded cleanup ownership.
-Both original BA-08 setup/bodies/assertions are unchanged; only their strict
-markers are removed. Earlier gates remain documented in
+Current status after P09 (2026-10-20): BA-01 through BA-09 pass their bounded
+gates with ordinary audit regressions. Raw audit: **15 passed, no xfails**.
+[P09 credential evidence/contract](../../../docs/completion/p09_evidence.md)
+records private atomic Windows creation, opened-handle owner/ACL/size readback,
+bounded competing creation and unchanged C# reader interoperability. Original
+BA-09 fixture/body/assertion/Windows condition are unchanged; only its xfail is
+removed. Final isolated regressions: 734 passed, 3 skipped, 1 deselected;
+39 C# IPC checks pass, including fresh Python-created credentials beneath a
+permissive fixture parent. Production credentials/settings/policy are untouched.
+
+Earlier gates remain documented in
+[P08 STOP receipts](../../../docs/completion/p08_evidence.md),
 [P07 capture](../../../docs/completion/p07_evidence.md),
 [P06 shutdown](../../../docs/completion/p06_evidence.md),
 [P05 outcomes](../../../docs/completion/p05_evidence.md),
 [P04 cleanup](../../../docs/completion/p04_evidence.md),
 [P03 workers](../../../docs/completion/p03_evidence.md),
 [P02 latch/isolation](../../../docs/completion/p02_evidence.md) and
-[P01 admission](../../../docs/completion/p01_evidence.md). Final isolated checks:
-706 passed, 3 skipped, 1 deselected, 1 xfailed; raw audit: 1 failed, 14 passed.
-Native authenticated framing and disabled action entry are unchanged. Physical
-voice, combined Windows safety and complete backend/UI/release gates remain.
-**P09/BA-09 private atomic credentials is next** and has not started. BA-09's
-original assertion/setup/marker remains unchanged. Original audit material below
-is historical evidence for its named source, not backend certification.
+[P01 admission](../../../docs/completion/p01_evidence.md). Native dark UI,
+authenticated framing and disabled action entry remain. This is not complete
+backend/device/UI/release certification. **P10 combined owned Windows safety is
+next** and has not started; no automatic progression or merge. Original audit
+material below is historical evidence for its named source, not current open
+finding counts or an implementation certification.
 
 Date: 2026-10-19. Requested scope: inspect the backend used by `ui-wiring`,
 reproduce suspected defects, preserve existing work/appearance and record the

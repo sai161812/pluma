@@ -35,7 +35,7 @@ internal static class Program
         finally
         {
             // Exact test-owned files only; never recursively delete or touch the production credential.
-            foreach (string relative in new[] { "secret.key", "wrong.key", "broad.key", "Pluma/ipc_secret.key" })
+            foreach (string relative in new[] { "secret.key", "wrong.key", "broad.key", "null.key", "Pluma/ipc_secret.key" })
             {
                 string path = Path.GetFullPath(Path.Combine(Root, relative));
                 if (path.StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) && File.Exists(path)) File.Delete(path);
@@ -84,6 +84,14 @@ internal static class Program
         await using (var client = new CoreIpcClient(Options(PipeName(), broad)))
             Check((await client.GetStatusAsync(default)).Failure == CoreConnectionFailure.AccessDenied, "a broadly readable key is rejected before connecting");
 
+        string nullDacl = Path.Combine(Root, "null.key"); WritePrivateKey(nullDacl);
+        FileSecurity nullSecurity = new FileInfo(nullDacl).GetAccessControl();
+        nullSecurity.SetSecurityDescriptorSddlForm("D:NO_ACCESS_CONTROL", AccessControlSections.Access);
+        new FileInfo(nullDacl).SetAccessControl(nullSecurity);
+        await using (var client = new CoreIpcClient(Options(PipeName(), nullDacl)))
+            Check((await client.GetStatusAsync(default)).Failure == CoreConnectionFailure.AccessDenied,
+                "a null credential DACL is rejected before connecting");
+
         await using (var client = new CoreIpcClient(Options(PipeName(), milliseconds: 180)))
         {
             var watch = Stopwatch.StartNew();
@@ -127,9 +135,17 @@ internal static class Program
                 Check((await client.GetStatusAsync(default)).Status != null, "explicit refresh reconnects after server restart");
         }
 
-        // Seed only fixture credentials with an explicit user owner, including on elevated CI hosts.
-        CreatePrivateDirectory(Path.Combine(Root, "Pluma"));
-        WritePrivateKey(Path.Combine(Root, "Pluma", "ipc_secret.key"));
+        // P09: the production Python factory must create the fixture key.
+        // The unchanged C# opened-handle reader then verifies its owner/DACL.
+        string pythonDirectory = Path.Combine(Root, "Pluma");
+        CreatePrivateDirectory(pythonDirectory);
+        DirectorySecurity inherited = new DirectoryInfo(pythonDirectory).GetAccessControl();
+        inherited.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+            FileSystemRights.Read, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+            PropagationFlags.None, AccessControlType.Allow));
+        new DirectoryInfo(pythonDirectory).SetAccessControl(inherited);
+        Check(!File.Exists(Path.Combine(Root, "Pluma", "ipc_secret.key")),
+            "Python interoperability starts without a preseeded credential");
         await using (var python = await PythonServer.StartAsync(PipeName()))
         await using (var client = new CoreIpcClient(Options(python.Name, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
         {

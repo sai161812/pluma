@@ -1,6 +1,63 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P08 truthful STOP receipts
+## Current checkpoint: 2026-10-20, P09 private Windows IPC credentials
+
+This checkpoint supersedes earlier next-step/count statements. Locked source
+and native dark UI are unchanged. This bounded security/interoperability gate
+is not combined Windows safety, physical device/UI or release acceptance.
+
+- **P09 bounded gate passed: BA-09 repaired; P01-P08 preserved.** Started clean
+  on local/remote `ui-wiring` at `5853572842cd4706e9729e13fb483b7cae4639ff`.
+  Matrix passed before edits; prerequisites **285 passed in 30.97s**; original
+  BA-09 assertion reproduced **1 failed in 0.48s**. Original audit fixture/body/
+  assertion and Windows skip condition are unchanged; only its xfail is removed.
+- [P09 evidence and credential contract](docs/completion/p09_evidence.md) records
+  exact commands, tested blobs, native handle/ACL facts, C# interoperability,
+  fixture limitations, intermediate wrapper failure and recovery. Two runtime,
+  three test and five handoff/evidence files change. No dependencies installed.
+- Windows CREATE_NEW applies an explicit current-user owner and protected DACL
+  at creation, with exclusive sharing through write/flush/verified readback.
+  Existing reads validate that same opened handle, owner, allow-rule SIDs, disk
+  file/type/link and exact 32-byte size. Broad/null/unsupported ACLs, wrong owner,
+  corrupt files, denied access and unresolved contention fail closed. Reader
+  handles block data writes/replacement. File/token handles and security buffers
+  have explicit cleanup; tests cover repeated native handle counts.
+- The user/SYSTEM/Administrators allow boundary matches the unchanged C# reader.
+  Contention retries are bounded to 500 ms; losers reuse a verified winner or
+  refuse. Existing invalid credentials are never truncated, repaired or rotated.
+  Failed private first writes may retain their exact file for controlled recovery.
+  No production credential was touched for testing and no secret is logged.
+- Final focused **408 passed in 43.02s**, including **27 new credential cases**
+  and ordinary BA-09. Isolated regressions **734 passed, 3 skipped, 1 deselected
+  in 57.27s**; prerequisites rechecked **285 passed in 28.13s**; owned containment
+  **3 passed in 2.90s**; recovery **5 passed in 0.63s**. Raw audit **15 passed
+  in 0.68s**, no xfails. Matrix **298 source items / 324 rows**. All 115 FAST
+  cases have desktop-isolation tags; preserve P02's correction. Fixture key
+  files remaining zero, including cleanup of the initial failed report wrapper.
+- **39 C# IPC checks passed in 11.358s**, including all 37 prior assertions,
+  null-DACL refusal and fresh Python creation without a seeded key. The factory
+  creates the key beneath inherited Users-read permissions; the unchanged C#
+  opened-handle reader accepts it and authenticates twice for multi-buffer
+  status. Native framing/HMAC, C# production reader and read-only UI remain
+  unchanged. No production resident, device, model, hotkey or tools were started.
+- Tests use exact owned temporary files/ACLs and native processes/pipes/SQLite.
+  No Windows policy/elevation/security bypass or production key repair occurred.
+  Corrupt/insecure/busy keys are refused, not silently recovered. Owner-mismatch
+  injection is distinguished from real different-user/elevated-token acceptance.
+  Thread exceptions are errors; corpus skips/exclusion are not acceptance.
+- **No original BA finding/expected failure remains.** All nine bounded repairs
+  pass, but P10 combined owned Windows safety and all remaining tool, inference,
+  screen/voice/device/UI, recovery/security/performance/package/release gates
+  remain mandatory. No requirement/limitation is waived. Action entry stays
+  disabled; no automatic transition into combined acceptance or UI wiring.
+- P09 is committed/pushed on `ui-wiring`; PRs 1/2 remain draft/open/unmerged.
+  Main `6dbf589`, integration `9544752`, existing worktrees/archive/stash/tags
+  remain unchanged. Pre-P09 recovery: `5853572842cd4706e9729e13fb483b7cae4639ff`;
+  inspect in a new detached worktree. No merge or automatic progression.
+- **Next safe milestone: P10 only**, after its shared contract, P01-P09 and
+  fresh Git/PR prerequisite checks. P10 has not started.
+
+## Previous checkpoint: 2026-10-20, P08 truthful STOP receipts
 
 This checkpoint supersedes earlier next-step/count statements. Locked source
 and native dark UI are unchanged. This is a bounded backend gate, not full

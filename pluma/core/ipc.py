@@ -37,60 +37,10 @@ def get_pipe_name() -> str:
 
 
 def _verify_win32_file_dacl(filepath: str) -> None:
-    """Verify that the file DACL grants access only to the current user."""
-    import ctypes
-    from ctypes import wintypes
-    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    """Verify the opened credential handle, never an earlier path snapshot."""
+    from pluma.adapters.credentials import verify_windows_credential
+    verify_windows_credential(filepath)
 
-    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-    advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
-    advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
-    advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
-    advapi32.GetNamedSecurityInfoW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
-    advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.ULONG)]
-    advapi32.SetSecurityInfo.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-
-
-    TOKEN_QUERY = 0x0008
-    h_token = wintypes.HANDLE()
-    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(h_token)):
-        raise RuntimeError("OpenProcessToken failed")
-
-    TOKEN_USER = 1
-    needed = wintypes.DWORD(0)
-    advapi32.GetTokenInformation(h_token, TOKEN_USER, None, 0, ctypes.byref(needed))
-    buf = ctypes.create_string_buffer(needed.value)
-    if not advapi32.GetTokenInformation(h_token, TOKEN_USER, buf, needed, ctypes.byref(needed)):
-        kernel32.CloseHandle(h_token)
-        raise RuntimeError("GetTokenInformation failed")
-    kernel32.CloseHandle(h_token)
-
-    sid_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
-    sid_str_ptr = ctypes.c_wchar_p()
-    if not advapi32.ConvertSidToStringSidW(sid_ptr, ctypes.byref(sid_str_ptr)):
-        raise RuntimeError("ConvertSidToStringSidW failed")
-    current_sid_str = sid_str_ptr.value
-
-    SE_FILE_OBJECT = 1
-    DACL_SECURITY_INFORMATION = 4
-    OWNER_SECURITY_INFORMATION = 1
-    pSD = ctypes.c_void_p()
-    ret = advapi32.GetNamedSecurityInfoW(
-        filepath, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION,
-        None, None, None, None, ctypes.byref(pSD)
-    )
-    if ret != 0:
-        raise RuntimeError(f"GetNamedSecurityInfoW failed with {ret}")
-
-    str_sd = ctypes.c_wchar_p()
-    if not advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW(
-        pSD, 1, DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION, ctypes.byref(str_sd), None
-    ):
-        raise RuntimeError("ConvertSecurityDescriptorToStringSecurityDescriptorW failed")
-    
-    if "WD" in str_sd.value or "BU" in str_sd.value or "AN" in str_sd.value:
-         raise RuntimeError(f"Insecure DACL detected: {str_sd.value}")
 
 def _get_or_create_ipc_secret(paths_root: Optional[str] = None) -> bytes:
     """Get or create the persistent random IPC authentication secret.
@@ -104,6 +54,10 @@ def _get_or_create_ipc_secret(paths_root: Optional[str] = None) -> bytes:
     sec_dir = os.path.join(root, "Pluma")
     os.makedirs(sec_dir, exist_ok=True)
     sec_file = os.path.join(sec_dir, "ipc_secret.key")
+
+    if sys.platform == "win32":
+        from pluma.adapters.credentials import load_windows_credential
+        return load_windows_credential(sec_file)
 
     if os.path.exists(sec_file):
         if sys.platform == "win32":

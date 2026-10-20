@@ -282,7 +282,6 @@ def test_ipc_stop_reply_does_not_claim_nonterminal_task_stopped(isolated_supervi
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows credential initialization path")
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-09: first Windows credential can inherit a broadly readable ACL")
 def test_first_windows_credential_is_verified_before_return(tmp_path):
     import ctypes
     from ctypes import wintypes
