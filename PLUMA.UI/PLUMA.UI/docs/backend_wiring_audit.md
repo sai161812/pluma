@@ -1,5 +1,12 @@
 # Backend audit before action wiring
 
+P11 system/network checkpoint: [E24](../../../docs/completion/p11_system_status.md)
+replaces fabricated CPU fallback, verifies system-volume/RAM/native sampling and
+adds bounded network_status with explicit unknown internet connectivity. Final
+761 focused / 1079 isolated regressions / 15 raw / 3 containment / 5 recovery
+passes. These bounded READ rows close; full P11 stays open, P12 forbidden and
+action entry disabled.
+
 P11 battery checkpoint: [E23](../../../docs/completion/p11_battery_status.md)
 repairs false charging/unknown/error success, adds required owned native reads
 and strict snapshot verification. Final 699 focused / 1017 isolated regressions /

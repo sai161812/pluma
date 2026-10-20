@@ -66,6 +66,7 @@ SYSTEM_CLIPBOARD_TOOLS = [
     "get_system_status",
     "system_status",
     "battery_status",
+    "network_status",
     "clear_clipboard",
     "clipboard_clear",
     "get_clipboard_text",

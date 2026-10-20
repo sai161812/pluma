@@ -28,7 +28,7 @@ from pluma.verify.common import verify_noop
 
 class GetSystemStatusArgs(BaseModel):
     """Arguments for get_system_status."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
 
 
 class StopCurrentArgs(BaseModel):
@@ -58,67 +58,109 @@ class BatteryStatusArgs(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class StrictObservation(BaseModel):
+    model_config = {"strict": True, "extra": "forbid", "allow_inf_nan": False}
+
+
+class SystemStatusData(StrictObservation):
+    os: str = Field(min_length=1, max_length=2048)
+    python_version: str = Field(min_length=1, max_length=2048)
+    disk_root: str
+    cpu_percent: float = Field(ge=0, le=100)
+    cpu_sample_seconds: float = Field(gt=0)
+    disk_free_gb: float = Field(ge=0)
+    disk_total_gb: float = Field(ge=0)
+    ram_free_gb: float = Field(ge=0)
+    ram_total_gb: float = Field(ge=0)
+    memory_load_percent: float = Field(ge=0, le=100)
+    native_metrics: Dict[str, Any]
+
+
+class NetworkStatusArgs(StrictObservation):
+    max_entries: int = Field(default=32, ge=1, le=128)
+
+
+class NetworkEntry(StrictObservation):
+    name: str = Field(min_length=1, max_length=1024)
+    is_up: bool
+    mtu: int = Field(ge=0)
+    link_speed_mbps: Optional[float] = Field(gt=0)
+
+
+class NetworkStatusData(StrictObservation):
+    interfaces: List[NetworkEntry] = Field(max_length=128)
+    observed_count: int = Field(ge=0)
+    max_entries: int = Field(ge=1, le=128)
+    truncated: bool
+    internet_connectivity: None
+
+
+def verify_system_status(result: ToolResult) -> VerifyResult:
+    from pluma.adapters.system_status import decode_system_status
+    try:
+        data = SystemStatusData.model_validate(result.data).model_dump()
+        valid = (result.ok and result.tool in ("get_system_status", "system_status")
+                 and data == decode_system_status(data["native_metrics"]))
+    except (TypeError, ValueError, KeyError):
+        valid = False
+    return VerifyResult(ok=valid, method="native_api", detail=(
+        "Native CPU sample and resource sizes agree with the observation." if valid else "System observation was not verified."))
+
+
+def verify_network_status(result: ToolResult) -> VerifyResult:
+    try:
+        data = NetworkStatusData.model_validate(result.data)
+        names = [item.name for item in data.interfaces]
+        valid = (result.ok and result.tool == "network_status"
+            and len(names) == min(data.observed_count, data.max_entries)
+            and data.truncated == (data.observed_count > len(names))
+            and len(set(names)) == len(names) and names == sorted(names))
+    except (TypeError, ValueError):
+        valid = False
+    return VerifyResult(ok=valid, method="native_api", detail=(
+        "Native interface snapshot is bounded; internet connectivity is unknown." if valid else "Network observation was not verified."))
+
+
+def _system_observation(tool):
+    from pluma.adapters.system_status import read_system_status
+    try:
+        data = SystemStatusData.model_validate(read_system_status()).model_dump()
+    except NotImplementedError:
+        return ToolResult.failure(tool, "Native Windows system status is unavailable.", "UNSUPPORTED_PLATFORM")
+    except Exception:
+        return ToolResult.failure(tool, "Native system resource status could not be read.", "SYSTEM_STATUS_FAILED")
+    message = (f"System status: CPU {data['cpu_percent']:g}%, RAM {data['ram_free_gb']} GB available of "
+               f"{data['ram_total_gb']} GB, disk {data['disk_root']} has {data['disk_free_gb']} GB free "
+               f"of {data['disk_total_gb']} GB.")
+    result = ToolResult.success(tool, data=data, verified=False, factual_message=message, adapter_used="native_api")
+    proof = verify_system_status(result)
+    if not proof.ok:
+        return ToolResult.failure(tool, "System observation could not be verified.", "POSTCONDITION_FAILED")
+    return result.model_copy(update={"verified": True, "verify_detail": proof})
+
+
 def execute_get_system_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    import platform
-    import shutil
+    return _system_observation("get_system_status")
 
-    # Disk usage
-    total, used, free = shutil.disk_usage(os.path.abspath(os.sep))
-    disk_free_gb = round(free / (1024 ** 3), 1)
-    disk_total_gb = round(total / (1024 ** 3), 1)
 
-    # Memory and CPU metrics
-    data: Dict[str, Any] = {
-        "os": platform.platform(),
-        "python_version": platform.python_version(),
-        "disk_free_gb": disk_free_gb,
-        "disk_total_gb": disk_total_gb,
-        "cpu_percent": 0.0,
-    }
+def execute_system_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    return _system_observation("system_status")
 
-    if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
 
-        class MEMORYSTATUSEX(ctypes.Structure):
-            _fields_ = [
-                ("dwLength", wintypes.DWORD),
-                ("dwMemoryLoad", wintypes.DWORD),
-                ("ullTotalPhys", ctypes.c_uint64),
-                ("ullAvailPhys", ctypes.c_uint64),
-                ("ullTotalPageFile", ctypes.c_uint64),
-                ("ullAvailPageFile", ctypes.c_uint64),
-                ("ullTotalVirtual", ctypes.c_uint64),
-                ("ullAvailVirtual", ctypes.c_uint64),
-                ("sullAvailExtendedVirtual", ctypes.c_uint64),
-            ]
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        stat = MEMORYSTATUSEX()
-        stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-        if kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
-            data["memory_load_percent"] = stat.dwMemoryLoad
-            data["ram_free_gb"] = round(stat.ullAvailPhys / (1024 ** 3), 1)
-            data["ram_total_gb"] = round(stat.ullTotalPhys / (1024 ** 3), 1)
-
-        # Lazy check for psutil for accurate CPU measurement if present
-        try:
-            import psutil
-            data["cpu_percent"] = psutil.cpu_percent(interval=None)
-        except Exception:
-            data["cpu_percent"] = 0.0
-
-    ram_info = f"RAM: {data.get('ram_free_gb', '?')}GB free of {data.get('ram_total_gb', '?')}GB"
-    disk_info = f"Disk: {disk_free_gb}GB free of {disk_total_gb}GB"
-    cpu_info = f"CPU: {data.get('cpu_percent', 0.0)}%"
-
-    return ToolResult(
-        ok=True,
-        tool="get_system_status",
-        data=data,
-        factual_message=f"System Status — {cpu_info}, {ram_info}, {disk_info}.",
-        verified=True,
-    )
+def execute_network_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    from pluma.adapters.system_status import read_network_status
+    try:
+        data = NetworkStatusData.model_validate(read_network_status(args.get("max_entries", 32))).model_dump()
+    except NotImplementedError:
+        return ToolResult.failure("network_status", "Native Windows network status is unavailable.", "UNSUPPORTED_PLATFORM")
+    except Exception:
+        return ToolResult.failure("network_status", "Native network interface status could not be read.", "NETWORK_STATUS_FAILED")
+    result = ToolResult.success("network_status", data=data, verified=False, adapter_used="native_api",
+        factual_message=f"Read {len(data['interfaces'])} of {data['observed_count']} network interfaces. Internet connectivity is unknown.")
+    proof = verify_network_status(result)
+    if not proof.ok:
+        return ToolResult.failure("network_status", "Network observation could not be verified.", "POSTCONDITION_FAILED")
+    return result.model_copy(update={"verified": True, "verify_detail": proof})
 
 
 def execute_stop_current(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -287,8 +329,9 @@ SYSTEM_TOOL_SPECS: List[ToolSpec] = [
         args_schema=GetSystemStatusArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_get_system_status,
-        verifier=verify_noop,
+        verifier=verify_system_status,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
@@ -299,8 +342,9 @@ SYSTEM_TOOL_SPECS: List[ToolSpec] = [
         args_schema=GetSystemStatusArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
-        executor=execute_get_system_status,
-        verifier=verify_noop,
+        process_isolated=True,
+        executor=execute_system_status,
+        verifier=verify_system_status,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
@@ -407,4 +451,12 @@ SYSTEM_TOOL_SPECS.append(ToolSpec(
     undo_builder=None,
     adapter_priority=[AdapterPriority.NATIVE_API],
     cancellable=True,
+))
+
+
+SYSTEM_TOOL_SPECS.append(ToolSpec(
+    name="network_status", description="Read bounded native network interface link status; internet connectivity is unknown.",
+    args_schema=NetworkStatusArgs, risk_class=RiskClass.READ, timeout_s=5, process_isolated=True,
+    executor=execute_network_status, verifier=verify_network_status,
+    adapter_priority=[AdapterPriority.NATIVE_API], cancellable=True,
 ))

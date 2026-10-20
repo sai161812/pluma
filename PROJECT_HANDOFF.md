@@ -1,6 +1,48 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, remaining P11: native battery read
+## Current checkpoint: 2026-10-20, remaining P11: native system/network reads
+
+P11 remains authorized and incomplete. **P12 is forbidden** until instructed.
+No action enabling, merge or requirement waiver.
+
+- Started clean/pushed ui-wiring `1a4137c` after 699 focused / 1017 isolated
+  regression / 15 raw / 3 containment / 5 recovery passes. [E24](docs/completion/p11_system_status.md)
+  reproduces CPU-read failure becoming verified zero and missing network_status:
+  2 failures in 0.85s. Failed artifacts retained.
+- New native system adapter reads a bounded CPU sample, available RAM and actual
+  Windows system-volume bytes. get_system_status and compatibility system_status
+  require owned killable workers, strict snapshots and correct result identity.
+  No unavailable-data substitution. New network_status is typed/registered and
+  available in SMART/DEEP schemas; bounded native link/MTU/speed/count snapshot,
+  no addresses/SSID/credentials or outbound probes. Internet remains unknown.
+- Initial repair 2 passed; expanded 52 passed / 1 failed when an immediate fake
+  CPU sampler produced zero elapsed time, correctly rejected. Fixture now waits
+  its requested interval without weakening assertions/deadlines; reviewed 62 pass.
+- Final source: focused **761 passed / 1 excluded in 141.69s**; isolated regression
+  **1079 passed / 3 skipped / 1 excluded in 174.22s**; raw audit **15 in 0.79s**,
+  containment **3 in 3.58s**, recovery **5 in 0.74s**. Actual exits zero, final
+  source hashes match, fixture keys zero, all 115 FAST cases isolated. Enlarged
+  orchestration command bound 240s; per-test 20s and tool 5s deadlines unchanged.
+  Skips/excluded elevation are not passes. No performance/soak/release claim.
+- Native text/voice-mode requests, original Windows Job-worker identities/exit,
+  actual SQLite and reopened history are verified. Alias/network SMART planner
+  is explicitly inert; no physical STT/LLM claim. Fault/interface packets and
+  blocking workers are disclosed fixtures. All native operations are read-only;
+  no user/device/configuration mutation. UI and immutable contracts untouched.
+- Runtime: new system adapter, system READ tools and schema subset only; one new
+  62-case test module. Catalog **9 IMPLEMENTED / 43 MISSING / 4 DEFECTIVE /
+  17 UNVERIFIED**. Other catalog actions, parent verifier bounds, identity/conflict-
+  safe inverse, irreversible evidence and remaining A/D/H gates keep P11 open.
+- Terminal scope remains fixed read-only diagnostics plus explicitly configured,
+  confirmed project commands; no unrestricted planner shell. Browser/clipboard
+  decisions remain recorded; dependent implementations are not claimed.
+- PRs 1/2 freshly checked draft/open/unmerged. Commit/push ui-wiring only;
+  preserve main/integration, other worktrees and archives/stash/tags. Recovery
+  before this block: separate detached worktree at `1a4137c`. Next safe milestone
+  is another bounded P11 verification/irreversible/inverse/catalog gap, with no
+  new instruction needed between P11 blocks. P12 is not eligible or authorized.
+
+## Previous checkpoint: 2026-10-20, remaining P11: native battery read
 
 P11 remains authorized and incomplete. **P12 is forbidden** until instructed.
 No action enabling, merge or requirement waiver.
