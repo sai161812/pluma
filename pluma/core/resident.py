@@ -247,18 +247,14 @@ class ResidentCore:
             else:
                 return {"status": "error", "message": "No orchestrator or callback configured."}
 
-        # 2. Stop all active tasks
-        elif cmd in ("stop", "STOP", "stop_all"):
-            stopped = self.supervisor.stop_all_active_tasks()
-            return {"status": "ok", "message": "All active tasks stopped.", "stopped_count": len(stopped), "stopped_tasks": stopped}
-
-        # 3. Stop specific task
-        elif cmd == "stop_task":
-            tid = req.get("task_id")
-            if tid:
-                self.supervisor.stop_task(tid)
-                return {"status": "ok", "message": f"Task {tid} stopped."}
-            return {"status": "error", "message": "Missing task_id"}
+        # 2/3. STOP receipts distinguish the latch from verified cleanup.
+        elif cmd in ("stop", "STOP", "stop_all", "stop_task"):
+            from pluma.core.stop_protocol import StopReply
+            tid = req.get("task_id") if cmd == "stop_task" else None
+            if cmd == "stop_task" and (not isinstance(tid, str) or not tid.strip() or len(tid) > 128):
+                return StopReply(status="error", message="A valid task ID is required.",
+                                 error_code="INVALID_TASK_ID").wire()
+            return self.supervisor.request_stop(tid).wire()
 
         # 4. Status query
         elif cmd == "status":

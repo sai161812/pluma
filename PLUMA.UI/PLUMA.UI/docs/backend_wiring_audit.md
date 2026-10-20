@@ -1,24 +1,26 @@
 # Backend audit before action wiring
 
-Current status after P07 (2026-10-20): BA-01 through BA-07 pass bounded gates
-with ordinary passing audit regressions. Two findings remain, reproduced by
-three raw assertion failures. [P07 capture ownership evidence](../../../docs/completion/p07_evidence.md)
-and [P06 shutdown evidence](../../../docs/completion/p06_evidence.md), plus
+Current status after P08 (2026-10-20): BA-01 through BA-08 pass bounded gates
+with ordinary passing audit regressions. One finding remains, reproduced by
+one raw assertion failure: BA-09 first credential privacy. [P08 evidence](../../../docs/completion/p08_evidence.md)
+and the [STOP receipt contract](../../../docs/completion/p08_stop_protocol.md)
+define typed pending/stopped/residual/error outcomes, latch versus terminal
+proof, verified clean-only stopped_tasks, and retained bounded cleanup ownership.
+Both original BA-08 setup/bodies/assertions are unchanged; only their strict
+markers are removed. Earlier gates remain documented in
+[P07 capture](../../../docs/completion/p07_evidence.md),
+[P06 shutdown](../../../docs/completion/p06_evidence.md),
 [P05 outcomes](../../../docs/completion/p05_evidence.md),
 [P04 cleanup](../../../docs/completion/p04_evidence.md),
 [P03 workers](../../../docs/completion/p03_evidence.md),
 [P02 latch/isolation](../../../docs/completion/p02_evidence.md) and
-[P01 admission](../../../docs/completion/p01_evidence.md) supersede earlier
-next-fix/count statements. Capture now closes on task STOP without key release;
-empty/failed/denied paths finalize, and pending owners prevent clean shutdown.
-Both original BA-07 bodies/setup/assertions are unchanged; only their strict
-markers are removed. Device/STT adapters are inert here; P14/P19 physical voice
-acceptance remains. Final isolated checks: 656 passed, 3 skipped, 1 deselected,
-3 xfailed; raw audit: 3 failed, 12 passed. STOP acknowledgement remains BA-08,
-initial credential privacy remains BA-09. Action entry stays disabled;
-**P08/BA-08 typed truthful STOP is next** and has not started. Remaining audit
-assertions/setup/strict markers are unchanged. The original audit below remains
-historical evidence for its named source, not backend/release certification.
+[P01 admission](../../../docs/completion/p01_evidence.md). Final isolated checks:
+706 passed, 3 skipped, 1 deselected, 1 xfailed; raw audit: 1 failed, 14 passed.
+Native authenticated framing and disabled action entry are unchanged. Physical
+voice, combined Windows safety and complete backend/UI/release gates remain.
+**P09/BA-09 private atomic credentials is next** and has not started. BA-09's
+original assertion/setup/marker remains unchanged. Original audit material below
+is historical evidence for its named source, not backend certification.
 
 Date: 2026-10-19. Requested scope: inspect the backend used by `ui-wiring`,
 reproduce suspected defects, preserve existing work/appearance and record the

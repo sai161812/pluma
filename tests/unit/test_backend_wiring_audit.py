@@ -251,7 +251,6 @@ def test_empty_voice_capture_finalizes_its_capsule(isolated_supervisor):
     assert capsule not in isolated_supervisor.get_active_tasks(), f"Empty capture left {capsule.state.value} active"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-08: stop_all IPC reports success without checking final task state")
 def test_ipc_stop_reply_distinguishes_residual_cleanup(isolated_supervisor, monkeypatch):
     capsule = isolated_supervisor.create_task("audit-ipc-residual")
     capsule.undo_stack.append({"non_undoable": True, "action": "audit_external_commit"})
@@ -262,7 +261,6 @@ def test_ipc_stop_reply_distinguishes_residual_cleanup(isolated_supervisor, monk
     assert "residual" in str(response).lower(), f"IPC omitted known residual state: {response}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="BA-08: failed stop still appears in IPC stopped_tasks")
 def test_ipc_stop_reply_does_not_claim_nonterminal_task_stopped(isolated_supervisor, monkeypatch):
     capsule = isolated_supervisor.create_task("audit-ipc-failed-cleanup")
     # P04 now converts resource-cleanup errors into terminal residual evidence.

@@ -1,6 +1,66 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P07 voice capture ownership
+## Current checkpoint: 2026-10-20, P08 truthful STOP receipts
+
+This checkpoint supersedes earlier next-step/count statements. Locked source
+and native dark UI are unchanged. This is a bounded backend gate, not full
+STOP, native-device/UI, installed-artifact or release acceptance.
+
+- **P08 bounded gate passed: both BA-08 regressions repaired; P01-P07 preserved.**
+  Started clean on local/remote `ui-wiring` at
+  `7cee32faa2e1bc1b363ecb2dfedf46bf5ec116d6`. Matrix passed before edits;
+  prerequisites **235 passed in 29.85s**; original BA-08 assertions reproduced
+  **2 failed in 0.54s**. Only those two strict markers are removed. All original
+  audit setup/bodies/assertions and inherited shutdown/voice tests are unchanged.
+- [P08 evidence](docs/completion/p08_evidence.md) records exact commands, tested
+  blobs, environment, intermediate failures, fixture readback, limits and recovery.
+  [STOP protocol contract](docs/completion/p08_stop_protocol.md) defines the
+  bounded `pluma.stop.v1` payload. Three runtime files, two test files and five
+  handoff/evidence documents change. P15 live events remain separate.
+- STOP aliases return typed per-task pending/stopped/residual/error/earlier-terminal
+  observations. Transport ok, latch acknowledgement, terminal-ready, persisted
+  history, retained cleanup owners and rollback/residual facts are distinct.
+  stopped_count/stopped_tasks now contain verified clean cancellations only;
+  unknown, unfinished, failed, residual and prior successful tasks are excluded.
+  Strict schema/proof/count validation rejects fabricated clean STOP payloads.
+- Global latches/claims precede cleanup; existing admission generation remains.
+  IPC publishes one retained non-daemon cleanup owner before thread startup,
+  waits at most 100 ms for it and returns actual pending facts. No resource/ledger
+  lock wait can fabricate proof. Pending operations/capsules stay owned through
+  pruning and P06 shutdown joins, before storage closure. A slow/error stage
+  retains ownership/store. The wait budget is not hardware p95 or termination proof.
+- Missing/invalid/terminal IDs, duplicate/concurrent/reentrant STOP, partial rollback,
+  irreversible effects, absent/failed persistence and cleanup exceptions have
+  explicit outcomes. No duplicate inverse or self-join occurs; completed success
+  is not rewritten as cancellation. Unexpected cleanup failure records a fixed
+  journal error and actual unfinished state; no automatic recovery is promised.
+- Final focused **380 passed in 34.51s**, including **48 new STOP cases** and
+  both ordinary BA-08 audit cases. Isolated regressions **706 passed, 3 skipped,
+  1 deselected, 1 xfailed in 54.44s**; prerequisites rechecked **235 passed in
+  21.29s**; owned containment **3 passed in 2.97s**; recovery **5 passed in
+  0.46s**. Raw audit **1 failed, 14 passed in 0.75s**. Matrix **298 source
+  items / 324 rows**. Fixture keys zero; 115 FAST cases have desktop-isolation
+  tags. Preserve the P02 correction. Thread exceptions are errors; skips,
+  exclusion and xfail are not accepted requirements.
+- Real SQLite readback and a test-owned HMAC-authenticated Windows native pipe
+  verify STOP while execute is blocked. Other failure seams are injected and
+  device/STT adapters remain inert. Native framing/authentication/credential
+  source, internal synchronous STOP bodies, owned-process admission/controller,
+  rollback recipes and native UI are unchanged. No production device/desktop/
+  hotkey/model, settings, elevation or security-policy bypass was activated.
+- **One original finding remains: BA-09, one raw failure.** Private atomic first
+  credential creation/validation is P09. Combined Windows P10, model/device,
+  full tools/screen/ledger/UI, recovery/security/performance and release gates
+  remain. No owner-approved requirement limitation is waived. Action entry stays
+  disabled; physical voice and P15/P17 integration are not counted as done.
+- P08 is committed/pushed on `ui-wiring`; PRs 1/2 remain draft/open/unmerged.
+  Main `6dbf589`, integration `9544752` and existing worktrees/archive/stash/tags
+  remain unchanged. Pre-P08 recovery: `7cee32faa2e1bc1b363ecb2dfedf46bf5ec116d6`;
+  inspect in a new detached worktree. No merge or automatic progression.
+- **Next safe milestone: P09 only**, after its shared contract, P01-P08
+  prerequisites and fresh Git/PR checks. P09 has not started.
+
+## Previous checkpoint: 2026-10-20, P07 voice capture ownership
 
 This checkpoint supersedes earlier next-step/count statements. Locked source
 requirements and native dark UI are unchanged. This bounded gate does not

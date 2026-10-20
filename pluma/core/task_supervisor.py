@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from time import monotonic as _stop_clock
 import uuid
 import weakref
 from datetime import datetime, timezone
@@ -123,6 +124,7 @@ class TaskCapsule(BaseModel):
     cleanup_finalized: bool = False
     terminal_persisted: Optional[bool] = None
     history_expected: bool = True
+    stop_error: Optional[str] = Field(default=None, exclude=True)
     voice_session: Any = Field(default=None, exclude=True)
     owned_work: Dict[str, Any] = Field(default_factory=dict, exclude=True)
     work_lock: Any = Field(default_factory=threading.RLock, exclude=True)
@@ -330,6 +332,7 @@ class TaskSupervisor:
         self._global_stop_depth = 0
         self._stop_generation = 0
         self._closing = False
+        self._stop_operations = {}
         self._preparing = 0
         from pluma.core.shutdown import WorkGate
         self.execution_gate = WorkGate()
@@ -338,9 +341,12 @@ class TaskSupervisor:
         """Evict oldest terminal tasks from memory to prevent memory leaks."""
         limit = keep_count if keep_count is not None else self._max_retained_terminal_tasks
         with self._lock:
+            with self._admission_lock:
+                stop_owned_ids = {tid for op in self._stop_operations.values() for tid in op.capsules}
             terminal_ids = [
                 tid for tid, cap in self._tasks.items()
                 if cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set() and not cap.cleanup_pending and not cap.owned_work and cap.voice_session is None
+                and cap.task_id not in stop_owned_ids
             ]
             if len(terminal_ids) <= limit:
                 return 0
@@ -684,6 +690,8 @@ class TaskSupervisor:
         self.execution_gate.begin_shutdown()
 
     def drain_shutdown_tasks(self) -> None:
+        if not self.join_stop_operations(1.0):
+            raise RuntimeError("STOP cleanup owners remain active.")
         with self._admission_lock:
             capsules = list(self._tasks.values())
         for cap in capsules:
@@ -696,6 +704,8 @@ class TaskSupervisor:
         """Read back retained owners and persist after callers have drained."""
         if not self.execution_gate.wait_idle(1.0):
             raise RuntimeError("Execution handlers remain active.")
+        if not self.join_stop_operations(1.0):
+            raise RuntimeError("STOP cleanup owners remain active.")
         with self._lock:
             with self._admission_lock:
                 if self._preparing:
@@ -760,6 +770,143 @@ class TaskSupervisor:
             if registered:
                 with self._admission_lock:
                     self._global_stop_depth -= 1
+
+    def join_stop_operations(self, timeout_s=0.0) -> bool:
+        """Join retained STOP workers within one shared budget, then release."""
+        deadline = _stop_clock() + max(0, timeout_s)
+        with self._admission_lock:
+            operations = list(self._stop_operations.values())
+        complete = True
+        for operation in operations:
+            if not operation.join(deadline - _stop_clock()):
+                complete = False
+                continue
+            with self._admission_lock:
+                self._stop_operations.pop(operation.operation_id, None)
+        return complete
+
+    def request_stop(self, task_id=None, *, wait_s=0.1):
+        """Latch/claim synchronously; bound acknowledgement separately from cleanup.
+
+        Legacy internal stop methods keep their synchronous contracts. IPC owns
+        its cleanup independently of the client connection, with the same claims,
+        latch-all generation boundary and deterministic cleanup implementation.
+        """
+        from pluma.core.stop_protocol import StopOperation, StopReply
+        self.join_stop_operations(0)
+        global_stop = task_id is None
+        with self._admission_lock:
+            if global_stop:
+                self._global_stop_depth += 1
+                self._stop_generation += 1
+                affected = [cap for cap in self._tasks.values() if cap.state not in _TERMINAL_STATES]
+            else:
+                cap = self._tasks.get(task_id)
+                affected = [cap] if cap is not None else []
+            # Never turn a completed success/failure into a new STOP event.
+            active = [cap for cap in affected if cap.state not in _TERMINAL_STATES]
+            for cap in active:
+                cap.cancellation_token.cancel(StopReason.USER_STOP)
+            claimed = []
+            for cap in active:
+                try:
+                    if self._claim_stop_cleanup(cap):
+                        claimed.append(cap)
+                except Exception:
+                    self._stop_error(cap, "STOP_CLEANUP_ERROR")
+            operation = StopOperation({cap.task_id: cap for cap in claimed})
+            if claimed:
+                self._stop_operations[operation.operation_id] = operation
+            elif global_stop:
+                self._global_stop_depth -= 1
+
+        if claimed:
+            def clean():
+                try:
+                    for cap in claimed:
+                        try:
+                            self._cleanup_stopped_task(cap, cap.cancellation_token.reason, 0)
+                        except Exception:
+                            self._stop_error(cap, "STOP_CLEANUP_ERROR")
+                            self._persist_cleanup_report(cap)
+                        finally:
+                            with self._admission_lock:
+                                operation.finished.add(cap.task_id)
+                finally:
+                    if global_stop:
+                        with self._admission_lock:
+                            self._global_stop_depth -= 1
+            try:
+                operation.start(clean)
+            except Exception:
+                with self._admission_lock:
+                    for cap in claimed:
+                        self._stop_error(cap, "STOP_START_FAILED")
+                    if global_stop:
+                        self._global_stop_depth -= 1
+            operation.join(min(0.1, max(0, wait_s)))
+            self.join_stop_operations(0)
+        if not affected and not global_stop:
+            from pluma.core.stop_protocol import StopOutcome, StopTaskOutcome
+            return StopReply(tasks=[StopTaskOutcome(task_id=task_id,
+                outcome=StopOutcome.ERROR, latch_acknowledged=False, error_code="TASK_NOT_FOUND")])
+        return StopReply(tasks=[self._stop_snapshot(cap) for cap in affected])
+
+    def _stop_error(self, cap, code):
+        # Fixed diagnostics only. Never retain raw cleanup exceptions/arguments.
+        cap.stop_error = code
+        cap.cleanup_evidence.append(CleanupEvidence(resource_id="stop:" + cap.task_id,
+            kind="resources", code=code))
+
+    def _stop_snapshot(self, cap):
+        from pluma.core.stop_protocol import StopCleanupEvidence, StopOutcome, StopTaskOutcome
+        # Resource/ledger owners may hold _lock during external work. An
+        # acknowledgement must not wait behind them or infer clean evidence.
+        acquired = self._lock.acquire(blocking=False)
+        try:
+            with self._admission_lock:
+                latched = cap.cancellation_token.is_cancelled
+                state = cap.state.value
+                busy = any(cap.task_id in op.capsules and cap.task_id not in op.finished
+                           for op in self._stop_operations.values())
+                if not acquired:
+                    return StopTaskOutcome(task_id=cap.task_id, outcome=StopOutcome.PENDING,
+                        latch_acknowledged=latched, final_state=state,
+                        cleanup_in_progress=busy, error_code="EVIDENCE_BUSY")
+                details = cap.outcome_details()
+                ready = cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set()
+                no_owners = (not cap.owned_work and cap.voice_session is None
+                    and cap.worker_controller is None and cap.job_object is None
+                    and cap.snapshot_registry is None
+                    and not any(r.ownership == ResourceOwnership.PLUMA_CREATED
+                        and r.metadata.get("persistent_job") is not None for r in cap.owned_resources))
+                clean = ready and not busy and no_owners and not details["has_residual"]
+                error = cap.stop_error
+                if error:
+                    outcome = StopOutcome.ERROR
+                elif not ready or busy:
+                    outcome = StopOutcome.PENDING
+                elif cap.state == TaskState.STOPPED_WITH_RESIDUAL or details["has_residual"] or not no_owners:
+                    outcome = StopOutcome.RESIDUAL
+                elif cap.terminal_persisted is not True:
+                    outcome, error = StopOutcome.ERROR, "TERMINAL_HISTORY_UNVERIFIED"
+                elif cap.state == TaskState.STOPPED and latched and clean:
+                    outcome = StopOutcome.STOPPED
+                elif cap.state == TaskState.FAILED:
+                    outcome, error = StopOutcome.ERROR, "TASK_FAILED"
+                else:
+                    outcome = StopOutcome.TERMINAL
+                return StopTaskOutcome(task_id=cap.task_id, outcome=outcome,
+                    latch_acknowledged=latched, final_state=state,
+                    completion_verified=ready, terminal_persisted=cap.terminal_persisted,
+                    cleanup_in_progress=busy or (not ready and error is None),
+                    cleanup_verified=clean, has_residual=details["has_residual"] or (ready and not no_owners),
+                    rollback_performed=details["rollback_performed"], rollback_success=details["rollback_success"],
+                    cleanup_evidence=[StopCleanupEvidence.model_validate(item) for item in details["cleanup_evidence"]],
+                    error_code=error)
+        finally:
+            if acquired:
+                self._lock.release()
 
     def _get_task(self, task_id: str) -> TaskCapsule:
         if task_id not in self._tasks:
