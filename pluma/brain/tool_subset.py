@@ -63,6 +63,7 @@ WINDOW_MANAGEMENT_TOOLS = [
 ]
 
 SYSTEM_CLIPBOARD_TOOLS = [
+    "save_preference", "get_preference", "create_routine", "run_routine",
     "get_system_status",
     "system_status",
     "battery_status",

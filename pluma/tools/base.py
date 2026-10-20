@@ -13,7 +13,7 @@ No OS-automation, ML, or adapter code in this module.
 from __future__ import annotations
 
 from enum import Enum, IntEnum
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Type, Literal
 
 from pydantic import BaseModel, Field
 
@@ -106,6 +106,7 @@ class ToolSpec(BaseModel):
         default=False,
         description="Require a killable owned worker; never fall back to an in-process call.",
     )
+    execution_scope: Literal["adapter", "task_service"] = "adapter"
     executor: Callable[..., "ToolResult"] = Field(
         description="Callable that performs the action. Injected by the adapter layer."
     )
@@ -188,6 +189,7 @@ class ToolResult(BaseModel):
     error: Optional[str] = None                 # Factual error message.
     error_code: Optional[str] = None            # Machine-readable error class.
     undo_record: Optional[Dict[str, Any]] = None  # Pre-state for rollback.
+    private_context: Dict[str, Any] = Field(default_factory=dict, exclude=True, repr=False)
 
     @classmethod
     def success(

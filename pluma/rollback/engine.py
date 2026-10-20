@@ -94,6 +94,17 @@ class RollbackEngine:
                 tool_name = rec.get("tool", "")
                 action_name = undo_data.get("action", tool_name)
 
+                claim_id = None
+                if self._ledger and action_id is not None:
+                    try:
+                        claim_id = self._ledger.claim_undo(action_id, task_id, raw_json)
+                    except Exception:
+                        claim_id = None
+                    if claim_id is None:
+                        failed += 1
+                        step_results.append(RollbackStepResult(ok=False, action=action_name,
+                            message="Undo is already claimed or its state could not be verified.", error="UNDO_CLAIM_UNVERIFIED"))
+                        continue
                 step_res = self._recipes.apply(action_name, undo_data)
 
                 # Atomically record rollback result and consume undo record in one transaction
@@ -103,6 +114,7 @@ class RollbackEngine:
                             action_row_id=action_id,
                             ok=step_res.ok,
                             result=step_res.data or {"message": step_res.message, "error": step_res.error},
+                            claim_id=claim_id,
                         )
                     except Exception as e:
                         logger.error("Failed to atomically record rollback for action %s: %s", action_id, e)

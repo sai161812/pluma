@@ -39,7 +39,24 @@ def isolate_fast_orchestrator_desktop(request, monkeypatch):
         return
 
     from pluma.tools import clipboard
+    from pluma.tools import audio
     state = {"text": "Fixture clipboard"}
+    sound = {"volume": 50, "muted": False}
+
+    def read_audio():
+        return dict(sound, is_mock=True, endpoint_id="fixture:default", scalar=sound["volume"] / 100.0)
+
+    def write_audio(level=None, mute=None, expected_endpoint=None):
+        if expected_endpoint not in (None, "fixture:default"):
+            return False
+        if level is not None:
+            sound["volume"] = level
+        if mute is not None:
+            sound["muted"] = mute
+        return True
+
+    monkeypatch.setattr(audio, "_get_audio_endpoint_volume", read_audio)
+    monkeypatch.setattr(audio, "_set_audio_endpoint_volume", write_audio)
 
     def clear():
         state["text"] = ""
@@ -73,5 +90,5 @@ def isolate_fast_orchestrator_desktop(request, monkeypatch):
         return real_run(command, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", run)
-    request.node.user_properties.append(("desktop_isolation", "inert clipboard; no target window; desktop termination blocked"))
+    request.node.user_properties.append(("desktop_isolation", "inert clipboard/audio; no target window; desktop termination blocked"))
     yield

@@ -121,6 +121,9 @@ class Orchestrator:
     ) -> None:
         self._registry = registry or _build_default_registry()
         self._supervisor = supervisor or TaskSupervisor(ledger=ledger, rollback_engine=rollback_engine)
+        binder = getattr(self._registry, "bind_stop_service", None)
+        if callable(binder):
+            binder(self._supervisor.request_stop)
         self._ledger = ledger
         self._supervisor.bind_execution(ledger, rollback_engine)
         self._router = router or Router()

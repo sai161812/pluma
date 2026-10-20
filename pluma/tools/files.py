@@ -76,10 +76,15 @@ class FileInfoData(BaseModel):
 
 class MoveFileArgs(BaseModel):
     """Arguments for move_file."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
     source: str = Field(min_length=1, description="Source file or folder path.")
     destination: str = Field(min_length=1, description="Destination directory or target file path.")
     overwrite: bool = Field(default=False, description="Whether to overwrite existing destination.")
+
+    @field_validator("source", "destination")
+    @classmethod
+    def explicit_path(cls, value):
+        return FileInfoArgs.explicit_filesystem_path(value)
 
 
 _WINDOWS_RESERVED_NAMES = frozenset({
@@ -91,9 +96,14 @@ _WINDOWS_RESERVED_NAMES = frozenset({
 
 class RenameFileArgs(BaseModel):
     """Arguments for rename_file."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
     path: str = Field(min_length=1, description="Target file or folder to rename.")
     new_name: str = Field(min_length=1, max_length=255, description="New filename (basename only).")
+
+    @field_validator("path")
+    @classmethod
+    def explicit_path(cls, value):
+        return FileInfoArgs.explicit_filesystem_path(value)
 
     @field_validator("new_name")
     @classmethod
@@ -101,6 +111,8 @@ class RenameFileArgs(BaseModel):
         clean = v.strip()
         if not clean:
             raise ValueError("new_name cannot be empty or whitespace.")
+        if clean != v or v.endswith('.') or any(char in v for char in '*?"<>|:'):
+            raise ValueError("new_name must be a literal Windows basename.")
         if "\0" in clean:
             raise ValueError("new_name cannot contain null bytes.")
         if any(sep in clean for sep in ("/", "\\", "..")):
@@ -125,47 +137,33 @@ class CreateFolderArgs(BaseModel):
 # Undo Builders
 # ---------------------------------------------------------------------------
 
-def undo_builder_move_file(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Capture pre-state before moving a file."""
-    import os
+def undo_builder_move_file(args: Dict[str, Any]) -> Dict[str, Any]:
     from pathlib import Path
-
-    src = str(Path(args["source"]).resolve())
-    dst_input = Path(args["destination"])
-
-    if dst_input.is_dir() or args["destination"].endswith(("/", "\\")):
-        dst = str((dst_input / Path(src).name).resolve())
-    else:
-        dst = str(dst_input.resolve())
-
-    backup_path = args.get("preserved_destination_backup")
-
-    return {
-        "action": "move_file",
-        "source": src,
-        "destination": dst,
-        "destination_existed": os.path.exists(dst),
-        "preserved_destination_backup": backup_path,
-    }
+    from pluma.adapters.file_identity import capture
+    source = FileInfoArgs.model_validate({"path": args["source"]}).path
+    destination = FileInfoArgs.model_validate({"path": args["destination"]}).path
+    if args.get("overwrite", False):
+        raise ValueError("Overwrite requires a separately verified backup operation.")
+    if Path(destination).is_dir():
+        destination = str(Path(destination) / Path(source).name)
+    from pluma.memory.redaction import redact_string
+    if redact_string(source) != source or redact_string(destination) != destination:
+        raise ValueError("Private path pre-state cannot be safely journaled.")
+    return {"action": "move_file", "source": str(Path(source)), "destination": str(Path(destination)),
+            "guard_version": 1, **capture(source, destination)}
 
 
-def undo_builder_rename_file(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Capture pre-state before renaming a file."""
-    import os
+def undo_builder_rename_file(args: Dict[str, Any]) -> Dict[str, Any]:
     from pathlib import Path
-    
-    target = str(Path(args["path"]).resolve())
-    if not os.path.exists(target):
-        return None
-        
-    parent = Path(target).parent
-    new_target = str((parent / args["new_name"]).resolve())
-    
-    return {
-        "action": "rename_file",
-        "original_path": target,
-        "new_path": new_target,
-    }
+    from pluma.adapters.file_identity import capture
+    source = FileInfoArgs.model_validate({"path": args["path"]}).path
+    name = RenameFileArgs.model_validate(args).new_name
+    destination = str(Path(source).with_name(name))
+    from pluma.memory.redaction import redact_string
+    if redact_string(source) != source or redact_string(destination) != destination:
+        raise ValueError("Private path pre-state cannot be safely journaled.")
+    return {"action": "rename_file", "original_path": str(Path(source)), "new_path": destination,
+            "guard_version": 1, **capture(source, destination)}
 
 
 def undo_builder_create_folder(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -312,103 +310,46 @@ def execute_find_file(args: Dict[str, Any], task_context: Any = None) -> ToolRes
         return ToolResult.failure("find_file", str(e))
 
 
-def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-        return ToolResult.failure("move_file", "Task cancelled before move could execute.", error_code="TASK_CANCELLED")
-
-    import os
-    import shutil
-    import uuid
+def _execute_guarded_move(tool, args, task_context):
+    from pluma.adapters.file_identity import move
     from pathlib import Path
-
-    src = Path(args["source"]).resolve()
-    dst = Path(args["destination"]).resolve()
-    overwrite = args.get("overwrite", False)
-
-    if not src.exists():
-        return ToolResult.failure("move_file", f"Source '{src}' does not exist.")
-
-    if dst.is_dir():
-        final_dst = dst / src.name
-    else:
-        final_dst = dst
-
-    if final_dst.exists() and not overwrite and final_dst != src:
-        return ToolResult.failure("move_file", f"Destination '{final_dst}' already exists and overwrite=False.")
-
-    backup_path_str = None
-    if final_dst.exists() and overwrite and final_dst != src:
-        try:
-            from pluma.config.paths import get_paths
-            backup_dir = get_paths().cache_dir / "rollback"
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            backup_file = backup_dir / f"bak_{uuid.uuid4().hex}_{final_dst.name}"
-            shutil.copy2(str(final_dst), str(backup_file))
-            backup_path_str = str(backup_file)
-            args["preserved_destination_backup"] = backup_path_str
-        except Exception as e:
-            return ToolResult.failure(
-                "move_file",
-                f"Failed to create safety rollback backup for destination '{final_dst}': {e}",
-                error_code="BACKUP_FAILED",
-            )
-
     try:
-        final_dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(final_dst))
+        capture = undo_builder_move_file if tool == "move_file" else undo_builder_rename_file
+        if task_context is not None and getattr(task_context, "undo_stack", None):
+            state = next(item["pre_state"] for item in reversed(task_context.undo_stack)
+                if item.get("action") == "pending_mutation" and item.get("tool") == tool)
+        else:
+            state = capture(args)
+        source = state.get("source", state.get("original_path"))
+        destination = state.get("destination", state.get("new_path"))
+        if state.get("action") != tool or state.get("guard_version") != 1:
+            raise ValueError("File mutation does not match its journal.")
+        if tool == "move_file":
+            supplied_source, supplied_destination = Path(args["source"]), Path(args["destination"])
+            if args.get("overwrite", False) or Path(source) != supplied_source or Path(destination) not in (
+                    supplied_destination, supplied_destination / supplied_source.name):
+                raise ValueError("File mutation does not match its arguments.")
+        elif Path(source) != Path(args["path"]) or Path(destination) != Path(args["path"]).with_name(args["new_name"]):
+            raise ValueError("Rename does not match its arguments.")
+        move(source, destination, state["identity"], getattr(task_context, "cancellation_token", None),
+             parents=(state["source_parent"], state["destination_parent"]))
+        data = {"source": source, "destination": destination} if tool == "move_file" else {
+            "original_path": source, "new_path": destination}
+        result = ToolResult.success(tool, data=data, verified=True,
+            factual_message="Moved one filesystem target." if tool == "move_file" else "Renamed one filesystem target.",
+            adapter_used="native_handle").model_copy(update={"private_context": {"file_move": state}})
+        proof = verify_move_file(result) if tool == "move_file" else verify_rename_file(result)
+        return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
+    except Exception:
+        return ToolResult.failure(tool, "Filesystem move was refused or could not be verified. Pre-state retained.", "FILE_MOVE_UNVERIFIED")
 
-        # Postcondition verification
-        v_res = verify_file_moved(src, final_dst)
-        return ToolResult(
-            ok=v_res.ok,
-            tool="move_file",
-            data={
-                "source": str(src),
-                "destination": str(final_dst),
-                "destination_existed": backup_path_str is not None,
-                "preserved_destination_backup": backup_path_str,
-            },
-            factual_message=f"Moved '{src.name}' to '{final_dst}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("move_file", str(e))
+
+def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    return _execute_guarded_move("move_file", args, task_context)
 
 
 def execute_rename_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-        return ToolResult.failure("rename_file", "Task cancelled before rename could execute.", error_code="TASK_CANCELLED")
-
-    import os
-    from pathlib import Path
-
-    target = Path(args["path"]).resolve()
-    new_name = args["new_name"]
-
-    if any(sep in new_name for sep in ("/", "\\", "..")) or Path(new_name).name != new_name:
-        return ToolResult.failure("rename_file", f"Path traversal characters forbidden in new_name: '{new_name}'")
-
-    if not target.exists():
-        return ToolResult.failure("rename_file", f"Target '{target}' does not exist.")
-
-    new_path = target.parent / new_name
-    if new_path.exists() and new_path != target:
-        return ToolResult.failure("rename_file", f"Destination '{new_path}' already exists.")
-
-    try:
-        target.rename(new_path)
-        v_res = verify_file_renamed(target, new_path)
-        return ToolResult(
-            ok=v_res.ok,
-            tool="rename_file",
-            data={"original_path": str(target), "new_path": str(new_path)},
-            factual_message=f"Renamed '{target.name}' to '{new_name}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("rename_file", str(e))
+    return _execute_guarded_move("rename_file", args, task_context)
 
 
 def execute_create_folder(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -506,16 +447,27 @@ def verify_find_file(result: ToolResult) -> VerifyResult:
     return verify_noop(result)
 
 
+def _verify_guarded_move(result: ToolResult) -> VerifyResult:
+    from pluma.adapters.file_identity import verify_move
+    try:
+        state = result.private_context["file_move"]
+        source = state.get("source", state.get("original_path"))
+        destination = state.get("destination", state.get("new_path"))
+        data = {"source": source, "destination": destination} if result.tool == "move_file" else {
+            "original_path": source, "new_path": destination}
+        valid = result.ok and state['action'] == result.tool and result.data == data and verify_move(source, destination, state["identity"])
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method="native_identity_and_digest",
+        detail="Source absence and destination identity/content verified." if valid else "Filesystem move was not verified.")
+
+
 def verify_move_file(result: ToolResult) -> VerifyResult:
-    if not result.ok or "source" not in result.data or "destination" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Move operation reported failure.")
-    return verify_file_moved(result.data["source"], result.data["destination"])
+    return _verify_guarded_move(result)
 
 
 def verify_rename_file(result: ToolResult) -> VerifyResult:
-    if not result.ok or "original_path" not in result.data or "new_path" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Rename operation reported failure.")
-    return verify_file_renamed(result.data["original_path"], result.data["new_path"])
+    return _verify_guarded_move(result)
 
 
 def verify_create_folder(result: ToolResult) -> VerifyResult:
@@ -535,6 +487,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=FileInfoArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_file_info,
         verifier=verify_file_info,
         undo_builder=None,
@@ -571,6 +524,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=MoveFileArgs,
         risk_class=RiskClass.MEDIUM,
         timeout_s=15.0,
+        process_isolated=True,
         executor=execute_move_file,
         verifier=verify_move_file,
         undo_builder=undo_builder_move_file,
@@ -583,6 +537,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=RenameFileArgs,
         risk_class=RiskClass.MEDIUM,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_rename_file,
         verifier=verify_rename_file,
         undo_builder=undo_builder_rename_file,

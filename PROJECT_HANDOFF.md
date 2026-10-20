@@ -1,6 +1,61 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-20, P00-P11 audit R01 repair
+## Current checkpoint: 2026-10-21, P11 storage/routines/global STOP implementation
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** The owner authorized completing
+remaining P11 work and asked why the work packets are large. Continue actual
+capability implementation in coherent batches; do not substitute repeated
+whole-project audits for closing tools. P11 covers most of the action backend.
+P12-P15 are likewise broad backend packets; P24-P29 are substantial integration,
+physical/security/performance/packaging work. No later milestone is authorized.
+
+- [E27](docs/completion/p11_storage_tools.md): Activity reads the actual ledger
+  with bounded, redacted SQLite snapshots and fixed read failures. Registered
+  STOP uses the real priority global latch-all service, also bound by standalone
+  orchestrator composition. It distinguishes pending/residual from clean stop.
+- Four missing memory tools implemented: save_preference, get_preference,
+  create_routine, run_routine. Exact-call approval, required owned SQLite workers,
+  journaled capture/CAS/readback/conflict-safe inverse; routines revalidate every
+  saved call and share the capsule, policy, cancellation, budget and ledger.
+  Completion checks actual child action rows. No nested/stored screen routines.
+- Durable undo claims prevent duplicate or uncertain replays. Guarded memory
+  and native file/folder move/rename inverses work; unsupported older pre-state
+  stays refused/preserved. Native move uses captured file IDs/content/tree hash
+  and parent binding; original usable-undo assertions remain. Same-volume,
+  non-overwrite mode only; remaining file modes/catalog inverse gaps stay open.
+  file_info now explicitly requires killable owned isolation without fallback.
+- Counts: 34 exact names registered / 39 unregistered; all 73 catalog rows:
+  15 IMPLEMENTED / 39 MISSING / 2 DEFECTIVE / 17 UNVERIFIED. Sixteen missing
+  P12 entries untouched. Non-P12 missing count 23; clipboard_clear and the full
+  catalog reach of undo_last remain defective. Native file rows retain UNVERIFIED
+  despite tested guarded same-volume cases. No blanket waiver or full P11 claim.
+- Focused final batch 151 passed (52.88s); native compatibility 23 (18.23s).
+  First broad focused run: 827 passed / 1 failed / 1 excluded; usable-undo fixture
+  and native identity support corrected without weakening assertions. First full
+  regression: 1156 passed / 3 failed / 3 skipped / 1 excluded (215.39s). Explicit
+  query / real-ledger Activity compatibility corrected; 21 targeted passes (3.40s).
+  One original owned-worker cleanup failure is retained and not hidden: diagnostic
+  original-case replay passed (0.99s), native job 3 members to 0 and original
+  process handle signaled in about 63ms. No cleanup deadline/test relaxation;
+  initial timing cause not established. Next broad run: 1158 passes / one FAST
+  mute-emulation failure. Routing audio fixture now per-case inert memory; native
+  audio/cleanup requirements remain unchanged. Broad regression **1159 passed / 3 skipped / 1 excluded in 219.60s**.
+  Final review then made failed routines fatal to outer replanning: new proof
+  verifies no prefix replay and rollback. Only multi_step.py/new memory test
+  differ from the broad run; final affected memory/multi-step/journal suites
+  **43 passed in 24.30s**. Current-source raw 15 (0.56s), containment 3 (3.36s),
+  recovery 5 (0.55s), native IPC 39 (7.486s). Actual exits zero; final affected
+  hashes match and broad differences are explicit; keys zero, 115 FAST isolated. Prior failures are
+  retained, not counted as passes. Skips/excluded elevation remain separate.
+- No UI appearance, immutable specification, dependency, physical desktop/device
+  setting, unrestricted shell/admin or P12 change. Tests use isolated SQLite and
+  owned fixtures; remaining native/physical gates remain explicit.
+- Started pushed ui-wiring 5f1b1d9. Commit/push this reviewed batch only after
+  checking actual exits/source hashes/keys/diff; then continue remaining P11.
+  Migration adds claims only; older undo code must not open claim-bearing data.
+  Preserve other worktrees/main/integration/recovery data and draft PR boundaries.
+
+## Previous checkpoint: 2026-10-20, P00-P11 audit R01 repair
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** The renewed overall audit is
 [here](docs/completion/p00_p11_audit.md). P00-P10 original bounded gates retain

@@ -72,7 +72,7 @@ class PlumaApplicationRuntime:
             rules=self.policy_rules,
             confirmation_contract=confirmation_contract,
         )
-        self.tool_registry = ToolRegistry(policy_engine=self.policy_engine)
+        self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop)
         register_default_tools(self.tool_registry)
 
         self.router = Router()

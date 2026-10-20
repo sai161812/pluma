@@ -296,7 +296,7 @@ def test_failed_final_verifier_cannot_consume_worker_undo_snapshot(runtime, monk
         confirmation_contract=CallbackConfirmationContract(approve))
     spec = runtime.tool_registry.lookup('undo_last')
     monkeypatch.setattr(spec, 'executor', worker_undo_pop)
-    monkeypatch.setattr(spec, 'verifier', lambda result: VerifyResult(ok=False, method='state', detail='Injected contradiction.'))
+    monkeypatch.setattr(spec, 'verifier', contradict_fixture)
     result = runtime.tool_registry.execute('undo_last', {}, cap, ledger=runtime.ledger)
     assert not result.ok and not result.verified and result.error_code == 'POSTCONDITION_FAILED'
     assert cap.undo_stack == [original]

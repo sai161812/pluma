@@ -297,8 +297,13 @@ class ActivityLedger:
         action_row_id: int,
         ok: bool,
         result: Dict[str, Any],
+        claim_id: Optional[str] = None,
     ) -> None:
         """Atomically mark rollback result and consume undo record in one SQLite transaction."""
+        if claim_id is not None:
+            claim = self._db.execute_read_one("SELECT operation_id FROM undo_claims WHERE action_id=?", (action_row_id,))
+            if claim is None or claim["operation_id"] != claim_id:
+                raise ValueError("Undo claim is not owned by this operation.")
         stmts = [
             (
                 """
@@ -306,7 +311,7 @@ class ActivityLedger:
                 SET rollback_attempted = 1, rollback_ok = ?, rollback_result_json = ?
                 WHERE action_id = ?
                 """,
-                (int(ok), json.dumps(result) if result else None, action_row_id),
+                (int(ok), json.dumps(redact_sensitive_data(result)) if result else None, action_row_id),
             ),
         ]
         if ok:
@@ -314,7 +319,37 @@ class ActivityLedger:
                 "UPDATE undo_records SET available = 0 WHERE action_id = ?",
                 (action_row_id,),
             ))
-        self._db.execute_transaction(stmts, wait=True)
+        if claim_id is not None:
+            stmts.append(("UPDATE undo_claims SET state=? WHERE action_id=? AND operation_id=?",
+                ("verified" if ok else "unverified", action_row_id, claim_id)))
+        self._db.execute_transaction(stmts, wait=True, timeout_s=2.0)
+        observed = self._db.execute_read_one("SELECT available, rollback_attempted, rollback_ok FROM undo_records WHERE action_id=?", (action_row_id,))
+        if observed is None or observed['rollback_attempted'] != 1 or observed['rollback_ok'] != int(ok) or (ok and observed['available'] != 0):
+            raise ValueError("Undo consumption could not be read back.")
+        if claim_id is not None:
+            claim = self._db.execute_read_one("SELECT state FROM undo_claims WHERE action_id=? AND operation_id=?", (action_row_id, claim_id))
+            if claim is None or claim['state'] != ('verified' if ok else 'unverified'):
+                raise ValueError("Undo claim outcome could not be read back.")
+
+    def claim_undo(self, action_row_id: int, task_id: str, undo_json: str) -> Optional[str]:
+        import uuid
+        operation = str(uuid.uuid4())
+        self._db.execute_transaction([("""INSERT OR IGNORE INTO undo_claims
+            (action_id, operation_id, task_id, state, created_at)
+            SELECT action_id, ?, ?, 'claimed', ? FROM undo_records
+            WHERE action_id=? AND available=1 AND undo_json=?""",
+            (operation, task_id, _now_iso(), action_row_id, undo_json))], wait=True, timeout_s=2.0)
+        row = self._db.execute_read_one("SELECT operation_id FROM undo_claims WHERE action_id=?", (action_row_id,))
+        if row is None:
+            # A pending journal may change between read and claim. Record the
+            # refused rollback attempt without modifying its newer pre-state
+            # or a claim held by another executor.
+            self._db.execute_transaction([("""UPDATE undo_records SET rollback_attempted=1,
+                rollback_ok=0, rollback_result_json=? WHERE action_id=?
+                AND NOT EXISTS (SELECT 1 FROM undo_claims WHERE action_id=?)""",
+                (json.dumps({"error": "UNDO_CLAIM_UNVERIFIED"}), action_row_id, action_row_id))],
+                wait=True, timeout_s=2.0)
+        return operation if row is not None and row["operation_id"] == operation else None
 
 
     # -- Resources --

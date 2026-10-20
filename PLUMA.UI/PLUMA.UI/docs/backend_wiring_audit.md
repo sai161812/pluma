@@ -1,5 +1,13 @@
 # Backend audit before action wiring
 
+Current P11 implementation update: [E27](../../../docs/completion/p11_storage_tools.md)
+adds four typed preference/routine capabilities and repairs actual-ledger Activity
+and priority global STOP. Durable undo claims and guarded native file/folder
+move/rename inverse evidence are added. Non-P12 catalog: 15 implemented,
+23 missing, 2 defective, 17 unverified. P11 is incomplete; P12 forbidden and
+command entry remains disabled. Current batch checks are in E27/current handoff.
+
+
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT
 complete. E25 owns/bounds verification, interrupts legacy callers safely, retains
 uncertain effects and prevents late proof/replan/private exception success.

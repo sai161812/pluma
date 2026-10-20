@@ -34,6 +34,15 @@ class RollbackStepResult:
 # Default recipe handlers
 # ---------------------------------------------------------------------------
 
+def _recipe_memory_write(undo_data: Dict[str, Any]) -> RollbackStepResult:
+    from pluma.memory.tool_store import restore
+    try:
+        restore(undo_data)
+        return RollbackStepResult(ok=True, action="memory_write", message="Restored previous memory value.")
+    except Exception:
+        return RollbackStepResult(ok=False, action="memory_write",
+            message="Memory undo conflicted or could not be verified.", error="ROLLBACK_CONFLICT")
+
 
 def _recipe_pending_mutation(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Unknown partial effects are retained, never guessed at by a generic inverse."""
@@ -42,8 +51,20 @@ def _recipe_pending_mutation(undo_data: Dict[str, Any]) -> RollbackStepResult:
         error="MUTATION_OUTCOME_UNKNOWN", data={"operation_id": undo_data.get("operation_id"),
             "tool": undo_data.get("tool"), "pre_state_retained": True})
 
+def _recipe_guarded_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
+    from pluma.adapters.file_identity import restore
+    try:
+        restore(undo_data)
+        return RollbackStepResult(ok=True, action=undo_data["action"], message="Restored captured filesystem target.")
+    except Exception:
+        return RollbackStepResult(ok=False, action=undo_data["action"],
+            message="Filesystem undo conflicted or could not be verified.", error="ROLLBACK_CONFLICT")
+
+
 def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Restore a moved file or directory back to its source location, preserving any newer conflicting content."""
+    if undo_data.get("guard_version") == 1:
+        return _recipe_guarded_file(undo_data)
     src = Path(undo_data.get("source", ""))
     dst = Path(undo_data.get("destination", ""))
     backup_path_str = undo_data.get("preserved_destination_backup")
@@ -109,6 +130,8 @@ def _recipe_move_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
 
 def _recipe_rename_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Rename a file or directory back to its original name, preserving any newer conflicting content."""
+    if undo_data.get("guard_version") == 1:
+        return _recipe_guarded_file(undo_data)
     orig = Path(undo_data.get("original_path", ""))
     curr = Path(undo_data.get("new_path", ""))
 
@@ -273,6 +296,7 @@ class RollbackRecipes:
         self._register_defaults()
 
     def _register_defaults(self) -> None:
+        self.register("memory_write", _recipe_memory_write)
         self.register("pending_mutation", _recipe_pending_mutation)
         self.register("move_file", _recipe_move_file)
         self.register("rename_file", _recipe_rename_file)

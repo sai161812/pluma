@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field
 
@@ -33,13 +33,13 @@ class GetSystemStatusArgs(BaseModel):
 
 class StopCurrentArgs(BaseModel):
     """Arguments for stop_current."""
-    model_config = {"extra": "forbid"}
-    reason: str = Field(default="user_stop", description="Reason for stopping the task.")
+    model_config = {"extra": "forbid", "strict": True}
+    reason: Literal["user_stop"] = "user_stop"
 
 
 class ShowActivityArgs(BaseModel):
     """Arguments for show_activity."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
     limit: int = Field(default=10, ge=1, le=100, description="Maximum number of activity records to return.")
 
 
@@ -163,159 +163,119 @@ def execute_network_status(args: Dict[str, Any], task_context: Any = None) -> To
     return result.model_copy(update={"verified": True, "verify_detail": proof})
 
 
-def execute_stop_current(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    from pluma.core.cancellation import StopReason
-    
-    reason = args.get("reason", "user_stop")
-    if task_context and hasattr(task_context, "cancellation_token"):
-        task_context.cancellation_token.cancel(StopReason.USER_STOP)
-        
-    return ToolResult(
-        ok=True,
-        tool="stop_current",
-        data={"reason": reason},
-        factual_message="Stopped current task execution.",
-        verified=True,
-    )
+def verify_stop_current(result: ToolResult) -> VerifyResult:
+    from pluma.core.stop_protocol import StopReply, StopOutcome
+    try:
+        reply = StopReply.model_validate_json(__import__("json").dumps(result.data))
+        clean = result.ok and reply.status == "ok" and all(
+            item.outcome in (StopOutcome.STOPPED, StopOutcome.TERMINAL)
+            and item.completion_verified and item.terminal_persisted is True
+            and not item.has_residual for item in reply.tasks)
+    except (TypeError, ValueError):
+        clean = False
+    return VerifyResult(ok=clean, method="supervisor_readback",
+        detail="STOP cleanup and terminal history verified." if clean else "STOP cleanup is pending or unverified.")
+
+
+def execute_stop_current(args: Dict[str, Any], task_context: Any = None, *, stop_service=None) -> ToolResult:
+    if not callable(stop_service):
+        return ToolResult.failure("stop_current", "Priority STOP service is unavailable.", "STOP_SERVICE_UNAVAILABLE")
+    try:
+        StopCurrentArgs.model_validate(args)
+        reply = stop_service(wait_s=.1)
+        result = ToolResult.success("stop_current", data=reply.wire(), verified=False,
+            factual_message="STOP requested. Cleanup results are recorded per task.", adapter_used="supervisor")
+        proof = verify_stop_current(result)
+        return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
+    except Exception:
+        return ToolResult.failure("stop_current", "STOP cleanup could not be verified.", "STOP_SERVICE_FAILED")
+
+
+class ActivityEntry(BaseModel):
+    model_config = {"extra": "forbid", "strict": True}
+    task_id: str = Field(min_length=1, max_length=128)
+    command: str = Field(max_length=4096)
+    command_truncated: bool
+    state: Optional[str]
+    created_at: str
+    input_mode: str
+    route: Optional[str]
+    action_count: int = Field(ge=0)
+
+
+class ActivityData(BaseModel):
+    model_config = {"extra": "forbid", "strict": True}
+    count: int = Field(ge=0, le=100)
+    limit: int = Field(ge=1, le=100)
+    records: List[ActivityEntry] = Field(max_length=100)
+
+
+def verify_activity(result: ToolResult) -> VerifyResult:
+    try:
+        data = ActivityData.model_validate(result.data)
+        valid = (result.ok and result.tool == "show_activity"
+                 and data.count == len(data.records) <= data.limit
+                 and len({row.task_id for row in data.records}) == data.count)
+    except (TypeError, ValueError):
+        valid = False
+    return VerifyResult(ok=valid, method="sqlite_snapshot",
+        detail="Bounded executor-ledger snapshot read." if valid else "Activity snapshot was not verified.")
 
 
 def execute_show_activity(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    limit = args.get("limit", 10)
-    
+    from pluma.memory.reader import recent_activity, recent_activity_from_query
     from pluma.memory.activity import ActivityQuery
-    from pluma.memory.db import DbConnection
-    
-    records: List[Dict[str, Any]] = []
-    
-    # 1. Check if db or query is attached to task_context
-    query: Optional[ActivityQuery] = None
-    if task_context:
-        if hasattr(task_context, "query") and isinstance(task_context.query, ActivityQuery):
-            query = task_context.query
-        elif hasattr(task_context, "db") and isinstance(task_context.db, DbConnection):
-            query = ActivityQuery(task_context.db)
+    try:
+        limit = ShowActivityArgs.model_validate(args).limit
+        query = getattr(task_context, "query", None)
+        if isinstance(query, ActivityQuery):
+            records = recent_activity_from_query(query, limit)
+        else:
+            records = recent_activity(getattr(task_context, "storage_path", None), limit)
+        data = ActivityData(count=len(records), limit=limit, records=records).model_dump()
+    except Exception:
+        return ToolResult.failure("show_activity", "Activity history could not be read.", "ACTIVITY_READ_FAILED")
+    result = ToolResult.success("show_activity", data=data, verified=False,
+        factual_message=f"Retrieved {len(records)} recent Activity records.", adapter_used="sqlite")
+    proof = verify_activity(result)
+    return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
 
-    # 2. Check default or env configured database path
-    if query is None:
-        db_path = os.environ.get("PLUMA_DB_PATH")
-        if not db_path:
-            appdata = os.environ.get("LOCALAPPDATA") or "/tmp"
-            db_path = os.path.join(appdata, "PLUMA", "activity.db")
-        
-        if os.path.exists(db_path):
-            try:
-                with DbConnection(db_path) as db:
-                    q = ActivityQuery(db)
-                    tasks = q.recent_tasks(limit=limit)
-                    for t in tasks:
-                        actions = q.actions_for_task(t["task_id"])
-                        records.append({
-                            "task_id": t["task_id"],
-                            "command": t["command_text"],
-                            "state": t.get("final_state"),
-                            "created_at": t.get("created_at"),
-                            "action_count": len(actions),
-                        })
-            except Exception:
-                pass
-    else:
-        try:
-            tasks = query.recent_tasks(limit=limit)
-            for t in tasks:
-                actions = query.actions_for_task(t["task_id"])
-                records.append({
-                    "task_id": t["task_id"],
-                    "command": t["command_text"],
-                    "state": t.get("final_state"),
-                    "created_at": t.get("created_at"),
-                    "action_count": len(actions),
-                })
-        except Exception:
-            pass
 
-    count = len(records)
-    return ToolResult(
-        ok=True,
-        tool="show_activity",
-        data={"count": count, "records": records},
-        factual_message=f"Retrieved {count} recent Activity record{'s' if count != 1 else ''}.",
-        verified=True,
-    )
+def verify_undo_last(result: ToolResult) -> VerifyResult:
+    from pluma.memory.undo import verify
+    try:
+        receipt = result.private_context["undo_receipt"]
+        valid = (result.ok and result.tool == "undo_last"
+                 and result.data == {"action_row_id": receipt["action_id"], "action": receipt["undo_data"]["action"]}
+                 and verify(receipt))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method="inverse_and_sqlite_readback", detail=(
+        "Inverse state and atomic undo consumption verified." if valid else "Undo state was not verified."))
 
 
 def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    """Execute reverse rollback of the latest undo record.
-    
-    Spec §13: Evidence-based undo.
-    """
-    import json
-    from pluma.config.paths import get_paths
-    from pluma.memory.activity import ActivityLedger, ActivityQuery
-    from pluma.memory.db import DbConnection
+    from pluma.memory.undo import claim_latest, finish, verify
     from pluma.rollback.recipes import RollbackRecipes
-
-    recipes = RollbackRecipes()
-
-    # 1. Look for in-memory undo records in task_context
-    if task_context and hasattr(task_context, "undo_stack") and task_context.undo_stack:
-        undo_data = task_context.undo_stack.pop()
-        action_name = undo_data.get("action", "")
-        step_res = recipes.apply(action_name, undo_data)
-        if not step_res.ok:
-            return ToolResult.failure("undo_last", step_res.message)
-        return ToolResult(
-            ok=True,
-            tool="undo_last",
-            data=step_res.data or {"action": step_res.action},
-            factual_message=f"Undo: {step_res.message}",
-            verified=True,
-        )
-
-    # 2. Check SQLite Activity Ledger for the most recent unconsumed undo record
-    db_conn = None
-    if task_context and hasattr(task_context, "db") and task_context.db:
-        db_conn = task_context.db
-    elif task_context and hasattr(task_context, "ledger") and task_context.ledger:
-        db_conn = getattr(task_context.ledger, "_db", None)
-
-    if not db_conn:
-        try:
-            paths = get_paths()
-            db_path = str(paths.db_path)
-            if os.path.exists(db_path):
-                db_conn = DbConnection(db_path)
-                if not db_conn.is_open:
-                    db_conn.open()
-        except Exception:
-            pass
-
-    if db_conn:
-        try:
-            query = ActivityQuery(db_conn)
-            latest = query.get_latest_available_undo_record()
-            if latest:
-                raw_json = latest.get("undo_json")
-                action_id = latest.get("action_id")
-                undo_dict = json.loads(raw_json) if isinstance(raw_json, str) else (raw_json or {})
-                action_name = undo_dict.get("action") or latest.get("tool", "")
-                step_res = recipes.apply(action_name, undo_dict)
-
-                if step_res.ok:
-                    ledger = ActivityLedger(db_conn)
-                    ledger.mark_undo_consumed(action_id)
-                    return ToolResult(
-                        ok=True,
-                        tool="undo_last",
-                        data=step_res.data or {"action": step_res.action},
-                        factual_message=f"Undo: {step_res.message}",
-                        verified=True,
-                    )
-                else:
-                    return ToolResult.failure("undo_last", f"Rollback failed: {step_res.message}")
-        except Exception as exc:
-            return ToolResult.failure("undo_last", f"Failed to read undo record from database: {exc}")
-
-    return ToolResult.failure("undo_last", "No undo records available to reverse.")
+    try:
+        path = getattr(task_context, "storage_path", None)
+        receipt = claim_latest(path, task_context.task_id)
+    except Exception:
+        return ToolResult.failure("undo_last", "No safe unclaimed undo record is available.", "UNDO_UNAVAILABLE")
+    try:
+        task_context.cancellation_token.raise_if_cancelled()
+        inverse = RollbackRecipes().apply(receipt["undo_data"]["action"], receipt["undo_data"])
+        finish(receipt, inverse.ok)
+        if not inverse.ok or not verify(receipt):
+            raise ValueError("Inverse or consumption was not verified.")
+        # Worker snapshots are reconciled in the parent only after proof/history.
+        task_context.undo_stack[:] = [item for item in task_context.undo_stack if item != receipt["undo_data"]]
+        return ToolResult.success("undo_last", data={"action_row_id": receipt["action_id"],
+            "action": receipt["undo_data"]["action"]}, verified=True,
+            factual_message="Reversed one verified action.", adapter_used="sqlite_and_inverse").model_copy(
+                update={"private_context": {"undo_receipt": receipt}})
+    except Exception:
+        return ToolResult.failure("undo_last", "Undo could not be verified. Its claim and pre-state are retained.", "UNDO_UNVERIFIED")
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +316,7 @@ SYSTEM_TOOL_SPECS: List[ToolSpec] = [
         risk_class=RiskClass.LOW,
         timeout_s=3.0,
         executor=execute_stop_current,
-        verifier=verify_noop,
+        verifier=verify_stop_current,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=False,
@@ -367,8 +327,9 @@ SYSTEM_TOOL_SPECS: List[ToolSpec] = [
         args_schema=ShowActivityArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_show_activity,
-        verifier=verify_noop,
+        verifier=verify_activity,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
@@ -379,8 +340,9 @@ SYSTEM_TOOL_SPECS: List[ToolSpec] = [
         args_schema=UndoLastArgs,
         risk_class=RiskClass.MEDIUM,
         timeout_s=10.0,
+        process_isolated=True,
         executor=execute_undo_last,
-        verifier=verify_noop,
+        verifier=verify_undo_last,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,

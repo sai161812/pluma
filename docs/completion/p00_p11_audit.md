@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-21 E27 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -35,18 +35,18 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E25 close individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E27 close individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
 
 ## P11 catalog: actual remaining work
 
-All 73 exact catalog names: **30 registered / 43 unregistered**. Status across
-all rows: **9 implemented / 43 missing / 4 defective / 17 unverified**. Of the
-43 missing names, **16 are assigned to P12**. They were inspected, not implemented
+All 73 exact catalog names: **34 registered / 39 unregistered**. Status across
+all rows: **15 implemented / 39 missing / 2 defective / 17 unverified**. Of the
+39 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**9 implemented / 27 missing / 4 defective / 17 unverified**.
+**15 implemented / 23 missing / 2 defective / 17 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
@@ -58,17 +58,18 @@ or declared optional. For the other 57 catalog entries relevant to this audit:
 | Clipboard | clipboard_get, clipboard_set |
 | Terminal | run_command, run_powershell, open_terminal |
 | Browser | open_url, list_tabs, focus_tab, close_tab, download_status |
-| Agent/memory | save_preference, get_preference, create_routine, run_routine |
 
-Four defective catalog entries:
+Two catalog entries remain defective:
 
 - `clipboard_clear`: no independent readback/private undo pre-state.
-- `show_activity`: wrong fallback database location and swallowed read failures.
-- `undo_last`: memory pop before inverse success and unresolved DB/concurrent undo.
-- `stop_current`: cancels only the supplied capsule; not the required priority
-  global service operation with verified cleanup. Its old matrix gap paragraph
-  also incorrectly retained repaired BA findings; correct that text without
-  claiming this tool itself repaired.
+- `undo_last`: E27 fixes pop-before-proof, concurrent inverse/consumption and
+  uncertain claim replay. Guarded memory and file/folder move/rename inverses
+  work. Other legacy/native catalog inverses still require identity/conflict
+  evidence; ungrounded records are preserved and refused.
+
+[E27](p11_storage_tools.md) repairs show_activity's wrong-path/fake-empty behavior
+and connects stop_current to actual priority global STOP with typed pending/
+residual receipts. Four preference/routine capabilities are now implemented.
 
 Seventeen unverified tools: open_app, close_app, focus_app, list_apps, app_status;
 list_windows, focus_window, minimize_window, maximize_window, restore_window;
@@ -76,9 +77,11 @@ find_file, move_file, rename_file, create_folder; set_volume, mute, unmute.
 These need their recorded native identity, verification, inverse/conflict and
 complete-path evidence. Existing functions alone do not close their rows.
 
-Nine bounded implemented catalog READs: file_info, list_processes, process_info,
-process_usage, get_volume, list_audio_devices, battery_status, get_system_status,
-network_status. This is backend fixture evidence, not full-device certification.
+Fifteen bounded implemented catalog tools: file_info, list_processes,
+process_info, process_usage, get_volume, list_audio_devices, battery_status,
+get_system_status, network_status, show_activity, stop_current, save_preference,
+get_preference, create_routine and run_routine. This is backend owned-fixture
+and SQLite/native evidence, not full UI/device/product certification.
 
 ## Cross-cutting findings
 
@@ -110,7 +113,15 @@ for those choices and no owner-approved acceptance waiver exists.
 
 ## Current verification and next safe work
 
-Current repair evidence is [E26](p11_worker_disposal.md): 792 focused passes /
+E27 closes six catalog rows and strengthens guarded file/undo compatibility;
+see [current implementation evidence](p11_storage_tools.md): 151 focused, 21
+compatibility, 113 isolated routing, 1159 broad regression, 43 final affected regression, 15 raw, 3 containment,
+5 recovery and 39 native IPC passes. Skips/excluded elevation and initial failed
+runs are recorded separately. Final affected source hashes match; the broad
+run predates the explicitly documented failed-macro replay guard. The original audit
+verdict and later-milestone boundaries remain unchanged.
+
+Previous repair evidence is [E26](p11_worker_disposal.md): 792 focused passes /
 1 excluded; 1110 isolated regressions / 3 skipped / 1 excluded; 15 raw audit;
 3 containment; 5 recovery; 39 authenticated native IPC. Actual exits zero,
 final regression hashes match, focused runtime hashes match (later test alias

@@ -169,6 +169,11 @@ class TaskCapsule(BaseModel):
 
     # Active task-owned ToolRegistry worker controller (not serializable)
     worker_controller: Any = Field(default=None, exclude=True)
+    storage_path: Optional[str] = Field(default=None, exclude=True)
+    tool_services: Any = Field(default=None, exclude=True)
+    tool_call_count: int = 0
+    next_action_index: int = 0
+    routine_active: bool = False
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

@@ -76,6 +76,9 @@ class MultiStepOrchestrator:
     ) -> None:
         self.registry = registry
         self.supervisor = supervisor
+        binder = getattr(self.registry, "bind_stop_service", None)
+        if callable(binder):
+            binder(self.supervisor.request_stop)
         self.ledger = ledger
         self.rollback_engine = rollback_engine or RollbackEngine(
             ledger=ledger,
@@ -216,7 +219,8 @@ class MultiStepOrchestrator:
                 with capsule.work_lock:
                     uncertain_effect = any(item.get("action") == "pending_mutation" for item in capsule.undo_stack)
                 if (tool_result.error_code in ("LEDGER_WRITE_FAILED", "MUTATION_JOURNAL_FAILED")
-                        or (not tool_result.ok and uncertain_effect)):
+                        or (not tool_result.ok and uncertain_effect)
+                        or (tool_call.tool == "run_routine" and (not tool_result.ok or not tool_result.verified))):
                     return self._handle_failure(capsule, executed_records, start_time,
                         replan_count, tool_result.error or "Execution history could not be verified.")
 

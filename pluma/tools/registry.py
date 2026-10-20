@@ -55,6 +55,7 @@ class WorkerRequest:
     undo_stack: List[Dict[str, Any]] = field(default_factory=list)
     env_overrides: Dict[str, str] = field(default_factory=dict)
     grounded_ui_target: Optional[Dict[str, Any]] = None
+    storage_path: Optional[str] = None
 
 
 @dataclass
@@ -175,6 +176,7 @@ def _worker_process_loop(
                 worker_ctx.cancellation_token = WorkerCancellationView(admission)
             worker_ctx.undo_stack = list(worker_req.undo_stack)
             worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
+            worker_ctx.storage_path = worker_req.storage_path
             
             res = _invoke_executor(executor_fn, args, worker_ctx, admission)
                 
@@ -440,7 +442,13 @@ def _evaluate_owned_policy(policy, tool_name, arguments, default_risk, task_id, 
 
 def _capture_prestate(args, context, *, builder, tool):
     """Internal registered-tool phase; never a planner-callable capability."""
-    state = builder(args)
+    signature = inspect.signature(builder)
+    try:
+        signature.bind(args, context)
+    except TypeError:
+        state = builder(args)
+    else:
+        state = builder(args, context)
     if not isinstance(state, dict) or not state:
         return ToolResult.failure(tool, "Safe pre-state was unavailable. No action was executed.",
                                   error_code="UNDO_PRESTATE_FAILED")
@@ -492,10 +500,11 @@ class ToolRegistry:
         result = registry.execute(ToolCall(...), task_context)
     """
 
-    def __init__(self, policy_engine: Optional[Any] = None) -> None:
+    def __init__(self, policy_engine: Optional[Any] = None, stop_service: Optional[Any] = None) -> None:
         self._specs: Dict[str, ToolSpec] = {}
         self._lock = threading.RLock()
         self._policy_engine = policy_engine
+        self._stop_service = stop_service
         self._worker_controllers: Dict[str, TaskWorkerController] = {}
         self._idle_workers: List[TaskWorkerController] = []
         from pluma.core.shutdown import WorkGate
@@ -521,6 +530,11 @@ class ToolRegistry:
             ctrl = TaskWorkerController(task_id=task_id)
             self._worker_controllers[task_id] = ctrl
             return ctrl
+
+    def bind_stop_service(self, service) -> None:
+        if not callable(service):
+            raise TypeError("A priority STOP service is required.")
+        self._stop_service = service
 
     def cleanup_task(self, task_id: str, recycle: bool = False) -> None:
         """Terminate and clean up worker process associated with task_id."""
@@ -581,6 +595,7 @@ class ToolRegistry:
             if spec.process_isolated:
                 import pickle
                 request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
+                    storage_path=getattr(context, "storage_path", None),
                     env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")})
                 # Required isolation fails closed before calling any builder.
                 try:
@@ -809,10 +824,8 @@ class ToolRegistry:
             try:
                 model = schema.model_validate(arguments)
                 return model.model_dump()
-            except ValidationError as exc:
-                raise ToolArgumentError(
-                    f"Invalid arguments for tool {spec.name!r}: {exc}"
-                ) from exc
+            except ValidationError:
+                raise ToolArgumentError(f"Invalid arguments for tool {spec.name!r}.") from None
 
         # JSON Schema dict
         if isinstance(schema, dict):
@@ -820,18 +833,10 @@ class ToolRegistry:
                 import jsonschema  # type: ignore[import-not-found]
                 try:
                     jsonschema.validate(instance=arguments, schema=schema)
-                except jsonschema.ValidationError as exc:
-                    raise ToolArgumentError(
-                        f"Invalid arguments for tool {spec.name!r}: {exc.message}"
-                    ) from exc
+                except jsonschema.ValidationError:
+                    raise ToolArgumentError(f"Invalid arguments for tool {spec.name!r}.") from None
             except ImportError:
-                # Fallback: check required keys
-                required_keys = schema.get("required", [])
-                for req in required_keys:
-                    if req not in arguments:
-                        raise ToolArgumentError(
-                            f"Missing required argument {req!r} for tool {spec.name!r}."
-                        )
+                raise ToolArgumentError("Required schema validator is unavailable.") from None
             return dict(arguments)
 
         # Unknown schema type
@@ -869,9 +874,54 @@ class ToolRegistry:
         from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
+        if tool_name == "create_routine":
+            # Definitions are validated against the actual registry on save;
+            # execution will validate them again against the current registry.
+            for step in validated_args["steps"]:
+                if not self.contains(step["tool"]):
+                    raise ToolArgumentError("Routine contains an unregistered tool.")
+                step["arguments"] = self._validate_args(self.lookup(step["tool"]), step["arguments"])
+        if tool_name in {"show_activity", "save_preference", "get_preference", "create_routine", "run_routine", "undo_last"}:
+            # Internal service capability: never accepted from planner arguments,
+            # environment variables or a guessed default database location.
+            db = getattr(ledger, "_db", None)
+            if task_context is not None and db is not None:
+                task_context.storage_path = db._db_path if db.is_open and db._db_path != ":memory:" else None
         token = getattr(task_context, "cancellation_token", None)
         if token is not None:
             token.raise_if_cancelled()
+
+        if tool_name == "stop_current":
+            # STOP is the registered priority service, never queued behind a
+            # policy/model/tool future or included in the work it must drain.
+            from pluma.tools.system import execute_stop_current
+            result = execute_stop_current(validated_args, task_context, stop_service=self._stop_service)
+            if ledger is not None and task_context is not None:
+                from pluma.memory.activity import ActionRecord
+                try:
+                    # Reserve history identity after latching, never before it.
+                    # This includes STOP invoked from a running routine.
+                    if hasattr(task_context, "next_action_index"):
+                        if not task_context.work_lock.acquire(timeout=.05):
+                            raise TimeoutError("STOP history identity is busy.")
+                        try:
+                            step_index = max(step_index, task_context.next_action_index)
+                            task_context.next_action_index = step_index + 1
+                        finally:
+                            task_context.work_lock.release()
+                    ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
+                        tool=tool_name, args_raw=validated_args, risk=spec.risk_class.value,
+                        approval_state="PRIORITY_STOP", adapter="supervisor", result_data=result.data,
+                        verified=result.verified, error_detail={"code": result.error_code} if not result.ok else None),
+                        _timeout_s=2.0)
+                except Exception:
+                    return ToolResult.failure(tool_name, "STOP history could not be verified.", "LEDGER_WRITE_FAILED")
+            return result
+
+        if task_context is not None and hasattr(task_context, "next_action_index"):
+            with task_context.work_lock:
+                step_index = max(step_index, task_context.next_action_index)
+                task_context.next_action_index = step_index + 1
 
         # Policy work is admitted and retained on the same capsule. A late
         # approval after STOP/deadline is ignored; it cannot dispatch an action.
@@ -927,6 +977,20 @@ class ToolRegistry:
         # journal acknowledgements retain their separate bounded safety waits.
         start_t = time.perf_counter()
         timeout_s = spec.timeout_s
+        if task_context is not None and hasattr(task_context, "tool_call_count"):
+            with task_context.work_lock:
+                if token is not None:
+                    token.raise_if_cancelled()
+                if task_context.tool_call_count >= 20:
+                    return _record_no_execution(ledger, task_context, step_index, tool_name,
+                        validated_args, effective_risk, approval_state,
+                        ToolResult.failure(tool_name, "Task tool-call limit reached.", "TOOL_CALL_LIMIT"))
+                task_context.tool_call_count += 1
+        if spec.execution_scope == "task_service":
+            if task_context is None or not hasattr(task_context, "tool_services") or spec.process_isolated:
+                return ToolResult.failure(tool_name, "Task service context is unavailable.", "TASK_SERVICE_UNAVAILABLE")
+            task_context.tool_services = {"registry": self, "ledger": ledger, "policy": active_policy,
+                                          "step_index": step_index}
         # 3. Capture pre-mutation undo data BEFORE mutation occurs
         pre_undo_data = None
         if spec.undo_builder:
@@ -1005,13 +1069,14 @@ class ToolRegistry:
             undo_stack=ctx_undo_stack,
             env_overrides=env_flags,
             grounded_ui_target=grounded_ui_target,
+            storage_path=getattr(task_context, "storage_path", None),
         )
 
 
         # Isolate high-risk/launcher tools, blocking metadata reads and tasks with active workers
         use_process_isolation = False
         isolated_tools = {"file_info", "open_app", "slow_tool", "run_powershell_script", "execute_terminal_command", "kill_process"}
-        if spec.process_isolated or spec.risk_class == RiskClass.HIGH or tool_name in isolated_tools or getattr(task_context, "worker_controller", None) is not None:
+        if spec.execution_scope != "task_service" and (spec.process_isolated or spec.risk_class == RiskClass.HIGH or tool_name in isolated_tools or getattr(task_context, "worker_controller", None) is not None):
             try:
                 import pickle
                 pickle.dumps(spec.executor)
@@ -1381,6 +1446,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.files import FILE_TOOL_SPECS
     from pluma.tools.system import SYSTEM_TOOL_SPECS
     from pluma.tools.processes import PROCESS_TOOL_SPECS
+    from pluma.tools.memory import MEMORY_TOOL_SPECS
     from pluma.tools.ui import ALL_UI_TOOLS
     from pluma.tools.windows import WINDOW_TOOL_SPECS
 
@@ -1391,6 +1457,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + AUDIO_TOOL_SPECS
         + SYSTEM_TOOL_SPECS
         + PROCESS_TOOL_SPECS
+        + MEMORY_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS
         + ALL_UI_TOOLS
     )
