@@ -5,7 +5,7 @@ import uuid
 
 from pluma.memory.tool_store import connect, row
 
-SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file'}
+SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder'}
 
 
 def claim_latest(path, task_id):
@@ -18,8 +18,12 @@ def claim_latest(path, task_id):
             state = json.loads(record['undo_json'])
             if state.get('action') not in SUPPORTED_ACTIONS:
                 raise ValueError('Undo record lacks a supported conflict-safe inverse.')
-            if state['action'] in ('move_file', 'rename_file') and state.get('guard_version') != 1:
+            if state['action'] != 'memory_write' and state.get('guard_version') != 1:
                 raise ValueError('Legacy file undo lacks captured identity.')
+            if state['action'] == 'copy_file' and 'created_identity' not in state:
+                raise ValueError('Copy lacks a verified creation receipt.')
+            if state['action'] == 'create_folder' and 'created' not in state:
+                raise ValueError('Folder lacks a verified creation receipt.')
             operation = str(uuid.uuid4())
             db.execute('INSERT INTO undo_claims(action_id,operation_id,task_id,state,created_at) VALUES(?,?,?,\'claimed\',?)',
                 (record['action_id'], operation, task_id, datetime.now(timezone.utc).isoformat()))
@@ -57,6 +61,9 @@ def verify(receipt):
         if observed is None or list(observed) != [0, 1, 'verified']:
             return False
         state = receipt['undo_data']
+        if state['action'] in ('copy_file', 'create_folder'):
+            from pluma.adapters.file_operations import verify_restored
+            return verify_restored(state)
         if state['action'] in ('move_file', 'rename_file') and state.get('guard_version') == 1:
             from pluma.adapters.file_identity import verify_restore
             return verify_restore(state)

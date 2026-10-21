@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 # Standard tool groupings
 FILE_TOOLS = [
+    "copy_file",
+    "list_folder",
     "file_info",
     "list_files",
     "find_file",
@@ -128,12 +130,14 @@ class ToolSubsetSelector:
         # If command hints at specific domain in SMART route, can prioritize or trim
         if route_enum == RouteMode.SMART and command:
             cmd_lower = command.lower()
+            if any(k in cmd_lower for k in ("routine", "preference", "remember")):
+                return base_names
+            file_hint = any(k in cmd_lower for k in ("file", "folder", "directory", "move", "rename", "pdf", "doc"))
+            if file_hint:
+                return FILE_TOOLS + ["open_app", "focus_window"] + (SYSTEM_CLIPBOARD_TOOLS if "clipboard" in cmd_lower else [])
             # If purely clipboard task
             if any(k in cmd_lower for k in ("clipboard", "copy", "paste")):
                 return SYSTEM_CLIPBOARD_TOOLS + APP_WINDOW_TOOLS
-            # If purely file task
-            if any(k in cmd_lower for k in ("file", "folder", "directory", "move", "rename", "pdf", "doc")):
-                return FILE_TOOLS + ["open_app", "focus_window"]
 
         return base_names
 

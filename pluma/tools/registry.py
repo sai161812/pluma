@@ -1329,7 +1329,20 @@ class ToolRegistry:
         undo_record = None
         if result.ok and verified and pre_undo_data:
             undo_record = dict(pre_undo_data)
-            if isinstance(result.data, dict) and "preserved_destination_backup" in result.data:
+            # Native creation receipts add output identities after the mutation.
+            # They may not replace any value captured before execution.
+            if result.undo_record is not None:
+                if any(key not in result.undo_record or result.undo_record[key] != value
+                       for key, value in pre_undo_data.items()):
+                    verified = False
+                    undo_record = None
+                    verification_error = "UNDO_RECEIPT_INVALID"
+                    verification_message = "Undo receipt changed captured pre-state. Effects may remain."
+                    verify_detail = VerifyResult(ok=False, method="undo_prestate",
+                        detail=verification_message)
+                else:
+                    undo_record = dict(result.undo_record)
+            if undo_record is not None and isinstance(result.data, dict) and "preserved_destination_backup" in result.data:
                 undo_record["preserved_destination_backup"] = result.data["preserved_destination_backup"]
 
         # 7. Build final consolidated result

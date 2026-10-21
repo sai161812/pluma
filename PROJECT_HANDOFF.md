@@ -1,6 +1,46 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-21, P11 storage/routines/global STOP implementation
+## Current checkpoint: 2026-10-21, P11 native file operations
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+The owner said PLUMA_COMPLETION_GUIDE.md; no such file exists here. The existing
+PLUMA_COMPLETION_PROMPTS.md is the shared P11 execution contract.
+
+- [E28](docs/completion/p11_file_operations.md) adds exact typed copy_file and
+  list_folder with required owned native execution and independent readback.
+  Copy is bounded/new-destination only, exact approval, preserved alternate
+  streams and captured output identity. Guarded inverse preserves newer file,
+  stream, directory and parent conflicts. No private stream names/content logged.
+- create_folder now captures its existing anchor and all missing paths, creates
+  exclusively with original returned native handles, records exact new IDs and
+  reverses only empty captured directories. Existing folder is a verified no-op.
+  Strict paths/bools and depth bounds precede effects; reparse/private path refusal.
+- Registry accepts creation receipt additions without replacing any captured
+  pre-state. Changed/omitted fields retain the pending journal and fail verified
+  success; final backup-field edge case is covered. Automatic recipes/manual
+  durable-claim undo include the new guarded file/folder receipts. Legacy full
+  inverse/rollback bounds remain open; do not infer whole-catalog completion.
+- Reviewed affected regression: **186 passed in 71.25s**, wall 72.053s.
+  Raw --runxfail 15 (0.47s), native containment 3 (3.10s), recovery 5 (0.58s).
+  Actual exits zero, fixture keys zero, all recorded source hashes match.
+  Traceability 298 source items / 324 rows PASS. Earlier failed/preceding runs,
+  fixes and exact provenance are retained in E28; E27 broad baseline is not an
+  E28 whole-project run. No fabricated physical/device/elevation/release claim.
+- Catalog: **36 registered / 37 unregistered; 18 IMPLEMENTED / 37 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Sixteen untouched P12 entries; P11-relevant
+  missing count 21. Missing tools include process control, windows geometry,
+  file open/safe-delete, audio default device, power, clipboard, terminal and
+  browser; legacy native inverses/ownership and backend A/D/H gates still open.
+- No UI appearance, disabled action entry, dependencies, immutable specification,
+  user files/windows/clipboard/device/power/security settings or P12 changes.
+  All mutations use owned temporary fixtures. Cross-volume/network/readonly-copy
+  inverse acceptance remains open. Unknown interrupted effects stay residual.
+- Started at pushed ui-wiring `17d17d2`; commit/push reviewed E28 on this branch.
+  Preserve all other worktrees/main/integration/recovery points and draft PRs.
+  Next safe work stays P11: bounded PID+creation-time process control with exact
+  policy, original-handle exit readback and non-undoable commit evidence.
+
+## Previous checkpoint: 2026-10-21, P11 storage/routines/global STOP implementation
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** The owner authorized completing
 remaining P11 work and asked why the work packets are large. Continue actual

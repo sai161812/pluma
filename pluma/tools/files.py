@@ -126,10 +126,17 @@ class RenameFileArgs(BaseModel):
         return clean
 
 
-class CreateFolderArgs(BaseModel):
+class CopyFileArgs(MoveFileArgs):
+    """A new exact destination; replacing existing data is not permitted."""
+    overwrite: Literal[False] = False
+
+
+class ListFolderArgs(FileInfoArgs):
+    max_entries: int = Field(default=100, ge=1, le=200)
+
+
+class CreateFolderArgs(FileInfoArgs):
     """Arguments for create_folder."""
-    model_config = {"extra": "forbid"}
-    path: str = Field(min_length=1, description="Directory path to create.")
     exist_ok: bool = Field(default=True, description="Do not raise if directory already exists.")
 
 
@@ -167,17 +174,24 @@ def undo_builder_rename_file(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def undo_builder_create_folder(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Capture pre-state before creating a directory."""
-    import os
-    from pathlib import Path
-    
-    target = str(Path(args["path"]).resolve())
-    existed = os.path.exists(target)
-    return {
-        "action": "create_folder",
-        "path": target,
-        "existed_before": existed,
-    }
+    from pluma.adapters.file_operations import capture_folder
+    values = CreateFolderArgs.model_validate(args)
+    _public_path(values.path)
+    return capture_folder(values.path, values.exist_ok)
+
+
+def _public_path(path):
+    from pluma.memory.redaction import redact_string
+    if redact_string(path) != path:
+        raise ValueError("Private path pre-state cannot be safely journaled.")
+
+
+def undo_builder_copy_file(args):
+    from pluma.adapters.file_operations import capture_copy
+    values = CopyFileArgs.model_validate(args)
+    _public_path(values.source)
+    _public_path(values.destination)
+    return capture_copy(values.source, values.destination)
 
 
 # ---------------------------------------------------------------------------
@@ -352,28 +366,63 @@ def execute_rename_file(args: Dict[str, Any], task_context: Any = None) -> ToolR
     return _execute_guarded_move("rename_file", args, task_context)
 
 
-def execute_create_folder(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-        return ToolResult.failure("create_folder", "Task cancelled before folder could be created.", error_code="TASK_CANCELLED")
-
+def _captured_state(tool, args, context, builder):
+    if context is not None and getattr(context, "undo_stack", None):
+        state = next(item["pre_state"] for item in reversed(context.undo_stack)
+            if item.get("action") == "pending_mutation" and item.get("tool") == tool)
+    else:
+        state = builder(args)
+    if state.get("action") != tool or state.get("guard_version") != 1:
+        raise ValueError("File mutation does not match its journal.")
     from pathlib import Path
-    
-    target = Path(args["path"]).resolve()
-    exist_ok = args.get("exist_ok", True)
-    
+    keys = ("source", "destination") if tool == "copy_file" else ("path",)
+    if any(Path(state[key]) != Path(args[key]) for key in keys):
+        raise ValueError("File mutation does not match its arguments.")
+    if tool == "create_folder" and state['exist_ok'] != args.get('exist_ok', True):
+        raise ValueError("Folder mutation does not match its arguments.")
+    return state
+
+
+def _execute_created_target(tool, args, context):
+    from pluma.adapters import file_operations as native
     try:
-        target.mkdir(parents=True, exist_ok=exist_ok)
-        v_res = verify_dir_created(target)
-        return ToolResult(
-            ok=v_res.ok,
-            tool="create_folder",
-            data={"path": str(target)},
-            factual_message=f"Created folder '{target}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("create_folder", str(e))
+        builder = undo_builder_copy_file if tool == "copy_file" else undo_builder_create_folder
+        state = _captured_state(tool, args, context, builder)
+        operation = native.copy_file if tool == "copy_file" else native.create_folder
+        state = operation(state, getattr(context, "cancellation_token", None))
+        data = {key: state[key] for key in (("source", "destination") if tool == "copy_file" else ("path",))}
+        result = ToolResult.success(tool, data=data, verified=False,
+            factual_message="Copied one file." if tool == "copy_file" else
+                "Existing folder verified." if state['existed_before'] else "Created folder path.",
+            adapter_used="native_handle", undo_record=state).model_copy(
+                update={"private_context": {"created_target": state}})
+        proof = _verify_created_target(result)
+        return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
+    except Exception:
+        return ToolResult.failure(tool, "Filesystem operation was refused or could not be verified. Pre-state retained.",
+            "FILE_CREATE_UNVERIFIED")
+
+
+def execute_copy_file(args, task_context=None):
+    return _execute_created_target("copy_file", args, task_context)
+
+
+def execute_create_folder(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    return _execute_created_target("create_folder", args, task_context)
+
+
+def execute_list_folder(args, task_context=None):
+    from pluma.adapters.file_operations import list_folder
+    try:
+        values = ListFolderArgs.model_validate(args)
+        data, proof = list_folder(values.path, values.max_entries, getattr(task_context, "cancellation_token", None))
+        result = ToolResult.success("list_folder", data=data, verified=False,
+            factual_message="Read bounded folder entries.", adapter_used="native_handle").model_copy(
+                update={"private_context": {"folder_observation": proof}})
+        verification = verify_list_folder(result)
+        return result.model_copy(update={"verified": verification.ok, "verify_detail": verification})
+    except Exception:
+        return ToolResult.failure("list_folder", "Folder entries could not be verified.", "FOLDER_READ_UNVERIFIED")
 
 
 # ---------------------------------------------------------------------------
@@ -470,10 +519,41 @@ def verify_rename_file(result: ToolResult) -> VerifyResult:
     return _verify_guarded_move(result)
 
 
-def verify_create_folder(result: ToolResult) -> VerifyResult:
-    if not result.ok or "path" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Create folder reported failure.")
-    return verify_dir_created(result.data["path"])
+def _verify_created_target(result):
+    from pluma.adapters import file_operations as native
+    try:
+        state = result.private_context['created_target']
+        keys = ("source", "destination") if result.tool == 'copy_file' else ("path",)
+        valid = (result.ok and state['action'] == result.tool and state['guard_version'] == 1
+            and result.undo_record == state and result.data == {key: state[key] for key in keys}
+            and (native.verify_copy(state) if result.tool == 'copy_file' else native.verify_created_folder(state)))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method="native_identity_and_digest",
+        detail="Created target readback verified." if valid else "Created target was not verified.")
+
+
+def verify_create_folder(result):
+    return _verify_created_target(result)
+
+
+def verify_copy_file(result):
+    return _verify_created_target(result)
+
+
+def verify_list_folder(result):
+    from pluma.adapters.file_operations import verify_folder
+    try:
+        data = result.data
+        ListFolderArgs(path=data['path'], max_entries=data['max_entries'])
+        valid = (result.ok and type(data['has_more']) is bool and data['count'] == len(data['entries'])
+            and 0 <= data['count'] <= data['max_entries']
+            and (not data['has_more'] or data['count'] == data['max_entries'])
+            and verify_folder(data, result.private_context['folder_observation']))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method="native_metadata",
+        detail="Bounded folder readback verified." if valid else "Folder entries were not verified.")
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +561,13 @@ def verify_create_folder(result: ToolResult) -> VerifyResult:
 # ---------------------------------------------------------------------------
 
 FILE_TOOL_SPECS: List[ToolSpec] = [
+    ToolSpec(name="list_folder", description="Read bounded immediate folder entries without following reparse targets.",
+        args_schema=ListFolderArgs, risk_class=RiskClass.READ, timeout_s=5.0, process_isolated=True,
+        executor=execute_list_folder, verifier=verify_list_folder, adapter_priority=[AdapterPriority.NATIVE_API]),
+    ToolSpec(name="copy_file", description="Copy one regular file to an exact new destination without overwriting.",
+        args_schema=CopyFileArgs, risk_class=RiskClass.MEDIUM, timeout_s=15.0, process_isolated=True,
+        executor=execute_copy_file, verifier=verify_copy_file, undo_builder=undo_builder_copy_file,
+        adapter_priority=[AdapterPriority.NATIVE_API], creates_resources=True),
     ToolSpec(
         name="file_info",
         description="Read metadata for one explicit file or directory without reading its contents.",
@@ -550,6 +637,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=CreateFolderArgs,
         risk_class=RiskClass.LOW,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_create_folder,
         verifier=verify_create_folder,
         undo_builder=undo_builder_create_folder,

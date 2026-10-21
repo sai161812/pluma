@@ -1,11 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E27](../../../docs/completion/p11_storage_tools.md)
-adds four typed preference/routine capabilities and repairs actual-ledger Activity
-and priority global STOP. Durable undo claims and guarded native file/folder
-move/rename inverse evidence are added. Non-P12 catalog: 15 implemented,
-23 missing, 2 defective, 17 unverified. P11 is incomplete; P12 forbidden and
-command entry remains disabled. Current batch checks are in E27/current handoff.
+Current P11 implementation update: [E28](../../../docs/completion/p11_file_operations.md)
+adds bounded native copy_file/list_folder and guarded native folder creation,
+with durable receipts/inverses and owner-edit conflicts including alternate
+streams. Non-P12 catalog: 18 implemented, 21 missing, 2 defective, 16 unverified.
+P11 is incomplete; P12 forbidden and command entry remains disabled.
+E27 storage/global STOP evidence remains in the current handoff.
 
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT

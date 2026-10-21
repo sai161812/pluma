@@ -181,8 +181,23 @@ def _recipe_rename_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
         )
 
 
+def _recipe_created_target(undo_data: Dict[str, Any]) -> RollbackStepResult:
+    from pluma.adapters.file_operations import restore_copy, restore_folder, verify_restored
+    try:
+        operation = restore_copy if undo_data['action'] == 'copy_file' else restore_folder
+        operation(undo_data)
+        if not verify_restored(undo_data):
+            raise ValueError('Inverse readback failed.')
+        return RollbackStepResult(ok=True, action=undo_data['action'], message="Reversed captured filesystem creation.")
+    except Exception:
+        return RollbackStepResult(ok=False, action=undo_data['action'],
+            message="Filesystem undo conflicted or could not be verified.", error="ROLLBACK_CONFLICT")
+
+
 def _recipe_create_folder(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Delete a created folder only if still empty and task-created."""
+    if undo_data.get('guard_version') == 1:
+        return _recipe_created_target(undo_data)
     p = Path(undo_data.get("path", ""))
     existed_before = undo_data.get("existed_before", False)
 
@@ -301,6 +316,7 @@ class RollbackRecipes:
         self.register("move_file", _recipe_move_file)
         self.register("rename_file", _recipe_rename_file)
         self.register("create_folder", _recipe_create_folder)
+        self.register("copy_file", _recipe_created_target)
         self.register("set_volume", _recipe_set_volume)
         self.register("mute", _recipe_mute)
         self.register("unmute", _recipe_mute)
