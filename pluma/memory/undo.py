@@ -5,7 +5,7 @@ import uuid
 
 from pluma.memory.tool_store import connect, row
 
-SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry'}
+SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete'}
 
 
 def claim_latest(path, task_id):
@@ -24,6 +24,8 @@ def claim_latest(path, task_id):
                 raise ValueError('Copy lacks a verified creation receipt.')
             if state['action'] == 'create_folder' and 'created' not in state:
                 raise ValueError('Folder lacks a verified creation receipt.')
+            if state['action'] == 'safe_delete' and not {'recycled_path', 'recycled_identity'} <= state.keys():
+                raise ValueError('Recycle lacks an exact verified item receipt.')
             operation = str(uuid.uuid4())
             db.execute('INSERT INTO undo_claims(action_id,operation_id,task_id,state,created_at) VALUES(?,?,?,\'claimed\',?)',
                 (record['action_id'], operation, task_id, datetime.now(timezone.utc).isoformat()))
@@ -61,6 +63,9 @@ def verify(receipt):
         if observed is None or list(observed) != [0, 1, 'verified']:
             return False
         state = receipt['undo_data']
+        if state['action'] == 'safe_delete':
+            from pluma.adapters.recycle_bin import verify
+            return verify(state, restored=True)
         if state['action'] == 'window_geometry':
             from pluma.adapters.window_geometry import verify
             return verify(state, restored=True)

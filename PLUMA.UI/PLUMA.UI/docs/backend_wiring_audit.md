@@ -1,11 +1,12 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E30](../../../docs/completion/p11_window_geometry.md)
-adds exact normal-window move/resize with native DPI semantics, bounded owned
-execution/readback and guarded automatic/manual undo. Non-P12 catalog:
-22 implemented, 17 missing, 2 defective, 16 unverified. P11 remains incomplete;
-P12 forbidden and action entry disabled. E28/E29 evidence remains available.
-
+Current P11 implementation update: [E31](../../../docs/completion/p11_recycle_bin.md)
+adds bounded recycle-only regular-file safe_delete, owned native readback and
+exact-item guarded automatic/manual restore. Owner chose Windows Recycle Bin
+only, with no permanent fallback. Catalog row stays UNVERIFIED for broader
+coverage and interrupted receipt recovery. Non-P12 catalog: 22 implemented,
+16 missing, 2 defective, 17 unverified. P11 remains incomplete; P12 forbidden
+and action entry disabled. Earlier evidence retains its own source provenance.
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT
 complete. E25 owns/bounds verification, interrupts legacy callers safely, retains

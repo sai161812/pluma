@@ -201,6 +201,43 @@ def undo_builder_copy_file(args):
     return capture_copy(values.source, values.destination)
 
 
+def undo_builder_safe_delete(args):
+    from pluma.adapters.recycle_bin import capture
+    values = FileInfoArgs.model_validate(args)
+    _public_path(values.path)
+    return capture(values.path)
+
+
+def execute_safe_delete(args, task_context=None):
+    from pluma.adapters.recycle_bin import recycle
+    try:
+        state = _captured_state('safe_delete', args, task_context, undo_builder_safe_delete)
+        state = recycle(state, getattr(task_context, 'cancellation_token', None))
+        _public_path(state['recycled_path'])
+        result = ToolResult.success('safe_delete', data={'path': state['path']},
+            factual_message='Moved one file to Windows Recycle Bin.', verified=False,
+            adapter_used='native_shell_recycle').model_copy(update={
+                'undo_record': state, 'private_context': {'recycle_receipt': state}})
+        proof = verify_safe_delete(result)
+        return result.model_copy(update={'verified': proof.ok, 'verify_detail': proof})
+    except Exception:
+        return ToolResult.failure('safe_delete',
+            'Recycle operation refused or unverified. Captured intent retained; no permanent-delete fallback.',
+            'RECYCLE_UNVERIFIED')
+
+
+def verify_safe_delete(result):
+    from pluma.adapters.recycle_bin import verify
+    try:
+        state = result.private_context['recycle_receipt']
+        valid = (result.ok and state['action'] == 'safe_delete' and state['guard_version'] == 1
+            and result.undo_record == state and result.data == {'path': state['path']} and verify(state))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method='native_recycle_identity_and_stream_digest',
+        detail='Exact recycled item verified.' if valid else 'Recycle postcondition was not verified.')
+
+
 # ---------------------------------------------------------------------------
 # Executors
 # ---------------------------------------------------------------------------
@@ -568,6 +605,10 @@ def verify_list_folder(result):
 # ---------------------------------------------------------------------------
 
 FILE_TOOL_SPECS: List[ToolSpec] = [
+    ToolSpec(name='safe_delete', description='Recycle one local regular file on a fixed NTFS volume; never permanently delete.',
+        args_schema=FileInfoArgs, risk_class=RiskClass.HIGH, timeout_s=15.0, process_isolated=True,
+        executor=execute_safe_delete, verifier=verify_safe_delete, undo_builder=undo_builder_safe_delete,
+        adapter_priority=[AdapterPriority.NATIVE_API]),
     ToolSpec(name="list_folder", description="Read bounded immediate folder entries without following reparse targets.",
         args_schema=ListFolderArgs, risk_class=RiskClass.READ, timeout_s=5.0, process_isolated=True,
         executor=execute_list_folder, verifier=verify_list_folder, adapter_priority=[AdapterPriority.NATIVE_API]),

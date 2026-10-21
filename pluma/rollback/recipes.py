@@ -191,6 +191,18 @@ def _recipe_rename_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
         )
 
 
+def _recipe_safe_delete(undo_data: Dict[str, Any]) -> RollbackStepResult:
+    from pluma.adapters.recycle_bin import restore, verify
+    try:
+        restore(undo_data)
+        if not verify(undo_data, restored=True):
+            raise ValueError('Recycle inverse readback failed.')
+        return RollbackStepResult(ok=True, action='safe_delete', message='Restored the exact recycled file.')
+    except Exception:
+        return RollbackStepResult(ok=False, action='safe_delete',
+            message='Recycle restore conflicted or could not be verified.', error='ROLLBACK_CONFLICT')
+
+
 def _recipe_created_target(undo_data: Dict[str, Any]) -> RollbackStepResult:
     from pluma.adapters.file_operations import restore_copy, restore_folder, verify_restored
     try:
@@ -328,6 +340,7 @@ class RollbackRecipes:
         self.register("rename_file", _recipe_rename_file)
         self.register("create_folder", _recipe_create_folder)
         self.register("copy_file", _recipe_created_target)
+        self.register("safe_delete", _recipe_safe_delete)
         self.register("set_volume", _recipe_set_volume)
         self.register("mute", _recipe_mute)
         self.register("unmute", _recipe_mute)

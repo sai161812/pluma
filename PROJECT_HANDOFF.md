@@ -1,6 +1,45 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-21, P11 native window geometry
+## Current checkpoint: 2026-10-21, P11 recycle-only regular files
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Owner authorized remaining P11.
+PLUMA_COMPLETION_GUIDE.md is absent; use PLUMA_COMPLETION_PROMPTS.md and its
+shared contract. This is the next bounded P11 gap, not full milestone completion.
+
+- Owner answered **"Windows Recycle Bin only (recommended)"**. Refuse
+  unrecyclable targets; no permanent-delete fallback or PLUMA quarantine.
+  [Decision](docs/completion/p11_scope_decisions.md) is resolved, not pending.
+- [E31](docs/completion/p11_recycle_bin.md) adds typed HIGH exact-call approval,
+  owned native RecycleItem, captured parent/file/all-stream identity, exact Bin
+  receipt readback and guarded durable manual/automatic restore. Newer original
+  path/parent/Bin content conflicts are preserved, including native refusal of
+  a destination created after precheck. No shell/admin/elevation/global Bin undo.
+- Supported regular files on fixed NTFS, single-link/non-reparse/online/
+  unencrypted, bounded streams. Folders/other targets remain refused. An
+  interruption after Shell commit but before final receipt retains uncertain
+  pending intent; no guessed inverse/clean STOP. These remaining gaps are not
+  owner-approved exemptions. safe_delete stays UNVERIFIED in the matrix.
+- Final focused **22 passed (7.43s)**, wall 8.478s. Affected regression
+  **343 passed / 1 elevation deselected (118.25s)**, wall 119.322s. Raw audit
+  --runxfail 15 (0.53s), native containment 3 (3.67s), recovery 5 (0.56s).
+  Actual exits zero; isolated keys zero; runtime/test hashes match; matrix
+  298 source items / 324 rows PASS. No elevation/physical/global gate waiver.
+  Exact commands, failures/recovery and provenance are recorded in E31/output.
+- Catalog **41 registered / 32 unregistered; 22 IMPLEMENTED / 32 MISSING /
+  2 DEFECTIVE / 17 UNVERIFIED**. Sixteen untouched P12 missing names;
+  **16 P11 names missing**, plus partial safe_delete, legacy/native inverse and
+  A/D/H gates. Remaining names: open_file; default audio device; system four;
+  clipboard get/set; terminal three; browser five. No full completion waiver.
+- Source parent is pushed `a654ebd`; commit/push this bounded E31 on ui-wiring.
+  The next commit containing this checkpoint is the E31 recovery point.
+  Preserve other worktrees/main/integration/recovery/draft PRs. Owned temporary
+  files only; all eight initial failed/probe fixture Bin residues were restored.
+  No personal files, clipboard/device/power/security/UI/dependency/spec change.
+- Next safe milestone is remaining **P11** safe_delete target and interrupted
+  receipt recovery coverage, then other listed required tool/inverse gates.
+  Do not begin P12 or enable action entry.
+
+## Previous checkpoint: 2026-10-21, P11 native window geometry
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Owner authorized remaining P11.
 PLUMA_COMPLETION_GUIDE.md is absent; use PLUMA_COMPLETION_PROMPTS.md, which
