@@ -232,6 +232,10 @@ class ActivityLedger:
         row_id = self.insert_action(record, _timeout_s=2.0)
         if type(row_id) is not int or row_id <= 0:
             raise RuntimeError("Mutation action identity was not verified.")
+        # Publish the same complete identity that the parent will retain.
+        # Adding this only at finalization changed undo_json during STOP's
+        # read/claim and falsely refused an otherwise recoverable inverse.
+        pending['action_row_id'] = row_id
         available = not pending.get("non_undoable", False)
         self.insert_undo_record(UndoRecord(row_id, pending, available=available), _timeout_s=2.0)
         row = ActivityQuery(self._db).undo_record_for_action(row_id)

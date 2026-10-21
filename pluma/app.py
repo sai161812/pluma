@@ -67,6 +67,7 @@ class PlumaApplicationRuntime:
             ownership_registry=self.ownership_registry,
             rollback_engine=self.rollback_engine,
         )
+        self.rollback_engine.task_resolver = self.supervisor.get_task
         self.policy_rules = PolicyRules()
         self.policy_engine = PolicyEngine(
             rules=self.policy_rules,

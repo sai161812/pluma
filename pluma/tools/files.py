@@ -215,7 +215,7 @@ def execute_safe_delete(args, task_context=None):
         state = recycle(state, getattr(task_context, 'cancellation_token', None))
         _public_path(state['recycled_path'])
         result = ToolResult.success('safe_delete', data={'path': state['path']},
-            factual_message='Moved one file to Windows Recycle Bin.', verified=False,
+            factual_message='Moved one filesystem target to Windows Recycle Bin.', verified=False,
             adapter_used='native_shell_recycle').model_copy(update={
                 'undo_record': state, 'private_context': {'recycle_receipt': state}})
         proof = verify_safe_delete(result)
@@ -605,7 +605,7 @@ def verify_list_folder(result):
 # ---------------------------------------------------------------------------
 
 FILE_TOOL_SPECS: List[ToolSpec] = [
-    ToolSpec(name='safe_delete', description='Recycle one local regular file on a fixed NTFS volume; never permanently delete.',
+    ToolSpec(name='safe_delete', description='Recycle one bounded local file or folder on a fixed NTFS volume; never permanently delete.',
         args_schema=FileInfoArgs, risk_class=RiskClass.HIGH, timeout_s=15.0, process_isolated=True,
         executor=execute_safe_delete, verifier=verify_safe_delete, undo_builder=undo_builder_safe_delete,
         adapter_priority=[AdapterPriority.NATIVE_API]),

@@ -52,7 +52,8 @@ permanent deletion, global Bin emptying or an invented retention policy.
 
 [E31](p11_recycle_bin.md) implements a bounded native regular-file path with
 exact returned-item identity/stream readback and non-overwriting restore.
-Directories and unsupported volumes/targets are refused. These limitations are
-recorded remaining work, not owner-approved exemptions. This decision does not
+[E32](p11_recycle_recovery.md) adds bounded folders and interrupted intent recovery
+through owned inverse workers. Unsupported targets/volumes and explicit bounds
+are refused; broader physical acceptance remains separate. This decision does not
 waive safe_delete's broader acceptance, any other P11 gap or A/D/H checks.
 P11 remains incomplete and P12 remains forbidden.

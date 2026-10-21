@@ -48,6 +48,15 @@ class RollbackEngine:
         if not self._query and self._ledger and getattr(self._ledger, "_db", None):
             self._query = ActivityQuery(self._ledger._db)
         self._recipes = recipes or RollbackRecipes()
+        self.task_resolver = None
+
+    def _apply(self, task_id, action, state):
+        guarded_recycle = action == 'safe_delete' or (action == 'pending_mutation' and state.get('tool') == 'safe_delete')
+        capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+        if guarded_recycle and capsule is not None:
+            from pluma.rollback.owned import apply_owned
+            return apply_owned(action, state, capsule)
+        return self._recipes.apply(action, state)
 
     @property
     def recipes(self) -> RollbackRecipes:
@@ -105,7 +114,7 @@ class RollbackEngine:
                         step_results.append(RollbackStepResult(ok=False, action=action_name,
                             message="Undo is already claimed or its state could not be verified.", error="UNDO_CLAIM_UNVERIFIED"))
                         continue
-                step_res = self._recipes.apply(action_name, undo_data)
+                step_res = self._apply(task_id, action_name, undo_data)
 
                 # Atomically record rollback result and consume undo record in one transaction
                 if self._ledger and action_id is not None:
@@ -148,7 +157,7 @@ class RollbackEngine:
             for item in list(reversed(memory_undo_stack)):
                 attempted += 1
                 action_name = item.get("action", "")
-                step_res = self._recipes.apply(action_name, item)
+                step_res = self._apply(task_id, action_name, item)
                 step_results.append(step_res)
                 if step_res.ok:
                     succeeded += 1

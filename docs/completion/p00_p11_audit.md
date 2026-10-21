@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-21 E31 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-21 E32 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -35,7 +35,7 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E31 address individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E32 address individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
@@ -43,15 +43,15 @@ E06-E16 historical detail lives in the linked
 ## P11 catalog: actual remaining work
 
 All 73 exact catalog names: **41 registered / 32 unregistered**. Status across
-all rows: **22 implemented / 32 missing / 2 defective / 17 unverified**. Of the
+all rows: **23 implemented / 32 missing / 2 defective / 16 unverified**. Of the
 32 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**22 implemented / 16 missing / 2 defective / 17 unverified**.
+**23 implemented / 16 missing / 2 defective / 16 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
 | Windows | None missing; bounded geometry recorded in E30; legacy rows stay unverified |
-| Files | open_file; safe_delete is registered but partial/unverified in E31 |
+| Files | open_file; safe_delete bounded native recovery completed in E32 |
 | Processes | None missing; bounded process controls recorded in E29 |
 | Audio | set_default_audio_device |
 | System | lock, sleep_request, restart_request, shutdown_request |
@@ -100,6 +100,11 @@ remain open; no P12 eligibility or full physical application certification.
 implements bounded regular-file recycling with exact-item readback and guarded
 restore. The row remains UNVERIFIED for broader target and interrupted receipt
 recovery coverage. These are remaining work, not approved exemptions.
+
+[E32](p11_recycle_recovery.md) completes bounded folder and interrupted recycle
+recovery with capsule-owned inverse workers, live-owner manual refusal and
+canonical initial intent IDs. safe_delete is now bounded IMPLEMENTED; the
+other missing/native/inverse/A/D/H gates remain open.
 
 ## Cross-cutting findings
 

@@ -56,6 +56,15 @@ def _recipe_window_geometry(undo_data):
 
 def _recipe_pending_mutation(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Unknown partial effects are retained, never guessed at by a generic inverse."""
+    if undo_data.get('tool') == 'safe_delete':
+        from pluma.adapters.recycle_bin import recover_pending
+        try:
+            proof = recover_pending(undo_data['pre_state'])
+            return RollbackStepResult(ok=True, action='pending_mutation',
+                message='Recovered the captured recycle intent by native identity.', data=proof)
+        except Exception:
+            return RollbackStepResult(ok=False, action='pending_mutation',
+                message='Recycle recovery conflicts or lacks exact identity evidence.', error='ROLLBACK_CONFLICT')
     return RollbackStepResult(ok=False, action="pending_mutation",
         message="Mutation outcome is unverified. Pre-state retained for safe recovery.",
         error="MUTATION_OUTCOME_UNKNOWN", data={"operation_id": undo_data.get("operation_id"),

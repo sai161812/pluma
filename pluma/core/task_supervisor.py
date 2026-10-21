@@ -132,7 +132,7 @@ class TaskCapsule(BaseModel):
 
     @property
     def cleanup_pending(self) -> bool:
-        return bool(latest_unresolved(self.cleanup_evidence))
+        return bool(self.inverse_workers) or bool(latest_unresolved(self.cleanup_evidence))
 
     def outcome_details(self) -> Dict[str, Any]:
         """Deterministic, redacted facts shared by result and IPC projections."""
@@ -169,6 +169,7 @@ class TaskCapsule(BaseModel):
 
     # Active task-owned ToolRegistry worker controller (not serializable)
     worker_controller: Any = Field(default=None, exclude=True)
+    inverse_workers: Dict[str, Any] = Field(default_factory=dict, exclude=True)
     storage_path: Optional[str] = Field(default=None, exclude=True)
     tool_services: Any = Field(default=None, exclude=True)
     tool_call_count: int = 0
@@ -229,6 +230,23 @@ class TaskCapsule(BaseModel):
                 if verified:
                     self.owned_work.pop(resource_id, None)
         worker = self.worker_controller
+        for key, inverse in list(self.inverse_workers.items()):
+            errors = []
+            try:
+                inverse.dispose_owned_worker()
+            except Exception:
+                errors.append('INVERSE_DISPOSAL_FAILED')
+            try:
+                drained = inverse.verify_cleanup() is True
+            except Exception:
+                drained = False
+            checks.append(CleanupEvidence(resource_id=key, kind='worker', verified=drained,
+                code='INVERSE_WORKER_EXITED' if drained else 'INVERSE_WORKER_PENDING',
+                identity=dict(getattr(inverse, 'worker_identity', None) or {}), errors=errors))
+            checks.extend(item.model_copy(update={'resource_id': key + ':' + item.resource_id})
+                          for item in inverse.cleanup_evidence)
+            if drained:
+                self.inverse_workers.pop(key, None)
         worker_errors = []
         if worker is not None:
             try:
@@ -885,6 +903,7 @@ class TaskSupervisor:
                 details = cap.outcome_details()
                 ready = cap.state in _TERMINAL_STATES and cap.terminal_ready.is_set()
                 no_owners = (not cap.owned_work and cap.voice_session is None
+                    and not cap.inverse_workers
                     and cap.worker_controller is None and cap.job_object is None
                     and cap.snapshot_registry is None
                     and not any(r.ownership == ResourceOwnership.PLUMA_CREATED

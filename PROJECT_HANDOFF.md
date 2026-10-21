@@ -1,6 +1,38 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-21, P11 recycle-only regular files
+## Current checkpoint: 2026-10-21, P11 folder and interrupted recycle recovery
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Owner requested all remaining P11.
+Use PLUMA_COMPLETION_PROMPTS.md and its shared contract; no completion waiver.
+
+- [E32](docs/completion/p11_recycle_recovery.md) closes safe_delete's bounded
+  folder and interrupted-receipt recovery gaps with native identity/stream/tree
+  evidence. Recycle Bin only; no permanent fallback. Directory data streams,
+  reparse/offline/encrypted/hard-linked files, unsupported volumes and bounds
+  fail closed. Stable content and separate revision digests preserve conflicts.
+- STOP drains the original executor, then a bounded capsule-owned inverse
+  worker recovers only the exact captured identity. Worker timeout/failed
+  cleanup retains ownership and factual residuals. Manual pending recovery
+  refuses a live/unverified original executor. Initial durable action IDs now
+  prevent the observed STOP read/claim race; no weakened claim or undo checks.
+- Final focused **33 passed (14.32s)**; affected regression **466 passed /
+  1 elevation deselected (146.21s)**. Raw --runxfail 15 (1.44s), native
+  containment 3 (5.64s), recovery 5 (1.41s). Actual exits zero, source hashes
+  match, fixture keys/Bin residues zero. Matrix 298 source items / 324 rows PASS.
+  E32 retains initial failures, recovery, exact commands and provenance.
+- Catalog **41 registered / 32 unregistered; 23 IMPLEMENTED / 32 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Sixteen untouched P12 gaps; **16 P11 names
+  still missing**, plus remaining legacy/native inverse and A/D/H acceptance.
+  Remaining: open_file; default audio device; system four; clipboard get/set;
+  terminal three; browser five. Full undo/clipboard clear remain defective.
+- E32 source parent: pushed `f584823`. Commit containing this checkpoint is
+  the next recovery point on ui-wiring; commit/push verified coherent changes.
+  Preserve all other worktrees/main/integration/recovery points/draft PRs.
+- Continue remaining P11 tools and their actual native/policy/undo evidence.
+  This checkpoint does not authorize P12 or action entry. No personal data,
+  clipboard/audio/power/security settings, dependency, UI or immutable spec change.
+
+## Previous checkpoint: 2026-10-21, P11 recycle-only regular files
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Owner authorized remaining P11.
 PLUMA_COMPLETION_GUIDE.md is absent; use PLUMA_COMPLETION_PROMPTS.md and its

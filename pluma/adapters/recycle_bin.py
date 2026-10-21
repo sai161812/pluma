@@ -1,15 +1,17 @@
 """On-demand Windows recycle-only transfer and exact, non-overwriting restore.
 
 No RemoveItem, shell command, permanent deletion or global Recycle Bin undo.
-Only regular files on fixed NTFS volumes are supported by this bounded adapter.
+Files and bounded directory trees on fixed NTFS volumes are supported.
 """
 from contextlib import contextmanager, ExitStack
 import os
+import hashlib
+import json
 from pathlib import Path
 import stat
 
 from pluma.adapters import file_identity as identity
-from pluma.adapters.file_operations import _copy_snapshot
+from pluma.adapters.file_operations import _copy_snapshot, _copy_observe, _basic, _streams
 
 
 def _volume(path):
@@ -41,15 +43,87 @@ def _sid():
         token.Close()
 
 
-def _eligible(path):
+def _eligible(path, *, allow_recycled=False):
     path = identity._checked_path(path)
     root = _volume(path)
     info = path.lstat()
-    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+    if (not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode))
+            or (stat.S_ISREG(info.st_mode) and info.st_nlink != 1)
             or getattr(info, 'st_file_attributes', 0) & (0x400 | 0x1000 | 0x4000)
-            or any(part.casefold() == '$recycle.bin' for part in path.parts)):
-        raise ValueError('Only local regular, single-link, non-reparse, online, unencrypted files are supported.')
+            or (not allow_recycled and any(part.casefold() == '$recycle.bin' for part in path.parts))):
+        raise ValueError('Only local non-reparse, online, unencrypted files and folders are supported; hard links are refused.')
     return path, root
+
+
+def _directory_has_streams(path):
+    c, w, k = identity._api()
+    class Stream(c.Structure):
+        _fields_ = [('size', c.c_longlong), ('name', w.WCHAR * 296)]
+    k.FindFirstStreamW.argtypes = [w.LPCWSTR, c.c_int, c.POINTER(Stream), w.DWORD]
+    k.FindFirstStreamW.restype = w.HANDLE
+    k.FindClose.argtypes, k.FindClose.restype = [w.HANDLE], w.BOOL
+    record = Stream()
+    handle = k.FindFirstStreamW(str(path), 0, c.byref(record), 0)
+    if handle == c.c_void_p(-1).value:
+        if c.get_last_error() == 38:  # ERROR_HANDLE_EOF: an ordinary directory has no data streams.
+            return False
+        raise c.WinError()
+    try:
+        return True
+    finally:
+        if not k.FindClose(handle):
+            raise c.WinError()
+
+
+def _snapshot(path, token=None):
+    """Hold every observed tree entry; hash names/content only in worker memory."""
+    path = identity._checked_path(path)
+    if not path.is_dir():
+        return _copy_snapshot(path, token)
+    records, directory_checks, total = [], [], 0
+    with ExitStack() as held:
+        for parent in reversed(path.parents):
+            held.enter_context(identity._open(parent, parent=True))
+        pending = [(path, 0)]
+        root = None
+        while pending:
+            target, depth = pending.pop()
+            if token is not None:
+                token.raise_if_cancelled()
+            if depth > 32 or len(records) >= identity.MAX_TREE_ENTRIES:
+                raise ValueError('Directory snapshot bound exceeded.')
+            _eligible(target, allow_recycled=True)
+            handle = held.enter_context(identity._open(target))
+            metadata = identity._metadata(handle)
+            if metadata['kind'] == 'directory':
+                if _directory_has_streams(target):
+                    raise ValueError('Directory data streams are unsupported; no mutation performed.')
+                observed = dict(metadata, **_basic(handle), size_bytes=0)
+                directory_checks.append((handle, observed))
+                with os.scandir(target) as entries:
+                    for entry in entries:
+                        if len(pending) + len(records) >= identity.MAX_TREE_ENTRIES:
+                            raise ValueError('Directory snapshot entry bound exceeded.')
+                        pending.append((Path(entry.path), depth + 1))
+            else:
+                sizes = _streams(handle)
+                total += sum(size for _, size in sizes)
+                if total > identity.MAX_FILE_BYTES:
+                    raise ValueError('Directory data exceeds the total bounded fingerprint size.')
+                observed = _copy_observe(handle, target, token)
+            if target == path:
+                root = observed
+            else:
+                records.append((str(target.relative_to(path)), observed))
+        for handle, expected in directory_checks:
+            actual = dict(identity._metadata(handle), **_basic(handle), size_bytes=0)
+            if actual != expected:
+                raise ValueError('Directory changed during inspection.')
+    encoded = json.dumps(sorted(records), ensure_ascii=True, sort_keys=True, separators=(',', ':')).encode()
+    stable = json.dumps(sorted((name, _content(observed)) for name, observed in records),
+        ensure_ascii=True, sort_keys=True, separators=(',', ':')).encode()
+    return dict(root, tree_digest=list(hashlib.sha256(stable).digest()),
+        tree_revision_digest=list(hashlib.sha256(encoded).digest()), tree_entries=len(records), tree_bytes=total)
 
 
 def capture(path):
@@ -57,13 +131,14 @@ def capture(path):
     _sid()  # Resolve native identity before any mutation.
     with identity._open(path.parent, parent=True) as parent:
         return {'action': 'safe_delete', 'guard_version': 1, 'path': str(path),
-                'source_parent': identity._parent_identity(parent), 'identity': _copy_snapshot(path)}
+                'source_parent': identity._parent_identity(parent), 'identity': _snapshot(path)}
 
 
 def _content(value):
-    # NTFS change time necessarily changes on recycle/restore. File ID, native
-    # attributes, all stream digests, size and last-write time must survive.
-    return {key: item for key, item in value.items() if key != 'changed_100ns'}
+    # Shell transfer updates change times for descendants too. Keep a separate
+    # revision digest for exact before-dispatch/current-receipt conflict checks;
+    # file IDs, attributes, stream bytes, names and last-write times must survive.
+    return {key: item for key, item in value.items() if key not in ('changed_100ns', 'tree_revision_digest')}
 
 
 @contextmanager
@@ -125,7 +200,7 @@ def _transfer(shell, sink, source, destination, *, restore=False, name=None, tok
     cookie = transfer.Advise(sink)
     try:
         target = shell.SHCreateItemFromParsingName(str(destination), None, shell.IID_IShellItem)
-        if expected is not None and _copy_snapshot(source, token) != expected:
+        if expected is not None and _snapshot(source, token) != expected:
             raise ValueError('Transfer source changed after Shell binding.')
         if token is not None:
             token.raise_if_cancelled()
@@ -154,14 +229,14 @@ def recycle(state, token=None):
     with ExitStack() as held:
         handles = {parent: held.enter_context(identity._open(parent, parent=True)) for parent in reversed(source.parents)}
         if (identity._parent_identity(handles[source.parent]) != state['source_parent']
-                or _copy_snapshot(source, token) != state['identity']):
+                or _snapshot(source, token) != state['identity']):
             raise ValueError('Source or parent changed after capture.')
         with _shell(token) as (shell, sink):
             recycled = _transfer(shell, sink, source, 'shell:RecycleBinFolder', token=token,
                                  expected=state['identity'])
     receipt = dict(state, recycled_path=recycled)
     _receipt_path(receipt)
-    receipt['recycled_identity'] = _copy_snapshot(recycled)
+    receipt['recycled_identity'] = _snapshot(recycled)
     if not verify(receipt):
         raise ValueError('Recycle postcondition could not be verified; original intent remains journaled.')
     return receipt
@@ -174,8 +249,8 @@ def verify(state, *, restored=False):
         if identity._parent_identity(parent) != state['source_parent']:
             return False
         if restored:
-            return not os.path.lexists(recycled) and _content(_copy_snapshot(source)) == _content(state['identity'])
-        return (not os.path.lexists(source) and _copy_snapshot(recycled) == state['recycled_identity']
+            return not os.path.lexists(recycled) and _content(_snapshot(source)) == _content(state['identity'])
+        return (not os.path.lexists(source) and _snapshot(recycled) == state['recycled_identity']
                 and _content(state['recycled_identity']) == _content(state['identity']))
 
 
@@ -191,3 +266,54 @@ def restore(state, token=None):
                                expected=state['recycled_identity'])
         if Path(result) != source or not verify(state, restored=True):
             raise ValueError('Restore readback failed.')
+
+
+def recover_pending(state, token=None):
+    """Resolve durable intent by exact native identity, never basename guessing.
+
+    Called only after the original executor has been drained. Existing original
+    data wins over a possible inverse. A bounded Bin metadata scan reads content
+    only after its original folder and native file identity match the intent.
+    """
+    if state.get('action') != 'safe_delete' or state.get('guard_version') != 1:
+        raise ValueError('A guarded recycle intent is required.')
+    source = Path(state['path'])
+    with identity._open(source.parent, parent=True) as handle:
+        if identity._parent_identity(handle) != state['source_parent']:
+            raise ValueError('Original parent identity changed.')
+        if os.path.lexists(source):
+            if _content(_snapshot(source, token)) != _content(state['identity']):
+                raise ValueError('Original path contains newer owner data.')
+            return {'effect': 'original_present', 'restored': False}
+        from win32com.propsys import propsys
+        candidates = []
+        with _shell(token) as (shell, sink):
+            bin_item = shell.SHCreateItemFromParsingName('shell:RecycleBinFolder', None, shell.IID_IShellItem)
+            entries = bin_item.BindToHandler(None, shell.BHID_EnumItems, shell.IID_IEnumShellItems)
+            deleted_from = propsys.PSGetPropertyKeyFromName('System.Recycle.DeletedFrom')
+            for index, item in enumerate(entries):
+                if token is not None:
+                    token.raise_if_cancelled()
+                if index >= 4096:
+                    raise ValueError('Recycle Bin metadata exceeds the recovery scan bound.')
+                original_parent = item.QueryInterface(shell.IID_IShellItem2).GetString(deleted_from)
+                if Path(original_parent) != source.parent:
+                    continue
+                candidate = item.GetDisplayName(0x80058000)
+                try:
+                    with identity._open(candidate) as candidate_handle:
+                        actual = identity._metadata(candidate_handle)
+                        if any(actual[key] != state['identity'][key] for key in ('volume', 'file_id', 'kind')):
+                            continue
+                    observed = _snapshot(candidate, token)
+                    if _content(observed) != _content(state['identity']):
+                        raise ValueError('Exact recycled target has changed.')
+                    receipt = dict(state, recycled_path=candidate, recycled_identity=observed)
+                    _receipt_path(receipt)
+                    candidates.append(receipt)
+                except FileNotFoundError:
+                    raise ValueError('Recovery candidate disappeared.') from None
+        if len(candidates) != 1:
+            raise ValueError('Exactly one unchanged recycled identity is required for recovery.')
+        restore(candidates[0], token)
+        return {'effect': 'recycled_identity_restored', 'restored': True}

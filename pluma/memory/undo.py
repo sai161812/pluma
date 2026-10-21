@@ -5,7 +5,7 @@ import uuid
 
 from pluma.memory.tool_store import connect, row
 
-SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete'}
+SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete', 'pending_mutation'}
 
 
 def claim_latest(path, task_id):
@@ -18,7 +18,27 @@ def claim_latest(path, task_id):
             state = json.loads(record['undo_json'])
             if state.get('action') not in SUPPORTED_ACTIONS:
                 raise ValueError('Undo record lacks a supported conflict-safe inverse.')
-            if state['action'] != 'memory_write' and state.get('guard_version') != 1:
+            pending_recycle = (state['action'] == 'pending_mutation' and state.get('tool') == 'safe_delete'
+                and state.get('pre_state', {}).get('guard_version') == 1)
+            if state['action'] == 'pending_mutation' and not pending_recycle:
+                raise ValueError('Unknown partial effect has no supported inverse.')
+            if pending_recycle:
+                # A manual inverse must never consume intent while the original
+                # executor could still commit it. Automatic STOP recovery has
+                # its own prior drain and claim; manual recovery needs durable
+                # terminal worker/job absence evidence from the original task.
+                owner = db.execute('SELECT t.final_state,c.metadata_json FROM actions a '
+                    'JOIN tasks t ON t.task_id=a.task_id LEFT JOIN cleanup_reports c ON c.task_id=t.task_id '
+                    'WHERE a.id=?', (record['action_id'],)).fetchone()
+                if owner is None or owner['final_state'] not in (
+                        'SUCCEEDED', 'FAILED', 'STOPPED', 'STOPPED_WITH_RESIDUAL', 'ABORTED_BY_CRASH') or not owner['metadata_json']:
+                    raise ValueError('Original executor absence has not been verified.')
+                from pluma.core.cleanup import CleanupEvidence, latest_unresolved
+                checks = [CleanupEvidence.model_validate(item) for item in json.loads(owner['metadata_json'])['entries']
+                          if item.get('kind') in ('worker', 'job')]
+                if not checks or latest_unresolved(checks):
+                    raise ValueError('Original executor cleanup is unresolved.')
+            if state['action'] != 'memory_write' and not pending_recycle and state.get('guard_version') != 1:
                 raise ValueError('Legacy file undo lacks captured identity.')
             if state['action'] == 'copy_file' and 'created_identity' not in state:
                 raise ValueError('Copy lacks a verified creation receipt.')
@@ -63,6 +83,13 @@ def verify(receipt):
         if observed is None or list(observed) != [0, 1, 'verified']:
             return False
         state = receipt['undo_data']
+        if state['action'] == 'pending_mutation' and state.get('tool') == 'safe_delete':
+            from pluma.adapters.recycle_bin import _snapshot, _content, identity
+            pending = state['pre_state']
+            from pathlib import Path
+            with identity._open(Path(pending['path']).parent, parent=True) as parent:
+                return (identity._parent_identity(parent) == pending['source_parent']
+                    and _content(_snapshot(pending['path'])) == _content(pending['identity']))
         if state['action'] == 'safe_delete':
             from pluma.adapters.recycle_bin import verify
             return verify(state, restored=True)

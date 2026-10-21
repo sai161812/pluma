@@ -1,12 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E31](../../../docs/completion/p11_recycle_bin.md)
-adds bounded recycle-only regular-file safe_delete, owned native readback and
-exact-item guarded automatic/manual restore. Owner chose Windows Recycle Bin
-only, with no permanent fallback. Catalog row stays UNVERIFIED for broader
-coverage and interrupted receipt recovery. Non-P12 catalog: 22 implemented,
-16 missing, 2 defective, 17 unverified. P11 remains incomplete; P12 forbidden
-and action entry disabled. Earlier evidence retains its own source provenance.
+Current P11 implementation update: [E32](../../../docs/completion/p11_recycle_recovery.md)
+adds bounded folder/interrupted recycle recovery with exact native identity,
+capsule-owned inverse workers and canonical initial intent IDs. Manual pending
+recovery refuses live/unverified owners. Non-P12 catalog: 23 implemented,
+16 missing, 2 defective, 16 unverified. P11 incomplete; P12 forbidden; action
+entry disabled. Historical evidence retains its own source provenance.
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT
 complete. E25 owns/bounds verification, interrupts legacy callers safely, retains
