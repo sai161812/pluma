@@ -42,3 +42,20 @@ scope; these catalog tools still require implementation and verification.
 Declared Windows dependencies may be exercised in an ignored project-local
 virtual environment; do not alter global Python, Windows policy or personal
 browser settings. No new visual design, P12 perception or UI command enabling.
+
+## Pending owner decision: safe_delete recovery (2026-10-21)
+
+The master section-21 catalog requires safe_delete but does not define Recycle
+Bin versus PLUMA-managed quarantine or retention behavior. Repository searches
+find no locked recovery/retention selection. Existing delegated browser,
+clipboard and terminal decisions above do not resolve this product decision.
+AGENTS.md requires: "If a requirement is ambiguous, stop and ask the project
+owner. Do not fill the gap with a generic agent pattern."
+
+Asked the owner whether safe_delete should use Windows Recycle Bin only
+(recommended: refuse unrecyclable targets, no permanent-delete fallback), or
+PLUMA-managed private quarantine. No answer has been received; the suggested
+option is not approval. Do not implement a deletion/retention policy by guessing.
+This does not waive safe_delete, any other P11 gap or any acceptance check.
+P11 remains incomplete and P12 remains forbidden. Completed E28-E30 code and
+verification are committed separately; this note records the next decision gate.

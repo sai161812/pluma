@@ -6,6 +6,14 @@
 PLUMA_COMPLETION_GUIDE.md is absent; use PLUMA_COMPLETION_PROMPTS.md, which
 contains the established shared contract. Do not misstate the whole milestone.
 
+**Next bounded gap paused for an owner requirement decision:** safe_delete's
+recovery policy is undefined in the master. Per AGENTS.md ambiguity rule, asked
+Recycle Bin only (recommended, refuse unrecyclable/no permanent fallback) versus
+PLUMA-managed private quarantine. Answer pending; a preselected option is not
+approval. [Decision record](docs/completion/p11_scope_decisions.md). Completed
+E28-E30 work is verified and pushed, latest code `b177440`; tree was clean.
+P11 still has 17 missing names and open inverse/A/D/H checks; no completion waiver.
+
 - [E30](docs/completion/p11_window_geometry.md) adds exact typed move_window and
   resize_window: HWND/PID/creation identity, normal top-level window, captured
   bounds/class/thread/DPI, required owned worker, exact readback and guarded
