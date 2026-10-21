@@ -1,6 +1,38 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-21, P11 native process control
+## Current checkpoint: 2026-10-21, P11 native window geometry
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Owner authorized remaining P11.
+PLUMA_COMPLETION_GUIDE.md is absent; use PLUMA_COMPLETION_PROMPTS.md, which
+contains the established shared contract. Do not misstate the whole milestone.
+
+- [E30](docs/completion/p11_window_geometry.md) adds exact typed move_window and
+  resize_window: HWND/PID/creation identity, normal top-level window, captured
+  bounds/class/thread/DPI, required owned worker, exact readback and guarded
+  manual/automatic undo. Newer geometry/identity/DPI refuses inverse. No focus,
+  z-order, child-window or title-substring fallback. Coordinate_space=window_dpi
+  explicitly denotes native target-DPI units, not fabricated physical pixels.
+- Reviewed affected regression **348 passed (137.21s)**, wall 138.223s, includes
+  all 18 final native geometry cases. Raw --runxfail 15 (0.54s), native
+  containment 3 (3.63s), recovery 5 (0.56s). Actual exits zero, isolated keys
+  zero, recorded runtime/test hashes match. Matrix source/link check passes.
+  Initial worker DPI-rounding failures/diagnostics are retained in E30; exact
+  success/undo assertions were preserved. No all-scale/multi-monitor, physical
+  UI/device/elevation/model/performance/release certification inferred.
+- Catalog **40 registered / 33 unregistered; 22 IMPLEMENTED / 33 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Sixteen untouched P12 names; **17 P11 names
+  remain missing**, plus required legacy/native inverse and A/D/H checks.
+  Remaining missing: file open/safe-delete; default audio device; system
+  lock/sleep/restart/shutdown; clipboard get/set; terminal three; browser five.
+  Clipboard clear/full undo catalog remain defective; sixteen native rows unverified.
+- All mutations use owned hidden-window/process/file/SQLite fixtures. No UI
+  appearance, disabled action entry, dependency, immutable specification,
+  user window/input, clipboard/device/power/security or P12 change.
+- E28 `f7a6833` and E29 `27bee2c` are pushed; E30 starts at `27bee2c`. Commit/push
+  reviewed E30 on ui-wiring. Preserve other worktrees/main/integration/recovery
+  points and draft PRs. Next safe milestone is remaining P11, never P12.
+
+## Previous checkpoint: 2026-10-21, P11 native process control
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 The referenced PLUMA_COMPLETION_GUIDE.md is absent; the established P11 contract

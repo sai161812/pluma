@@ -410,3 +410,74 @@ WINDOW_TOOL_SPECS: List[ToolSpec] = [
         cancellable=True,
     ),
 ]
+
+
+class GeometryTargetArgs(BaseModel):
+    model_config = {'strict': True, 'extra': 'forbid'}
+    hwnd: int = Field(gt=0, le=0xFFFFFFFFFFFFFFFF)
+    pid: int = Field(gt=0, le=0xFFFFFFFF)
+    creation_time: int = Field(gt=0)
+
+
+class MoveWindowArgs(GeometryTargetArgs):
+    x: int = Field(ge=-2147483648, le=2147483647)
+    y: int = Field(ge=-2147483648, le=2147483647)
+
+
+class ResizeWindowArgs(GeometryTargetArgs):
+    width: int = Field(gt=0, le=32767)
+    height: int = Field(gt=0, le=32767)
+
+
+def capture_geometry(args, context=None, *, tool):
+    from pluma.adapters.window_geometry import capture
+    token = getattr(context, 'cancellation_token', None)
+    if token is not None:
+        token.raise_if_cancelled()
+    return capture(args, tool)
+
+
+def execute_geometry(args, task_context=None, *, tool):
+    from pluma.adapters import window_geometry as native
+    try:
+        if task_context is None:
+            raise ValueError('A task-owned geometry journal is required.')
+        state = next(item['pre_state'] for item in reversed(task_context.undo_stack)
+            if item.get('action') == 'pending_mutation' and item.get('tool') == tool)
+        keys = ('x', 'y') if tool == 'move_window' else ('width', 'height')
+        if (state['action'] != 'window_geometry' or state['guard_version'] != 1 or state['tool'] != tool
+                or any(state[key] != args[key] for key in ('hwnd', 'pid', 'creation_time'))
+                or any(state['after'][key] != args[key] for key in keys)):
+            raise ValueError('Window geometry does not match its journal/arguments.')
+        native.apply(state, getattr(task_context, 'cancellation_token', None))
+        return ToolResult.success(tool, data={key: state[key] for key in ('hwnd', 'pid', 'creation_time', 'coordinate_space', 'after')},
+            verified=True, adapter_used='native_window_api', factual_message='Window geometry changed.').model_copy(
+                update={'private_context': {'window_geometry': state}})
+    except Exception:
+        return ToolResult.failure(tool, 'Window geometry could not be verified. Pre-state retained.', 'WINDOW_GEOMETRY_UNVERIFIED')
+
+
+def verify_geometry(result):
+    from pluma.adapters.window_geometry import verify
+    try:
+        state = result.private_context['window_geometry']
+        valid = (result.ok and result.verified and state['tool'] == result.tool
+            and state['action'] == 'window_geometry' and state['guard_version'] == 1
+            and result.data == {key: state[key] for key in ('hwnd', 'pid', 'creation_time', 'coordinate_space', 'after')}
+            and verify(state))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=bool(valid), method='native_window_identity_and_geometry',
+        detail='Exact window geometry readback verified.' if valid else 'Window geometry was not verified.')
+
+
+from functools import partial
+
+WINDOW_TOOL_SPECS += [ToolSpec(name=name, description=description, args_schema=schema,
+    risk_class=RiskClass.LOW, timeout_s=5, process_isolated=True,
+    executor=partial(execute_geometry, tool=name), verifier=verify_geometry,
+    undo_builder=partial(capture_geometry, tool=name), adapter_priority=[AdapterPriority.NATIVE_API])
+    for name, description, schema in [
+        ('move_window', 'Move one exact normal window in its native DPI coordinate units without changing foreground or size.', MoveWindowArgs),
+        ('resize_window', 'Resize one exact normal window in its native DPI coordinate units without changing foreground or position.', ResizeWindowArgs),
+    ]]

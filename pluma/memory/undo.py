@@ -5,7 +5,7 @@ import uuid
 
 from pluma.memory.tool_store import connect, row
 
-SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder'}
+SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry'}
 
 
 def claim_latest(path, task_id):
@@ -61,6 +61,9 @@ def verify(receipt):
         if observed is None or list(observed) != [0, 1, 'verified']:
             return False
         state = receipt['undo_data']
+        if state['action'] == 'window_geometry':
+            from pluma.adapters.window_geometry import verify
+            return verify(state, restored=True)
         if state['action'] in ('copy_file', 'create_folder'):
             from pluma.adapters.file_operations import verify_restored
             return verify_restored(state)

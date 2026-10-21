@@ -1,11 +1,10 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E29](../../../docs/completion/p11_process_control.md)
-adds same-user original-handle process close/force with exact approval and
-unavailable durable commit intents before dispatch. Unknown effects stay
-residual; no false undo promise. Non-P12 catalog: 20 implemented, 19 missing,
-2 defective, 16 unverified. P11 incomplete, P12 forbidden, action entry disabled.
-Native file operations remain documented in E28/current handoff.
+Current P11 implementation update: [E30](../../../docs/completion/p11_window_geometry.md)
+adds exact normal-window move/resize with native DPI semantics, bounded owned
+execution/readback and guarded automatic/manual undo. Non-P12 catalog:
+22 implemented, 17 missing, 2 defective, 16 unverified. P11 remains incomplete;
+P12 forbidden and action entry disabled. E28/E29 evidence remains available.
 
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT

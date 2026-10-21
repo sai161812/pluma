@@ -56,6 +56,8 @@ AUDIO_TOOLS = [
 ]
 
 WINDOW_MANAGEMENT_TOOLS = [
+    "move_window",
+    "resize_window",
     "minimize_window",
     "maximize_window",
     "restore_window",

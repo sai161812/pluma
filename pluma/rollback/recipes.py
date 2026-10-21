@@ -44,6 +44,16 @@ def _recipe_memory_write(undo_data: Dict[str, Any]) -> RollbackStepResult:
             message="Memory undo conflicted or could not be verified.", error="ROLLBACK_CONFLICT")
 
 
+def _recipe_window_geometry(undo_data):
+    from pluma.adapters.window_geometry import restore
+    try:
+        restore(undo_data)
+        return RollbackStepResult(ok=True, action='window_geometry', message='Restored captured window geometry.')
+    except Exception:
+        return RollbackStepResult(ok=False, action='window_geometry',
+            message='Window undo conflicted or could not be verified.', error='ROLLBACK_CONFLICT')
+
+
 def _recipe_pending_mutation(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Unknown partial effects are retained, never guessed at by a generic inverse."""
     return RollbackStepResult(ok=False, action="pending_mutation",
@@ -312,6 +322,7 @@ class RollbackRecipes:
 
     def _register_defaults(self) -> None:
         self.register("memory_write", _recipe_memory_write)
+        self.register("window_geometry", _recipe_window_geometry)
         self.register("pending_mutation", _recipe_pending_mutation)
         self.register("move_file", _recipe_move_file)
         self.register("rename_file", _recipe_rename_file)
