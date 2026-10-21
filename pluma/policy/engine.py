@@ -111,10 +111,15 @@ class PolicyEngine:
             try:
                 args = deepcopy(arguments)
                 encoded = json.dumps(args, sort_keys=True, ensure_ascii=False, allow_nan=False)
+                prompt = f"Allow {tool_name.replace('_', ' ')} with these arguments?"
+                if tool_name in ('terminate_process', 'graceful_close_process'):
+                    prompt = (
+                        f"Force process {arguments.get('pid')} to exit? Unsaved work can be lost. This cannot be undone."
+                        if tool_name == 'terminate_process' else
+                        f"Ask process {arguments.get('pid')} to close? It may prompt to save work. A completed close cannot be undone.")
                 request = ConfirmationRequest(task_id=task_id, tool_name=tool_name,
                     arguments=args, risk_class=risk,
-                    reason="Explicit approval of this exact operation is required.",
-                    prompt_message=f"Allow {tool_name.replace('_', ' ')} with these arguments?")
+                    reason="Explicit approval of this exact operation is required.", prompt_message=prompt)
                 response = self.confirmation_contract.request_confirmation(request)
                 intact = (request.task_id == task_id and request.tool_name == tool_name
                     and request.risk_class == risk and json.dumps(request.arguments,

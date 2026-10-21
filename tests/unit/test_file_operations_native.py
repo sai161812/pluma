@@ -161,6 +161,7 @@ def test_list_folder_required_worker_and_history(runtime, monkeypatch, tmp_path)
 @pytest.mark.parametrize('tool,args', [
     ('copy_file', {'source': 'relative', 'destination': 'D:\\owned'}),
     ('copy_file', {'source': 'D:\\owned', 'destination': 'D:\\other', 'overwrite': True}),
+    ('copy_file', {'source': 'D:\\owned', 'destination': 'D:\\other', 'overwrite': 0}),
     ('create_folder', {'path': 'relative'}),
     ('create_folder', {'path': 'D:\\owned', 'exist_ok': 'yes'}),
     ('list_folder', {'path': 'D:\\owned', 'max_entries': 201}),

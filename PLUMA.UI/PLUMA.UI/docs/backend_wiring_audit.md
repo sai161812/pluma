@@ -1,11 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E28](../../../docs/completion/p11_file_operations.md)
-adds bounded native copy_file/list_folder and guarded native folder creation,
-with durable receipts/inverses and owner-edit conflicts including alternate
-streams. Non-P12 catalog: 18 implemented, 21 missing, 2 defective, 16 unverified.
-P11 is incomplete; P12 forbidden and command entry remains disabled.
-E27 storage/global STOP evidence remains in the current handoff.
+Current P11 implementation update: [E29](../../../docs/completion/p11_process_control.md)
+adds same-user original-handle process close/force with exact approval and
+unavailable durable commit intents before dispatch. Unknown effects stay
+residual; no false undo promise. Non-P12 catalog: 20 implemented, 19 missing,
+2 defective, 16 unverified. P11 incomplete, P12 forbidden, action entry disabled.
+Native file operations remain documented in E28/current handoff.
 
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT

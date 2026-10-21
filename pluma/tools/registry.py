@@ -56,6 +56,7 @@ class WorkerRequest:
     env_overrides: Dict[str, str] = field(default_factory=dict)
     grounded_ui_target: Optional[Dict[str, Any]] = None
     storage_path: Optional[str] = None
+    supervisor_pid: Optional[int] = None
 
 
 @dataclass
@@ -177,6 +178,7 @@ def _worker_process_loop(
             worker_ctx.undo_stack = list(worker_req.undo_stack)
             worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
             worker_ctx.storage_path = worker_req.storage_path
+            worker_ctx.supervisor_pid = worker_req.supervisor_pid
             
             res = _invoke_executor(executor_fn, args, worker_ctx, admission)
                 
@@ -596,6 +598,7 @@ class ToolRegistry:
                 import pickle
                 request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
                     storage_path=getattr(context, "storage_path", None),
+                    supervisor_pid=os.getpid(),
                     env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")})
                 # Required isolation fails closed before calling any builder.
                 try:
@@ -993,12 +996,20 @@ class ToolRegistry:
                                           "step_index": step_index}
         # 3. Capture pre-mutation undo data BEFORE mutation occurs
         pre_undo_data = None
+        if spec.non_undoable and (spec.undo_builder is None or task_context is None or ledger is None):
+            return _record_no_execution(ledger, task_context, step_index, tool_name,
+                validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                    "Irreversible action requires an owned task and durable intent journal.", "COMMIT_JOURNAL_REQUIRED"))
         if spec.undo_builder:
             capture = self._owned_prestate(spec, validated_args, task_context, token, timeout_s)
             if not capture.ok:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, capture)
             pre_undo_data = capture.data["pre_state"]
+            if spec.non_undoable and pre_undo_data.get("non_undoable") is not True:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        "Irreversible intent could not be verified. No action was executed.", "COMMIT_INTENT_INVALID"))
             timeout_s -= time.perf_counter() - start_t
             if timeout_s <= 0:
                 from pluma.core.cancellation import StopReason
@@ -1070,6 +1081,7 @@ class ToolRegistry:
             env_overrides=env_flags,
             grounded_ui_target=grounded_ui_target,
             storage_path=getattr(task_context, "storage_path", None),
+            supervisor_pid=os.getpid(),
         )
 
 
@@ -1107,6 +1119,8 @@ class ToolRegistry:
             import copy
             pending_mutation = {"action": "pending_mutation", "tool": tool_name,
                 "operation_id": str(uuid.uuid4()), "pre_state": copy.deepcopy(pre_undo_data)}
+            if spec.non_undoable:
+                pending_mutation["non_undoable"] = True
             with getattr(task_context, "work_lock", nullcontext()):
                 if token is not None:
                     token.raise_if_cancelled()
@@ -1116,7 +1130,7 @@ class ToolRegistry:
                 from pluma.memory.activity import ActionRecord
                 prepared = ActionRecord(task_id=task_context.task_id, step_index=step_index,
                     tool=tool_name, args_raw=validated_args, risk=effective_risk.value,
-                    approval_state=approval_state, result_data={"executed": None},
+                    approval_state=approval_state, result_data={"executed": None, "non_undoable": spec.non_undoable},
                     error_detail={"code": "MUTATION_OUTCOME_PENDING",
                                   "error": "Execution outcome has not been observed."})
                 try:
@@ -1327,7 +1341,7 @@ class ToolRegistry:
 
         # 6. Finalize undo record only on verified success
         undo_record = None
-        if result.ok and verified and pre_undo_data:
+        if result.ok and verified and pre_undo_data and not spec.non_undoable:
             undo_record = dict(pre_undo_data)
             # Native creation receipts add output identities after the mutation.
             # They may not replace any value captured before execution.
@@ -1345,11 +1359,17 @@ class ToolRegistry:
             if undo_record is not None and isinstance(result.data, dict) and "preserved_destination_backup" in result.data:
                 undo_record["preserved_destination_backup"] = result.data["preserved_destination_backup"]
 
+        commit_record = None
+        if spec.non_undoable and pending_mutation is not None:
+            commit_record = dict(pending_mutation, action="non_undoable_commit",
+                effect_state="not_executed" if execution_not_admitted else "committed" if result.ok and verified else "unknown")
+
         # 7. Build final consolidated result
         final_result = ToolResult(
             ok=result.ok and verified,
             tool=tool_name,
-            data=result.data,
+            data=dict(result.data, non_undoable=True, effect_state=commit_record["effect_state"])
+                if commit_record else result.data,
             factual_message=(verification_message if result.ok and not verified else result.factual_message),
             verified=verified,
             verify_detail=verify_detail,
@@ -1380,7 +1400,7 @@ class ToolRegistry:
                 )
                 if prepared_row is not None:
                     undo_available = ledger.finish_mutation(prepared_row, action_rec,
-                        undo_record or pending_mutation, not_executed=execution_not_admitted)
+                        commit_record or undo_record or pending_mutation, not_executed=execution_not_admitted)
                 else:
                     row_id = ledger.insert_action(action_rec, _timeout_s=2.0)
                     if undo_record and row_id is not None:
@@ -1399,7 +1419,9 @@ class ToolRegistry:
         if pending_mutation is not None and task_context is not None and hasattr(task_context, "undo_stack"):
             with getattr(task_context, "work_lock", nullcontext()):
                 if pending_mutation in task_context.undo_stack:
-                    if execution_not_admitted or not undo_available:
+                    if commit_record is not None and not execution_not_admitted:
+                        task_context.undo_stack[task_context.undo_stack.index(pending_mutation)] = commit_record
+                    elif execution_not_admitted or not undo_available:
                         task_context.undo_stack.remove(pending_mutation)
                     elif undo_record is not None:
                         task_context.undo_stack[task_context.undo_stack.index(pending_mutation)] = undo_record

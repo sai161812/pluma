@@ -1,6 +1,42 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-21, P11 native file operations
+## Current checkpoint: 2026-10-21, P11 native process control
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+The referenced PLUMA_COMPLETION_GUIDE.md is absent; the established P11 contract
+is PLUMA_COMPLETION_PROMPTS.md. The owner authorized finishing remaining P11.
+
+- [E29](docs/completion/p11_process_control.md) adds exact typed same-user native
+  graceful_close_process / terminate_process. Strict PID/creation time, exact
+  MEDIUM approval, explicit force/data-loss acknowledgement, critical/session/
+  resident/worker protection; native original-handle exit and independent readback.
+  Graceful refusal/save prompts never trigger forced fallback. No shell/admin.
+- ToolSpec.non_undoable journals durable intent before dispatch using existing
+  action/intent storage with available=0, so it never offers an inverse. Parent
+  capsule retains committed/unknown effect evidence for truthful STOP residuals.
+  Missing journal/ledger/capture prevents dispatch. Internal supervisor identity
+  crosses worker IPC, never a planner argument. No schema migration or UI change.
+- Focused **20 passed (15.99s)**. Reviewed existing/new regression **427 passed /
+  1 deselected (130.92s)**, wall 131.968s. Raw --runxfail 15 (0.48s), native
+  containment 3 (3.12s), recovery 5 (0.52s). Actual exits zero, fixture keys zero,
+  recorded runtime/test hashes match. Matrix source/link validation passes.
+  Elevation deselection is not a pass/waiver. E29 records failed initial native
+  fixture PID/window identity diagnostic and correction without weakened success
+  assertions. Registered suspended fixture processes/native Jobs and hidden
+  windows only; no personal application, window, clipboard or device/power mutation.
+- Final schema review rejects integer 1/0 for force acknowledgement/copy
+  overwrite despite Pydantic Literal coercion; both are covered before policy.
+- Catalog: **38 registered / 35 unregistered; 20 IMPLEMENTED / 35 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Sixteen untouched P12 entries; 19 P11 names
+  still missing. Remaining native/legacy inverse, ownership and A/D/H gates stay
+  mandatory. No full P11, physical/elevation/UI/model/performance/release claim.
+- E28 native copy/list/folder work is pushed as `f7a6833`; E29 starts there.
+  Commit/push reviewed E29 on ui-wiring, preserving other worktrees, main,
+  integration/recovery points and draft PR boundaries. Do not begin P12.
+- Next safe P11 work: bounded native move_window/resize_window with exact target
+  identity, geometry readback and conflict-safe undo on owned hidden fixtures.
+
+## Previous checkpoint: 2026-10-21, P11 native file operations
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 The owner said PLUMA_COMPLETION_GUIDE.md; no such file exists here. The existing

@@ -232,10 +232,11 @@ class ActivityLedger:
         row_id = self.insert_action(record, _timeout_s=2.0)
         if type(row_id) is not int or row_id <= 0:
             raise RuntimeError("Mutation action identity was not verified.")
-        self.insert_undo_record(UndoRecord(row_id, pending), _timeout_s=2.0)
+        available = not pending.get("non_undoable", False)
+        self.insert_undo_record(UndoRecord(row_id, pending, available=available), _timeout_s=2.0)
         row = ActivityQuery(self._db).undo_record_for_action(row_id)
         expected = redact_sensitive_data(pending)
-        if not row or row['available'] != 1 or json.loads(row['undo_json']) != expected:
+        if not row or row['available'] != int(available) or json.loads(row['undo_json']) != expected:
             raise RuntimeError("Mutation pre-state was not durably verified.")
         return row_id
 

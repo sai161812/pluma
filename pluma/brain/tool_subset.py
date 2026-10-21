@@ -82,6 +82,8 @@ SYSTEM_CLIPBOARD_TOOLS = [
     "list_processes",
     "process_info",
     "process_usage",
+    "graceful_close_process",
+    "terminate_process",
     "get_process_status",
     "kill_process",
 ]

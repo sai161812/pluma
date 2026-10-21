@@ -130,6 +130,13 @@ class CopyFileArgs(MoveFileArgs):
     """A new exact destination; replacing existing data is not permitted."""
     overwrite: Literal[False] = False
 
+    @field_validator('overwrite', mode='before')
+    @classmethod
+    def exact_no_overwrite(cls, value):
+        if value is not False:
+            raise ValueError('Copy supports only boolean false for overwrite.')
+        return value
+
 
 class ListFolderArgs(FileInfoArgs):
     max_entries: int = Field(default=100, ge=1, le=200)

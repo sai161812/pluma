@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-21 E28 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-21 E29 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -35,24 +35,24 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E28 close individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E29 close individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
 
 ## P11 catalog: actual remaining work
 
-All 73 exact catalog names: **36 registered / 37 unregistered**. Status across
-all rows: **18 implemented / 37 missing / 2 defective / 16 unverified**. Of the
-37 missing names, **16 are assigned to P12**. They were inspected, not implemented
+All 73 exact catalog names: **38 registered / 35 unregistered**. Status across
+all rows: **20 implemented / 35 missing / 2 defective / 16 unverified**. Of the
+35 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**18 implemented / 21 missing / 2 defective / 16 unverified**.
+**20 implemented / 19 missing / 2 defective / 16 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
 | Windows | move_window, resize_window |
 | Files | open_file, safe_delete |
-| Processes | graceful_close_process, terminate_process |
+| Processes | None missing; bounded process controls recorded in E29 |
 | Audio | set_default_audio_device |
 | System | lock, sleep_request, restart_request, shutdown_request |
 | Clipboard | clipboard_get, clipboard_set |
@@ -77,16 +77,20 @@ find_file, move_file, rename_file; set_volume, mute, unmute.
 These need their recorded native identity, verification, inverse/conflict and
 complete-path evidence. Existing functions alone do not close their rows.
 
-Eighteen bounded implemented catalog tools: file_info, list_processes,
+Twenty bounded implemented catalog tools: file_info, list_processes,
 process_info, process_usage, get_volume, list_audio_devices, battery_status,
 get_system_status, network_status, show_activity, stop_current, save_preference,
-get_preference, create_routine, run_routine, copy_file, list_folder and create_folder. This is backend owned-fixture
+get_preference, create_routine, run_routine, copy_file, list_folder, create_folder, graceful_close_process and terminate_process. This is backend owned-fixture
 and SQLite/native evidence, not full UI/device/product certification.
 
 [E28](p11_file_operations.md) adds bounded native file copy/listing and guarded
 folder creation, including alternate-stream edit conflicts, exact creation
 identities and durable manual/automatic inverse integration. Current affected
 checks and explicit limits are in E28; full catalog acceptance remains open.
+
+[E29](p11_process_control.md) adds original-handle same-user process close/force
+and unavailable durable commit intent before dispatch. Unknown effects remain
+residual; it never offers an impossible inverse. No P12 eligibility.
 
 ## Cross-cutting findings
 

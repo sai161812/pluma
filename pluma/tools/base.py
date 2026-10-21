@@ -107,6 +107,8 @@ class ToolSpec(BaseModel):
         description="Require a killable owned worker; never fall back to an in-process call.",
     )
     execution_scope: Literal["adapter", "task_service"] = "adapter"
+    non_undoable: bool = Field(default=False,
+        description="Journal irreversible intent before dispatch; never expose it as an available inverse.")
     executor: Callable[..., "ToolResult"] = Field(
         description="Callable that performs the action. Injected by the adapter layer."
     )
@@ -117,7 +119,7 @@ class ToolSpec(BaseModel):
         default=None,
         description=(
             "Callable that captures pre-state before execution and returns an undo record. "
-            "None for non-reversible operations."
+            "For non_undoable tools this captures a non-undoable intent, never an inverse."
         ),
     )
 
