@@ -1,6 +1,6 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 terminal undo boundary
+## Current checkpoint: 2026-10-22, P11 terminal non-undoable handoff (E52)
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
 
