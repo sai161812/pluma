@@ -1,10 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 clipboard update: [E40](../../../docs/completion/p11_clipboard_read.md)
-implements native plain-text reads and redacts private prior results from prompts.
-Owner scope is plain-text copy/paste only; file/image expansion is superseded.
-Non-P12 catalog: 31 implemented, 8 missing, 2 defective, 16 unverified.
-P11 incomplete; P12 forbidden; action entry disabled.
+Current P11 clipboard update: [E41](../../../docs/completion/p11_clipboard_text.md)
+completes plain-text copy/clear with actual native paste/readback, private volatile
+undo and newer-copy conflict refusal. 26 focused / 274 affected regression passes;
+original interactive clipboard unchanged. Non-P12 catalog: 33 implemented,
+7 missing, 1 defective, 16 unverified. P11 incomplete; P12 forbidden; action entry
+remains disabled. Owner scope remains plain-text copy/paste only.
 
 Previous P11 validation update: [E39](../../../docs/completion/p11_argument_validation.md)
 unifies registered planner/executor argument checks and removes private argument

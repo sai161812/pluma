@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-22 E40 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-22 E41 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -13,10 +13,12 @@ dark UI, disabled action entry, other worktrees/recovery points and draft PRs.
 No P12 UIA/OCR/input implementation or later milestone is authorized here.
 
 Fresh inventory uses default ToolSpec registration without executing tools.
-`output/p11_power_actions/catalog-audit-e40.json` records the current 73-name
+`output/p11_power_actions/catalog-audit-e41.json` records the current 73-name
 registration/status counts and exact missing P11 names; ToolSpec source and
 E38 tests establish risk, timeout, ownership, builder and verifier contracts. Matrix
 checker independently validates 298 source items and 324 traceable rows.
+E41 adds 26 focused / 274 affected native passes, actual owned-control paste and
+private clipboard undo; see [copy/paste evidence](p11_clipboard_text.md).
 Fresh safety/functional regressions and native owned fixtures verify the pending
 P11 repair. Full device/UI/ML/performance/install/release acceptance is outside
 these bounded checks and is not silently counted as passed.
@@ -36,7 +38,7 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E40 address individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E41 address individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
@@ -45,11 +47,11 @@ E06-E16 historical detail lives in the linked
 
 ## P11 catalog: actual remaining work
 
-All 73 exact catalog names: **49 registered / 24 unregistered**. Status across
-all rows: **31 implemented / 24 missing / 2 defective / 16 unverified**. Of the
-24 missing names, **16 are assigned to P12**. They were inspected, not implemented
+All 73 exact catalog names: **50 registered / 23 unregistered**. Status across
+all rows: **33 implemented / 23 missing / 1 defective / 16 unverified**. Of the
+23 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**31 implemented / 8 missing / 2 defective / 16 unverified**.
+**33 implemented / 7 missing / 1 defective / 16 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
@@ -58,13 +60,12 @@ or declared optional. For the other 57 catalog entries relevant to this audit:
 | Processes | None missing; bounded process controls recorded in E29 |
 | Audio | None missing; default-device registration and guarded mutation/undo in E34; physical changes unverified |
 | System | None missing; four confirmed native requests registered in E38; physical effects unverified |
-| Clipboard | clipboard_set; native plain-text clipboard_get completed in E40 |
+| Clipboard | None missing; plain-text read/write/clear and volatile undo completed in E40/E41 |
 | Terminal | open_terminal; closed run_command/run_powershell completed in E33 |
 | Browser | open_url, list_tabs, focus_tab, close_tab, download_status |
 
-Two catalog entries remain defective:
+One catalog entry remains defective:
 
-- `clipboard_clear`: no independent readback/private undo pre-state.
 - `undo_last`: E27 fixes pop-before-proof, concurrent inverse/consumption and
   uncertain claim replay. Guarded memory and file/folder move/rename inverses
   work. Other legacy/native catalog inverses still require identity/conflict
@@ -81,7 +82,7 @@ lock, sleep_request, restart_request, shutdown_request.
 These need their recorded native identity, verification, inverse/conflict and
 complete-path evidence. Existing functions alone do not close their rows.
 
-Thirty-one bounded implemented catalog tools: clipboard_get, list_apps, app_status, list_windows, rename_file, find_file, file_info, list_processes,
+Thirty-three bounded implemented catalog tools: clipboard_set, clipboard_clear, clipboard_get, list_apps, app_status, list_windows, rename_file, find_file, file_info, list_processes,
 process_info, process_usage, get_volume, list_audio_devices, battery_status,
 get_system_status, network_status, show_activity, stop_current, save_preference,
 get_preference, create_routine, run_routine, copy_file, list_folder, create_folder, graceful_close_process, terminate_process, move_window, resize_window, safe_delete, run_command and run_powershell. This is backend owned-fixture

@@ -13,7 +13,6 @@ def execute_get(args, context=None, *, tool='clipboard_get'):
     try:
         ClipboardGetArgs.model_validate(args)
         observation = observe(getattr(context, 'cancellation_token', None))
-        count = len(observation['data']['formats'])
         unknown = len(observation['data']['unsupported_format_ids'])
         result = ToolResult.success(tool, data=observation['data'], verified=False,
             factual_message=f'Read plain-text clipboard state; {unknown} non-text formats are outside this operation.',

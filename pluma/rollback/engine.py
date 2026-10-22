@@ -49,8 +49,14 @@ class RollbackEngine:
             self._query = ActivityQuery(self._ledger._db)
         self._recipes = recipes or RollbackRecipes()
         self.task_resolver = None
+        self.clipboard_inverse = None
 
     def _apply(self, task_id, action, state):
+        if self.clipboard_inverse is not None and (action == 'clipboard_restore' or
+                action == 'pending_mutation' and state.get('tool') in
+                ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')):
+            capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+            return self.clipboard_inverse(state if action == 'clipboard_restore' else state['pre_state'], capsule)
         owned_inverse = action in ('safe_delete', 'set_volume', 'mute', 'unmute', 'set_default_audio_device',
             'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry') or (
                 action == 'pending_mutation' and state.get('tool') == 'safe_delete')

@@ -511,6 +511,8 @@ class ToolRegistry:
         self._stop_service = stop_service
         self._worker_controllers: Dict[str, TaskWorkerController] = {}
         self._idle_workers: List[TaskWorkerController] = []
+        self._clipboard_undo_cache: Dict[str, Any] = {}
+        self.clipboard_task_resolver = None
         from pluma.core.shutdown import WorkGate
         self.work_gate = WorkGate()
 
@@ -580,6 +582,31 @@ class ToolRegistry:
                     self._idle_workers.remove(ctrl)
             if failures:
                 raise RuntimeError("Owned worker cleanup remains unverified.")
+            self._clipboard_undo_cache.clear()
+
+    def restore_clipboard(self, state, capsule):
+        from copy import deepcopy
+        from pluma.rollback.owned import apply_owned
+        from pluma.rollback.recipes import RollbackStepResult
+        with self._lock:
+            entry = deepcopy(self._clipboard_undo_cache.get(state.get('undo_ref')))
+        if capsule is None or not entry or entry['record'] != state or entry['after_proof'] is None:
+            return RollbackStepResult(ok=False, action='clipboard_restore',
+                message='Private clipboard undo is unavailable or its effect is uncertain.', error='CLIPBOARD_UNDO_UNAVAILABLE')
+        outcome = apply_owned('clipboard_restore', dict(state, clipboard_private=entry), capsule)
+        if outcome.ok:
+            self._consume_clipboard_undo(state['undo_ref'], outcome.data['clipboard_inverse_proof'])
+        return outcome
+
+    def _consume_clipboard_undo(self, reference, restored_proof):
+        with self._lock:
+            entry = self._clipboard_undo_cache.pop(reference, None)
+            if entry:
+                # A verified own inverse can rebase the immediately preceding
+                # clipboard receipt. A user copy never creates this evidence.
+                for previous in self._clipboard_undo_cache.values():
+                    if previous['after_proof'] == entry['before_proof']:
+                        previous['after_proof'] = dict(restored_proof)
 
     def begin_shutdown(self) -> None:
         self.work_gate.begin_shutdown()
@@ -935,6 +962,11 @@ class ToolRegistry:
         execution_binding = None
         effective_risk = spec.risk_class
         approval_state = "NOT_CONFIGURED"
+        clipboard_mutation = tool_name in ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')
+        if clipboard_mutation and (task_context is None or ledger is None):
+            return _record_no_execution(ledger, task_context, step_index, tool_name,
+                validated_args, effective_risk, 'UNAVAILABLE', ToolResult.failure(tool_name,
+                    'Clipboard writes require an owned task and private undo journal.', 'CLIPBOARD_JOURNAL_REQUIRED'))
         if active_policy is None and (spec.non_undoable or spec.risk_class not in (RiskClass.READ, RiskClass.LOW)):
             return _record_no_execution(ledger, task_context, step_index, tool_name,
                 validated_args, effective_risk, 'UNAVAILABLE', ToolResult.failure(tool_name,
@@ -1017,6 +1049,35 @@ class ToolRegistry:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, capture)
             pre_undo_data = capture.data["pre_state"]
+            if clipboard_mutation:
+                try:
+                    from pluma.tools.clipboard import seal_capture
+                    pre_undo_data, private_entry = seal_capture(pre_undo_data)
+                    private_entry['owner_task_id'] = task_context.task_id
+                    with self._lock:
+                        candidates = list(self._clipboard_undo_cache.items()) if len(self._clipboard_undo_cache) >= 16 else []
+                    expired = None
+                    if self.clipboard_task_resolver:
+                        for reference, candidate in candidates:
+                            try:
+                                owner = self.clipboard_task_resolver(candidate['owner_task_id'])
+                                terminal = owner.state.value in ('SUCCEEDED', 'FAILED', 'STOPPED', 'STOPPED_WITH_RESIDUAL', 'ABORTED_BY_CRASH')
+                            except KeyError:
+                                terminal = True
+                            if terminal:
+                                expired = reference
+                                break
+                    with self._lock:
+                        if expired is not None:
+                            self._clipboard_undo_cache.pop(expired, None)
+                        if len(self._clipboard_undo_cache) >= 16:
+                            raise ValueError('Private clipboard undo capacity is full.')
+                        self._clipboard_undo_cache[pre_undo_data['undo_ref']] = private_entry
+                    execution_binding = {'clipboard_private': private_entry}
+                except Exception:
+                    return _record_no_execution(ledger, task_context, step_index, tool_name,
+                        validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                            'Private clipboard undo could not be retained. No write was executed.', 'CLIPBOARD_UNDO_UNAVAILABLE'))
             if spec.non_undoable and pre_undo_data.get("non_undoable") is not True:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
@@ -1032,6 +1093,27 @@ class ToolRegistry:
 
         if token is not None:
             token.raise_if_cancelled()
+
+        if tool_name == 'undo_last' and self._clipboard_undo_cache:
+            from copy import deepcopy
+            from pluma.memory.undo import peek_clipboard_ref
+            lookup_started = time.perf_counter()
+            lookup_spec = spec.model_copy(update={'undo_builder': peek_clipboard_ref})
+            lookup = self._owned_prestate(lookup_spec, validated_args, task_context, token, timeout_s)
+            if not lookup.ok:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, lookup)
+            reference = lookup.data['pre_state'].get('undo_ref')
+            with self._lock:
+                execution_binding = {'clipboard_private': deepcopy(self._clipboard_undo_cache.get(reference))}
+            timeout_s -= time.perf_counter() - lookup_started
+            if timeout_s <= 0:
+                from pluma.core.cancellation import StopReason
+                if token is not None:
+                    token.cancel(StopReason.TASK_TIMEOUT)
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        'Undo lookup exhausted the tool deadline. No inverse was executed.', 'TOOL_TIMEOUT'))
 
         # 4. Execution with killable process isolation, timeout enforcement and duration measurement
         result: Optional[ToolResult] = None
@@ -1184,6 +1266,14 @@ class ToolRegistry:
                 )
                 if status == "ok" and isinstance(payload, WorkerResponse):
                     result = payload.result
+                    if clipboard_mutation and result.ok:
+                        from pluma.tools.clipboard import valid_proof
+                        receipt = result.private_context.get('clipboard_receipt', {})
+                        with self._lock:
+                            entry = self._clipboard_undo_cache.get(pre_undo_data['undo_ref'])
+                            if (entry and receipt.get('record') == entry['record'] == result.undo_record
+                                    and valid_proof(receipt.get('after_proof'))):
+                                entry['after_proof'] = dict(receipt['after_proof'])
                     # Propagate resources created by worker into parent TaskCapsule
                     if task_context and hasattr(task_context, "register_owned_resource"):
                         for wr in payload.owned_resources:
@@ -1441,6 +1531,11 @@ class ToolRegistry:
                     elif undo_record is not None:
                         task_context.undo_stack[task_context.undo_stack.index(pending_mutation)] = undo_record
 
+        if tool_name == 'undo_last' and final_result.ok and final_result.verified:
+            receipt = result.private_context.get('undo_receipt', {})
+            state = receipt.get('undo_data', {})
+            if state.get('action') == 'clipboard_restore':
+                self._consume_clipboard_undo(state.get('undo_ref'), receipt['clipboard_restore_proof'])
         return final_result
 
     # ------------------------------------------------------------------

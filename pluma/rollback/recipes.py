@@ -44,6 +44,22 @@ def _recipe_memory_write(undo_data: Dict[str, Any]) -> RollbackStepResult:
             message="Memory undo conflicted or could not be verified.", error="ROLLBACK_CONFLICT")
 
 
+def _recipe_clipboard_restore(undo_data):
+    from pluma.adapters.clipboard_native import write
+    try:
+        entry = undo_data['clipboard_private']
+        if ({key: value for key, value in undo_data.items() if key != 'clipboard_private'} != entry['record']
+                or undo_data.get('guard_version') != 1 or undo_data.get('volatile') is not True
+                or entry['after_proof'] is None):
+            raise ValueError('Clipboard undo lacks exact private evidence.')
+        proof = write(entry['clipboard_before'], entry['after_proof'])
+        return RollbackStepResult(ok=True, action='clipboard_restore', message='Restored previous clipboard text.',
+                                  data={'clipboard_inverse_proof': proof})
+    except Exception:
+        return RollbackStepResult(ok=False, action='clipboard_restore',
+            message='Clipboard changed or private undo is unavailable; preserved current contents.', error='ROLLBACK_CONFLICT')
+
+
 def _recipe_window_geometry(undo_data):
     from pluma.adapters.window_geometry import restore
     try:
@@ -305,6 +321,7 @@ class RollbackRecipes:
 
     def _register_defaults(self) -> None:
         self.register("memory_write", _recipe_memory_write)
+        self.register('clipboard_restore', _recipe_clipboard_restore)
         self.register("window_geometry", _recipe_window_geometry)
         self.register("pending_mutation", _recipe_pending_mutation)
         self.register("move_file", _recipe_move_file)

@@ -17,7 +17,7 @@ from pluma.tools.base import ToolResult
 class InverseRequest(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
     action: Literal['safe_delete', 'pending_mutation', 'set_volume', 'mute', 'unmute', 'set_default_audio_device',
-                    'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry']
+                    'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'clipboard_restore']
     state: dict[str, Any]
 
 

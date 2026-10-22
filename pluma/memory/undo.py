@@ -6,9 +6,18 @@ import uuid
 from pluma.memory.tool_store import connect, row
 
 SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete', 'pending_mutation', 'set_volume', 'mute', 'unmute', 'set_default_audio_device'}
+SUPPORTED_ACTIONS.add('clipboard_restore')
 
 
-def claim_latest(path, task_id):
+def peek_clipboard_ref(args, context):
+    with connect(context.storage_path) as db:
+        latest = db.execute('SELECT undo_json FROM undo_records WHERE available=1 ORDER BY action_id DESC LIMIT 1').fetchone()
+        state = json.loads(latest['undo_json']) if latest else {}
+        return {'action': 'private_clipboard_lookup',
+                'undo_ref': state.get('undo_ref') if state.get('action') == 'clipboard_restore' else None}
+
+
+def claim_latest(path, task_id, clipboard_private=None):
     with connect(path, write=True) as db:
         db.execute('BEGIN IMMEDIATE')
         try:
@@ -18,6 +27,9 @@ def claim_latest(path, task_id):
             state = json.loads(record['undo_json'])
             if state.get('action') not in SUPPORTED_ACTIONS:
                 raise ValueError('Undo record lacks a supported conflict-safe inverse.')
+            if state['action'] == 'clipboard_restore' and (not clipboard_private
+                    or clipboard_private.get('record') != state or clipboard_private.get('after_proof') is None):
+                raise ValueError('Private clipboard undo expired or lacks a verified write receipt.')
             pending_recycle = (state['action'] == 'pending_mutation' and state.get('tool') == 'safe_delete'
                 and state.get('pre_state', {}).get('guard_version') == 1)
             if state['action'] == 'pending_mutation' and not pending_recycle:
@@ -56,7 +68,10 @@ def claim_latest(path, task_id):
             if db.in_transaction:
                 db.execute('ROLLBACK')
             raise
-    return {'storage_path': path, 'action_id': record['action_id'], 'operation_id': operation, 'undo_data': state}
+    result = {'storage_path': path, 'action_id': record['action_id'], 'operation_id': operation, 'undo_data': state}
+    if state['action'] == 'clipboard_restore':
+        result['clipboard_private'] = clipboard_private
+    return result
 
 
 def finish(receipt, ok):
@@ -85,6 +100,11 @@ def verify(receipt):
         if observed is None or list(observed) != [0, 1, 'verified']:
             return False
         state = receipt['undo_data']
+        if state['action'] == 'clipboard_restore':
+            from pluma.adapters.clipboard_native import observe, text_of
+            current = observe()
+            return (current['proof'] == receipt['clipboard_restore_proof']
+                    and text_of(current) == receipt['clipboard_private']['clipboard_before'])
         if state['action'] in ('set_volume', 'mute', 'unmute', 'set_default_audio_device'):
             from pluma.tools.audio import verify_audio_restored
             return verify_audio_restored(state)

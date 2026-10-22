@@ -199,10 +199,15 @@ class TestOrchestratorFastRoute:
         assert result.route == RouteMode.FAST
         assert result.final_state == "SUCCEEDED"
 
-    def test_clear_clipboard_fast_route(self, orchestrator: Orchestrator) -> None:
-        result = orchestrator.execute(_req("clear clipboard"))
-        assert result.route == RouteMode.FAST
-        assert result.final_state == "SUCCEEDED"
+    def test_clear_clipboard_fast_route(self, orchestrator: Orchestrator, tmp_path: Path) -> None:
+        from pluma.memory.db import DbConnection
+        from pluma.memory.activity import ActivityLedger
+        with DbConnection(str(tmp_path / "owned-clipboard.db")) as db:
+            configured = Orchestrator(registry=orchestrator._registry,
+                supervisor=orchestrator._supervisor, ledger=ActivityLedger(db))
+            result = configured.execute(_req("clear clipboard"))
+            assert result.route == RouteMode.FAST
+            assert result.final_state == "SUCCEEDED", result
 
     def test_minimize_window_fast_route(self, orchestrator: Orchestrator) -> None:
         result = orchestrator.execute(_req("minimize window"))

@@ -1,6 +1,32 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 plain-text clipboard read
+## Current checkpoint: 2026-10-22, P11 plain-text copy/paste completed
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E41](docs/completion/p11_clipboard_text.md): clipboard_set/clear and their
+  compatibility names now copy/clear Unicode text with native readback, minimum
+  volatile RAM undo, newer-copy conflict refusal and redacted factual history.
+  Actual paste into an owned EDIT control succeeds after the tool worker exits.
+  Plain-text only, as the owner requested; no image/file-list expansion.
+- Final native focused **26 passed (60.83s)**; affected regression **274 passed
+  (139.59s)**; corrected legacy FAST journal fixture **1 passed (1.42s)**.
+  Raw audit **15 passed (0.80s)**, containment **3 passed (3.40s)**, recovery
+  **5 passed (0.70s)**. Original clipboard sequence unchanged; same user/integrity,
+  no profile loading; owned Job zero; actual exits/fixture keys zero.
+  No completed audit was restarted. E41 records the single fixture correction.
+- Catalog **50 registered / 23 unregistered; 33 IMPLEMENTED / 23 MISSING /
+  1 DEFECTIVE / 16 UNVERIFIED**. Seven P11 names missing: open_file;
+  open_terminal; open_url/list_tabs/focus_tab/close_tab/download_status.
+  Full undo_last, app/window lifecycle, cross-volume move, physical audio/system
+  and remaining A/D/H gates stay open. Clipboard undo expires on process restart
+  or bounded cache eviction; missing private proof refuses before claiming undo.
+- Source parent `049c0e9`. Commit/push this verified checkpoint, then continue
+  bounded remaining P11 work. Do not declare P11 finished, begin P12, enable action
+  entry, redesign UI, change immutable specs or mutate personal resources in tests.
+
+
+## Previous checkpoint: 2026-10-22, P11 plain-text clipboard read
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

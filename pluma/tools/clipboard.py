@@ -1,285 +1,117 @@
-"""pluma.tools.clipboard — Clipboard read and write tools.
+"""Plain-text clipboard tools; private undo data stays in runtime memory."""
+from functools import partial
+import uuid
 
-Spec §11, §14: Clipboard actions are registered ToolSpecs.
-Sensitive clipboard content (passwords, tokens) is redacted from logs
-before being written to the Activity Ledger.
-
-Boundary: No heavy libraries imported at module level.
-"""
-
-from __future__ import annotations
-
-import sys
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, Field
+from pydantic import Field, field_validator
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
-from pluma.verify.common import verify_noop
 from pluma.tools.clipboard_reads import ClipboardGetArgs, execute_get, verify_get
 
-
-# ---------------------------------------------------------------------------
-# Argument Schemas
-# ---------------------------------------------------------------------------
-
-class ClearClipboardArgs(BaseModel):
-    """Arguments for clear_clipboard / clipboard_clear."""
-    model_config = {"extra": "forbid"}
+ClearClipboardArgs = GetClipboardArgs = ClipboardGetArgs
+MUTATION_NAMES = ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')
 
 
-class GetClipboardArgs(BaseModel):
-    """Arguments for get_clipboard_text."""
-    model_config = {"extra": "forbid"}
+def valid_proof(value):
+    return (isinstance(value, dict) and set(value) == {'sequence', 'owner', 'digest'}
+        and type(value['sequence']) is int and 0 <= value['sequence'] <= 0xffffffff
+        and type(value['owner']) is int and value['owner'] >= 0
+        and isinstance(value['digest'], str) and len(value['digest']) == 64
+        and all(char in '0123456789abcdef' for char in value['digest']))
 
 
-class SetClipboardArgs(BaseModel):
-    """Arguments for set_clipboard_text."""
-    model_config = {"extra": "forbid"}
-    text: str = Field(min_length=0, max_length=65536, description="Text to place on the clipboard.")
+def seal_capture(state):
+    from copy import deepcopy
+    record = {key: value for key, value in state.items() if key != 'clipboard_private'}
+    if (set(record) != {'action', 'guard_version', 'volatile', 'undo_ref'}
+            or record['action'] != 'clipboard_restore' or record['guard_version'] != 1
+            or record['volatile'] is not True or str(uuid.UUID(record['undo_ref'])) != record['undo_ref']):
+        raise ValueError('Invalid private clipboard intent.')
+    private = state['clipboard_private']
+    if (set(private) != {'clipboard_before', 'before_proof', 'after_proof'}
+            or not valid_proof(private['before_proof']) or private['after_proof'] is not None):
+        raise ValueError('Invalid private clipboard capture.')
+    if private['clipboard_before'] is not None:
+        SetClipboardArgs.model_validate({'text': private['clipboard_before']})
+    return record, dict(deepcopy(private), record=deepcopy(record))
 
 
-# ---------------------------------------------------------------------------
-# Win32 Clipboard Helpers
-# ---------------------------------------------------------------------------
+class SetClipboardArgs(ClipboardGetArgs):
+    text: str = Field(max_length=65536)
 
-def _open_clipboard(user32: Any, retries: int = 5, delay: float = 0.02) -> bool:
-    """Open clipboard with small bounded retry for transient locks."""
-    import time
-    for _ in range(retries):
-        if user32.OpenClipboard(None):
-            return True
-        time.sleep(delay)
-    return False
+    @field_validator('text')
+    @classmethod
+    def plain_text(cls, value):
+        if chr(0) in value or len(value.encode('utf-16-le')) > 131072:
+            raise ValueError('Clipboard text is invalid or exceeds its bound.')
+        return value
 
 
-def _win32_clipboard_clear() -> bool:
-    """Clear the clipboard using Win32 API."""
-    import ctypes
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    user32.OpenClipboard.restype = ctypes.c_bool
-    user32.OpenClipboard.argtypes = [ctypes.c_void_p]
-    user32.EmptyClipboard.restype = ctypes.c_bool
-    user32.CloseClipboard.restype = ctypes.c_bool
+def capture(args, context=None, *, tool):
+    from pluma.adapters.clipboard_native import observe, text_of
+    before = observe(getattr(context, 'cancellation_token', None))
+    return {'action': 'clipboard_restore', 'guard_version': 1, 'volatile': True,
+            'undo_ref': str(uuid.uuid4()), 'clipboard_private': {
+                'clipboard_before': text_of(before), 'before_proof': before['proof'], 'after_proof': None}}
 
-    if not _open_clipboard(user32):
-        return False
+
+def execute_mutation(args, context=None, *, tool):
+    from pluma.adapters.clipboard_native import write
     try:
-        user32.EmptyClipboard()
-        return True
-    finally:
-        user32.CloseClipboard()
+        context.cancellation_token.raise_if_cancelled()
+        entry = context.execution_binding['clipboard_private']
+        record = entry['record']
+        pending = next(item for item in reversed(context.undo_stack)
+                       if item.get('action') == 'pending_mutation' and item.get('tool') == tool)
+        if pending['pre_state'] != record:
+            raise ValueError('Clipboard intent does not match private capture.')
+        expected = SetClipboardArgs.model_validate(args).text if tool in MUTATION_NAMES[:2] else None
+        after = write(expected, entry['before_proof'], context.cancellation_token)
+        result = ToolResult.success(tool, data={'is_empty': expected is None, 'char_count': len(expected or '')},
+            verified=False, undo_record=record, adapter_used='native_clipboard',
+            factual_message='Clipboard cleared and read back.' if expected is None else 'Plain text copied to the clipboard and read back.').model_copy(
+                update={'private_context': {'clipboard_receipt': {
+                    'record': record, 'after_proof': after, 'expected_text': expected}}})
+        checked = verify_mutation(result)
+        return result.model_copy(update={'verified': checked.ok, 'verify_detail': checked})
+    except Exception:
+        return ToolResult.failure(tool, 'Clipboard change refused or unverified. Effects may remain.', 'CLIPBOARD_WRITE_UNVERIFIED')
 
 
-def _win32_clipboard_get_text() -> Optional[str]:
-    """Read text from the clipboard using Win32 API."""
-    import ctypes
-
-    HANDLE = ctypes.c_size_t
-
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-    user32.OpenClipboard.restype = ctypes.c_bool
-    user32.OpenClipboard.argtypes = [ctypes.c_void_p]
-    user32.CloseClipboard.restype = ctypes.c_bool
-    user32.GetClipboardData.restype = HANDLE
-    user32.GetClipboardData.argtypes = [ctypes.c_uint]
-
-    kernel32.GlobalLock.restype = ctypes.c_void_p
-    kernel32.GlobalLock.argtypes = [HANDLE]
-    kernel32.GlobalUnlock.restype = ctypes.c_bool
-    kernel32.GlobalUnlock.argtypes = [HANDLE]
-
-    CF_UNICODETEXT = 13
-
-    if not _open_clipboard(user32):
-        return None
+def verify_mutation(result):
+    from pluma.adapters.clipboard_native import observe, text_of
     try:
-        h_data = user32.GetClipboardData(CF_UNICODETEXT)
-        if not h_data:
-            return None
-        p_data = kernel32.GlobalLock(h_data)
-        if p_data is None:
-            return None
-        try:
-            text = ctypes.wstring_at(p_data)
-            return text
-        finally:
-            kernel32.GlobalUnlock(h_data)
-    finally:
-        user32.CloseClipboard()
+        receipt = result.private_context['clipboard_receipt']
+        current = observe()
+        expected = receipt['expected_text']
+        valid = (result.ok and result.tool in MUTATION_NAMES and result.adapter_used == 'native_clipboard'
+                 and result.undo_record == receipt['record'] and current['proof'] == receipt['after_proof']
+                 and text_of(current) == expected
+                 and result.data == {'is_empty': expected is None, 'char_count': len(expected or '')})
+    except Exception:
+        valid = False
+    return VerifyResult(ok=bool(valid), method='native_clipboard_readback', detail=(
+        'Exact clipboard write independently read back.' if valid else 'Clipboard write was not independently verified.'))
 
 
-def _win32_clipboard_set_text(text: str) -> bool:
-    """Set text on the clipboard using Win32 API.
-
-    Uses c_size_t for HGLOBAL handles (safe on both 32-bit and 64-bit Windows).
-    """
-    import ctypes
-
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-    HANDLE = ctypes.c_size_t   # HGLOBAL is opaque pointer-sized value
-
-    # Configure function signatures
-    kernel32.GlobalAlloc.restype = HANDLE
-    kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
-    kernel32.GlobalLock.restype = ctypes.c_void_p
-    kernel32.GlobalLock.argtypes = [HANDLE]
-    kernel32.GlobalUnlock.restype = ctypes.c_bool
-    kernel32.GlobalUnlock.argtypes = [HANDLE]
-    kernel32.GlobalFree.restype = HANDLE
-    kernel32.GlobalFree.argtypes = [HANDLE]
-
-    user32.OpenClipboard.restype = ctypes.c_bool
-    user32.OpenClipboard.argtypes = [ctypes.c_void_p]
-    user32.EmptyClipboard.restype = ctypes.c_bool
-    user32.SetClipboardData.restype = HANDLE
-    user32.SetClipboardData.argtypes = [ctypes.c_uint, HANDLE]
-    user32.CloseClipboard.restype = ctypes.c_bool
-
-    CF_UNICODETEXT = 13
-    GMEM_MOVEABLE = 0x0002
-
-    encoded = (text + "\0").encode("utf-16-le")
-    n_bytes = len(encoded)
-
-    h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, n_bytes)
-    if not h_mem:
-        return False
-
-    p_mem = kernel32.GlobalLock(h_mem)
-    if p_mem is None:
-        kernel32.GlobalFree(h_mem)
-        return False
-
-    ctypes.memmove(p_mem, encoded, n_bytes)
-    kernel32.GlobalUnlock(h_mem)
-
-    if not _open_clipboard(user32):
-        kernel32.GlobalFree(h_mem)
-        return False
-    try:
-        user32.EmptyClipboard()
-        res = user32.SetClipboardData(CF_UNICODETEXT, h_mem)
-        if not res:
-            kernel32.GlobalFree(h_mem)
-            return False
-        return True
-    finally:
-        user32.CloseClipboard()
+def execute_clear_clipboard(args, task_context=None):
+    return execute_mutation(args, task_context, tool='clear_clipboard')
 
 
-# ---------------------------------------------------------------------------
-# Executors
-# ---------------------------------------------------------------------------
-
-def execute_clear_clipboard(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if sys.platform == "win32":
-        ok = _win32_clipboard_clear()
-    else:
-        # Fallback for testing on non-Windows
-        ok = True
-
-    if not ok:
-        return ToolResult.failure("clear_clipboard", "Failed to clear clipboard via Win32 API.")
-
-    return ToolResult(
-        ok=True,
-        tool="clear_clipboard",
-        data={},
-        factual_message="Cleared clipboard.",
-        verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail="Clipboard cleared via Win32 EmptyClipboard."),
-    )
+def execute_set_clipboard_text(args, task_context=None):
+    return execute_mutation(args, task_context, tool='set_clipboard_text')
 
 
-def execute_get_clipboard_text(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+def execute_get_clipboard_text(args, task_context=None):
     return execute_get(args, task_context, tool='get_clipboard_text')
 
 
-def execute_set_clipboard_text(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    text = args["text"]
-
-    if sys.platform == "win32":
-        ok = _win32_clipboard_set_text(text)
-    else:
-        ok = True
-
-    if not ok:
-        return ToolResult.failure("set_clipboard_text", "Failed to set clipboard text via Win32 API.")
-
-    return ToolResult(
-        ok=True,
-        tool="set_clipboard_text",
-        data={"char_count": len(text)},
-        factual_message=f"Set {len(text)} character{'s' if len(text) != 1 else ''} on clipboard.",
-        verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail=f"Clipboard set to {len(text)} chars via Win32."),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Tool Specifications
-# ---------------------------------------------------------------------------
-
-CLIPBOARD_TOOL_SPECS: List[ToolSpec] = [
-    ToolSpec(
-        name='clipboard_get', description='Read plain text from the Windows clipboard; private values are excluded from history and planner context.',
-        args_schema=ClipboardGetArgs, risk_class=RiskClass.READ, timeout_s=5,
-        process_isolated=True, executor=execute_get, verifier=verify_get,
-        adapter_priority=[AdapterPriority.NATIVE_API],
-    ),
-    ToolSpec(
-        name="clear_clipboard",
-        description="Clear the system clipboard.",
-        args_schema=ClearClipboardArgs,
-        risk_class=RiskClass.LOW,
-        timeout_s=3.0,
-        executor=execute_clear_clipboard,
-        verifier=verify_noop,
-        undo_builder=None,
-        adapter_priority=[AdapterPriority.NATIVE_API],
-        cancellable=True,
-    ),
-    # Register under the golden corpus alias too
-    ToolSpec(
-        name="clipboard_clear",
-        description="Clear the system clipboard (alias for clear_clipboard).",
-        args_schema=ClearClipboardArgs,
-        risk_class=RiskClass.LOW,
-        timeout_s=3.0,
-        executor=execute_clear_clipboard,
-        verifier=verify_noop,
-        undo_builder=None,
-        adapter_priority=[AdapterPriority.NATIVE_API],
-        cancellable=True,
-    ),
-    ToolSpec(
-        name="get_clipboard_text",
-        description="Read the current text content of the clipboard.",
-        args_schema=ClipboardGetArgs,
-        risk_class=RiskClass.READ,
-        timeout_s=5.0,
-        process_isolated=True,
-        executor=execute_get_clipboard_text,
-        verifier=verify_get,
-        undo_builder=None,
-        adapter_priority=[AdapterPriority.NATIVE_API],
-        cancellable=True,
-    ),
-    ToolSpec(
-        name="set_clipboard_text",
-        description="Place text content onto the clipboard.",
-        args_schema=SetClipboardArgs,
-        risk_class=RiskClass.LOW,
-        timeout_s=3.0,
-        executor=execute_set_clipboard_text,
-        verifier=verify_noop,
-        undo_builder=None,
-        adapter_priority=[AdapterPriority.NATIVE_API],
-        cancellable=True,
-    ),
-]
+CLIPBOARD_TOOL_SPECS = [ToolSpec(name=name, description='Read plain text from the Windows clipboard; private values stay out of history and planner context.',
+    args_schema=ClipboardGetArgs, risk_class=RiskClass.READ, timeout_s=5, process_isolated=True,
+    executor=partial(execute_get, tool=name), verifier=verify_get, adapter_priority=[AdapterPriority.NATIVE_API])
+    for name in ('clipboard_get', 'get_clipboard_text')]
+CLIPBOARD_TOOL_SPECS += [ToolSpec(name=name,
+    description='Copy plain text to the clipboard.' if name in MUTATION_NAMES[:2] else 'Clear the plain-text clipboard.',
+    args_schema=SetClipboardArgs if name in MUTATION_NAMES[:2] else ClipboardGetArgs,
+    risk_class=RiskClass.LOW, timeout_s=8, process_isolated=True,
+    executor=partial(execute_mutation, tool=name), verifier=verify_mutation,
+    undo_builder=partial(capture, tool=name), adapter_priority=[AdapterPriority.NATIVE_API]) for name in MUTATION_NAMES]

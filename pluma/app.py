@@ -76,6 +76,8 @@ class PlumaApplicationRuntime:
         )
         self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop)
         register_default_tools(self.tool_registry)
+        self.rollback_engine.clipboard_inverse = self.tool_registry.restore_clipboard
+        self.tool_registry.clipboard_task_resolver = self.supervisor.get_task
 
         self.router = Router()
 

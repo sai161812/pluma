@@ -65,6 +65,8 @@ def station(name=None):
     original_station = _require(user.GetProcessWindowStation())
     original_desktop = _require(user.GetThreadDesktop(kernel.GetCurrentThreadId()))
     original_sequence = user.GetClipboardSequenceNumber()
+    original_name, required = c.create_unicode_buffer(257), w.DWORD()
+    _require(user.GetUserObjectInformationW(original_station, 2, original_name, c.sizeof(original_name), c.byref(required)))
     create = name is None
     if name is not None and (not name or len(name) > 256 or '\\' in name or name.casefold() == 'winsta0'):
         raise ValueError('An explicitly owned noninteractive fixture station is required.')
@@ -105,7 +107,8 @@ def station(name=None):
         assert not errors, errors
         assert user.GetProcessWindowStation() == original_station
         assert user.GetThreadDesktop(kernel.GetCurrentThreadId()) == original_desktop
-        assert user.GetClipboardSequenceNumber() == original_sequence, 'Original clipboard sequence changed during isolated fixture.'
+        if create or original_name.value.casefold() != name.casefold():
+            assert user.GetClipboardSequenceNumber() == original_sequence, 'Original clipboard sequence changed during isolated fixture.'
 
 
 def seed(owner, values):

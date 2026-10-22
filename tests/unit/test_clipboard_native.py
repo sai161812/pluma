@@ -193,5 +193,3 @@ def test_blocked_read_has_owned_stop_and_timeout_without_native_access(runtime, 
                          ids=['odd', 'unterminated', 'invalid-surrogate', 'oversized'])
 def test_malformed_or_oversized_unicode_refuses(raw):
     with pytest.raises((ValueError, UnicodeDecodeError)): native._unicode(raw)
-
-

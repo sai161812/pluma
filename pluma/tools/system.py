@@ -260,12 +260,17 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
     from pluma.rollback.recipes import RollbackRecipes
     try:
         path = getattr(task_context, "storage_path", None)
-        receipt = claim_latest(path, task_context.task_id)
+        private = (getattr(task_context, 'execution_binding', None) or {}).get('clipboard_private')
+        receipt = claim_latest(path, task_context.task_id, private)
     except Exception:
         return ToolResult.failure("undo_last", "No safe unclaimed undo record is available.", "UNDO_UNAVAILABLE")
     try:
         task_context.cancellation_token.raise_if_cancelled()
-        inverse = RollbackRecipes().apply(receipt["undo_data"]["action"], receipt["undo_data"])
+        state = receipt['undo_data']
+        payload = dict(state, clipboard_private=receipt['clipboard_private']) if state['action'] == 'clipboard_restore' else state
+        inverse = RollbackRecipes().apply(state['action'], payload)
+        if state['action'] == 'clipboard_restore' and inverse.ok:
+            receipt['clipboard_restore_proof'] = inverse.data['clipboard_inverse_proof']
         finish(receipt, inverse.ok)
         if not inverse.ok or not verify(receipt):
             raise ValueError("Inverse or consumption was not verified.")
