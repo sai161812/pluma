@@ -149,7 +149,7 @@ TERMINAL_TOOL_SPECS = [
     ToolSpec(name='open_terminal', description='Open Windows PowerShell only; the user types commands. No arguments, directory control or elevation.',
         args_schema=OpenTerminalArgs, risk_class=RiskClass.LOW, timeout_s=14, execution_scope='task_service',
         executor=execute_open_terminal, verifier=verify_open_terminal, undo_builder=capture_terminal,
-        adapter_priority=[AdapterPriority.NATIVE_API], creates_resources=True),
+        non_undoable=True, adapter_priority=[AdapterPriority.NATIVE_API], creates_resources=True),
     ToolSpec(name='run_command', description='Run a fixed read-only Windows diagnostic ID; no command strings.',
         args_schema=CommandArgs, risk_class=RiskClass.READ, timeout_s=12, process_isolated=True,
         executor=partial(execute_command, tool='run_command'), verifier=verify_command,

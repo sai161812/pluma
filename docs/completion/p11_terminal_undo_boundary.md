@@ -1,4 +1,11 @@
-# E51 — P11 interactive PowerShell undo boundary
+# E51 — P11 interactive PowerShell undo boundary (superseded by E52)
+
+E52 ([PowerShell handoff is not manually undoable](p11_terminal_nonundoable_handoff.md))
+supersedes this checkpoint's manual-undo handling. Successful `open_terminal`
+is now journaled as a non-undoable commit, so `undo_last` reports
+`UNDO_UNAVAILABLE` without claiming or attempting to close the terminal. The
+earlier E51 probe remains evidence that the `powershell.exe` PID does not own a
+top-level console window on the private desktop.
 
 Date: 2026-10-22
 

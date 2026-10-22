@@ -4,19 +4,23 @@
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
 
-- [E51](docs/completion/p11_terminal_undo_boundary.md) verifies the exact
-  opening-only PowerShell behavior on a never-visible private desktop. The
-  separate console host owns the native window; `undo_last` returns
-  `UNDO_UNVERIFIED` and leaves the exact PowerShell process running instead of
-  guessing a target or force-closing user-managed work. The focused native
-  fixture passed **3 tests in 2.28s**.
+- [E52](docs/completion/p11_terminal_nonundoable_handoff.md) fixes the
+  terminal-specific inverse mismatch: verified PowerShell launch is a committed
+  non-undoable user handoff, so `undo_last` has no terminal record to claim or
+  close. The never-visible native fixture passed **3 tests in 1.95s**; terminal
+  plus manual-undo regression passed **11 tests in 6.98s**. STOP still drains
+  the exact owned process and records `STOPPED_WITH_RESIDUAL` for the committed
+  non-undoable effect. [E51](docs/completion/p11_terminal_undo_boundary.md)
+  remains historical evidence that the console window is hosted outside the
+  PowerShell PID.
 - [E50](docs/completion/p11_policy_acceptance.md) passes 58 focused policy,
   schema, UI and factual-summary tests. [E49](docs/completion/p11_shared_tool_deadline.md)
   closes D-09 with 117 timeout/ownership/cleanup/rollback passes.
 - P11 remains open for catalog-wide `undo_last`, native focus/audio mutation
   evidence, D-10 runtime adapter behavior, native H-04 confirmation UI and
   H-05 elevation integration. No UAC, live focus/audio mutation or physical
-  power action was tested. The 16 P12 entries remain untouched.
+  power action was tested. Legacy undo records and other catalog inverses still
+  need audit/evidence. The 16 P12 entries remain untouched.
 - Requirements matrix audit passed **298 source items / 324 rows**. P12 is
   forbidden; next safe work stays within P11.
 

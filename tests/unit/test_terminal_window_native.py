@@ -46,7 +46,15 @@ def test_real_powershell_open_only(runtime, monkeypatch, completion):
         try:
             result = runtime.tool_registry.execute('open_terminal', {}, cap, runtime.ledger)
             assert result.ok and result.verified, result
-            state = cap.undo_stack[-1]
+            journal = cap.undo_stack[-1]
+            assert journal['action'] == 'non_undoable_commit'
+            assert journal['tool'] == 'open_terminal' and journal['effect_state'] == 'committed'
+            assert journal['pre_state']['non_undoable'] is True
+            assert result.undo_record is None
+            assert result.data['non_undoable'] is True and result.data['effect_state'] == 'committed'
+            assert not ActivityQuery(runtime.db).available_undo_records_for_task(cap.task_id)
+            state = dict(journal['pre_state'], pid=result.data['pid'],
+                creation_time=result.data['creation_time'], windows=[])
             assert state['argv'][0].lower().endswith('windowspowershell\\v1.0\\powershell.exe')
             assert state['argv'][1:] == ['-NoLogo', '-NoProfile']
             assert result.private_context == {} and native.verify(state)
@@ -58,7 +66,7 @@ def test_real_powershell_open_only(runtime, monkeypatch, completion):
             elif completion == 'stop':
                 runtime.supervisor.request_stop(cap.task_id)
                 assert cap.terminal_ready.wait(8)
-                assert cap.state == TaskState.STOPPED, cap.stop_error
+                assert cap.state == TaskState.STOPPED_WITH_RESIDUAL, cap.stop_error
                 assert native.verify(state, restored=True)
             else:
                 runtime.supervisor.finalize_task(cap.task_id, TaskState.SUCCEEDED)
@@ -69,10 +77,10 @@ def test_real_powershell_open_only(runtime, monkeypatch, completion):
                 monkeypatch.setattr(undo_spec, 'executor', InDesktop(name, 'undo'))
                 monkeypatch.setattr(undo_spec, 'verifier', InDesktop(name, 'verify_undo'))
                 undo = runtime.tool_registry.execute('undo_last', {}, task(runtime), runtime.ledger)
-                assert not undo.ok and undo.error_code == 'UNDO_UNVERIFIED', undo
+                assert not undo.ok and undo.error_code == 'UNDO_UNAVAILABLE', undo
                 assert native.verify(state), 'Unsafe console close must leave PowerShell running.'
-                assert runtime.db.execute_read_one('SELECT state FROM undo_claims')['state'] == 'unverified'
-                assert len(ActivityQuery(runtime.db).available_undo_records_for_task(cap.task_id)) == 1
+                assert runtime.db.execute_read_one('SELECT COUNT(*) AS count FROM undo_claims')['count'] == 0
+                assert not ActivityQuery(runtime.db).available_undo_records_for_task(cap.task_id)
         finally:
             if state and not native.verify(state, restored=True):
                 # Exact newly created fixture only; production never force-undoes
