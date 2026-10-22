@@ -1,6 +1,12 @@
 # Backend audit before action wiring
 
-Current P11 application close update: [E44](../../../docs/completion/p11_app_close.md)
+Current P11 focus implementation update: [E45](../../../docs/completion/p11_window_focus.md)
+adds native identity/foreground/placement guards and safe inverse. 158 affected
+passes include explicitly inert focus checks. Native private-desktop focus was
+refused; no active-desktop acceptance is claimed. Counts unchanged; P11 remains
+incomplete and P12 forbidden. Action entry remains disabled.
+
+Previous P11 application close update: [E44](../../../docs/completion/p11_app_close.md)
 uses guarded native graceful close, non-undoable intent and exact exit readback.
 204 affected passes. Non-P12 catalog: 38 implemented, 7 missing, 1 defective,
 11 unverified. P11 incomplete; P12 forbidden; action entry disabled.

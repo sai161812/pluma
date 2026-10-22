@@ -58,7 +58,7 @@ class RollbackEngine:
             capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
             return self.clipboard_inverse(state if action == 'clipboard_restore' else state['pre_state'], capsule)
         owned_inverse = action in ('safe_delete', 'set_volume', 'mute', 'unmute', 'set_default_audio_device',
-            'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'window_state') or (
+            'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'window_state', 'window_focus') or (
                 action == 'pending_mutation' and state.get('tool') == 'safe_delete')
         capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
         if owned_inverse and capsule is not None:

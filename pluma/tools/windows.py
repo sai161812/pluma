@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field, model_validator
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.tools.app_observations import ListAppWindowsArgs, execute_list, verify_list
 from pluma.verify.common import verify_noop, verify_window_focused
+from pluma.tools import window_focus as focus
+from pluma.tools.window_focus import FocusWindowArgs
 
 
 # ---------------------------------------------------------------------------
@@ -25,19 +27,6 @@ from pluma.verify.common import verify_noop, verify_window_focused
 
 class ListWindowsArgs(ListAppWindowsArgs):
     """Arguments for list_windows."""
-
-
-class FocusWindowArgs(BaseModel):
-    """Arguments for focus_window."""
-    model_config = {"extra": "forbid"}
-    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to focus.")
-    title: Optional[str] = Field(default=None, description="Title or substring of window to focus.")
-
-    @model_validator(mode="after")
-    def _require_hwnd_or_title(self) -> "FocusWindowArgs":
-        if self.hwnd is None and not self.title:
-            raise ValueError("Either 'hwnd' or 'title' must be specified for focus_window.")
-        return self
 
 
 class WindowStateArgs(BaseModel):
@@ -65,70 +54,12 @@ def execute_list_windows(args: Dict[str, Any], task_context: Any = None) -> Tool
     return execute_list(args, task_context)
 
 
-def execute_focus_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    hwnd = args.get("hwnd")
-    title = args.get("title")
-    
-    if sys.platform != "win32":
-        return ToolResult(
-            ok=True,
-            tool="focus_window",
-            data={"hwnd": hwnd, "title": title},
-            factual_message="Focused window (stub on non-Windows).",
-            verified=True,
-        )
-        
-    import ctypes
-    from ctypes import wintypes
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    
-    target_hwnd = hwnd
-    target_title = title
-    
-    if target_hwnd is None and title:
-        def enum_cb(h: int, lparam: Any) -> bool:
-            nonlocal target_hwnd, target_title
-            if not user32.IsWindowVisible(h):
-                return True
-            length = user32.GetWindowTextLengthW(h)
-            if length > 0:
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(h, buf, length + 1)
-                t = buf.value
-                if title.lower() in t.lower():
-                    target_hwnd = h
-                    target_title = t
-                    return False
-            return True
-
-        WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
-        
-    if not target_hwnd or not user32.IsWindow(target_hwnd):
-        return ToolResult.failure("focus_window", f"Window '{hwnd or title}' not found or invalid.")
-        
-    user32.ShowWindow(target_hwnd, 9)  # SW_RESTORE
-    user32.SetForegroundWindow(target_hwnd)
-    
-    v_res = verify_window_focused(target_hwnd)
-    return ToolResult(
-        ok=v_res.ok,
-        tool="focus_window",
-        data={"hwnd": target_hwnd, "title": target_title},
-        factual_message=f"Focused window '{target_title or target_hwnd}'.",
-        verified=v_res.ok,
-        verify_detail=v_res,
-    )
+def execute_focus_window(args, task_context=None):
+    return focus.execute(args, task_context, tool='focus_window')
 
 
-# ---------------------------------------------------------------------------
-# Verifiers
-# ---------------------------------------------------------------------------
-
-def verify_focus_window(result: ToolResult) -> VerifyResult:
-    if not result.ok or "hwnd" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Focus window reported failure.")
-    return verify_window_focused(result.data["hwnd"])
+def verify_focus_window(result):
+    return focus.verify(result)
 
 
 def capture_state(args, context=None, *, tool):
@@ -200,13 +131,14 @@ WINDOW_TOOL_SPECS: List[ToolSpec] = [
     ),
     ToolSpec(
         name="focus_window",
-        description="Bring a specific window to the foreground by HWND or title.",
+        description="Bring a specific window to the foreground by exact HWND, PID and creation time.",
         args_schema=FocusWindowArgs,
         risk_class=RiskClass.LOW,
         timeout_s=5.0,
         executor=execute_focus_window,
         verifier=verify_focus_window,
-        undo_builder=None,
+        undo_builder=partial(focus.capture, tool="focus_window"),
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),

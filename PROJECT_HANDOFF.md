@@ -1,6 +1,32 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 native application close
+## Current checkpoint: 2026-10-22, P11 guarded native focus implementation
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E45](docs/completion/p11_window_focus.md): focus_window/focus_app now use exact
+  or uniquely resolved targets, native foreground/placement guards, required owned
+  workers, durable minimum pre-state, independent readback and conflict-safe undo.
+  Legacy title-first matching, unconditional restore and non-Windows success are
+  removed. Windows foreground restrictions are respected without input bypass.
+- Explicitly inert focus fixture **15 passed (1.11s)**; affected regression
+  **158 passed (84.70s)** including native window-state/geometry/app-close and
+  shared policy/undo checks. Actual exits/fixture keys zero; source hashes match.
+  Native private-desktop probe was refused by Windows; original interactive
+  foreground stayed unchanged and owned cleanup completed. No physical focus
+  success is claimed, no restriction is weakened and no further owner question
+  is needed. Native permitted active-desktop acceptance remains UNVERIFIED.
+- Catalog unchanged: **50 registered / 23 unregistered; 38 IMPLEMENTED /
+  23 MISSING / 1 DEFECTIVE / 11 UNVERIFIED**. Seven P11 names missing: open_file;
+  open_terminal; browser five. Remaining open_app implementation/ownership must
+  be repaired next, then all missing exact tools. Physical audio/system/focus,
+  full undo_last and A/D/H evidence stay open; no acceptance waiver inferred.
+- Source parent `ff75cfe` (pushed E44). Commit/push this checkpoint and continue
+  P11 owned persistent launch implementation. Use docs/prior commits, no more
+  questions, no tool omissions, no P12, no UI redesign/action-entry enabling.
+
+
+## Previous checkpoint: 2026-10-22, P11 native application close
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue all remaining P11 tools.
 

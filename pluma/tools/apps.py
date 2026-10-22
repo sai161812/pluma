@@ -20,6 +20,9 @@ from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, V
 from pluma.tools.app_observations import ListAppWindowsArgs, execute_list, execute_status, verify_list, verify_status
 from pluma.tools.processes import ProcessTargetArgs
 from pluma.tools.app_lifecycle import CloseAppArgs, capture_close
+from pluma.tools import window_focus as focus
+from pluma.tools.window_focus import FocusAppArgs
+from functools import partial
 from pluma.verify.common import (
     verify_noop,
     verify_process_closed,
@@ -142,13 +145,6 @@ class OpenAppArgs(BaseModel):
                 if pat.search(a.strip()):
                     raise ValueError(f"Dangerous shell argument '{a}' is forbidden in open_app.")
         return args
-
-
-class FocusAppArgs(BaseModel):
-    """Arguments for focus_app."""
-    model_config = {"extra": "forbid"}
-
-    app_name: str = Field(min_length=1, description="Application executable or window title to bring to foreground.")
 
 
 class ListAppsArgs(ListAppWindowsArgs):
@@ -344,59 +340,8 @@ def execute_close_app(args, task_context=None):
     return execute_close(args, task_context)
 
 
-def execute_focus_app(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    app = args["app_name"]
-    
-    if sys.platform != "win32":
-        return ToolResult(
-            ok=True,
-            tool="focus_app",
-            data={"app_name": app},
-            factual_message=f"Focused '{app}' (stub on non-Windows).",
-            verified=True,
-        )
-        
-    import ctypes
-    from ctypes import wintypes
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    
-    target_hwnd = None
-    target_title = None
-    
-    def enum_cb(hwnd: int, lparam: Any) -> bool:
-        nonlocal target_hwnd, target_title
-        if not user32.IsWindowVisible(hwnd):
-            return True
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length > 0:
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            title = buf.value
-            if app.lower() in title.lower():
-                target_hwnd = hwnd
-                target_title = title
-                return False  # Stop enumeration
-        return True
-
-    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
-    
-    if not target_hwnd:
-        return ToolResult.failure("focus_app", f"No visible window found matching '{app}'.")
-        
-    # Bring window to foreground
-    user32.ShowWindow(target_hwnd, 9)  # SW_RESTORE
-    user32.SetForegroundWindow(target_hwnd)
-    
-    v_res = verify_window_focused(target_hwnd)
-    return ToolResult(
-        ok=v_res.ok,
-        tool="focus_app",
-        data={"app_name": app, "hwnd": target_hwnd, "title": target_title},
-        factual_message=f"Focused window '{target_title or app}'.",
-        verified=v_res.ok,
-        verify_detail=v_res,
-    )
+def execute_focus_app(args, task_context=None):
+    return focus.execute(args, task_context, tool='focus_app')
 
 
 def execute_list_apps(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -422,10 +367,8 @@ def verify_close_app(result):
     return verify_close(result)
 
 
-def verify_focus_app(result: ToolResult) -> VerifyResult:
-    if not result.ok or "hwnd" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Focus app reported failure.")
-    return verify_window_focused(result.data["hwnd"])
+def verify_focus_app(result):
+    return focus.verify(result)
 
 
 # ---------------------------------------------------------------------------
@@ -468,7 +411,8 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         timeout_s=5.0,
         executor=execute_focus_app,
         verifier=verify_focus_app,
-        undo_builder=None,
+        undo_builder=partial(focus.capture, tool="focus_app"),
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),
