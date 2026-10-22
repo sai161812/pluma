@@ -1,6 +1,12 @@
 # Backend audit before action wiring
 
-Current P11 validation update: [E39](../../../docs/completion/p11_argument_validation.md)
+Current P11 clipboard update: [E40](../../../docs/completion/p11_clipboard_read.md)
+implements native plain-text reads and redacts private prior results from prompts.
+Owner scope is plain-text copy/paste only; file/image expansion is superseded.
+Non-P12 catalog: 31 implemented, 8 missing, 2 defective, 16 unverified.
+P11 incomplete; P12 forbidden; action entry disabled.
+
+Previous P11 validation update: [E39](../../../docs/completion/p11_argument_validation.md)
 unifies registered planner/executor argument checks and removes private argument
 values from validation errors. 113 focused / 161 affected regression passes;
 P11 remains incomplete and action entry remains disabled.

@@ -19,15 +19,19 @@ verification; this record does not claim the browser tools exist.
 Primary API references: [CDP target operations](https://chromedevtools.github.io/devtools-protocol/tot/Target/)
 and [browser download events](https://chromedevtools.github.io/devtools-protocol/tot/Browser/).
 
-Clipboard: support Unicode text, file lists and bitmap images through native
-Windows APIs. Undo captures remain in memory; never persist private clipboard
-payloads or raw bitmap data in logs/history. Refuse unsupported formats before
-mutation. Every mutation needs sequence/identity checks, independent readback
-and safe undo/conflict behavior. Test native clipboard operations inside an
-isolated fixture context, preserving the user's actual clipboard.
+Clipboard (owner correction, 2026-10-22): **plain-text copy/paste only**. The
+owner rejected file-list/bitmap expansion as unnecessary. This supersedes the
+earlier delegated multi-format choice; it does not change the immutable master,
+which names the clipboard tools without requiring those extra formats. Keep
+clipboard_get/set/clear usable for Unicode text and ordinary paste. No file-list,
+image, rich-format or clipboard-manager features. Minimum safe undo remains in
+memory; never persist private clipboard values. Required verification, conflict
+checks and refusal before unsupported destructive replacement still apply.
+Native tests preserve the user's actual clipboard. Test isolation is fixture
+infrastructure, not product functionality or a new user setting.
 
 Primary format references: [Windows clipboard formats](https://learn.microsoft.com/en-gb/windows/desktop/dataxchg/clipboard-formats)
-and [Shell file-list formats](https://learn.microsoft.com/en-us/windows/win32/shell/clipboard).
+and [clipboard ownership](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openclipboard).
 
 Terminal: the owner answered the command-template ambiguity with **"Fixed
 read-only Windows diagnostics plus explicitly configured, confirmed project

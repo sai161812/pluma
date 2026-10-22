@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import verify_noop
+from pluma.tools.clipboard_reads import ClipboardGetArgs, execute_get, verify_get
 
 
 # ---------------------------------------------------------------------------
@@ -196,29 +197,7 @@ def execute_clear_clipboard(args: Dict[str, Any], task_context: Any = None) -> T
 
 
 def execute_get_clipboard_text(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if sys.platform == "win32":
-        text = _win32_clipboard_get_text()
-    else:
-        text = ""
-
-    if text is None:
-        return ToolResult(
-            ok=True,
-            tool="get_clipboard_text",
-            data={"text": "", "is_empty": True},
-            factual_message="Clipboard is empty or contains no text.",
-            verified=True,
-        )
-
-    return ToolResult(
-        ok=True,
-        tool="get_clipboard_text",
-        # NOTE: data["text"] will be redacted by sanitise_args_for_ledger when logged.
-        # The raw text is available to the caller but never persisted.
-        data={"text": text, "is_empty": len(text) == 0, "char_count": len(text)},
-        factual_message=f"Read {len(text)} character{'s' if len(text) != 1 else ''} from clipboard.",
-        verified=True,
-    )
+    return execute_get(args, task_context, tool='get_clipboard_text')
 
 
 def execute_set_clipboard_text(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -248,6 +227,12 @@ def execute_set_clipboard_text(args: Dict[str, Any], task_context: Any = None) -
 
 CLIPBOARD_TOOL_SPECS: List[ToolSpec] = [
     ToolSpec(
+        name='clipboard_get', description='Read plain text from the Windows clipboard; private values are excluded from history and planner context.',
+        args_schema=ClipboardGetArgs, risk_class=RiskClass.READ, timeout_s=5,
+        process_isolated=True, executor=execute_get, verifier=verify_get,
+        adapter_priority=[AdapterPriority.NATIVE_API],
+    ),
+    ToolSpec(
         name="clear_clipboard",
         description="Clear the system clipboard.",
         args_schema=ClearClipboardArgs,
@@ -275,11 +260,12 @@ CLIPBOARD_TOOL_SPECS: List[ToolSpec] = [
     ToolSpec(
         name="get_clipboard_text",
         description="Read the current text content of the clipboard.",
-        args_schema=GetClipboardArgs,
+        args_schema=ClipboardGetArgs,
         risk_class=RiskClass.READ,
-        timeout_s=3.0,
+        timeout_s=5.0,
+        process_isolated=True,
         executor=execute_get_clipboard_text,
-        verifier=verify_noop,
+        verifier=verify_get,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,

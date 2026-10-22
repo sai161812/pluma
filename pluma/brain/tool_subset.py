@@ -69,6 +69,7 @@ WINDOW_MANAGEMENT_TOOLS = [
 ]
 
 SYSTEM_CLIPBOARD_TOOLS = [
+    'clipboard_get',
     'lock', 'sleep_request', 'restart_request', 'shutdown_request',
     "save_preference", "get_preference", "create_routine", "run_routine",
     "get_system_status",

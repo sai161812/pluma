@@ -35,6 +35,18 @@ def _spec_by_name(name: str):
     raise KeyError(f"No clipboard ToolSpec named {name!r}")
 
 
+@pytest.fixture(autouse=True)
+def isolated_native_clipboard():
+    # Legacy tests below include real mutations. They must never fall back to
+    # the interactive clipboard if a private native fixture is unavailable.
+    if sys.platform == 'win32':
+        from tests.fixtures.clipboard_station import station
+        with station():
+            yield
+    else:
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Tests: clear_clipboard
 # ---------------------------------------------------------------------------
@@ -111,6 +123,7 @@ class TestSetClipboardText:
 # Tests: get_clipboard_text
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(sys.platform != 'win32', reason='Native Windows reader refuses unsupported platforms.')
 class TestGetClipboardText:
     def test_get_returns_ok(self) -> None:
         result = execute_get_clipboard_text({})
@@ -136,7 +149,7 @@ class TestGetClipboardText:
         assert set_result.ok
         get_result = execute_get_clipboard_text({})
         assert get_result.ok
-        assert get_result.data.get("text") == test_text
+        assert get_result.data['clipboard_value']['unicode_text'] == test_text
 
 
 # ---------------------------------------------------------------------------

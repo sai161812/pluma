@@ -1,6 +1,34 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 shared argument validation
+## Current checkpoint: 2026-10-22, P11 plain-text clipboard read
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- Owner correction: **plain-text copy/paste only**; file-list/bitmap/rich-format
+  expansion is removed. [Scope decision](docs/completion/p11_scope_decisions.md).
+  The owner delegated implementation choices and asked for no more questions.
+  Required readback/privacy/safe undo remain; no locked master requirement changed.
+- [E40](docs/completion/p11_clipboard_read.md) implements clipboard_get and its
+  READ compatibility name in owned native workers with sequence/owner/content
+  readback. Payloads are private to the caller, redacted from SQLite and prompts.
+  Prior-result prompt redaction is fixed. No production image/file-list feature.
+- Final focused **25 passed (10.69s)**, affected regression **179 passed (31.81s)**,
+  raw --runxfail **15 passed (0.78s)**. Final exits/hashes match, keys zero;
+  matrix 298/324 PASS, diff check PASS. Native text/voice and blocked-worker checks.
+- Native isolation is resolved: fixture-only fresh same-user/same-integrity local
+  logon, private create-only window station, no elevation/profile/account/network
+  operations. Original WinSta0 sequence unchanged; owned Job processes zero.
+  No need to ask for a VM/sign-in again. Earlier fixture failures remain in E40.
+- Catalog **49 registered / 24 unregistered; 31 IMPLEMENTED / 24 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Eight P11 missing names: open_file;
+  clipboard_set; open_terminal; browser five. Clipboard clear/undo and remaining
+  app/window/cross-volume/audio/system/A/D/H checks remain open.
+- Source parent `12d11f9`. Commit/push this verified recovery point, then finish
+  plain-text write/clear with minimum volatile undo and conflict checks. No format
+  expansion, P12 work, new visual design, action-entry enabling or acceptance waiver.
+
+
+## Previous checkpoint: 2026-10-22, P11 shared argument validation
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 
@@ -806,7 +834,9 @@ P11 is not complete, P12 remains ineligible and action entry remains disabled.
   physical devices, browser and clipboard operations are not certified by this block.
 - Owner delegated browser and clipboard choices. [Scope decisions](docs/completion/p11_scope_decisions.md)
   select native Edge/Chrome managed profiles/target IDs, preserving personal
-  profiles, and Unicode text/file lists/bitmap clipboard with in-memory undo.
+  profiles, and (historically) multi-format clipboard with in-memory undo.
+  Clipboard format scope was superseded by the owner on 2026-10-22: plain-text
+  copy/paste only, as recorded in the current scope decisions.
   These adapters still require implementation and native verification. Missing
   declared Windows packages are being prepared only in ignored output/p11-native-env.
 - Continue remaining P11: mutation/partial-effect journaling and inverse/conflict
