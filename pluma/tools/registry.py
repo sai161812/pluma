@@ -907,6 +907,10 @@ class ToolRegistry:
         from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
+        # One declared tool budget covers policy, pre-state capture, dispatch,
+        # and readback. Starting the clock after policy allowed a slow approval
+        # path to silently extend every call beyond its ToolSpec deadline.
+        call_deadline = time.monotonic() + min(spec.timeout_s or 30.0, 30.0)
         if tool_name == "create_routine":
             # Definitions are validated against the actual registry on save;
             # execution will validate them again against the current registry.
@@ -981,7 +985,7 @@ class ToolRegistry:
             policy_future = self.submit_owned(_evaluate_owned_policy, active_policy, tool_name,
                 validated_args, spec.risk_class, task_id, token, task_id=task_id,
                 command_class="policy", _task_context=task_context)
-            deadline = time.monotonic() + min(spec.timeout_s or 30.0, 30.0)
+            deadline = call_deadline
             try:
                 while True:
                     if token is not None:
@@ -1023,10 +1027,19 @@ class ToolRegistry:
         if token is not None:
             token.raise_if_cancelled()
 
-        # Capture and execution share the declared tool budget. Policy and
-        # journal acknowledgements retain their separate bounded safety waits.
+        # Capture, execution and verification use only what remains after the
+        # policy phase. Journal acknowledgements retain their bounded safety
+        # waits so a mutation is never dispatched without durable pre-state.
         start_t = time.perf_counter()
-        timeout_s = spec.timeout_s
+        timeout_s = max(0.0, call_deadline - time.monotonic())
+        if timeout_s <= 0:
+            from pluma.core.cancellation import StopReason
+            if token is not None:
+                token.cancel(StopReason.TASK_TIMEOUT)
+            return _record_no_execution(ledger, task_context, step_index, tool_name,
+                validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                    "Tool call deadline expired before dispatch. No action was executed.",
+                    error_code="TOOL_TIMEOUT"))
         if task_context is not None and hasattr(task_context, "tool_call_count"):
             with task_context.work_lock:
                 if token is not None:
@@ -1246,8 +1259,20 @@ class ToolRegistry:
                         error_code="MUTATION_JOURNAL_FAILED")
             worker_req.undo_stack = list(ctx_undo_stack) + [pending_mutation]
 
+        # Journal acknowledgement is separately bounded because it must be
+        # durable before dispatch. Recompute the call budget after it so a
+        # slow ledger cannot cause an expired tool call to start late.
+        timeout_s = min(timeout_s, max(0.0, call_deadline - time.monotonic()))
         execution_started = time.perf_counter()
-        if use_process_isolation:
+        if timeout_s <= 0:
+            from pluma.core.cancellation import StopReason
+            if token is not None:
+                token.cancel(StopReason.TASK_TIMEOUT)
+            execution_not_admitted = True
+            result = ToolResult.failure(tool_name,
+                "Tool call deadline expired before executor dispatch. No action was executed.",
+                error_code="TOOL_TIMEOUT")
+        if result is None and use_process_isolation:
             try:
                 controller_key = task_id or f"transient-{uuid.uuid4()}"
                 worker_controller = getattr(task_context, "worker_controller", None) if task_context else None

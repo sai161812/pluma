@@ -56,6 +56,66 @@ def test_blocked_verifier_returns_before_release_and_keeps_pending_prestate(runt
     assert runtime.tool_registry.work_gate.wait_idle(2)
 
 
+def test_policy_and_executor_share_the_declared_tool_deadline(runtime):
+    from pluma.policy.engine import PolicyDecision, PolicyEvaluationResult
+
+    executor_started = threading.Event()
+
+    class SlowAllowPolicy:
+        def evaluate(self, *args, **kwargs):
+            time.sleep(.13)
+            return PolicyEvaluationResult(PolicyDecision.ALLOW, RiskClass.LOW, 'Inert fixture allowed.')
+
+    def execute(args):
+        executor_started.set()
+        time.sleep(.12)
+        return ToolResult.success('shared_deadline_probe', factual_message='Inert fixture completed.')
+
+    runtime.tool_registry.register(ToolSpec(name='shared_deadline_probe', description='Shared deadline fixture',
+        args_schema=EmptyArgs, risk_class=RiskClass.LOW, timeout_s=.20, executor=execute,
+        verifier=lambda result: VerifyResult(ok=True, method='fixture', detail='Inert readback.')))
+    cap = task(runtime, 'policy-and-executor-shared-deadline')
+    started = time.monotonic()
+    result = runtime.tool_registry.execute('shared_deadline_probe', {}, cap, runtime.ledger,
+        policy_engine=SlowAllowPolicy())
+    elapsed = time.monotonic() - started
+
+    assert executor_started.is_set()
+    assert not result.ok and result.error_code == 'TOOL_TIMEOUT'
+    assert elapsed < .28, f'Tool call exceeded its shared deadline: {elapsed:.3f}s'
+    assert runtime.tool_registry.work_gate.wait_idle(2)
+
+
+def test_expired_journal_acknowledgement_does_not_dispatch_executor(runtime, monkeypatch):
+    from pluma.policy.engine import PolicyDecision, PolicyEvaluationResult
+
+    class AllowPolicy:
+        def evaluate(self, *args, **kwargs):
+            return PolicyEvaluationResult(PolicyDecision.ALLOW, RiskClass.LOW, 'Inert fixture allowed.')
+
+    calls = []
+    runtime.tool_registry.register(ToolSpec(name='journal_deadline_probe', description='Journal deadline fixture',
+        args_schema=EmptyArgs, risk_class=RiskClass.LOW, timeout_s=.10,
+        executor=lambda args: calls.append('dispatched') or ToolResult.success(
+            'journal_deadline_probe', factual_message='Inert fixture completed.'),
+        verifier=lambda result: VerifyResult(ok=True, method='fixture', detail='Inert readback.'),
+        undo_builder=lambda args: {'action': 'fixture', 'previous': 'before'}))
+    original_prepare = runtime.ledger.prepare_mutation
+
+    def slow_prepare(*args, **kwargs):
+        time.sleep(.14)
+        return original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(runtime.ledger, 'prepare_mutation', slow_prepare)
+    cap = task(runtime, 'journal-acknowledgement-shared-deadline')
+    result = runtime.tool_registry.execute('journal_deadline_probe', {}, cap, runtime.ledger,
+        policy_engine=AllowPolicy())
+
+    assert not result.ok and result.error_code == 'TOOL_TIMEOUT'
+    assert calls == []
+    assert cap.undo_stack == []
+
+
 @dataclass
 class NativeVerifier:
     root: str

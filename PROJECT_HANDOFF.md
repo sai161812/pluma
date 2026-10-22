@@ -1,5 +1,24 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
+## Current checkpoint: 2026-10-22, P11 shared tool deadline
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 gates only.
+
+- [E49](docs/completion/p11_shared_tool_deadline.md) fixes a concrete D-09
+  defect: policy time and action time previously had separate `ToolSpec` budgets.
+  Lookup/argument validation now starts one wall-clock budget shared by policy,
+  pre-state, execution and readback. A regression proves the combined policy and
+  executor duration cannot exceed that budget and owned work drains.
+- Verification: `verification-tools-focused` passed **79 tests in 49.91s**;
+  the direct shared-deadline, expired-journal and blocked-verifier tests passed
+  **3/3**. D-09
+  remains DEFECTIVE because native legacy/rollback/catalog cleanup and complete
+  task-outcome evidence remain open.
+- No P12 work was started. Working changes are limited to the registry deadline,
+  its regression test and this evidence/matrix update.
+
+## Previous checkpoint: 2026-10-22, P11 owned browser tools
+
 ## Current checkpoint: 2026-10-22, P11 owned browser tools
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 acceptance gates only.
