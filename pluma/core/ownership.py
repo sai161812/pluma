@@ -28,7 +28,7 @@ def capture_temp_identity(path: Path) -> Dict[str, int]:
             "size": info.st_size, "mtime_ns": info.st_mtime_ns}
 
 
-def subprocess_absent(pid: int, creation_time: Optional[int]) -> bool:
+def subprocess_absent(pid: int, creation_time: Optional[int], *, wait_s: float = 0) -> bool:
     """Read only; a replacement PID is never terminated or otherwise touched."""
     if sys.platform != "win32" or type(creation_time) is not int:
         return False
@@ -42,7 +42,9 @@ def subprocess_absent(pid: int, creation_time: Optional[int]) -> bool:
     try:
         if _winapi.WaitForSingleObject(handle, 0) == _winapi.WAIT_OBJECT_0:
             return True
-        return owned_process_creation_time(SimpleNamespace(sentinel=handle)) != creation_time
+        if owned_process_creation_time(SimpleNamespace(sentinel=handle)) != creation_time:
+            return True
+        return wait_s > 0 and _winapi.WaitForSingleObject(handle, min(300, max(0, int(wait_s * 1000)))) == _winapi.WAIT_OBJECT_0
     finally:
         _winapi.CloseHandle(handle)
 
@@ -95,7 +97,8 @@ def cleanup_resources(resources: List[OwnedResource], *, deferred: bool = False)
                 check.errors.append("TEMP_CLEANUP_OR_READBACK_FAILED")
         elif res.resource_type == "subprocess" and res.external_id:
             try:
-                check.verified = subprocess_absent(int(res.external_id), identity["creation_time"])
+                check.verified = subprocess_absent(int(res.external_id), identity["creation_time"],
+                    wait_s=.3 if res.metadata.get('promote_on_success') else 0)
             except Exception:
                 check.errors.append("PROCESS_READBACK_FAILED")
         else:

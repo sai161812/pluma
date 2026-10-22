@@ -1,6 +1,12 @@
 # Backend audit before action wiring
 
-Current P11 focus implementation update: [E45](../../../docs/completion/p11_window_focus.md)
+Current P11 app launch update: [E46](../../../docs/completion/p11_app_launch.md)
+adds parent-owned native launches, success-only promotion and safe instance undo.
+261 affected / 16 final focused passes. Non-P12 catalog: 39 implemented, 7 missing,
+1 defective, 10 unverified. Broker handoffs without proof remain unsupported;
+P11 incomplete, P12 forbidden and action entry disabled.
+
+Previous P11 focus implementation update: [E45](../../../docs/completion/p11_window_focus.md)
 adds native identity/foreground/placement guards and safe inverse. 158 affected
 passes include explicitly inert focus checks. Native private-desktop focus was
 refused; no active-desktop acceptance is claimed. Counts unchanged; P11 remains

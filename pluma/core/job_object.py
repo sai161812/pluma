@@ -161,6 +161,26 @@ class WindowsJobObject:
                 self.close()
                 raise JobObjectError(f"SetInformationJobObject failed with error {err}")
 
+    def allow_persistence(self) -> None:
+        """Clear kill-on-close only after the owner verified intentional promotion."""
+        if sys.platform != 'win32' or self._handle is None:
+            raise JobObjectError('A live native Job is required for promotion.')
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        if not kernel32.QueryInformationJobObject(self._handle, JobObjectExtendedLimitInformation,
+                ctypes.byref(info), ctypes.sizeof(info), None):
+            raise JobObjectError('Job promotion pre-state is unavailable.')
+        desired = info.BasicLimitInformation.LimitFlags & ~JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        info.BasicLimitInformation.LimitFlags = desired
+        if not kernel32.SetInformationJobObject(self._handle, JobObjectExtendedLimitInformation,
+                ctypes.byref(info), ctypes.sizeof(info)):
+            raise JobObjectError('Job promotion was refused.')
+        readback = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        if (not kernel32.QueryInformationJobObject(self._handle, JobObjectExtendedLimitInformation,
+                ctypes.byref(readback), ctypes.sizeof(readback), None)
+                or readback.BasicLimitInformation.LimitFlags != desired):
+            raise JobObjectError('Job promotion did not read back.')
+        self._kill_on_close = False
+
     def assign_process(self, pid_or_popen: int | subprocess.Popen) -> None:
         """Assign a process to this Job Object.
 

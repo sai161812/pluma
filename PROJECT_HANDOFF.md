@@ -1,6 +1,34 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 guarded native focus implementation
+## Current checkpoint: 2026-10-22, P11 owned persistent application launch
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue every remaining P11 tool.
+
+- [E46](docs/completion/p11_app_launch.md): open_app uses closed System32 aliases,
+  parent-owned suspended creation and a separate kill-on-close Job, with native
+  process/image/window readback. Only verified success promotes/preserves the app;
+  STOP/failure drains owned trees. Manual undo closes only its matching instance,
+  with no force fallback. Broker handoff/early exit retains unknown effects rather
+  than claiming a personal instance. No arbitrary argv/path/cwd/admin/test-mode API.
+- Affected regression **261 passed (101.42s)**; final focused **16 passed (8.08s)**;
+  raw audit **15 (0.74s)**, containment **3 (3.62s)**, recovery **5 (0.79s)**.
+  Failed promotion/containment, original-handle drain, true process exit after Job
+  empty, text/voice, native persistence/undo and factual residuals are covered.
+  E46 retains diagnostic failures/corrections and exact fixture cleanup evidence.
+- Catalog **50 registered / 23 unregistered; 39 IMPLEMENTED / 23 MISSING /
+  1 DEFECTIVE / 10 UNVERIFIED**. Seven P11 names missing: open_file;
+  open_terminal; open_url/list_tabs/focus_tab/close_tab/download_status. Physical
+  focus2/audio4/system4, full undo_last and remaining A/D/H evidence stay open.
+- Source parent `b6aea5b` (pushed E45). Commit/push and CONTINUE, no partial final.
+  Next open_terminal reuses this parent launcher; then owned Edge/Chrome CDP and
+  browser-backed PDF/file viewing close all missing exact names. Scope decisions
+  already delegated; no questions, no P12, no personal profiles/settings, no UI
+  redesign/action enabling. Existing ignored output/p11_power_actions/
+  CONTINUATION_PLAN.txt records implementation choices/API checks for resumption;
+  it is a draft work plan, not acceptance evidence. Do not restart completed audits.
+
+
+## Previous checkpoint: 2026-10-22, P11 guarded native focus implementation
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

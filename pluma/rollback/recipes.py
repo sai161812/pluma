@@ -60,6 +60,16 @@ def _recipe_clipboard_restore(undo_data):
             message='Clipboard changed or private undo is unavailable; preserved current contents.', error='ROLLBACK_CONFLICT')
 
 
+def _recipe_app_launch(undo_data):
+    from pluma.adapters.app_launch import restore
+    try:
+        restore(undo_data)
+        return RollbackStepResult(ok=True, action='app_launch', message='Owned application closure verified.')
+    except Exception:
+        return RollbackStepResult(ok=False, action='app_launch',
+            message='Application changed or refused graceful undo; no force fallback.', error='ROLLBACK_CONFLICT')
+
+
 def _recipe_window_focus(undo_data):
     from pluma.adapters.window_focus import restore
     try:
@@ -349,6 +359,7 @@ class RollbackRecipes:
         self.register("window_geometry", _recipe_window_geometry)
         self.register("window_state", _recipe_window_state)
         self.register("window_focus", _recipe_window_focus)
+        self.register("app_launch", _recipe_app_launch)
         self.register("pending_mutation", _recipe_pending_mutation)
         self.register("move_file", _recipe_move_file)
         self.register("rename_file", _recipe_rename_file)

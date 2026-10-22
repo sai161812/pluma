@@ -97,11 +97,16 @@ def _close_windows(pid, check, token):
     for hwnd in targets:
         if token is not None:
             token.raise_if_cancelled()
-        check()
+        try:
+            check()
+        except ProcessLookupError:
+            break  # original-handle exit is independently read back by the caller
         owner = w.DWORD()
         if not user.GetWindowThreadProcessId(hwnd, c.byref(owner)) or owner.value != pid:
-            raise ProcessLookupError('Window target changed before close.')
+            continue  # an earlier WM_CLOSE may already have destroyed this view
         if not user.PostMessageW(hwnd, 0x10, 0, 0):  # WM_CLOSE, never WM_QUIT or force fallback
+            if not user.GetWindowThreadProcessId(hwnd, c.byref(owner)) or owner.value != pid:
+                continue  # never redirect a close to a replacement/foreign window
             raise c.WinError()
         sent += 1
     return sent

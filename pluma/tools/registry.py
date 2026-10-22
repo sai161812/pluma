@@ -963,7 +963,7 @@ class ToolRegistry:
         effective_risk = spec.risk_class
         approval_state = "NOT_CONFIGURED"
         clipboard_mutation = tool_name in ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')
-        if tool_name in ('minimize_window', 'maximize_window', 'restore_window', 'focus_window', 'focus_app') and (task_context is None or ledger is None):
+        if tool_name in ('minimize_window', 'maximize_window', 'restore_window', 'focus_window', 'focus_app', 'open_app') and (task_context is None or ledger is None):
             return _record_no_execution(ledger, task_context, step_index, tool_name,
                 validated_args, effective_risk, 'UNAVAILABLE', ToolResult.failure(tool_name,
                     'Window state changes require an owned task and undo journal.', 'WINDOW_JOURNAL_REQUIRED'))

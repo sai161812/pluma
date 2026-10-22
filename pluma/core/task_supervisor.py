@@ -265,6 +265,29 @@ class TaskCapsule(BaseModel):
         for res in self.owned_resources:
             if res.ownership != ResourceOwnership.PLUMA_CREATED:
                 continue
+            if res.metadata.get('promote_on_success') is True:
+                with self.work_lock:
+                    job = res.metadata.get('persistent_job')
+                    if job is None:
+                        continue
+                    key = res.metadata.get('persistent_job_key', 'persistent-job:' + res.resource_id)
+                    if stopping or self.state != TaskState.SUCCEEDED:
+                        check = cleanup_job(job, key, terminate=True)
+                    else:
+                        check = CleanupEvidence(resource_id=key, kind='job', code='APP_PROMOTION_UNVERIFIED')
+                        try:
+                            job.allow_persistence()
+                            job.close()  # explicit successful app open intentionally persists
+                            check.verified = job.is_closed is True
+                            if check.verified:
+                                check.code = 'PERSISTENT_APP_PROMOTED_TO_USER'
+                                res.released_at = datetime.now(timezone.utc)
+                        except Exception:
+                            check.errors.append('APP_JOB_CLOSE_FAILED')
+                    checks.append(check)
+                    if check.verified:
+                        res.metadata['persistent_job'] = None
+                continue
             job = res.metadata.get("persistent_job")
             if job is None:
                 continue
@@ -740,8 +763,17 @@ class TaskSupervisor:
                 capsules = list(self._tasks.values())
                 preparations = list(self._retained_preparations.values())
             for cap in capsules + preparations:
-                if cap.worker_controller is not None or cap.job_object is not None or cap.snapshot_registry is not None or cap.owned_work or cap.voice_session is not None:
+                persistent_jobs = [r for r in cap.owned_resources if r.ownership == ResourceOwnership.PLUMA_CREATED
+                                   and r.metadata.get('persistent_job') is not None]
+                if cap.worker_controller is not None or cap.job_object is not None or cap.snapshot_registry is not None or cap.owned_work or cap.voice_session is not None or persistent_jobs:
                     cap.close_resources(stopping=True)
+                    self._cleanup_temporary_resources(cap)
+                retained_apps = [r for r in cap.owned_resources if r.ownership == ResourceOwnership.PLUMA_CREATED
+                                 and r.metadata.get('promote_on_success') and r.released_at is None]
+                if retained_apps:
+                    self._cleanup_temporary_resources(cap)
+                    if any(r.released_at is None for r in retained_apps):
+                        raise RuntimeError('Owned application process exit remains unverified.')
                 if cap in preparations:
                     if self._ledger is not None:
                         self._ledger.record_cleanup(cap.task_id, [item.model_dump() for item in cap.cleanup_evidence])
@@ -752,7 +784,7 @@ class TaskSupervisor:
                     if self._ledger is not None and cap.terminal_persisted is not True:
                         raise RuntimeError("Terminal history remains unverified.")
                 persistent_jobs = [r for r in cap.owned_resources if r.ownership == ResourceOwnership.PLUMA_CREATED
-                                   and r.metadata.get("job_object") is not None]
+                                   and r.metadata.get("persistent_job") is not None]
                 if cap.worker_controller is not None or cap.job_object is not None or persistent_jobs or cap.owned_work or cap.voice_session is not None:
                     raise RuntimeError("Owned worker or job remains unverified.")
 

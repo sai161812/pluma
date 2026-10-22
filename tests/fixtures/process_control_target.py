@@ -16,6 +16,8 @@ def publish_ready(marker, state):
 
 def main():
     marker, mode = Path(sys.argv[1]), sys.argv[2]
+    if mode == 'exit':
+        return
     if mode == 'headless':
         publish_ready(marker, {'pid': os.getpid(), 'hwnd': None})
         time.sleep(60)
@@ -62,8 +64,8 @@ def main():
     user.CreateWindowExW.argtypes = [w.DWORD, w.LPCWSTR, w.LPCWSTR, w.DWORD, c.c_int, c.c_int,
         c.c_int, c.c_int, w.HWND, w.HANDLE, w.HINSTANCE, c.c_void_p]
     user.CreateWindowExW.restype = w.HWND
-    style = 0x00CF0000 | (0x10000000 if mode == 'state' else 0)
-    size = (400, 300) if mode == 'state' else (100, 100)
+    style = 0x00CF0000 | (0x10000000 if mode in ('state', 'launch') else 0)
+    size = (400, 300) if mode in ('state', 'launch') else (100, 100)
     hwnd = user.CreateWindowExW(0, name, 'PLUMA owned hidden fixture', style, 0, 0, *size,
         None, None, module, None)
     if not hwnd:
