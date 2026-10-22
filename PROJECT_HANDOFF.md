@@ -1,6 +1,36 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 bounded native file search
+## Current checkpoint: 2026-10-22, P11 native stream conflicts and inverse ownership
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E36](docs/completion/p11_move_stream_guards.md) fixes four reproduced native
+  move/rename undo failures after alternate-stream edits with restored primary
+  timestamps. Snapshots now cover all bounded data streams and attributes;
+  directory ADS refuse before mutation. The original DELETE guard remains;
+  secondary stream sharing and outside-rename refusal have native evidence.
+- Guarded file/folder/window-geometry automatic inverses now use the same closed
+  bounded capsule-owned cleanup worker as audio/recycle. Newer edits/legacy
+  inadequate receipts refuse; unknown effects remain residual. rename_file is
+  bounded IMPLEMENTED; cross-volume move_file semantics remain UNVERIFIED.
+- Focused **141 passed (38.92s)** plus boundary **2 passed (1.53s)**; final
+  affected regression **463 passed (92.61s)**, including both new boundary tests.
+  Raw --runxfail 15 (0.42s), containment 3 (2.73s), recovery 5 (0.43s).
+  Final source hashes/exits/fixture keys and retained failures are recorded in E36.
+- Catalog **44 registered / 29 unregistered; 27 IMPLEMENTED / 29 MISSING /
+  2 DEFECTIVE / 15 UNVERIFIED**. Sixteen missing P12 names untouched; **13 P11
+  names missing**: open_file; system four; clipboard get/set; open_terminal;
+  browser five. Remaining app/window/file/audio, clipboard/undo and A/D/H gates open.
+- Owner decision pending: after exact material confirmation, should sleep/
+  restart/shutdown requests initiate native operations without force-closing
+  apps (recommended), or open Windows power UI for the owner to complete?
+  AGENTS ambiguity rule applies. Do independent remaining P11 work while waiting;
+  do not implement a guessed power commit behavior or infer an acceptance waiver.
+- Source parent `10b39eb` (pushed E35). Commit/push this verified recovery point;
+  continue remaining P11 only. Preserve other worktrees, disabled action entry,
+  personal data/settings, immutable specifications and all recovery points.
+
+## Previous checkpoint: 2026-10-22, P11 bounded native file search
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

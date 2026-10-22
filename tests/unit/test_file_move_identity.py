@@ -1,5 +1,6 @@
 """Real owned file/folder moves and inverse conflicts, without user targets."""
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -105,3 +106,114 @@ def test_file_info_required_worker_refuses_unserializable_callable(runtime, monk
     result = runtime.tool_registry.execute('file_info', {'path': str(path)}, cap, runtime.ledger)
     assert not result.ok and result.error_code == 'PROCESS_ISOLATION_FAILED'
     assert not called and cap.worker_controller is None
+
+
+@pytest.mark.parametrize('directory', [False, True])
+@pytest.mark.parametrize('tool', ['move_file', 'rename_file'])
+def test_inverse_refuses_alternate_stream_edit_even_when_primary_timestamp_is_restored(runtime, monkeypatch, tmp_path, directory, tool):
+    approved(runtime, monkeypatch)
+    source, destination = tmp_path / 'before', tmp_path / 'after'
+    if directory:
+        source.mkdir()
+        payload = source / 'owned.txt'
+    else:
+        payload = source
+    payload.write_bytes(b'unchanged primary content')
+    with open(str(payload) + ':owned-stream', 'wb') as stream:
+        stream.write(b'original alternate content')
+    cap = task(runtime)
+    args = {'source': str(source), 'destination': str(destination)} if tool == 'move_file' else {
+        'path': str(source), 'new_name': destination.name}
+    result = runtime.tool_registry.execute(tool, args, cap, runtime.ledger)
+    assert result.ok and result.verified, result
+    payload = destination / 'owned.txt' if directory else destination
+    previous = payload.stat()
+    with open(str(payload) + ':owned-stream', 'wb') as stream:
+        stream.write(b'newer owner alternate content')
+    os.utime(payload, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    from pluma.rollback.recipes import RollbackRecipes
+    inverse = RollbackRecipes().apply(tool, cap.undo_stack[-1])
+    assert not inverse.ok and inverse.error == 'ROLLBACK_CONFLICT'
+    assert not source.exists() and destination.exists()
+    with open(str(payload) + ':owned-stream', 'rb') as stream:
+        assert stream.read() == b'newer owner alternate content'
+
+
+@pytest.mark.parametrize('tool', ['move_file', 'rename_file', 'copy_file', 'create_folder'])
+def test_guarded_filesystem_automatic_inverse_is_owned_and_drained(runtime, monkeypatch, tmp_path, tool):
+    approved(runtime, monkeypatch)
+    source, destination = tmp_path / 'before', tmp_path / 'after'
+    if tool != 'create_folder':
+        source.write_bytes(b'owned fixture')
+    args = {'source': str(source), 'destination': str(destination)}
+    if tool == 'rename_file': args = {'path': str(source), 'new_name': destination.name}
+    if tool == 'create_folder': args = {'path': str(destination)}
+    cap = task(runtime)
+    result = runtime.tool_registry.execute(tool, args, cap, runtime.ledger)
+    assert result.ok and result.verified, result
+    rolled = runtime.rollback_engine.rollback_task(cap.task_id, memory_undo_stack=cap.undo_stack)
+    assert rolled.all_ok and not destination.exists(), rolled
+    if tool != 'create_folder': assert source.read_bytes() == b'owned fixture'
+    assert not cap.inverse_workers
+    checks = [entry for entry in cap.cleanup_evidence if entry.identity.get('command_class') == 'rollback_worker']
+    assert checks and all(entry.verified for entry in checks)
+    assert all(entry.identity['task_id'] == cap.task_id and entry.identity['creation_time'] > 0 for entry in checks)
+
+
+def test_directory_stream_refuses_before_rename(runtime, monkeypatch, tmp_path):
+    approved(runtime, monkeypatch)
+    source, destination = tmp_path / 'before', tmp_path / 'after'
+    source.mkdir()
+    with open(str(source) + ':owned-stream', 'wb') as stream:
+        stream.write(b'preserved directory metadata')
+    cap = task(runtime)
+    result = runtime.tool_registry.execute('rename_file', {'path': str(source), 'new_name': destination.name}, cap, runtime.ledger)
+    assert not result.ok and result.error_code == 'UNDO_PRESTATE_FAILED'
+    assert source.is_dir() and not destination.exists() and not cap.undo_stack
+    with open(str(source) + ':owned-stream', 'rb') as stream:
+        assert stream.read() == b'preserved directory metadata'
+
+
+def test_move_stream_size_bound_is_checked_before_content_read(tmp_path, monkeypatch):
+    source, destination = tmp_path / 'before', tmp_path / 'after'
+    source.write_bytes(b'owned')
+    with open(str(source) + ':owned-stream', 'wb') as stream:
+        stream.write(b'bounded alternate stream')
+    monkeypatch.setattr(file_identity, 'MAX_FILE_BYTES', 8)
+    with pytest.raises(ValueError, match='streams exceed'):
+        file_identity.capture(str(source), str(destination))
+    assert source.read_bytes() == b'owned' and not destination.exists()
+
+
+def test_stream_read_does_not_weaken_original_delete_guard(tmp_path):
+    source, destination = tmp_path / 'before', tmp_path / 'after'
+    source.write_bytes(b'owned primary')
+    with open(str(source) + ':owned-stream', 'wb') as stream:
+        stream.write(b'owned alternate')
+    with file_identity._open(source, delete=True) as handle:
+        observed = file_identity._observe(handle, source, include_streams=True)
+        assert observed['streams_digest']
+        with pytest.raises(PermissionError):
+            source.rename(destination)
+    assert source.read_bytes() == b'owned primary' and not destination.exists()
+
+
+def test_guarded_inverse_timeout_drains_only_its_owned_worker(runtime, monkeypatch, tmp_path):
+    from pluma.rollback.owned import apply_owned
+    from pluma.tools import registry
+    from tests.unit.test_worker_cancellation import OwnedProbe
+    import time
+    approved(runtime, monkeypatch)
+    original = registry.TaskWorkerController
+    class BlockedInverse(original):
+        def execute_call(self, executor, args, request, timeout_s, **kwargs):
+            return super().execute_call(OwnedProbe(str(tmp_path)), args, request, timeout_s, **kwargs)
+    monkeypatch.setattr(registry, 'TaskWorkerController', BlockedInverse)
+    cap = task(runtime)
+    started = time.perf_counter()
+    outcome = apply_owned('copy_file', {'action': 'copy_file'}, cap, timeout_s=1)
+    assert not outcome.ok and time.perf_counter() - started < 3
+    assert (tmp_path / 'entered').exists() and not (tmp_path / 'late').exists()
+    assert not cap.inverse_workers
+    checks = [entry for entry in cap.cleanup_evidence if entry.identity.get('command_class') == 'rollback_worker']
+    assert checks and all(entry.verified for entry in checks)

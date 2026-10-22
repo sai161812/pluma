@@ -41,12 +41,13 @@ def _checked_path(value):
 
 
 @contextmanager
-def _open(path, *, delete=False, parent=False):
+def _open(path, *, delete=False, parent=False, share_delete=False):
     c, w, k = _api()
     access = 0x80 if parent else 0x80000000 | (0x10000 if delete else 0)
-    handle = k.CreateFileW(str(path), access, 3 if parent else 1, None, 3, 0x02200000, None)
+    sharing = (3 if parent else 1) | (4 if share_delete else 0)
+    handle = k.CreateFileW(str(path), access, sharing, None, 3, 0x02200000, None)
     if handle == c.c_void_p(-1).value:
-        raise c.WinError()
+        raise c.WinError(c.get_last_error())
     try:
         if parent and _metadata(handle)['kind'] != 'directory':
             raise ValueError('A directory ancestor is required.')
@@ -75,9 +76,35 @@ def _metadata(handle):
         'modified_100ns': (info.modified.dwHighDateTime << 32) | info.modified.dwLowDateTime}
 
 
-def _observe(handle, path, token=None):
+def _directory_has_streams(path):
+    c, w, k = _api()
+    class Stream(c.Structure):
+        _fields_ = [('size', c.c_longlong), ('name', w.WCHAR * 296)]
+    k.FindFirstStreamW.argtypes = [w.LPCWSTR, c.c_int, c.POINTER(Stream), w.DWORD]
+    k.FindFirstStreamW.restype = w.HANDLE
+    k.FindClose.argtypes, k.FindClose.restype = [w.HANDLE], w.BOOL
+    record = Stream()
+    handle = k.FindFirstStreamW(str(path), 0, c.byref(record), 0)
+    if handle == c.c_void_p(-1).value:
+        if c.get_last_error() == 38:
+            return False
+        raise c.WinError()
+    try:
+        return True
+    finally:
+        if not k.FindClose(handle):
+            raise c.WinError()
+
+
+def _observe(handle, path, token=None, *, include_streams=False):
     c, w, k = _api()
     before = _metadata(handle)
+    if include_streams:
+        from pluma.adapters.file_operations import _basic, _streams
+        before_basic = _basic(handle)
+        streams = _streams(handle) if before['kind'] == 'file' else []
+        if sum(size for _, size in streams) > MAX_FILE_BYTES:
+            raise ValueError('File streams exceed the bounded fingerprint size.')
     digest = hashlib.sha256()
     if before['kind'] == 'file':
         if before['size_bytes'] > MAX_FILE_BYTES:
@@ -107,6 +134,8 @@ def _observe(handle, path, token=None):
                 for part in directory.relative_to(path).parts:
                     current = current / part
                     ancestors.enter_context(_open(current, parent=True))
+                if include_streams and _directory_has_streams(directory):
+                    raise ValueError('Directory data streams are unsupported.')
                 entries = ancestors.enter_context(os.scandir(directory))
                 for entry in entries:
                     if token is not None:
@@ -117,8 +146,10 @@ def _observe(handle, path, token=None):
                     with _open(child) as child_handle:
                         identity = _metadata(child_handle)
                         if identity['kind'] == 'file':
-                            identity = _observe(child_handle, child, token)
+                            identity = _observe(child_handle, child, token, include_streams=include_streams)
                         else:
+                            if include_streams:
+                                identity['attributes'] = _basic(child_handle)['attributes']
                             pending.append((child, depth + 1))
                     records.append((str(child.relative_to(path)), identity))
         digest.update(json.dumps(sorted(records), sort_keys=True, separators=(',', ':')).encode('utf-8'))
@@ -129,7 +160,33 @@ def _observe(handle, path, token=None):
         after['size_bytes'] = 0
     if before != after:
         raise ValueError('Filesystem identity changed during inspection.')
-    return dict(before, digest=list(digest.digest()))
+    observed = dict(before, digest=list(digest.digest()))
+    if include_streams:
+        if before['kind'] == 'file':
+            fingerprints = []
+            for name, size in streams:
+                if token is not None:
+                    token.raise_if_cancelled()
+                if name == '::$DATA':
+                    stream_digest = observed['digest']
+                else:
+                    # The original root handle retains DELETE access while it
+                    # denies other deleters. This secondary stream handle must
+                    # share that already-held access, without weakening root protection.
+                    with _open(str(path) + name, share_delete=True) as stream_handle:
+                        stream = _observe(stream_handle, Path(str(path) + name), token)
+                        if stream['size_bytes'] != size:
+                            raise ValueError('File stream size changed.')
+                        stream_digest = stream['digest']
+                fingerprints.append((name, size, stream_digest))
+            if _streams(handle) != streams:
+                raise ValueError('File stream table changed.')
+            encoded = json.dumps(fingerprints, ensure_ascii=True, separators=(',', ':')).encode('utf-8')
+            observed['streams_digest'] = list(hashlib.sha256(encoded).digest())
+        if _basic(handle) != before_basic:
+            raise ValueError('Filesystem revision changed during inspection.')
+        observed['attributes'] = before_basic['attributes']
+    return observed
 
 
 def snapshot(path, token=None):
@@ -138,7 +195,7 @@ def snapshot(path, token=None):
         for parent in reversed(target.parents):
             held.enter_context(_open(parent, parent=True))
         handle = held.enter_context(_open(target))
-        return _observe(handle, target, token)
+        return _observe(handle, target, token, include_streams=True)
 
 
 def capture(source, destination):
@@ -171,7 +228,7 @@ def move(source, destination, expected, token=None, parents=None):
                 or _parent_identity(handles[destination.parent]) != parents[1]):
             raise ValueError('A parent directory was replaced after capture.')
         handle = held.enter_context(_open(source, delete=True))
-        if _observe(handle, source, token) != expected:
+        if _observe(handle, source, token, include_streams=True) != expected:
             raise ValueError('Source differs from the captured identity.')
         if token is not None:
             token.raise_if_cancelled()

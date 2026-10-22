@@ -56,23 +56,7 @@ def _eligible(path, *, allow_recycled=False):
 
 
 def _directory_has_streams(path):
-    c, w, k = identity._api()
-    class Stream(c.Structure):
-        _fields_ = [('size', c.c_longlong), ('name', w.WCHAR * 296)]
-    k.FindFirstStreamW.argtypes = [w.LPCWSTR, c.c_int, c.POINTER(Stream), w.DWORD]
-    k.FindFirstStreamW.restype = w.HANDLE
-    k.FindClose.argtypes, k.FindClose.restype = [w.HANDLE], w.BOOL
-    record = Stream()
-    handle = k.FindFirstStreamW(str(path), 0, c.byref(record), 0)
-    if handle == c.c_void_p(-1).value:
-        if c.get_last_error() == 38:  # ERROR_HANDLE_EOF: an ordinary directory has no data streams.
-            return False
-        raise c.WinError()
-    try:
-        return True
-    finally:
-        if not k.FindClose(handle):
-            raise c.WinError()
+    return identity._directory_has_streams(path)
 
 
 def _snapshot(path, token=None):
