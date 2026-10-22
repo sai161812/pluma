@@ -1,9 +1,22 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 terminal policy reconciliation (E54)
+## Current checkpoint: 2026-10-22, P11 catalog undo audit (E55)
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
 
+- [E55](docs/completion/p11_catalog_undo_audit.md) records the P11 cross-catalog
+  inverse audit and resolves the clipboard fixture blocker with the existing
+  owned fresh-logon runner: **26 passed in 43.66s**, runner exit zero, same user
+  and integrity at a distinct logon, zero owned processes remaining, no loaded
+  profile and unchanged interactive clipboard sequence. The broader native
+  inverse run produced **161 passes and one private-desktop teardown failure**;
+  its app-launch file passed all **16 tests in 5.19s** separately. The isolated
+  failure occurred in test fixture cleanup after the undo assertions and is
+  disclosed, not counted as a clean combined run.
+- `CAT-undo_last` is now IMPLEMENTED at the bounded catalog evidence scope:
+  legacy guarded selection, clipboard receipts and the supported reversible
+  file/window/audio/app/browser/memory paths have inverse/readback tests.
+  Irreversible effects remain deliberately non-undoable.
 - [E54](docs/completion/p11_terminal_policy_reconciliation.md) corrects the
   stale F-04 matrix row: 36 terminal/policy fixtures pass for closed
   diagnostics, exact-confirmed configured commands, command-schema refusal
@@ -12,10 +25,8 @@
 - [E53](docs/completion/p11_legacy_undo_selection.md) lets `undo_last` skip
   known pre-guard records without claiming or changing them. The guarded older
   preference inverse and clipboard lookup/claim consistency fixtures passed
-  **5 tests in 8.16s**. Native clipboard tests could not enter their isolated
-  station because Windows returned `WinError 183` for an existing system-named
-  station; no clipboard mutation occurred. `CAT-undo_last` remains DEFECTIVE
-  until other catalog inverses and their conflict evidence are audited.
+  **5 tests in 8.16s**. A direct native clipboard run hit `WinError 183` before
+  mutation; E55 resolves this through the isolated owned-logon runner.
 - [E52](docs/completion/p11_terminal_nonundoable_handoff.md) fixes the
   terminal-specific inverse mismatch: verified PowerShell launch is a committed
   non-undoable user handoff, so `undo_last` has no terminal record to claim or
@@ -28,13 +39,14 @@
 - [E50](docs/completion/p11_policy_acceptance.md) passes 58 focused policy,
   schema, UI and factual-summary tests. [E49](docs/completion/p11_shared_tool_deadline.md)
   closes D-09 with 117 timeout/ownership/cleanup/rollback passes.
-- P11 remains open for catalog-wide `undo_last`, native focus/audio mutation
-  evidence, D-10 runtime adapter behavior, native H-04 confirmation UI and
-  H-05 elevation integration. No UAC, live focus/audio mutation or physical
-  power action was tested. Legacy undo records and other catalog inverses still
-  need audit/evidence. The 16 P12 entries remain untouched.
+- P11 remains open for native focus/audio mutation and physical system-action
+  evidence, D-10 runtime adapter behavior, and H-05 elevation integration.
+  H-04 native confirmation UI belongs to P16. No UAC, live focus/audio mutation
+  or physical power action was tested. The 16 P12 entries remain untouched.
 - Requirements matrix audit passed **298 source items / 324 rows**. P12 is
   forbidden; next safe work stays within P11.
+
+## Previous checkpoint: 2026-10-22, P11 terminal policy reconciliation (E54)
 
 ## Previous checkpoint: 2026-10-22, P11 D-09 timeout gate closed
 
