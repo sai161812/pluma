@@ -6,7 +6,7 @@ import uuid
 from pluma.memory.tool_store import connect, row
 
 SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete', 'pending_mutation', 'set_volume', 'mute', 'unmute', 'set_default_audio_device'}
-SUPPORTED_ACTIONS.add('clipboard_restore')
+SUPPORTED_ACTIONS.update(('clipboard_restore', 'window_state'))
 
 
 def peek_clipboard_ref(args, context):
@@ -117,6 +117,9 @@ def verify(receipt):
                     and _content(_snapshot(pending['path'])) == _content(pending['identity']))
         if state['action'] == 'safe_delete':
             from pluma.adapters.recycle_bin import verify
+            return verify(state, restored=True)
+        if state['action'] == 'window_state':
+            from pluma.adapters.window_state import verify
             return verify(state, restored=True)
         if state['action'] == 'window_geometry':
             from pluma.adapters.window_geometry import verify

@@ -21,6 +21,18 @@ def main():
         time.sleep(60)
         return
     user, kernel = c.WinDLL('user32', use_last_error=True), c.WinDLL('kernel32', use_last_error=True)
+    desktop_name = None
+    if mode == 'state':
+        # State changes must never display or activate a test window on the
+        # interactive desktop. This fixture owns a separate, never-switched one.
+        import uuid
+        desktop_name = 'PLUMAState-' + str(uuid.uuid4())
+        user.CreateDesktopW.argtypes = [w.LPCWSTR, w.LPCWSTR, c.c_void_p, w.DWORD, w.DWORD, c.c_void_p]
+        user.CreateDesktopW.restype = w.HANDLE
+        user.SetThreadDesktop.argtypes, user.SetThreadDesktop.restype = [w.HANDLE], w.BOOL
+        desktop = user.CreateDesktopW(desktop_name, None, None, 0, 0x01ff, None)
+        if not desktop or not user.SetThreadDesktop(desktop):
+            raise c.WinError()
     procedure = c.WINFUNCTYPE(c.c_ssize_t, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
     class WindowClass(c.Structure):
         _fields_ = [('style', w.UINT), ('procedure', procedure), ('class_extra', c.c_int),
@@ -50,11 +62,13 @@ def main():
     user.CreateWindowExW.argtypes = [w.DWORD, w.LPCWSTR, w.LPCWSTR, w.DWORD, c.c_int, c.c_int,
         c.c_int, c.c_int, w.HWND, w.HANDLE, w.HINSTANCE, c.c_void_p]
     user.CreateWindowExW.restype = w.HWND
-    hwnd = user.CreateWindowExW(0, name, 'PLUMA owned hidden fixture', 0x00CF0000, 0, 0, 100, 100,
+    style = 0x00CF0000 | (0x10000000 if mode == 'state' else 0)
+    size = (400, 300) if mode == 'state' else (100, 100)
+    hwnd = user.CreateWindowExW(0, name, 'PLUMA owned hidden fixture', style, 0, 0, *size,
         None, None, module, None)
     if not hwnd:
         raise c.WinError()
-    publish_ready(marker, {'pid': os.getpid(), 'hwnd': hwnd})
+    publish_ready(marker, {'pid': os.getpid(), 'hwnd': hwnd, 'desktop': desktop_name})
     user.GetMessageW.argtypes, user.GetMessageW.restype = [c.POINTER(w.MSG), w.HWND, w.UINT, w.UINT], w.BOOL
     user.TranslateMessage.argtypes = [c.POINTER(w.MSG)]
     user.DispatchMessageW.argtypes, user.DispatchMessageW.restype = [c.POINTER(w.MSG)], c.c_ssize_t

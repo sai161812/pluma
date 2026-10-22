@@ -1,6 +1,30 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 plain-text copy/paste completed
+## Current checkpoint: 2026-10-22, P11 guarded window state
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue all remaining P11 tools.
+
+- [E42](docs/completion/p11_window_state.md): minimize/maximize/restore now use
+  exact native identity, captured placement, stable independent readback and
+  conflict-safe manual/owned STOP undo. No ambiguous title-first match, no-op
+  verifier or non-Windows success. Active target is rechecked before commit;
+  mutation requires an owned journal. Native windows stay on a never-visible
+  test desktop; fixture processes are contained before resume and drained.
+- Final affected regression **171 passed (100.79s)**; commit-focused **19 passed
+  (29.29s)**; raw audit **15 passed (0.73s)**. Retained initial failures/repairs
+  and final source provenance are in E42. Clipboard E41 is pushed in `b92a438`.
+- Catalog **50 registered / 23 unregistered; 36 IMPLEMENTED / 23 MISSING /
+  1 DEFECTIVE / 13 UNVERIFIED**. Seven P11 names missing: open_file;
+  open_terminal; browser five. Focus/app lifecycle, cross-volume move, physical
+  audio/system, full undo_last and remaining A/D/H evidence remain open.
+- Source parent `b92a438`. Commit/push this checkpoint and continue P11. The owner
+  explicitly requires no questions and no P11 tools left out. Use docs/prior
+  commits for choices. Next bounded gap: native cross-volume file move using the
+  existing verified copy and Recycle Bin recovery adapters. No permanent source
+  deletion, user-data tests, P12, design changes or action-entry enabling.
+
+
+## Previous checkpoint: 2026-10-22, P11 plain-text copy/paste completed
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

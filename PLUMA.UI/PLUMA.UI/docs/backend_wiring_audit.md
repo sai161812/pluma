@@ -1,6 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 clipboard update: [E41](../../../docs/completion/p11_clipboard_text.md)
+Current P11 window-state update: [E42](../../../docs/completion/p11_window_state.md)
+implements guarded minimize/maximize/restore and conflict-safe native undo.
+171 affected / 19 commit-focused passes. Non-P12 catalog: 36 implemented,
+7 missing, 1 defective, 13 unverified. P11 incomplete; P12 forbidden.
+
+Previous P11 clipboard update: [E41](../../../docs/completion/p11_clipboard_text.md)
 completes plain-text copy/clear with actual native paste/readback, private volatile
 undo and newer-copy conflict refusal. 26 focused / 274 affected regression passes;
 original interactive clipboard unchanged. Non-P12 catalog: 33 implemented,

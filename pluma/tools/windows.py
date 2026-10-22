@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 from typing import Any, Dict, List, Optional
+from functools import partial
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -39,25 +40,21 @@ class FocusWindowArgs(BaseModel):
         return self
 
 
-class MinimizeWindowArgs(BaseModel):
-    """Arguments for minimize_window."""
-    model_config = {"extra": "forbid"}
-    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to minimize.")
-    title: Optional[str] = Field(default=None, description="Title or substring of window to minimize.")
+class WindowStateArgs(BaseModel):
+    model_config = {'strict': True, 'extra': 'forbid'}
+    hwnd: Optional[int] = Field(default=None, gt=0, le=0xFFFFFFFFFFFFFFFF)
+    pid: Optional[int] = Field(default=None, gt=0, le=0xFFFFFFFF)
+    creation_time: Optional[int] = Field(default=None, gt=0)
+
+    @model_validator(mode='after')
+    def exact_or_active(self):
+        supplied = [self.hwnd is not None, self.pid is not None, self.creation_time is not None]
+        if any(supplied) and not all(supplied):
+            raise ValueError('Supply HWND, PID and creation time together, or omit all for the active window.')
+        return self
 
 
-class MaximizeWindowArgs(BaseModel):
-    """Arguments for maximize_window."""
-    model_config = {"extra": "forbid"}
-    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to maximize.")
-    title: Optional[str] = Field(default=None, description="Title or substring of window to maximize.")
-
-
-class RestoreWindowArgs(BaseModel):
-    """Arguments for restore_window."""
-    model_config = {"extra": "forbid"}
-    hwnd: Optional[int] = Field(default=None, description="Window handle (HWND) to restore.")
-    title: Optional[str] = Field(default=None, description="Title or substring of window to restore.")
+MinimizeWindowArgs = MaximizeWindowArgs = RestoreWindowArgs = WindowStateArgs
 
 
 # ---------------------------------------------------------------------------
@@ -134,174 +131,58 @@ def verify_focus_window(result: ToolResult) -> VerifyResult:
     return verify_window_focused(result.data["hwnd"])
 
 
-# ---------------------------------------------------------------------------
-# Minimize / Maximize Executors
-# ---------------------------------------------------------------------------
-
-def _resolve_hwnd(hwnd: Optional[int], title: Optional[str]) -> Optional[int]:
-    """Resolve HWND from explicit int or title search; falls back to foreground window."""
-    if sys.platform != "win32":
-        if hwnd is not None:
-            return hwnd if hwnd > 0 else None
-        return 999  # sentinel for test environments
-
-    import ctypes
-    from ctypes import wintypes
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-
-    if hwnd is not None:
-        if hwnd <= 0:
-            return None
-        if not user32.IsWindow(hwnd):
-            return None
-        return hwnd
-
-    if title:
-        found_hwnd = None
-
-        def enum_cb(h: int, _: Any) -> bool:
-            nonlocal found_hwnd
-            if not user32.IsWindowVisible(h):
-                return True
-            length = user32.GetWindowTextLengthW(h)
-            if length > 0:
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(h, buf, length + 1)
-                if title.lower() in buf.value.lower():
-                    if user32.IsWindow(h):
-                        found_hwnd = h
-                        return False
-            return True
-
-        WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
-        if found_hwnd:
-            return found_hwnd
-
-    # Default: foreground window
-    fg = user32.GetForegroundWindow()
-    if fg and user32.IsWindow(fg):
-        return fg
-    return None
+def capture_state(args, context=None, *, tool):
+    from pluma.adapters.window_state import capture
+    if context is None:
+        raise ValueError('Window mutation requires an owned task.')
+    context.cancellation_token.raise_if_cancelled()
+    return capture(args, tool)
 
 
-def execute_minimize_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    target_desc = args.get("title") or (f"HWND {args.get('hwnd')}" if args.get("hwnd") is not None else "active window")
-    if hwnd is None or hwnd <= 0:
-        return ToolResult.failure(
-            "minimize_window",
-            f"Valid window for '{target_desc}' not found.",
-            error_code="WINDOW_NOT_FOUND",
-        )
-
-    verified = True
-    detail = f"ShowWindow SW_MINIMIZE sent to HWND {hwnd}."
-    if sys.platform == "win32":
-        import ctypes
-        import time
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-        if not user32.IsWindow(hwnd):
-            return ToolResult.failure("minimize_window", f"Invalid or destroyed HWND: {hwnd}", error_code="INVALID_HWND")
-        SW_MINIMIZE = 6
-        user32.ShowWindow(hwnd, SW_MINIMIZE)
-        time.sleep(0.05)
-        is_minimized = bool(user32.IsIconic(hwnd))
-        verified = is_minimized
-        detail = f"Window HWND {hwnd} is {'minimized' if is_minimized else 'not minimized'}."
-
-    if not verified:
-        return ToolResult.failure("minimize_window", detail, error_code="VERIFICATION_FAILED")
-
-    return ToolResult(
-        ok=True,
-        tool="minimize_window",
-        data={"hwnd": hwnd},
-        factual_message=f"Minimized window ({target_desc}).",
-        verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail=detail),
-    )
+def execute_state(args, task_context=None, *, tool):
+    from pluma.adapters import window_state as native
+    try:
+        task_context.cancellation_token.raise_if_cancelled()
+        state = next(item['pre_state'] for item in reversed(task_context.undo_stack)
+            if item.get('action') == 'pending_mutation' and item.get('tool') == tool)
+        if (state['action'] != 'window_state' or state['guard_version'] != 1 or state['tool'] != tool
+                or bool(args.get('hwnd') is None) != state['active_target']
+                or not state['active_target'] and any(state[key] != args[key] for key in ('hwnd', 'pid', 'creation_time'))):
+            raise ValueError('Window state does not match captured intent.')
+        receipt = native.apply(state, task_context.cancellation_token)
+        return ToolResult.success(tool, data={key: receipt[key] for key in ('hwnd', 'pid', 'creation_time', 'after')},
+            verified=True, undo_record=receipt, adapter_used='native_window_api',
+            factual_message='Requested window state read back.').model_copy(update={'private_context': {'window_state': receipt}})
+    except Exception:
+        return ToolResult.failure(tool, 'Window state was refused or unverified. Pre-state retained.', 'WINDOW_STATE_UNVERIFIED')
 
 
-def execute_maximize_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    target_desc = args.get("title") or (f"HWND {args.get('hwnd')}" if args.get("hwnd") is not None else "active window")
-    if hwnd is None or hwnd <= 0:
-        return ToolResult.failure(
-            "maximize_window",
-            f"Valid window for '{target_desc}' not found.",
-            error_code="WINDOW_NOT_FOUND",
-        )
-
-    verified = True
-    detail = f"ShowWindow SW_MAXIMIZE sent to HWND {hwnd}."
-    if sys.platform == "win32":
-        import ctypes
-        import time
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-        if not user32.IsWindow(hwnd):
-            return ToolResult.failure("maximize_window", f"Invalid or destroyed HWND: {hwnd}", error_code="INVALID_HWND")
-        SW_MAXIMIZE = 3
-        user32.ShowWindow(hwnd, SW_MAXIMIZE)
-        time.sleep(0.05)
-        is_maximized = bool(user32.IsZoomed(hwnd))
-        verified = is_maximized
-        detail = f"Window HWND {hwnd} is {'maximized' if is_maximized else 'not maximized'}."
-
-    if not verified:
-        return ToolResult.failure("maximize_window", detail, error_code="VERIFICATION_FAILED")
-
-    return ToolResult(
-        ok=True,
-        tool="maximize_window",
-        data={"hwnd": hwnd},
-        factual_message=f"Maximized window ({target_desc}).",
-        verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail=detail),
-    )
+def verify_state(result):
+    from pluma.adapters.window_state import verify, TOOLS
+    try:
+        state = result.private_context['window_state']
+        valid = (result.ok and result.verified and state['tool'] == result.tool and state['action'] == 'window_state'
+            and state == result.undo_record and result.adapter_used == 'native_window_api'
+            and state['after']['placement']['show'] == TOOLS[result.tool]
+            and result.data == {key: state[key] for key in ('hwnd', 'pid', 'creation_time', 'after')}
+            and verify(state))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=bool(valid), method='native_window_placement', detail=(
+        'Exact window placement independently read back.' if valid else 'Window placement was not verified.'))
 
 
-def execute_restore_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    hwnd = _resolve_hwnd(args.get("hwnd"), args.get("title"))
-    target_desc = args.get("title") or (f"HWND {args.get('hwnd')}" if args.get("hwnd") is not None else "active window")
-    if hwnd is None or hwnd <= 0:
-        return ToolResult.failure(
-            "restore_window",
-            f"Valid window for '{target_desc}' not found.",
-            error_code="WINDOW_NOT_FOUND",
-        )
-
-    verified = True
-    detail = f"ShowWindow SW_RESTORE sent to HWND {hwnd}."
-    if sys.platform == "win32":
-        import ctypes
-        import time
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-        if not user32.IsWindow(hwnd):
-            return ToolResult.failure("restore_window", f"Invalid or destroyed HWND: {hwnd}", error_code="INVALID_HWND")
-        SW_RESTORE = 9
-        user32.ShowWindow(hwnd, SW_RESTORE)
-        time.sleep(0.05)
-        is_iconic = bool(user32.IsIconic(hwnd))
-        verified = not is_iconic
-        detail = f"Window HWND {hwnd} is {'restored' if verified else 'still minimized'}."
-
-    if not verified:
-        return ToolResult.failure("restore_window", detail, error_code="VERIFICATION_FAILED")
-
-    return ToolResult(
-        ok=True,
-        tool="restore_window",
-        data={"hwnd": hwnd},
-        factual_message=f"Restored window ({target_desc}).",
-        verified=True,
-        verify_detail=VerifyResult(ok=True, method="api", detail=detail),
-    )
+def execute_minimize_window(args, task_context=None):
+    return execute_state(args, task_context, tool='minimize_window')
 
 
-# ---------------------------------------------------------------------------
-# Tool Specifications
-# ---------------------------------------------------------------------------
+def execute_maximize_window(args, task_context=None):
+    return execute_state(args, task_context, tool='maximize_window')
+
+
+def execute_restore_window(args, task_context=None):
+    return execute_state(args, task_context, tool='restore_window')
+
 
 WINDOW_TOOL_SPECS: List[ToolSpec] = [
     ToolSpec(
@@ -336,8 +217,9 @@ WINDOW_TOOL_SPECS: List[ToolSpec] = [
         risk_class=RiskClass.LOW,
         timeout_s=5.0,
         executor=execute_minimize_window,
-        verifier=verify_noop,
-        undo_builder=None,
+        verifier=verify_state,
+        undo_builder=partial(capture_state, tool="minimize_window"),
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),
@@ -348,8 +230,9 @@ WINDOW_TOOL_SPECS: List[ToolSpec] = [
         risk_class=RiskClass.LOW,
         timeout_s=5.0,
         executor=execute_maximize_window,
-        verifier=verify_noop,
-        undo_builder=None,
+        verifier=verify_state,
+        undo_builder=partial(capture_state, tool="maximize_window"),
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),
@@ -360,8 +243,9 @@ WINDOW_TOOL_SPECS: List[ToolSpec] = [
         risk_class=RiskClass.LOW,
         timeout_s=5.0,
         executor=execute_restore_window,
-        verifier=verify_noop,
-        undo_builder=None,
+        verifier=verify_state,
+        undo_builder=partial(capture_state, tool="restore_window"),
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),

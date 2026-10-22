@@ -52,11 +52,17 @@ def owned_target(runtime, root, mode='close'):
         _winapi.CloseHandle(thread)
         thread = None
         deadline = time.monotonic() + 6
-        while not marker.exists() and time.monotonic() < deadline:
+        ready = None
+        while time.monotonic() < deadline:
             assert _winapi.WaitForSingleObject(handle, 0) == _winapi.WAIT_TIMEOUT
+            try:
+                ready = json.loads(marker.read_text(encoding='utf-8'))
+                break
+            except (FileNotFoundError, PermissionError):
+                pass  # atomic publication/native sharing can still be in flight
             time.sleep(.01)
-        assert marker.exists(), 'Owned hidden fixture did not become ready.'
-        assert json.loads(marker.read_text(encoding='utf-8'))['pid'] == pid
+        assert ready is not None, 'Owned hidden fixture did not become ready.'
+        assert ready['pid'] == pid
         yield {'pid': pid, 'creation_time': creation}, handle, cap
     finally:
         job.terminate()
