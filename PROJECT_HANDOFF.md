@@ -1,8 +1,20 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 cross-catalog inverse regression (E56)
+## Current checkpoint: 2026-10-22, P11 final closure (E57)
 
-**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
+**P11 is complete under the owner-approved native-test limitation in E57. P12 has not started. Do not advance automatically.**
+
+Earlier checkpoint text below is retained as history; E57 supersedes every earlier P11 incomplete or blocked status.
+
+- [E57](docs/completion/p11_final_closure.md) closes the last P11 gaps. D-10 has a shared ordered ToolSpec dispatcher that retries only when an adapter declines before dispatch. H-05 routes REQUIRE_ELEVATION to one fixed, argument-free DNS-cache flush operation; unsupported ADMIN tools fail closed, and the operation is recorded as non-undoable.
+- Focused verification passed **90 tests in 4.10s** with the repository Python 3.12.10 environment. Elevation checks inject an inert runner and never open UAC.
+- The owner directed that untestable operations be documented and P11 finished. Active-desktop focus transitions, physical audio changes, lock/sleep/restart/shutdown, and real UAC/DNS execution remain explicitly untested; E57 and the matrix make no physical-success claim. These are owner-approved P11 acceptance limitations.
+- The 16 missing screen-control catalog entries remain explicit P12 work. H-04 native confirmation UI remains P16 work. Other later milestone gaps are not P11 blockers.
+- The next safe milestone is P12. Wait for the owner's instruction before beginning it.
+
+## Previous checkpoint: 2026-10-22, P11 cross-catalog inverse regression (E56)
+
+**At this checkpoint P11 was incomplete; E57 below supersedes this status. P12 had not started.**
 
 - [E56](docs/completion/p11_inverse_regression_followup.md) resolves the one
   teardown failure in E55. The focused mixed window/audio/app-launch run passed

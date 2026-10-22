@@ -208,14 +208,22 @@ class WindowsJobObject:
             raise JobObjectError(f"OpenProcess failed for PID {pid} with error {err}")
 
         try:
-            result = kernel32.AssignProcessToJobObject(self._handle, h_process)
-            if not result:
-                err = ctypes.get_last_error()
-                raise JobObjectError(
-                    f"AssignProcessToJobObject failed for PID {pid} with error {err}"
-                )
+            self.assign_handle(h_process, process_id=pid)
         finally:
             kernel32.CloseHandle(h_process)
+
+    def assign_handle(self, process_handle: Any, *, process_id: Optional[int] = None) -> None:
+        """Assign through an already-owned exact process handle.
+
+        This avoids reopening a newly created process by PID when its creator
+        already has a native handle, as in the one-operation elevation broker.
+        """
+        if self._handle is None:
+            return
+        if not kernel32.AssignProcessToJobObject(self._handle, process_handle):
+            err = ctypes.get_last_error()
+            suffix = f" for PID {process_id}" if process_id is not None else ""
+            raise JobObjectError(f"AssignProcessToJobObject failed{suffix} with error {err}")
 
     def terminate(self, exit_code: int = 1) -> None:
         """Terminate all processes in the job object immediately."""

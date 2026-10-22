@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field
@@ -51,6 +52,12 @@ class UndoLastArgs(BaseModel):
 
 class BatteryStatusArgs(BaseModel):
     """Arguments for battery_status."""
+    model_config = {"extra": "forbid", "strict": True}
+
+
+class FlushDnsCacheArgs(BaseModel):
+    """Argument-free fixed operation; no command or target comes from the planner."""
+
     model_config = {"extra": "forbid", "strict": True}
 
 
@@ -284,11 +291,88 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
         return ToolResult.failure("undo_last", "Undo could not be verified. Its claim and pre-state are retained.", "UNDO_UNVERIFIED")
 
 
+class FlushDnsIntent(BaseModel):
+    model_config = {"extra": "forbid", "strict": True}
+    action: Literal["non_undoable_elevation"]
+    guard_version: Literal[1]
+    non_undoable: Literal[True]
+    tool: Literal["flush_dns_cache"]
+    operation: Literal["FLUSH_DNS"]
+    operation_id: str = Field(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
+
+def capture_flush_dns_intent(args: Dict[str, Any], task_context: Any = None) -> Dict[str, Any]:
+    FlushDnsCacheArgs.model_validate(args)
+    token = getattr(task_context, "cancellation_token", None)
+    if token is None or not getattr(task_context, "task_id", None):
+        raise ValueError("An owned task is required to journal elevation intent.")
+    token.raise_if_cancelled()
+    return FlushDnsIntent(action="non_undoable_elevation", guard_version=1,
+        non_undoable=True, tool="flush_dns_cache", operation="FLUSH_DNS",
+        operation_id=str(uuid.uuid4())).model_dump()
+
+
+def execute_flush_dns_cache(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    try:
+        FlushDnsCacheArgs.model_validate(args)
+        binding = getattr(task_context, "execution_binding", None) or {}
+        if binding != {"elevation_operation": "FLUSH_DNS"}:
+            return ToolResult.failure("flush_dns_cache", "The exact elevation operation was not authorized.",
+                "ELEVATION_BINDING_INVALID")
+        if task_context is None:
+            return ToolResult.failure("flush_dns_cache", "An owned task is required for elevation.",
+                "ELEVATION_OWNERSHIP_REQUIRED")
+        pending = next((item for item in reversed(task_context.undo_stack)
+            if item.get("action") == "pending_mutation" and item.get("tool") == "flush_dns_cache"), None)
+        if pending is None:
+            return ToolResult.failure("flush_dns_cache", "Durable elevation intent is unavailable.",
+                "COMMIT_JOURNAL_REQUIRED")
+        intent = FlushDnsIntent.model_validate(pending.get("pre_state", {}))
+        if intent.operation != binding["elevation_operation"]:
+            return ToolResult.failure("flush_dns_cache", "Elevation intent does not match the authorized operation.",
+                "ELEVATION_INTENT_MISMATCH")
+        task_context.cancellation_token.raise_if_cancelled()
+        from pluma.policy.elevation_broker import ElevationBroker, ElevationOperation, ElevationOpType
+        return ElevationBroker(timeout_s=15.0).execute_operation(
+            ElevationOperation(op_type=ElevationOpType.FLUSH_DNS),
+            task_id=task_context.task_id, task_context=task_context,
+            timeout_s=15.0,
+        )
+    except Exception:
+        return ToolResult.failure("flush_dns_cache", "The one-operation elevation request failed; its effect may be uncertain.",
+            "ELEVATION_OPERATION_FAILED")
+
+
+def verify_flush_dns_cache(result: ToolResult) -> VerifyResult:
+    data = result.data if isinstance(result.data, dict) else {}
+    valid = (result.ok and result.tool == "flush_dns_cache"
+        and result.adapter_used == "one_operation_uac"
+        and data == {"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True})
+    return VerifyResult(ok=valid, method="elevated_process_exit_readback", detail=(
+        "The fixed DNS operation exited successfully and its process termination was read back."
+        if valid else "The fixed DNS operation or its process exit was not verified."))
+
+
 # ---------------------------------------------------------------------------
 # Tool Specifications
 # ---------------------------------------------------------------------------
 
 SYSTEM_TOOL_SPECS: List[ToolSpec] = POWER_ACTION_SPECS + [
+    ToolSpec(
+        name="flush_dns_cache",
+        description="Flush the local Windows DNS client cache through one fixed UAC operation.",
+        args_schema=FlushDnsCacheArgs,
+        risk_class=RiskClass.ADMIN,
+        timeout_s=20.0,
+        process_isolated=True,
+        non_undoable=True,
+        executor=execute_flush_dns_cache,
+        verifier=verify_flush_dns_cache,
+        undo_builder=capture_flush_dns_intent,
+        elevation_operation="FLUSH_DNS",
+        adapter_priority=[AdapterPriority.POWERSHELL],
+        cancellable=True,
+    ),
     ToolSpec(
         name="get_system_status",
         description="Query system resource metrics (CPU, RAM, disk usage).",

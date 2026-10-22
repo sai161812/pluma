@@ -1014,7 +1014,31 @@ class ToolRegistry:
             effective_risk = getattr(policy_eval, "risk_class", spec.risk_class)
             decision_val = getattr(policy_eval, "decision", None)
             approval_state = getattr(decision_val, "value", str(decision_val))
-            if approval_state != "ALLOW":
+            if spec.risk_class == RiskClass.ADMIN and approval_state != "REQUIRE_ELEVATION":
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        "ADMIN operations must pass the registered one-operation elevation broker.",
+                        error_code="ELEVATION_REQUIRED"))
+            if approval_state == "REQUIRE_ELEVATION":
+                elevation_ready = (
+                    spec.name == "flush_dns_cache"
+                    and spec.elevation_operation == "FLUSH_DNS"
+                    and spec.risk_class == RiskClass.ADMIN
+                    and effective_risk == RiskClass.ADMIN
+                    and spec.process_isolated
+                    and spec.non_undoable
+                    and spec.undo_builder is not None
+                    and validated_args == {}
+                    and task_context is not None
+                    and ledger is not None
+                )
+                if not elevation_ready:
+                    return _record_no_execution(ledger, task_context, step_index, tool_name,
+                        validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                            "No registered one-operation elevation route is available for this ADMIN tool.",
+                            error_code="ELEVATION_UNSUPPORTED"))
+                execution_binding = {"elevation_operation": spec.elevation_operation}
+            elif approval_state != "ALLOW":
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
                         "Blocked by policy: " + policy_eval.reason, error_code="POLICY_DENIED"))
