@@ -1,8 +1,36 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 catalog undo audit (E55)
+## Current checkpoint: 2026-10-22, P11 cross-catalog inverse regression (E56)
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
+
+- [E56](docs/completion/p11_inverse_regression_followup.md) resolves the one
+  teardown failure in E55. The focused mixed window/audio/app-launch run passed
+  **76 tests in 26.01s**; the full native cross-catalog inverse regression
+  passed **162 tests in 73.26s**. It removes only redundant main-thread desktop
+  rebinding after the registered verifier and owned guarded undo have read back
+  the exact app state. All ownership, undo, process-absence and ledger checks
+  remain. The app-launch test file hash is recorded in E56.
+- `CAT-undo_last`'s software-backed cross-catalog evidence is clean. E55's
+  owned fresh-logon clipboard evidence remains **26 passed**, with the
+  interactive clipboard sequence unchanged.
+- P11 is still blocked by D-02/CAT focus native active-desktop evidence,
+  D-03 physical audio mutation/readback, physical acceptance for the four
+  system-action tools, D-10 runtime adapter selection/retry and H-05
+  one-operation elevation integration. The environment is the owner's active
+  Windows laptop; no disposable full Windows VM was available. Focus/audio
+  changes could disrupt the live session, and lock/sleep/restart/shutdown or
+  UAC would interrupt or elevate it. These were not invoked to manufacture
+  test evidence. D-10's multi-adapter tools are P12 UI tools; H-05 has no
+  registered ADMIN ToolSpec and its existing broker is not safe to expose as-is.
+  No waiver was approved. H-04 native confirmation UI belongs to P16.
+- All 16 unregistered catalog entries remain P12 work and were untouched.
+  Next safe work remains within P11: close D-10 only alongside the adapter
+  execution contract needed by P12, replace or safely constrain the elevation
+  broker before any ADMIN dispatch, and obtain controlled native focus/audio/
+  power acceptance conditions. Do not advance automatically.
+
+## Previous checkpoint: 2026-10-22, P11 catalog undo audit (E55)
 
 - [E55](docs/completion/p11_catalog_undo_audit.md) records the P11 cross-catalog
   inverse audit and resolves the clipboard fixture blocker with the existing

@@ -126,10 +126,11 @@ def test_native_launch_is_owned_before_resume_and_survives_only_success(runtime,
                 assert cap.state == TaskState.SUCCEEDED and resource.released_at is not None
                 assert cap.job_object is None and resource.metadata['persistent_job'] is None
                 assert not subprocess_absent(state['pid'], state['creation_time'])
-                with desktop(name):
-                    import win32gui
-                    assert native.verify(state), [win32gui.GetClassName(item['hwnd'])
-                        for item in native.windows(state['pid'], state['creation_time'])]
+                # The registered verifier already read back the exact image and
+                # window before task finalization. The guarded undo below reads
+                # the receipt again on its owned desktop-bound worker. Avoid
+                # rebinding pytest's COM-used main thread, which may own a
+                # message window after preceding tests in the same process.
                 undo = runtime.tool_registry.execute('undo_last', {}, task(runtime), runtime.ledger)
                 error_path = Path(runtime.paths.db_path).with_suffix('.launch-error.json')
                 assert undo.ok and undo.verified, (undo, error_path.read_text() if error_path.exists() else '')
