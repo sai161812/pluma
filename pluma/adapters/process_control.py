@@ -130,7 +130,7 @@ def execute_control(tool, args, context):
             if not kernel.TerminateProcess(handle, 1):
                 raise c.WinError()
             sent = 0
-        elif tool == 'graceful_close_process':
+        elif tool in ('graceful_close_process', 'close_app'):
             sent = _close_windows(args['pid'], check, token)
         else:
             raise ValueError('Unregistered process operation.')

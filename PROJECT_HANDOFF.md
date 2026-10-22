@@ -1,6 +1,30 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 native cross-volume move
+## Current checkpoint: 2026-10-22, P11 native application close
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue all remaining P11 tools.
+
+- [E44](docs/completion/p11_app_close.md): close_app now uses the existing exact
+  native process-close adapter, strict PID/creation time or unique executable
+  name, policy, non-undoable durable intent and independent exit readback.
+  Refusal/unsaved dialogs/timeouts never force-close anything. Legacy taskkill
+  and broad name termination are removed. No reconstructive undo is promised.
+- Focused **13 passed (12.13s)**; affected regression **204 passed (93.03s)**,
+  including native close/refusal, unrelated process preservation, denied/schema,
+  text/voice, existing process controls, policy/journal and raw audit assertions.
+  Actual exits/fixture keys zero, source hashes match. No user app was closed.
+- Catalog **50 registered / 23 unregistered; 38 IMPLEMENTED / 23 MISSING /
+  1 DEFECTIVE / 11 UNVERIFIED**. Seven P11 names missing: open_file;
+  open_terminal; browser five. open_app/focus_app/focus_window, physical audio/
+  system, full undo_last and remaining A/D/H evidence remain open.
+- Source parent `ccbfd6c` (pushed E43). Commit/push this checkpoint, then continue
+  P11 focus and owned persistent launches, followed by all missing exact tools.
+  Owner delegated choices, requires no questions and no P11 tool omissions.
+  Preserve personal resources, immutable specs, other worktrees and disabled
+  action entry. No P12 work or premature overall completion claim.
+
+
+## Previous checkpoint: 2026-10-22, P11 native cross-volume move
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue every remaining P11 tool.
 

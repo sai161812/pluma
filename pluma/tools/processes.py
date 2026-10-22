@@ -165,7 +165,7 @@ def verify_process_control(result):
         valid = (result.ok and result.verified and result.adapter_used == 'native_handle'
             and proof == {'original_handle_signaled': True, 'pid': data.pid, 'creation_time': data.creation_time,
                 'exit_code': data.exit_code, 'tool': result.tool}
-            and (result.tool == 'graceful_close_process' and data.windows_signaled > 0
+            and (result.tool in ('graceful_close_process', 'close_app') and data.windows_signaled > 0
                  or result.tool == 'terminate_process' and data.windows_signaled == 0)
             and subprocess_absent(data.pid, data.creation_time))
     except Exception:

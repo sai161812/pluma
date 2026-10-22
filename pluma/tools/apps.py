@@ -19,6 +19,7 @@ from pluma.core.task_supervisor import ResourceOwnership
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.tools.app_observations import ListAppWindowsArgs, execute_list, execute_status, verify_list, verify_status
 from pluma.tools.processes import ProcessTargetArgs
+from pluma.tools.app_lifecycle import CloseAppArgs, capture_close
 from pluma.verify.common import (
     verify_noop,
     verify_process_closed,
@@ -141,14 +142,6 @@ class OpenAppArgs(BaseModel):
                 if pat.search(a.strip()):
                     raise ValueError(f"Dangerous shell argument '{a}' is forbidden in open_app.")
         return args
-
-
-class CloseAppArgs(BaseModel):
-    """Arguments for close_app."""
-    model_config = {"extra": "forbid"}
-
-    app_name: str = Field(min_length=1, description="Application executable name or window title to close.")
-    force: bool = Field(default=False, description="Force terminate process tree (requires explicit request).")
 
 
 class FocusAppArgs(BaseModel):
@@ -346,64 +339,9 @@ def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResu
         return ToolResult.failure("open_app", f"Failed to open '{app}': {e}")
 
 
-def execute_close_app(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    import os
-    import subprocess
-    import time
-    import sys
-    
-    app = str(args["app_name"])
-    force = args.get("force", False)
-    
-    # Check if target is a PID
-    if app.isdigit():
-        pid = int(app)
-        if sys.platform == "win32":
-            cmd = ["taskkill", "/F" if force else "", "/PID", str(pid)]
-            cmd = [c for c in cmd if c]
-            res = subprocess.run(cmd, capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        else:
-            cmd = ["kill", "-9" if force else "-15", str(pid)]
-            cmd = [c for c in cmd if c]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-    else:
-        stem = app.lower().removesuffix(".exe")
-        if stem in ("calc", "calculator"):
-            target_names = ["CalculatorApp.exe", "Calculator.exe", "calc.exe"]
-        elif stem in _ALLOWED_APP_ALIASES:
-            target_names = [_ALLOWED_APP_ALIASES[stem]]
-        else:
-            name = app if app.lower().endswith(".exe") else f"{app}.exe"
-            target_names = [name]
-
-        if sys.platform == "win32":
-            res = None
-            for t_name in target_names:
-                cmd = ["taskkill", "/F" if force else "", "/IM", t_name]
-                cmd = [c for c in cmd if c]
-                res = subprocess.run(cmd, capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        else:
-            cmd = ["pkill", "-9" if force else "-15", app]
-            cmd = [c for c in cmd if c]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            
-    try:
-        time.sleep(0.3)
-        v_res = verify_process_closed(app)
-        
-        if not v_res.ok and res is not None and res.returncode != 0:
-            return ToolResult.failure("close_app", f"Failed to close '{app}': {res.stderr.strip() or 'Process not found.'}")
-            
-        return ToolResult(
-            ok=v_res.ok,
-            tool="close_app",
-            data={"app_name": app, "force": force},
-            factual_message=f"Closed '{app}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("close_app", f"Failed to close '{app}': {e}")
+def execute_close_app(args, task_context=None):
+    from pluma.tools.app_lifecycle import execute_close
+    return execute_close(args, task_context)
 
 
 def execute_focus_app(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -479,10 +417,9 @@ def verify_open_app(result: ToolResult) -> VerifyResult:
     return verify_process_running(result.data["pid"])
 
 
-def verify_close_app(result: ToolResult) -> VerifyResult:
-    if not result.ok or "app_name" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Close app reported failure.")
-    return verify_process_closed(result.data["app_name"])
+def verify_close_app(result):
+    from pluma.tools.app_lifecycle import verify_close
+    return verify_close(result)
 
 
 def verify_focus_app(result: ToolResult) -> VerifyResult:
@@ -517,7 +454,9 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         timeout_s=10.0,
         executor=execute_close_app,
         verifier=verify_close_app,
-        undo_builder=None,
+        undo_builder=capture_close,
+        non_undoable=True,
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),
