@@ -1,9 +1,16 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 terminal non-undoable handoff (E52)
+## Current checkpoint: 2026-10-22, P11 legacy undo selection (E53)
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
 
+- [E53](docs/completion/p11_legacy_undo_selection.md) lets `undo_last` skip
+  known pre-guard records without claiming or changing them. The guarded older
+  preference inverse and clipboard lookup/claim consistency fixtures passed
+  **5 tests in 8.16s**. Native clipboard tests could not enter their isolated
+  station because Windows returned `WinError 183` for an existing system-named
+  station; no clipboard mutation occurred. `CAT-undo_last` remains DEFECTIVE
+  until other catalog inverses and their conflict evidence are audited.
 - [E52](docs/completion/p11_terminal_nonundoable_handoff.md) fixes the
   terminal-specific inverse mismatch: verified PowerShell launch is a committed
   non-undoable user handoff, so `undo_last` has no terminal record to claim or

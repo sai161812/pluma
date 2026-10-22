@@ -10,10 +10,32 @@ SUPPORTED_ACTIONS.update(('clipboard_restore', 'window_state', 'window_focus', '
 SUPPORTED_ACTIONS.update(('browser_tab', 'browser_focus'))
 
 
+def _is_legacy_without_guard(state):
+    """Recognize known pre-guard records that must remain untouched."""
+    action = state.get('action')
+    return (action in SUPPORTED_ACTIONS
+        and action not in ('memory_write', 'pending_mutation')
+        and state.get('guard_version') != 1)
+
+
+def _latest_available(db):
+    """Return the newest current undo record, leaving unsafe legacy rows intact."""
+    records = db.execute(
+        'SELECT action_id, undo_json FROM undo_records WHERE available=1 ORDER BY action_id DESC'
+    ).fetchall()
+    for record in records:
+        state = json.loads(record['undo_json'])
+        if not isinstance(state, dict):
+            raise ValueError('Undo record is malformed.')
+        if _is_legacy_without_guard(state):
+            continue
+        return record, state
+    return None, {}
+
+
 def peek_clipboard_ref(args, context):
     with connect(context.storage_path) as db:
-        latest = db.execute('SELECT undo_json FROM undo_records WHERE available=1 ORDER BY action_id DESC LIMIT 1').fetchone()
-        state = json.loads(latest['undo_json']) if latest else {}
+        _, state = _latest_available(db)
         return {'action': 'private_clipboard_lookup',
                 'undo_ref': state.get('undo_ref') if state.get('action') == 'clipboard_restore' else None}
 
@@ -22,10 +44,9 @@ def claim_latest(path, task_id, clipboard_private=None):
     with connect(path, write=True) as db:
         db.execute('BEGIN IMMEDIATE')
         try:
-            record = db.execute('SELECT action_id, undo_json FROM undo_records WHERE available=1 ORDER BY action_id DESC LIMIT 1').fetchone()
+            record, state = _latest_available(db)
             if record is None:
                 raise ValueError('No undo record is available.')
-            state = json.loads(record['undo_json'])
             if state.get('action') not in SUPPORTED_ACTIONS:
                 raise ValueError('Undo record lacks a supported conflict-safe inverse.')
             if state['action'] == 'clipboard_restore' and (not clipboard_private
