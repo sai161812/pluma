@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import verify_noop
+from pluma.tools.power_actions import POWER_ACTION_SPECS
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +283,7 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
 # Tool Specifications
 # ---------------------------------------------------------------------------
 
-SYSTEM_TOOL_SPECS: List[ToolSpec] = [
+SYSTEM_TOOL_SPECS: List[ToolSpec] = POWER_ACTION_SPECS + [
     ToolSpec(
         name="get_system_status",
         description="Query system resource metrics (CPU, RAM, disk usage).",

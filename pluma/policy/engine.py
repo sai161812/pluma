@@ -138,6 +138,14 @@ class PolicyEngine:
                         f"Force process {arguments.get('pid')} to exit? Unsaved work can be lost. This cannot be undone."
                         if tool_name == 'terminate_process' else
                         f"Ask process {arguments.get('pid')} to close? It may prompt to save work. A completed close cannot be undone.")
+                if tool_name == 'lock':
+                    prompt = 'Lock this Windows session now? Unlocking requires user authentication. PLUMA cannot automatically undo it.'
+                elif tool_name == 'sleep_request':
+                    prompt = 'Put this computer to sleep now? Running work and this connection may pause until resume. PLUMA cannot automatically undo it.'
+                elif tool_name in ('restart_request', 'shutdown_request'):
+                    operation = 'Restart' if tool_name == 'restart_request' else 'Shut down'
+                    prompt = (f"{operation} this computer after {arguments['delay_seconds']} seconds? This affects all sessions. "
+                              'Apps will not be forcibly closed and may block the operation. STOP cannot promise reversal after Windows accepts it.')
                 request = ConfirmationRequest(task_id=task_id, tool_name=tool_name,
                     arguments=args, risk_class=risk,
                     reason="Explicit approval of this exact operation is required.", prompt_message=prompt,

@@ -25,6 +25,7 @@ from pluma.memory.activity import ActivityQuery
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 from tests.unit.test_runtime_shutdown import runtime, NATIVE_JOB, reopened
 from tests.unit.test_worker_cancellation import EmptyArgs, OwnedProbe, await_file
+from tests.fixtures.policy import owned_fixture_policy
 
 
 @pytest.mark.skipif(sys.platform != 'win32', reason='Requires real Windows Jobs and native pipes')
@@ -35,8 +36,8 @@ def test_native_stop_reconciles_rollback_processes_history_and_shutdown(
     import _winapi
 
     monkeypatch.setattr(job_object, 'WindowsJobObject', NATIVE_JOB)
-    # Only registered fixture tools are routed; no policy/elevation acceptance.
-    runtime.tool_registry._policy_engine = None
+    # Only the named owned probe receives fixture confirmation; no elevation.
+    runtime.tool_registry._policy_engine = owned_fixture_policy('worker_probe')
     source, moved = tmp_path / 'source.txt', tmp_path / 'moved.txt'
     source.write_text('owned original', encoding='utf-8')
     survivor_file = tmp_path / 'preexisting.txt'

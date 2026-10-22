@@ -1,6 +1,37 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 native app/window reads
+## Current checkpoint: 2026-10-22, P11 confirmed native system requests
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E38](docs/completion/p11_power_actions.md) registers lock/sleep/restart/shutdown
+  with strict HIGH material confirmation, owned bounded native execution,
+  non-undoable durable intent and separate native readback. No forced app closing,
+  remote target, unrestricted command, UAC or global policy changes. Accepted OS
+  effects cannot be promised reversed. Missing-policy dispatch now refuses before
+  capture; the four-case inert bypass reproduction and repair are retained.
+- Focused **154 passed (47.56s)**; final affected regression **477 passed / 1
+  elevation deselected (145.68s)**, including combined P10 native owned fixtures.
+  Raw --runxfail 15 (0.49s), containment 3 (3.39s), recovery 5 (0.57s).
+  Final source hashes/exits match, fixture keys zero; matrix 298/324 PASS.
+  Fixture setup failures/corrections are retained in E38; assertions preserved.
+- Native system probes were read-only; transition tests use explicitly inert
+  interfaces. No active-session power action was performed. Actual physical
+  effects, shutdown event timing and long-sleep acceptance remain UNVERIFIED.
+  The owner's commit-behavior decision is resolved, not an acceptance waiver.
+- Catalog **48 registered / 25 unregistered; 30 IMPLEMENTED / 25 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Four system rows move MISSING -> UNVERIFIED.
+  Sixteen P12 names untouched; **nine P11 names missing**: open_file;
+  clipboard_get/set; open_terminal; browser five. App/window mutations,
+  cross-volume move, physical audio/system, clipboard clear/full undo and A/D/H
+  gates remain open. No P12 eligibility or full-product completion claim.
+- Source parent `a7e4f7d` (pushed E37). Commit/push this verified checkpoint.
+  Next safe bounded P11 work: shared argument validation before policy/planning,
+  then remaining native tool/undo gaps. Preserve other worktrees, personal data,
+  disabled action entry, immutable specs and recovery points.
+
+
+## Previous checkpoint: 2026-10-22, P11 native app/window reads
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

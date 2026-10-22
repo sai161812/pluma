@@ -22,6 +22,7 @@ from pluma.memory.activity import ActivityLedger, ActivityQuery, TaskRecord
 from pluma.memory.db import DbConnection
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.tools import registry as runner
+from tests.fixtures.policy import owned_fixture_policy
 
 
 class EmptyArgs(BaseModel):
@@ -440,6 +441,7 @@ class SpawnProbe:
 @pytest.mark.parametrize("stop", [False, True])
 def test_actual_spawn_inherits_live_task_gate(task, tmp_path, stop):
     capsule, registry = task
+    registry._policy_engine = owned_fixture_policy('admission_probe')
     capsule.job_object = WindowsJobObject(name="pluma-p01-" + capsule.task_id)
     registry.register(spec(SpawnProbe(str(tmp_path), pause=stop), risk_class=RiskClass.HIGH, timeout_s=10))
     with ThreadPoolExecutor(max_workers=1) as callers:
@@ -470,6 +472,7 @@ def test_actual_spawn_inherits_live_task_gate(task, tmp_path, stop):
 
 def test_recycled_controller_rebinds_task_and_gate(task, tmp_path, monkeypatch):
     capsule, registry = task
+    registry._policy_engine = owned_fixture_policy('admission_probe')
     capsule.job_object = WindowsJobObject(name="pluma-p01-rebind-" + capsule.task_id)
     registry.register(spec(SpawnProbe(str(tmp_path)), risk_class=RiskClass.HIGH))
     assert registry.execute("admission_probe", {}, capsule).ok
@@ -497,6 +500,7 @@ def test_recycled_controller_rebinds_task_and_gate(task, tmp_path, monkeypatch):
 
 def test_spawn_crash_does_not_strand_stop_latch(task, tmp_path):
     capsule, registry = task
+    registry._policy_engine = owned_fixture_policy('admission_probe')
     capsule.job_object = WindowsJobObject(name="pluma-p01-crash-" + capsule.task_id)
     registry.register(spec(SpawnProbe(str(tmp_path), pause=True), risk_class=RiskClass.HIGH, timeout_s=10))
     with ThreadPoolExecutor(max_workers=1) as callers:

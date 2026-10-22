@@ -935,6 +935,10 @@ class ToolRegistry:
         execution_binding = None
         effective_risk = spec.risk_class
         approval_state = "NOT_CONFIGURED"
+        if active_policy is None and (spec.non_undoable or spec.risk_class not in (RiskClass.READ, RiskClass.LOW)):
+            return _record_no_execution(ledger, task_context, step_index, tool_name,
+                validated_args, effective_risk, 'UNAVAILABLE', ToolResult.failure(tool_name,
+                    'This operation requires an active policy and its confirmation/elevation decision.', 'POLICY_REQUIRED'))
         if active_policy is not None:
             task_id = getattr(task_context, "task_id", None)
             policy_future = self.submit_owned(_evaluate_owned_policy, active_policy, tool_name,

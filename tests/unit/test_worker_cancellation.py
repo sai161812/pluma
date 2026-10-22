@@ -396,6 +396,11 @@ class EmptyArgs(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+def owned_probe_policy():
+    from tests.fixtures.policy import owned_fixture_policy
+    return owned_fixture_policy('worker_probe')
+
+
 @contextmanager
 def owned_registry_execution(registry, capsule, ledger):
     """Cancel before pool join even when a startup assertion raises."""
@@ -417,7 +422,7 @@ def test_registry_cancellation_is_unverified_and_persisted(tmp_path):
     ledger = ActivityLedger(db)
     ledger.insert_task(TaskRecord(task_id=capsule.task_id, request_id=capsule.request_id,
                                  input_mode="text", command_text="Owned cancellation fixture", started_at="2026-10-19T00:00:00Z"))
-    registry = runner.ToolRegistry()
+    registry = runner.ToolRegistry(policy_engine=owned_probe_policy())
     registry.register(ToolSpec(name="worker_probe", description="Owned fixture", args_schema=EmptyArgs,
         risk_class=RiskClass.HIGH, timeout_s=30, executor=OwnedProbe(str(tmp_path)),
         verifier=lambda result: VerifyResult(ok=False, method="state", detail="Marker absent.")))
@@ -441,7 +446,7 @@ def test_registry_cancellation_is_unverified_and_persisted(tmp_path):
 def test_registry_startup_assertion_drains_before_pool_join(tmp_path):
     capsule = TaskCapsule(request_id="p10-startup-failure")
     capsule.job_object = WindowsJobObject()
-    registry = runner.ToolRegistry()
+    registry = runner.ToolRegistry(policy_engine=owned_probe_policy())
     registry.register(ToolSpec(name="worker_probe", description="Owned failure fixture",
         args_schema=EmptyArgs, risk_class=RiskClass.HIGH, timeout_s=30,
         executor=OwnedProbe(str(tmp_path)),

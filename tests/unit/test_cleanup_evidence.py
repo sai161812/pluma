@@ -543,9 +543,10 @@ def test_fixture_close_failure_still_drains_other_owned_resources():
 
 def test_real_supervisor_cleanup_reads_worker_and_descendant_absence(tmp_path):
     import _winapi
+    from tests.fixtures.policy import owned_fixture_policy
     supervisor = TaskSupervisor(paths=PlumaPaths(tmp_path / "local", tmp_path / "roaming"))
     capsule = supervisor.create_task("real-owned-cleanup")
-    registry = ToolRegistry()
+    registry = ToolRegistry(policy_engine=owned_fixture_policy('worker_probe'))
     registry.register(ToolSpec(name="worker_probe", description="Owned fixture", args_schema=EmptyArgs,
                               risk_class=RiskClass.HIGH, timeout_s=30, executor=OwnedProbe(str(tmp_path), descendant=True),
                               verifier=lambda result: VerifyResult(ok=False, method="state", detail="Late marker absent.")))

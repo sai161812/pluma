@@ -623,9 +623,9 @@ def test_real_runtime_shutdown_verifies_owned_tree_and_unrelated_survival(runtim
     from pluma.core.ownership import get_process_creation_time, subprocess_absent
     from tests.unit.test_worker_cancellation import OwnedProbe, EmptyArgs, await_file
     monkeypatch.setattr(job_object, 'WindowsJobObject', NATIVE_JOB)
-    # The containment fixture has an inert policy owner, as P03/P04 do. No
-    # product policy or actual user application is exercised by this probe.
-    runtime.tool_registry._policy_engine = None
+    # Approve only the named owned probe through the real policy engine.
+    from tests.fixtures.policy import owned_fixture_policy
+    runtime.tool_registry._policy_engine = owned_fixture_policy('worker_probe')
     runtime.tool_registry.register(ToolSpec(name='worker_probe', description='Owned process fixture',
         args_schema=EmptyArgs, risk_class=RiskClass.HIGH, timeout_s=10,
         executor=OwnedProbe(str(tmp_path), descendant=True),

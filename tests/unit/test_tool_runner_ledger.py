@@ -8,6 +8,7 @@ from pluma.core.cancellation import TaskCancelledError
 from pluma.core.task_supervisor import TaskSupervisor
 from pluma.memory.activity import ActivityLedger, ActivityQuery, TaskRecord
 from pluma.memory.db import DbConnection
+from tests.fixtures.policy import owned_fixture_policy
 from pluma.tools.registry import (
     ToolArgumentError,
     ToolRegistry,
@@ -26,7 +27,7 @@ def db_conn(tmp_path: Path) -> DbConnection:
 
 @pytest.fixture
 def registry() -> ToolRegistry:
-    reg = ToolRegistry()
+    reg = ToolRegistry(policy_engine=owned_fixture_policy('move_file', 'undo_last'))
     register_default_tools(reg)
     yield reg
     reg.close()

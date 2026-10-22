@@ -1,10 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E37](../../../docs/completion/p11_app_window_reads.md)
-implements owned native application/window reads and exact identity status.
-No dummy/tasklist/no-op READ paths. Non-P12 catalog:
-30 implemented, 13 missing, 2 defective, 12 unverified. P11 incomplete; P12 forbidden; action
-entry disabled. Historical evidence retains its own source provenance.
+Current P11 implementation update: [E38](../../../docs/completion/p11_power_actions.md)
+registers four confirmed native system requests, non-undoable intents and exact
+readback, and refuses missing-policy dispatch before capture. Non-P12 catalog:
+30 implemented, 9 missing, 2 defective, 16 unverified. Four system effects remain
+physically unverified. P11 incomplete; P12 forbidden; action entry disabled.
+Historical evidence retains its own source provenance.
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT
 complete. E25 owns/bounds verification, interrupts legacy callers safely, retains
