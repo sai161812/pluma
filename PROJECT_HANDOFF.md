@@ -15,10 +15,17 @@
   intermittent private desktop teardown (`SetThreadDesktop`, WinError 0). The
   exact failed case passed on retry (**1 passed, 2.19s**); that fixture flake
   remains recorded rather than claiming the whole regression was green.
-- Catalog now has **57 registered / 16 unregistered; 46 IMPLEMENTED / 16 MISSING /
-  1 DEFECTIVE / 10 UNVERIFIED**. No exact P11 catalog name remains missing.
-  `undo_last`, physical focus2/audio4/system4 and required A/D/H evidence remain
-  open, so P11 is still incomplete. No waiver exists.
+- The P11 acceptance-map refresh marks D-01/D-04/D-05/D-06/D-07/D-08 from
+  their later native evidence. Catalog now has **57 registered / 16 unregistered;
+  46 IMPLEMENTED / 16 MISSING / 1 DEFECTIVE / 10 UNVERIFIED**. No exact P11
+  catalog name remains missing.
+- Remaining gates are `undo_last` catalog-wide evidence; D-02 focus and D-03
+  physical audio; D-09 whole-call timeout/cleanup; D-10 declared adapter retry;
+  A-07 factual-copy coverage; and applicable H-01/H-02/H-04/H-05/H-06/H-07
+  portions. Ten exact tools stay UNVERIFIED: focus_app/focus_window, four audio
+  changes and lock/sleep/restart/shutdown. H-04 exact-operation backend approval
+  and H-05 allowlisted elevation dispatch remain open in P11; native confirmation
+  and UAC UI wiring/evidence belongs to P16. No waiver exists; P11 is incomplete.
 - Owner clarification: open_terminal only opens PowerShell; commands are entered
   manually. Empty typed arguments, no terminal typing/client automation, cwd
   control or elevation. Fixed native new-console launch uses existing Job/STOP
@@ -29,9 +36,9 @@
   refuses when no safely attributable GUI-close target exists; no force fallback.
 - At E47 the catalog was **51 registered / 22 unregistered; 40 IMPLEMENTED /
   22 MISSING / 1 DEFECTIVE / 10 UNVERIFIED**. E48 is the current count above.
-- E47 source parent `99255f9`; E48 is the next committed checkpoint. Continue
-  only remaining P11 acceptance gaps; no questions, personal profiles/settings,
-  UI redesign, action-entry enabling, P12, or repeated completed audits.
+- E47 source parent `99255f9`; E48 is pushed as `250827b`. Continue only the
+  remaining P11 acceptance gaps above; no personal profiles/settings, UI redesign,
+  action-entry enabling, P12, or repeated completed audits.
 
 ## Previous checkpoint: 2026-10-22, P11 owned persistent application launch
 

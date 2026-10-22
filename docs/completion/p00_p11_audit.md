@@ -38,7 +38,7 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E46 address individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | E48 closes all remaining exact P11 tool names. `undo_last`, ten unverified physical focus/audio/system operations, D-02/D-03/D-09/D-10 and applicable A/D/H gates remain open. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
@@ -52,29 +52,32 @@ evidence; see [focus evidence](p11_window_focus.md). No acceptance waiver.
 
 ## P11 catalog: actual remaining work
 
-All 73 exact catalog names: **51 registered / 22 unregistered**. Status across
-all rows: **40 implemented / 22 missing / 1 defective / 10 unverified**. Of the
-22 missing names, **16 are assigned to P12**. They were inspected, not implemented
-or declared optional. For the other 57 catalog entries relevant to this audit:
-**40 implemented / 6 missing / 1 defective / 10 unverified**.
+All 73 exact catalog names: **57 registered / 16 unregistered**. Status across
+all rows: **46 implemented / 16 missing / 1 defective / 10 unverified**. The
+sixteen missing exact names are assigned to P12; they remain untouched and are
+not declared optional. All 57 registered names correspond to backend P11 scope.
+E48 implements the last six missing P11 names. See [browser evidence](p11_browser_tools.md).
 
 | P11 area | Missing exact tools |
 |---|---|
-| Windows | None missing; bounded geometry recorded in E30; legacy rows stay unverified |
-| Files | open_file; safe_delete bounded native recovery completed in E32 |
-| Processes | None missing; bounded process controls recorded in E29 |
-| Audio | None missing; default-device registration and guarded mutation/undo in E34; physical changes unverified |
-| System | None missing; four confirmed native requests registered in E38; physical effects unverified |
-| Clipboard | None missing; plain-text read/write/clear and volatile undo completed in E40/E41 |
-| Terminal | open_terminal; closed run_command/run_powershell completed in E33 |
-| Browser | open_url, list_tabs, focus_tab, close_tab, download_status |
+| Apps | None; open/close implementations have owned native evidence. focus_app remains physically UNVERIFIED. |
+| Windows | None; bounded geometry is recorded in E30. focus_window remains physically UNVERIFIED. |
+| Files | None; open_file is bounded browser viewing (E48); safe_delete is bounded native recovery (E32). |
+| Processes | None; bounded process controls are recorded in E29. |
+| Audio | None; default-device registration and guarded mutation/undo are in E34; physical changes remain UNVERIFIED. |
+| System | None; four confirmed native requests are in E38; physical effects remain UNVERIFIED. |
+| Clipboard | None; owner-scoped plain-text read/write/clear and volatile undo are in E40/E41. |
+| Terminal | None; `open_terminal` opens fixed PowerShell only (E47); command tools are separately closed/confirmed (E33). |
+| Browser | None; owned Edge/Chrome tabs and bounded file viewing are in E48. |
 
 One catalog entry remains defective:
 
 - `undo_last`: E27 fixes pop-before-proof, concurrent inverse/consumption and
-  uncertain claim replay. Guarded memory and file/folder move/rename inverses
-  work. Other legacy/native catalog inverses still require identity/conflict
-  evidence; ungrounded records are preserved and refused.
+  uncertain claim replay. E48 adds browser-tab/focus inverses. Guarded memory,
+  clipboard, application, window, audio, browser and native file inverses have
+  bounded implementations and per-slice checks. The row remains DEFECTIVE
+  because the complete catalog-wide supported-action/legacy compatibility gate
+  has not passed; unknown or ungrounded records are preserved and refused.
 
 [E27](p11_storage_tools.md) repairs show_activity's wrong-path/fake-empty behavior
 and connects stop_current to actual priority global STOP with typed pending/
@@ -87,10 +90,9 @@ lock, sleep_request, restart_request, shutdown_request.
 These need their recorded native identity, verification, inverse/conflict and
 complete-path evidence. Existing functions alone do not close their rows.
 
-Thirty-nine bounded implemented catalog tools: open_app, close_app, move_file, minimize_window, maximize_window, restore_window, clipboard_set, clipboard_clear, clipboard_get, list_apps, app_status, list_windows, rename_file, find_file, file_info, list_processes,
-process_info, process_usage, get_volume, list_audio_devices, battery_status,
-get_system_status, network_status, show_activity, stop_current, save_preference,
-get_preference, create_routine, run_routine, copy_file, list_folder, create_folder, graceful_close_process, terminate_process, move_window, resize_window, safe_delete, run_command and run_powershell. This is backend owned-fixture
+Forty-six bounded implemented catalog tools now include the earlier operations
+plus `open_file`, `open_terminal`, `open_url`, `list_tabs`, `focus_tab`,
+`close_tab` and `download_status`. This is backend owned-fixture
 and SQLite/native evidence, not full UI/device/product certification.
 
 [E28](p11_file_operations.md) adds bounded native file copy/listing and guarded
@@ -208,4 +210,4 @@ Next safe milestone remains P11: close defective tools and bounded
 catalog/inverse/irreversible/backend gates, with separate tested commits. Do not
 call P11 complete until its required rows pass. P12 remains expressly forbidden.
 
-E47 implements owner-scoped opening-only PowerShell; see [evidence](p11_terminal_open.md). E48 implements the six remaining P11 catalog names for owned browser tabs and file viewing; see [evidence](p11_browser_tools.md). Browser focused native checks pass 12/12. Affected regression reached 204 pass / 1 intermittent existing private-desktop teardown failure; the exact failed case passed on retry, and the failure remains recorded. Catalog is 57 registered / 16 unregistered; 46 IMPLEMENTED / 16 MISSING / 1 DEFECTIVE / 10 UNVERIFIED. No exact P11 tool name remains missing, but `undo_last`, physical focus/audio/system, and required A/D/H evidence remain open. P11 remains incomplete; no P12.
+E47 implements owner-scoped opening-only PowerShell; see [evidence](p11_terminal_open.md). E48 implements the six remaining P11 catalog names for owned browser tabs and file viewing; see [evidence](p11_browser_tools.md). Browser focused native checks pass 12/12. Affected regression reached 204 pass / 1 intermittent existing private-desktop teardown failure; the exact failed case passed on retry, and the failure remains recorded. D-01/D-04/D-05/D-06/D-07/D-08 now cite later E-series evidence; D-02/D-03/D-09/D-10 remain unresolved at their documented scope. Catalog is 57 registered / 16 unregistered; 46 IMPLEMENTED / 16 MISSING / 1 DEFECTIVE / 10 UNVERIFIED. No exact P11 tool name remains missing, but `undo_last`, physical focus/audio/system, and remaining A/D/H evidence remain open. P11 remains incomplete; no P12.
