@@ -75,3 +75,17 @@ confirmation, with no forced application close and factual non-undoable or
 uncertain effects. This resolves behavior, not permission to disrupt the owner's
 active session for automated validation, nor a waiver of required evidence.
 P11 remains incomplete; P12 is forbidden.
+
+
+## Resolved owner decision: terminal opening only (2026-10-22)
+
+The owner explicitly requested: "just opening of Powershell is enough" and
+will type/run commands manually. open_terminal therefore accepts an empty
+argument object and launches fixed Windows PowerShell with -NoLogo -NoProfile
+in a native new console. No command typing, client/descendant automation,
+working-directory controls, elevation or terminal scripting is part of this
+tool. Existing closed diagnostic/project-command tools remain separate.
+Ownership before resume, bounded launch, process readback and STOP cleanup
+remain required. Successful launch is handed to the user; subsequent commands
+are user actions and cannot be undone by PLUMA. Automatic undo never force
+terminates that terminal. This scope does not waive other P11 acceptance.

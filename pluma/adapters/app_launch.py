@@ -90,10 +90,12 @@ def startup_info():
     return win32process.STARTUPINFO()
 
 
-def create_process(image, argv, cwd):
+def create_process(image, argv, cwd, *, environment=None, new_console=False):
     import win32process
+    info = startup_info()
     process, thread, pid, tid = win32process.CreateProcess(image, subprocess.list2cmdline(argv),
-        None, None, False, 4 | subprocess.CREATE_NO_WINDOW, None, cwd, startup_info())
+        None, None, False, 4 | (subprocess.CREATE_NEW_CONSOLE if new_console else subprocess.CREATE_NO_WINDOW),
+        environment, cwd, info)
     return process.Detach(), thread.Detach(), pid, tid
 
 
@@ -117,7 +119,13 @@ def launch(state, context):
                     raise ValueError('Application image or working directory changed.')
             token.raise_if_cancelled()
             job = WindowsJobObject()  # crash/STOP containment until verified successful promotion
-            handle, thread, pid, tid = create_process(str(image), state['argv'], str(cwd))
+            environment = None
+            if state.get('environment_class') == 'system_terminal':
+                environment = dict(os.environ)
+                environment['PSModulePath'] = str(windows_directory() / 'System32/WindowsPowerShell/v1.0/Modules')
+                environment.pop('PSExecutionPolicyPreference', None)
+            handle, thread, pid, tid = create_process(str(image), state['argv'], str(cwd), environment=environment,
+                new_console=state.get('environment_class') == 'system_terminal')
             creation = owned_process_creation_time(SimpleNamespace(sentinel=handle))
             if not creation: raise ValueError('Original application creation time is unavailable.')
             resource = context.register_owned_resource('subprocess', ResourceOwnership.PLUMA_CREATED, str(pid), {
@@ -140,6 +148,11 @@ def launch(state, context):
                     kind='external', code='APP_HANDOFF_OR_EXIT_UNVERIFIED',
                     identity={'pid': pid, 'creation_time': creation, 'command_class': state['tool']}))
                 raise ValueError('Launcher exited or handed off outside the owned process. No existing app is claimed.')
+            if state.get('environment_class') == 'system_terminal':
+                # CREATE_NEW_CONSOLE is a native creation contract. The console
+                # host is not the PowerShell PID; do not claim its GUI windows.
+                visible = []
+                break
             visible = windows(pid, creation)
             if visible: break
             if time.monotonic() >= deadline: raise TimeoutError('Owned application window did not appear.')
@@ -179,10 +192,13 @@ def launch(state, context):
 def verify(state, *, restored=False):
     from pluma.core.ownership import subprocess_absent
     if state.get('action') != 'app_launch' or state.get('guard_version') != 1: return False
-    if restored: return subprocess_absent(state['pid'], state['creation_time'])
+    if restored:
+        return subprocess_absent(state['pid'], state['creation_time'])
     with _process(state['pid'], state['creation_time']) as (process, creation):
-        return (os.path.normcase(process.exe()) == os.path.normcase(state['argv'][0])
-            and bool(state['windows']) and windows(state['pid'], creation) == state['windows'])
+        valid = (os.path.normcase(process.exe()) == os.path.normcase(state['argv'][0])
+            and (state.get('environment_class') == 'system_terminal'
+                or bool(state['windows']) and windows(state['pid'], creation) == state['windows']))
+        return valid
 
 
 def restore(state):

@@ -196,6 +196,7 @@ class Router:
             (re.compile(r"^\s*rename\s+(?:file\s+)?([^\s]+)\s+to\s+([^\s]+)\s*$", re.I), "_fast_rename_file"),
 
             # --- App Launch / Focus / Close ---
+            (re.compile(r"^\s*(?:open|launch|start)\s+(?:terminal|powershell|windows terminal)\s*$", re.I), "_fast_open_terminal"),
             (re.compile(r"^\s*(?:open|launch|start)\s+(.+?)\s*$", re.I), "_fast_open_app"),
             (re.compile(r"^\s*(?:close|quit|exit)\s+(.+?)\s*$", re.I), "_fast_close_app"),
             (re.compile(r"^\s*focus\s+(?:on\s+)?(.+?)\s*$", re.I), "_fast_focus_app"),
@@ -346,6 +347,10 @@ class Router:
     def _fast_volume_down(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         plan = self._make_fast_plan(req.request_id, "set_volume", {"level": 20}, "Decrease master volume.")
         return RouteResult(route=RouteMode.FAST, reason="Matched 'volume down'", plan=plan)
+
+    def _fast_open_terminal(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        return RouteResult(route=RouteMode.FAST, reason='Explicit separate terminal request.',
+            plan=self._make_fast_plan(req.request_id, 'open_terminal', {}, 'Open a separate terminal.'))
 
     def _fast_open_app(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         app_raw = m.group(1).strip()

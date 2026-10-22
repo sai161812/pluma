@@ -1,6 +1,26 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 owned persistent application launch
+## Current checkpoint: 2026-10-22, P11 opening-only PowerShell
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- Owner clarification: open_terminal only opens PowerShell; commands are entered
+  manually. Empty typed arguments, no terminal typing/client automation, cwd
+  control or elevation. Fixed native new-console launch uses existing Job/STOP
+  ownership and original process readback. See [E47](docs/completion/p11_terminal_open.md).
+- Native focused **7 passed (2.45s)**; affected regression **364 passed (44.60s)**.
+  Process success persistence, STOP drain and schema-before-policy are covered.
+  Obsolete terminal routes now resolve to open_terminal. Live terminal inverse
+  refuses when no safely attributable GUI-close target exists; no force fallback.
+- Catalog **51 registered / 22 unregistered; 40 IMPLEMENTED / 22 MISSING /
+  1 DEFECTIVE / 10 UNVERIFIED**. Six P11 tools remain missing: open_file and
+  open_url/list_tabs/focus_tab/close_tab/download_status. Physical focus2/audio4/
+  system4, full undo_last and A/D/H remain open. No waiver or P12 eligibility.
+- Source parent 99255f9. Next safe work is owned Edge/Chrome browser tools plus
+  browser-backed file/PDF viewing. No new questions, personal profiles, settings
+  changes, UI redesign, action-entry enabling or repeated completed audits.
+
+## Previous checkpoint: 2026-10-22, P11 owned persistent application launch
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue every remaining P11 tool.
 

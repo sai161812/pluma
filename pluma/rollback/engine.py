@@ -57,12 +57,12 @@ class RollbackEngine:
                 ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')):
             capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
             return self.clipboard_inverse(state if action == 'clipboard_restore' else state['pre_state'], capsule)
-        if action == 'pending_mutation' and state.get('tool') == 'open_app':
+        if action == 'pending_mutation' and state.get('tool') in ('open_app', 'open_terminal'):
             capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
             pending = state['pre_state']
             resources = [item for item in capsule.owned_resources if item.ownership.value == 'PLUMA_CREATED'
                 and item.metadata.get('persistent_launch_id') == pending.get('launch_id')
-                and item.metadata.get('command_class') == 'open_app'] if capsule is not None else []
+                and item.metadata.get('command_class') == state['tool']] if capsule is not None else []
             if len(resources) == 1 and type(resources[0].metadata.get('creation_time')) is int:
                 from pluma.rollback.owned import apply_owned
                 metadata = resources[0].metadata

@@ -869,3 +869,12 @@ devices and runtime dependencies can change, so occasional bounded maintenance
 may still be necessary. Pin and retain the known-good environment, then test
 changes deliberately. This guide does not promise zero errors forever or add
 an always-on updater, cloud dependency or maintenance service to PLUMA.
+
+
+## Owner clarification: P11 terminal scope (2026-10-22)
+
+open_terminal only opens Windows PowerShell. The owner types commands manually.
+Do not add terminal input automation, arbitrary command/argument fields, directory
+controls or elevation. See docs/completion/p11_scope_decisions.md. Retain the
+existing typed diagnostic/project-command tools and normal execution safeguards.
+This clarification does not authorize P12 or waive remaining P11 tools/checks.

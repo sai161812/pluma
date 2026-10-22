@@ -7,6 +7,47 @@ from pydantic import BaseModel, Field
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 
 
+class OpenTerminalArgs(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+
+
+def capture_terminal(args, context=None):
+    from pluma.adapters.terminal_window import capture
+    return capture(args, context)
+
+
+def execute_open_terminal(args, context=None):
+    from pluma.adapters import app_launch
+    try:
+        context.cancellation_token.raise_if_cancelled()
+        state = next(item['pre_state'] for item in reversed(context.undo_stack)
+            if item.get('action') == 'pending_mutation' and item.get('tool') == 'open_terminal')
+        if (state['action'] != 'app_launch' or state['tool'] != 'open_terminal'
+                or state['app_name'] != 'windows_powershell'):
+            raise ValueError('Terminal does not match its typed intent.')
+        state = app_launch.launch(state, context)
+        return ToolResult.success('open_terminal', data={key: state[key] for key in ('pid', 'creation_time')},
+            verified=True, undo_record=state, adapter_used='native_owned_console',
+            factual_message='PowerShell started in a new native console. Enter commands manually.').model_copy(
+                update={'private_context': {'terminal_window': state}})
+    except Exception:
+        return ToolResult.failure('open_terminal', 'PowerShell launch ownership was refused or unverified.', 'TERMINAL_UNVERIFIED')
+
+
+def verify_open_terminal(result):
+    from pluma.adapters.app_launch import verify
+    try:
+        state = result.private_context['terminal_window']
+        valid = (result.ok and result.tool == state['tool'] == 'open_terminal'
+            and result.undo_record == state and result.adapter_used == 'native_owned_console'
+            and result.data == {key: state[key] for key in ('pid', 'creation_time')}
+            and verify(state))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=bool(valid), method='native_powershell_process_identity',
+        detail='Owned PowerShell process identity independently verified.' if valid else 'Console state was not verified.')
+
+
 class CommandArgs(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
     command_id: Literal['hostname', 'identity', 'network']
@@ -105,6 +146,10 @@ def verify_command(result):
 
 
 TERMINAL_TOOL_SPECS = [
+    ToolSpec(name='open_terminal', description='Open Windows PowerShell only; the user types commands. No arguments, directory control or elevation.',
+        args_schema=OpenTerminalArgs, risk_class=RiskClass.LOW, timeout_s=14, execution_scope='task_service',
+        executor=execute_open_terminal, verifier=verify_open_terminal, undo_builder=capture_terminal,
+        adapter_priority=[AdapterPriority.NATIVE_API], creates_resources=True),
     ToolSpec(name='run_command', description='Run a fixed read-only Windows diagnostic ID; no command strings.',
         args_schema=CommandArgs, risk_class=RiskClass.READ, timeout_s=12, process_isolated=True,
         executor=partial(execute_command, tool='run_command'), verifier=verify_command,

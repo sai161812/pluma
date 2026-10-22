@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-22 E46 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-22 E47 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -52,11 +52,11 @@ evidence; see [focus evidence](p11_window_focus.md). No acceptance waiver.
 
 ## P11 catalog: actual remaining work
 
-All 73 exact catalog names: **50 registered / 23 unregistered**. Status across
-all rows: **39 implemented / 23 missing / 1 defective / 10 unverified**. Of the
-23 missing names, **16 are assigned to P12**. They were inspected, not implemented
+All 73 exact catalog names: **51 registered / 22 unregistered**. Status across
+all rows: **40 implemented / 22 missing / 1 defective / 10 unverified**. Of the
+22 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**39 implemented / 7 missing / 1 defective / 10 unverified**.
+**40 implemented / 6 missing / 1 defective / 10 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
@@ -207,3 +207,5 @@ repeat-until-green claim, skipped requirements or amended history hides them.
 Next safe milestone remains P11: close defective tools and bounded
 catalog/inverse/irreversible/backend gates, with separate tested commits. Do not
 call P11 complete until its required rows pass. P12 remains expressly forbidden.
+
+E47 implements owner-scoped opening-only PowerShell; see [evidence](p11_terminal_open.md). No command entry/client automation. Native focused 7 / affected 364 pass. Six missing P11 names remain. Full undo/device/A/D/H gates remain open; no P12.
