@@ -1,9 +1,14 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 legacy undo selection (E53)
+## Current checkpoint: 2026-10-22, P11 terminal policy reconciliation (E54)
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
 
+- [E54](docs/completion/p11_terminal_policy_reconciliation.md) corrects the
+  stale F-04 matrix row: 36 terminal/policy fixtures pass for closed
+  diagnostics, exact-confirmed configured commands, command-schema refusal
+  and manual PowerShell opening. ADMIN elevation dispatch remains blocked and
+  H-05 is still open.
 - [E53](docs/completion/p11_legacy_undo_selection.md) lets `undo_last` skip
   known pre-guard records without claiming or changing them. The guarded older
   preference inverse and clipboard lookup/claim consistency fixtures passed
