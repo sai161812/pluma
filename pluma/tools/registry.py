@@ -57,6 +57,7 @@ class WorkerRequest:
     grounded_ui_target: Optional[Dict[str, Any]] = None
     storage_path: Optional[str] = None
     supervisor_pid: Optional[int] = None
+    execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
 
 @dataclass
@@ -179,6 +180,7 @@ def _worker_process_loop(
             worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
             worker_ctx.storage_path = worker_req.storage_path
             worker_ctx.supervisor_pid = worker_req.supervisor_pid
+            worker_ctx.execution_binding = worker_req.execution_binding
             
             res = _invoke_executor(executor_fn, args, worker_ctx, admission)
                 
@@ -586,7 +588,7 @@ class ToolRegistry:
         return self.work_gate.submit(_GLOBAL_TOOL_EXECUTOR, fn, *args,
                                      task_id=task_id, command_class=command_class, _task_context=_task_context, **kwargs)
 
-    def _owned_prestate(self, spec, arguments, context, token, timeout_s):
+    def _owned_prestate(self, spec, arguments, context, token, timeout_s, execution_binding=None):
         """Bound capture without detaching its worker/future from the capsule."""
         from functools import partial
         from pluma.core.cancellation import StopReason, TaskCancelledError
@@ -599,6 +601,7 @@ class ToolRegistry:
                 request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
                     storage_path=getattr(context, "storage_path", None),
                     supervisor_pid=os.getpid(),
+                    execution_binding=execution_binding,
                     env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")})
                 # Required isolation fails closed before calling any builder.
                 try:
@@ -929,6 +932,7 @@ class ToolRegistry:
         # Policy work is admitted and retained on the same capsule. A late
         # approval after STOP/deadline is ignored; it cannot dispatch an action.
         active_policy = policy_engine or self._policy_engine
+        execution_binding = None
         effective_risk = spec.risk_class
         approval_state = "NOT_CONFIGURED"
         if active_policy is not None:
@@ -969,6 +973,8 @@ class ToolRegistry:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
                         "Blocked by policy: " + policy_eval.reason, error_code="POLICY_DENIED"))
+            if tool_name == 'run_project_command':
+                execution_binding = getattr(policy_eval, 'execution_binding', None)
 
         # 2. Check cancellation latch before starting
         # Cancellability describes in-flight work; it never exempts admission
@@ -1001,7 +1007,8 @@ class ToolRegistry:
                 validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
                     "Irreversible action requires an owned task and durable intent journal.", "COMMIT_JOURNAL_REQUIRED"))
         if spec.undo_builder:
-            capture = self._owned_prestate(spec, validated_args, task_context, token, timeout_s)
+            capture = self._owned_prestate(spec, validated_args, task_context, token, timeout_s,
+                execution_binding=execution_binding)
             if not capture.ok:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, capture)
@@ -1082,6 +1089,7 @@ class ToolRegistry:
             grounded_ui_target=grounded_ui_target,
             storage_path=getattr(task_context, "storage_path", None),
             supervisor_pid=os.getpid(),
+            execution_binding=execution_binding,
         )
 
 
@@ -1183,28 +1191,31 @@ class ToolRegistry:
                                     metadata=wr.metadata,
                                 )
                                 # Item 1: Establish persistent job object in parent
-                                if wr.resource_type == "subprocess" and sys.platform == "win32":
+                                if (wr.resource_type == "subprocess" and sys.platform == "win32"
+                                        and wr.ownership == 'PLUMA_CREATED' and wr.metadata.get('lifetime') != 'task'):
                                     pid = wr.metadata.get("pid")
                                     if pid:
                                         try:
-                                            from pluma.core.job_object import WindowsJobObject
-                                            persistent_job = WindowsJobObject(
-                                                name=f"pluma-app-{pid}",
-                                                kill_on_close=False,
-                                            )
-                                            persistent_job.assign_process(pid)
+                                            from pluma.core.ownership import adopt_contained_process
+                                            persistent_job = adopt_contained_process(pid,
+                                                wr.metadata.get('creation_time', wr.metadata.get('creation_time_ns')),
+                                                getattr(task_context, 'job_object', None))
                                             res_obj.metadata["persistent_job"] = persistent_job
-                                        except Exception as job_err:
-                                            # Containment failed: kill process and fail closed
-                                            import subprocess
-                                            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                        except Exception:
+                                            # Drain only the original owned worker Job;
+                                            # never target a potentially reused foreign PID.
                                             result = ToolResult.failure(
                                                 tool_name,
-                                                f"Mandatory Job Object containment failed for PID {pid} in parent: {job_err}",
+                                                'Mandatory owned process containment could not be verified.',
                                                 error_code="JOB_CONTAINMENT_FAILED",
                                             )
+                                            try:
+                                                worker_controller.dispose_owned_worker()
+                                            except Exception:
+                                                pass  # Controller remains capsule-owned for cleanup retry.
                             except Exception:
-                                pass
+                                result = ToolResult.failure(tool_name,
+                                    'Worker resource ownership could not be recorded.', 'RESOURCE_OWNERSHIP_FAILED')
                     # Propagate snapshot
                     if tool_name == "inspect_active_window" and result.ok and task_context:
                         registry = getattr(task_context, "snapshot_registry", None)
@@ -1482,6 +1493,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.system import SYSTEM_TOOL_SPECS
     from pluma.tools.processes import PROCESS_TOOL_SPECS
     from pluma.tools.memory import MEMORY_TOOL_SPECS
+    from pluma.tools.terminal import TERMINAL_TOOL_SPECS
     from pluma.tools.ui import ALL_UI_TOOLS
     from pluma.tools.windows import WINDOW_TOOL_SPECS
 
@@ -1493,6 +1505,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + SYSTEM_TOOL_SPECS
         + PROCESS_TOOL_SPECS
         + MEMORY_TOOL_SPECS
+        + TERMINAL_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS
         + ALL_UI_TOOLS
     )

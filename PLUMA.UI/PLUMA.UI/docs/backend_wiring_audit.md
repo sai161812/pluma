@@ -1,10 +1,9 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E32](../../../docs/completion/p11_recycle_recovery.md)
-adds bounded folder/interrupted recycle recovery with exact native identity,
-capsule-owned inverse workers and canonical initial intent IDs. Manual pending
-recovery refuses live/unverified owners. Non-P12 catalog: 23 implemented,
-16 missing, 2 defective, 16 unverified. P11 incomplete; P12 forbidden; action
+Current P11 implementation update: [E33](../../../docs/completion/p11_terminal_commands.md)
+adds closed diagnostics, exact-confirmed owner-configured commands, native
+exit/output/tree readback and private minimal commit intents. Non-P12 catalog:
+25 implemented, 14 missing, 2 defective, 16 unverified. P11 incomplete; P12 forbidden; action
 entry disabled. Historical evidence retains its own source provenance.
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT

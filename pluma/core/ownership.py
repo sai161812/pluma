@@ -164,6 +164,41 @@ def get_process_creation_time(pid: int) -> Optional[int]:
         kernel32.CloseHandle(h_process)
 
 
+def adopt_contained_process(pid, creation_time, task_job):
+    """Adopt only an exact live handle already contained by this task's Job.
+
+    Reused/unowned PIDs are never assigned or terminated. A failed promotion
+    stays inside the original worker/task containment for ordinary cleanup.
+    """
+    import _winapi
+    import ctypes as c
+    from ctypes import wintypes as w
+    from types import SimpleNamespace
+    from pluma.core.job_object import WindowsJobObject, owned_process_creation_time
+    if type(pid) is not int or type(creation_time) is not int or not getattr(task_job, '_handle', None):
+        raise ValueError('Exact process identity and task containment are required.')
+    handle = _winapi.OpenProcess(0x101101, False, pid)
+    job = None
+    try:
+        process = SimpleNamespace(sentinel=handle)
+        if owned_process_creation_time(process) != creation_time or _winapi.WaitForSingleObject(handle, 0) != _winapi.WAIT_TIMEOUT:
+            raise ValueError('Process exited or its identity changed.')
+        kernel = c.WinDLL('kernel32', use_last_error=True)
+        kernel.IsProcessInJob.argtypes, kernel.IsProcessInJob.restype = [w.HANDLE, w.HANDLE, c.POINTER(w.BOOL)], w.BOOL
+        member = w.BOOL()
+        if not kernel.IsProcessInJob(handle, task_job._handle, c.byref(member)) or not member.value:
+            raise ValueError('Process does not belong to the original task Job.')
+        job = WindowsJobObject(kill_on_close=False)
+        job.assign_process(process)
+        return job
+    except Exception:
+        if job is not None:
+            job.close()
+        raise
+    finally:
+        _winapi.CloseHandle(handle)
+
+
 class OwnershipRegistry:
     """Tracks PLUMA-owned resources, subprocesses, and temp directories."""
 

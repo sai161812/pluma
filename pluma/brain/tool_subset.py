@@ -92,9 +92,10 @@ SYSTEM_CLIPBOARD_TOOLS = [
 ]
 
 # Route to standard tool name mappings
+TERMINAL_TOOLS = ['run_command', 'run_powershell', 'run_project_command', 'open_terminal']
 ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
     RouteMode.FAST: [],  # FAST route bypasses LLM planning entirely
-    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + WINDOW_MANAGEMENT_TOOLS + AUDIO_TOOLS + SYSTEM_CLIPBOARD_TOOLS,
+    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + WINDOW_MANAGEMENT_TOOLS + AUDIO_TOOLS + SYSTEM_CLIPBOARD_TOOLS + TERMINAL_TOOLS,
     RouteMode.SCREEN: UI_PERCEPTION_TOOLS + WINDOW_MANAGEMENT_TOOLS,
     RouteMode.DEEP: (
         FILE_TOOLS
@@ -103,6 +104,7 @@ ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
         + UI_PERCEPTION_TOOLS
         + AUDIO_TOOLS
         + SYSTEM_CLIPBOARD_TOOLS
+        + TERMINAL_TOOLS
     ),
 }
 
@@ -137,6 +139,8 @@ class ToolSubsetSelector:
             cmd_lower = command.lower()
             if any(k in cmd_lower for k in ("routine", "preference", "remember")):
                 return base_names
+            if any(k in cmd_lower for k in ('terminal', 'powershell', 'diagnostic', 'project command')):
+                return TERMINAL_TOOLS
             file_hint = any(k in cmd_lower for k in ("file", "folder", "directory", "move", "rename", "pdf", "doc"))
             if file_hint:
                 return FILE_TOOLS + ["open_app", "focus_window"] + (SYSTEM_CLIPBOARD_TOOLS if "clipboard" in cmd_lower else [])

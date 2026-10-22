@@ -1,6 +1,33 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-21, P11 folder and interrupted recycle recovery
+## Current checkpoint: 2026-10-22, P11 controlled command tools
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E33](docs/completion/p11_terminal_commands.md) implements run_command and
+  run_powershell as closed read-only diagnostic IDs, plus a separate typed
+  run_project_command for private owner configuration and exact HIGH approval.
+  No planner command strings, profiles, policy bypass or elevation. Native
+  suspended creation, ownership/Job before resume, bounded pipes/deadlines,
+  native exit/tree/output readback and factual non-undoable intents are covered.
+- Raw command output is redacted from history/model prompts; durable intents
+  store IDs/digest only. Safe process adoption checks exact live handles and
+  original task Job membership; no raw PID taskkill fallback. Legacy app
+  lifetime/inverse acceptance remains open. Shared fixture readiness is atomic.
+- Final focused **49 passed (33.19s)**; affected regression **405 passed /
+  1 elevation deselected (158.04s)**. Raw --runxfail 15 (0.85s), native
+  containment 3 (3.18s), recovery 5 (0.64s). Exact commands, retained failures,
+  source hashes and isolated-storage provenance are in E33/output.
+- Catalog **43 registered / 30 unregistered; 25 IMPLEMENTED / 30 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Sixteen untouched P12 names; **14 P11 names
+  missing**: open_file; default audio device; system four; clipboard get/set;
+  open_terminal; browser five. Legacy native/inverse and A/D/H gates remain.
+- Source parent `0f2fd87`; commit/push this verified recovery point on ui-wiring.
+  Preserve other worktrees, UI/action-entry boundaries and immutable documents.
+  Next safe work is a remaining P11 tool plus its guarded inverse/native proof,
+  not P12. No full milestone completion or owner waiver is claimed.
+
+## Previous checkpoint: 2026-10-21, P11 folder and interrupted recycle recovery
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Owner requested all remaining P11.
 Use PLUMA_COMPLETION_PROMPTS.md and its shared contract; no completion waiver.

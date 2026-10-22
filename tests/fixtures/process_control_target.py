@@ -8,10 +8,16 @@ import sys
 import time
 
 
+def publish_ready(marker, state):
+    temporary = marker.with_suffix('.partial')
+    temporary.write_text(json.dumps(state), encoding='utf-8')
+    temporary.replace(marker)
+
+
 def main():
     marker, mode = Path(sys.argv[1]), sys.argv[2]
     if mode == 'headless':
-        marker.write_text(json.dumps({'pid': os.getpid(), 'hwnd': None}), encoding='utf-8')
+        publish_ready(marker, {'pid': os.getpid(), 'hwnd': None})
         time.sleep(60)
         return
     user, kernel = c.WinDLL('user32', use_last_error=True), c.WinDLL('kernel32', use_last_error=True)
@@ -48,7 +54,7 @@ def main():
         None, None, module, None)
     if not hwnd:
         raise c.WinError()
-    marker.write_text(json.dumps({'pid': os.getpid(), 'hwnd': hwnd}), encoding='utf-8')
+    publish_ready(marker, {'pid': os.getpid(), 'hwnd': hwnd})
     user.GetMessageW.argtypes, user.GetMessageW.restype = [c.POINTER(w.MSG), w.HWND, w.UINT, w.UINT], w.BOOL
     user.TranslateMessage.argtypes = [c.POINTER(w.MSG)]
     user.DispatchMessageW.argtypes, user.DispatchMessageW.restype = [c.POINTER(w.MSG)], c.c_ssize_t

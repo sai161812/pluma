@@ -10,7 +10,7 @@ Spec §14, §15:
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from enum import Enum
 import logging
@@ -39,6 +39,7 @@ class PolicyEvaluationResult:
     reason: str
     requires_confirmation: bool = False
     requires_elevation: bool = False
+    execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
     @property
     def is_allowed(self) -> bool:
@@ -58,9 +59,11 @@ class PolicyEngine:
         self,
         rules: Optional[PolicyRules] = None,
         confirmation_contract: Optional[ConfirmationContract] = None,
+        command_catalog_path: Optional[str] = None,
     ) -> None:
         self.rules = rules or PolicyRules()
         self.confirmation_contract = confirmation_contract
+        self.command_catalog_path = command_catalog_path
 
     def evaluate(
         self,
@@ -71,6 +74,19 @@ class PolicyEngine:
     ) -> PolicyEvaluationResult:
         """Evaluate a tool invocation against policy rules and confirmation boundaries."""
         risk = self.rules.classify(tool_name, arguments, default_risk=default_risk)
+        binding = None
+        if tool_name == 'run_project_command':
+            try:
+                from pluma.adapters.commands import project_binding
+                binding = project_binding(self.command_catalog_path, arguments)
+            except Exception:
+                return PolicyEvaluationResult(PolicyDecision.DENY, RiskClass.HIGH,
+                    'Configured command is unavailable, private, changed or lacks trusted owner configuration.')
+            material = {'working_directory': binding['cwd'], **{
+                f'argument_{index}': value for index, value in enumerate(binding['argv'][1:])}}
+            risk = self.rules.classify(tool_name, material, default_risk=risk)
+            if risk in (RiskClass.READ, RiskClass.LOW, RiskClass.MEDIUM):
+                risk = RiskClass.HIGH
 
         # 1. RESTRICTED & DENY: Strictly forbidden
         if risk in (RiskClass.RESTRICTED, RiskClass.DENY):
@@ -112,6 +128,11 @@ class PolicyEngine:
                 args = deepcopy(arguments)
                 encoded = json.dumps(args, sort_keys=True, ensure_ascii=False, allow_nan=False)
                 prompt = f"Allow {tool_name.replace('_', ' ')} with these arguments?"
+                summary = None
+                if binding is not None:
+                    import subprocess
+                    summary = 'Directory: ' + binding['cwd'] + '\nCommand: ' + subprocess.list2cmdline(binding['argv'])
+                    prompt = 'Run this configured project command? It may change files or external state. No automatic undo is available.'
                 if tool_name in ('terminate_process', 'graceful_close_process'):
                     prompt = (
                         f"Force process {arguments.get('pid')} to exit? Unsaved work can be lost. This cannot be undone."
@@ -119,14 +140,15 @@ class PolicyEngine:
                         f"Ask process {arguments.get('pid')} to close? It may prompt to save work. A completed close cannot be undone.")
                 request = ConfirmationRequest(task_id=task_id, tool_name=tool_name,
                     arguments=args, risk_class=risk,
-                    reason="Explicit approval of this exact operation is required.", prompt_message=prompt)
+                    reason="Explicit approval of this exact operation is required.", prompt_message=prompt,
+                    target_summary=summary)
                 response = self.confirmation_contract.request_confirmation(request)
                 intact = (request.task_id == task_id and request.tool_name == tool_name
-                    and request.risk_class == risk and json.dumps(request.arguments,
+                    and request.risk_class == risk and request.target_summary == summary and json.dumps(request.arguments,
                         sort_keys=True, ensure_ascii=False, allow_nan=False) == encoded)
                 if intact and isinstance(response, ConfirmationResponse) and response.approved is True:
                     return PolicyEvaluationResult(PolicyDecision.ALLOW, risk,
-                        "User approved this exact operation.")
+                        "User approved this exact operation.", execution_binding=binding)
             except Exception:
                 return PolicyEvaluationResult(PolicyDecision.DENY, risk,
                     "Operation denied because approval could not be verified.")

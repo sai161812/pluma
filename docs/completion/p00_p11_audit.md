@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-21 E32 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-22 E33 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -35,18 +35,18 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E32 address individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E33 address individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
 
 ## P11 catalog: actual remaining work
 
-All 73 exact catalog names: **41 registered / 32 unregistered**. Status across
-all rows: **23 implemented / 32 missing / 2 defective / 16 unverified**. Of the
-32 missing names, **16 are assigned to P12**. They were inspected, not implemented
+All 73 exact catalog names: **43 registered / 30 unregistered**. Status across
+all rows: **25 implemented / 30 missing / 2 defective / 16 unverified**. Of the
+30 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**23 implemented / 16 missing / 2 defective / 16 unverified**.
+**25 implemented / 14 missing / 2 defective / 16 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
@@ -56,7 +56,7 @@ or declared optional. For the other 57 catalog entries relevant to this audit:
 | Audio | set_default_audio_device |
 | System | lock, sleep_request, restart_request, shutdown_request |
 | Clipboard | clipboard_get, clipboard_set |
-| Terminal | run_command, run_powershell, open_terminal |
+| Terminal | open_terminal; closed run_command/run_powershell completed in E33 |
 | Browser | open_url, list_tabs, focus_tab, close_tab, download_status |
 
 Two catalog entries remain defective:
@@ -77,10 +77,10 @@ find_file, move_file, rename_file; set_volume, mute, unmute.
 These need their recorded native identity, verification, inverse/conflict and
 complete-path evidence. Existing functions alone do not close their rows.
 
-Twenty-two bounded implemented catalog tools: file_info, list_processes,
+Twenty-five bounded implemented catalog tools: file_info, list_processes,
 process_info, process_usage, get_volume, list_audio_devices, battery_status,
 get_system_status, network_status, show_activity, stop_current, save_preference,
-get_preference, create_routine, run_routine, copy_file, list_folder, create_folder, graceful_close_process, terminate_process, move_window and resize_window. This is backend owned-fixture
+get_preference, create_routine, run_routine, copy_file, list_folder, create_folder, graceful_close_process, terminate_process, move_window, resize_window, safe_delete, run_command and run_powershell. This is backend owned-fixture
 and SQLite/native evidence, not full UI/device/product certification.
 
 [E28](p11_file_operations.md) adds bounded native file copy/listing and guarded
@@ -105,6 +105,11 @@ recovery coverage. These are remaining work, not approved exemptions.
 recovery with capsule-owned inverse workers, live-owner manual refusal and
 canonical initial intent IDs. safe_delete is now bounded IMPLEMENTED; the
 other missing/native/inverse/A/D/H gates remain open.
+
+[E33](p11_terminal_commands.md) adds closed diagnostics plus exact-confirmed
+owner-configured commands, native process/pipe/Job readback and private minimal
+commit intents. Final focused 49; regression 405 with one elevation exclusion;
+raw 15, containment 3, recovery 5. Full P11 remains incomplete.
 
 ## Cross-cutting findings
 

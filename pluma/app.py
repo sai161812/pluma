@@ -72,6 +72,7 @@ class PlumaApplicationRuntime:
         self.policy_engine = PolicyEngine(
             rules=self.policy_rules,
             confirmation_contract=confirmation_contract,
+            command_catalog_path=str(paths.roaming_root / 'commands.json'),
         )
         self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop)
         register_default_tools(self.tool_registry)

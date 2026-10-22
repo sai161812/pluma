@@ -26,6 +26,7 @@ _SENSITIVE_KEY_SUBSTRINGS = (
     "auth", "bearer", "credential", "private_key", "privkey",
     "access_key", "session_token", "jwt", "client_secret",
     "clipboard", "audio_path", "raw_audio",
+    "command_output",
 )
 
 

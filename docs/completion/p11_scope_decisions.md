@@ -37,7 +37,10 @@ Project commands require explicit configuration and exact-call material-effect
 confirmation. Command configuration is trusted owner input, not planner-created
 permission. Bound output, time and owned process trees, preserve policy and
 readback, and record irreversible effects truthfully. This decision resolves
-scope; these catalog tools still require implementation and verification.
+scope. [E33](p11_terminal_commands.md) implements closed diagnostics plus a
+separate typed run_project_command ID wrapper for the private owner catalog,
+exact material confirmation and factual unavailable undo. open_terminal and the
+remaining P11 native/inverse gates still require work.
 
 Declared Windows dependencies may be exercised in an ignored project-local
 virtual environment; do not alter global Python, Windows policy or personal
