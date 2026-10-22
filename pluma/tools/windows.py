@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
+from pluma.tools.app_observations import ListAppWindowsArgs, execute_list, verify_list
 from pluma.verify.common import verify_noop, verify_window_focused
 
 
@@ -21,11 +22,8 @@ from pluma.verify.common import verify_noop, verify_window_focused
 # Argument Schemas
 # ---------------------------------------------------------------------------
 
-class ListWindowsArgs(BaseModel):
+class ListWindowsArgs(ListAppWindowsArgs):
     """Arguments for list_windows."""
-    model_config = {"extra": "forbid"}
-    visible_only: bool = Field(default=True, description="Only list visible top-level windows.")
-    filter: Optional[str] = Field(default=None, description="Optional substring to filter window titles.")
 
 
 class FocusWindowArgs(BaseModel):
@@ -67,50 +65,7 @@ class RestoreWindowArgs(BaseModel):
 # ---------------------------------------------------------------------------
 
 def execute_list_windows(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    visible_only = args.get("visible_only", True)
-    title_filter = args.get("filter")
-    windows: List[Dict[str, Any]] = []
-    
-    if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-        
-        def enum_cb(hwnd: int, lparam: Any) -> bool:
-            if visible_only and not user32.IsWindowVisible(hwnd):
-                return True
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length > 0:
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buf, length + 1)
-                title = buf.value
-                if title_filter and title_filter.lower() not in title.lower():
-                    return True
-                
-                # Get PID
-                pid = wintypes.DWORD()
-                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-                
-                windows.append({
-                    "hwnd": hwnd,
-                    "title": title,
-                    "pid": pid.value,
-                })
-            return True
-
-        WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
-    else:
-        windows.append({"hwnd": 12345, "title": "Dummy Desktop Window", "pid": 100})
-        
-    count = len(windows)
-    return ToolResult(
-        ok=True,
-        tool="list_windows",
-        data={"count": count, "windows": windows},
-        factual_message=f"Found {count} window{'s' if count != 1 else ''}.",
-        verified=True,
-    )
+    return execute_list(args, task_context)
 
 
 def execute_focus_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -355,8 +310,9 @@ WINDOW_TOOL_SPECS: List[ToolSpec] = [
         args_schema=ListWindowsArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_list_windows,
-        verifier=verify_noop,
+        verifier=verify_list,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,

@@ -2,6 +2,7 @@
 
 import sys
 import time
+import os
 import pytest
 
 from pluma.tools.apps import (
@@ -28,7 +29,8 @@ def test_list_apps_and_app_status() -> None:
     assert res.data["count"] > 0
 
     # Query status of python executable
-    res_stat = execute_app_status({"app_name": "python"})
+    from pluma.core.ownership import get_process_creation_time
+    res_stat = execute_app_status({'pid': os.getpid(), 'creation_time': get_process_creation_time(os.getpid())})
     assert res_stat.ok is True
     assert res_stat.verified is True
 
@@ -52,10 +54,12 @@ def test_open_and_close_fixture_app() -> None:
         assert open_res.verified is True
         assert "pid" in open_res.data
         pid = open_res.data["pid"]
+        from pluma.core.ownership import get_process_creation_time
+        identity = {'pid': pid, 'creation_time': get_process_creation_time(pid)}
 
         try:
             # Check app status
-            stat_res = execute_app_status({"app_name": str(pid)})
+            stat_res = execute_app_status(identity)
             assert stat_res.ok is True
             assert stat_res.data["running"] is True
 
@@ -66,7 +70,7 @@ def test_open_and_close_fixture_app() -> None:
 
             # Verify it's not running
             time.sleep(0.3)
-            stat_after = execute_app_status({"app_name": str(pid)})
+            stat_after = execute_app_status(identity)
             assert stat_after.data["running"] is False
         finally:
             import subprocess

@@ -1,9 +1,9 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E36](../../../docs/completion/p11_move_stream_guards.md)
-repairs native all-stream move/rename conflicts and owns guarded native inverses.
-Bounded rename closes; cross-volume move remains open. Non-P12 catalog:
-27 implemented, 13 missing, 2 defective, 15 unverified. P11 incomplete; P12 forbidden; action
+Current P11 implementation update: [E37](../../../docs/completion/p11_app_window_reads.md)
+implements owned native application/window reads and exact identity status.
+No dummy/tasklist/no-op READ paths. Non-P12 catalog:
+30 implemented, 13 missing, 2 defective, 12 unverified. P11 incomplete; P12 forbidden; action
 entry disabled. Historical evidence retains its own source provenance.
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT

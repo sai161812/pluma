@@ -1,6 +1,33 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 native stream conflicts and inverse ownership
+## Current checkpoint: 2026-10-22, P11 native app/window reads
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E37](docs/completion/p11_app_window_reads.md) implements bounded owned native
+  list_apps/app_status/list_windows, exact PID/creation-time status, distinct
+  same-name instances, explicit unavailable entries and independent readback.
+  No dummy/tasklist/no-op READ paths. Caption errors/undecidable truncation refuse;
+  native snapshots/limits are factual, not complete immutable-desktop claims.
+- Focused **108 passed (34.63s)**; final regression **415 passed / 1 elevation
+  deselected (79.58s)**, including the final caption-error case. Raw --runxfail
+  15 (0.39s), containment 3 (2.78s), recovery 5 (0.43s). Final hashes/exits/keys
+  and corrected native helper-window test assumptions are recorded in E37.
+- Catalog **44 registered / 29 unregistered; 30 IMPLEMENTED / 29 MISSING /
+  2 DEFECTIVE / 12 UNVERIFIED**. Sixteen missing P12 names untouched; **13 P11
+  names missing**: open_file; system four; clipboard get/set; open_terminal;
+  browser five. App/window mutations, cross-volume move, physical audio and
+  clipboard/undo/A/D/H acceptance stay open.
+- Power behavior is RESOLVED: owner selected native initiation after material
+  confirmation, without forcing apps closed, with irreversible/uncertain effects
+  recorded. [Decision](docs/completion/p11_scope_decisions.md). Do not re-ask.
+  Next bounded P11 work: native system actions with real readback and inert
+  transition fixtures. Do not disrupt the active user session for automation.
+- Source parent `f29c0fc` (pushed E36). Commit/push this verified checkpoint.
+  Preserve other worktrees, personal data/settings, disabled action entry and
+  immutable specs. No completion waiver or P12 eligibility is inferred.
+
+## Previous checkpoint: 2026-10-22, P11 native stream conflicts and inverse ownership
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

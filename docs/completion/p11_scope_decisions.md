@@ -60,3 +60,14 @@ through owned inverse workers. Unsupported targets/volumes and explicit bounds
 are refused; broader physical acceptance remains separate. This decision does not
 waive safe_delete's broader acceptance, any other P11 gap or A/D/H checks.
 P11 remains incomplete and P12 remains forbidden.
+
+## Resolved owner decision: power-request commit (2026-10-22)
+
+The owner selected **"Initiate the native Windows operation, without forcing
+apps closed; record irreversible or uncertain effects (recommended)"** after
+being asked whether sleep_request/restart_request/shutdown_request should commit
+or only open Windows' power UI. Implement native initiation after exact material
+confirmation, with no forced application close and factual non-undoable or
+uncertain effects. This resolves behavior, not permission to disrupt the owner's
+active session for automated validation, nor a waiver of required evidence.
+P11 remains incomplete; P12 is forbidden.

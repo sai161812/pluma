@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from pluma.core.task_supervisor import ResourceOwnership
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
+from pluma.tools.app_observations import ListAppWindowsArgs, execute_list, execute_status, verify_list, verify_status
+from pluma.tools.processes import ProcessTargetArgs
 from pluma.verify.common import (
     verify_noop,
     verify_process_closed,
@@ -156,18 +158,12 @@ class FocusAppArgs(BaseModel):
     app_name: str = Field(min_length=1, description="Application executable or window title to bring to foreground.")
 
 
-class ListAppsArgs(BaseModel):
+class ListAppsArgs(ListAppWindowsArgs):
     """Arguments for list_apps."""
-    model_config = {"extra": "forbid"}
-
-    filter: Optional[str] = Field(default=None, description="Optional substring to filter application names.")
 
 
-class AppStatusArgs(BaseModel):
+class AppStatusArgs(ProcessTargetArgs):
     """Arguments for app_status."""
-    model_config = {"extra": "forbid"}
-
-    app_name: str = Field(min_length=1, description="Application name or PID to inspect.")
 
 
 # ---------------------------------------------------------------------------
@@ -466,55 +462,11 @@ def execute_focus_app(args: Dict[str, Any], task_context: Any = None) -> ToolRes
 
 
 def execute_list_apps(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    filter_q = args.get("filter")
-    apps: List[Dict[str, Any]] = []
-    
-    if sys.platform == "win32":
-        import subprocess
-        try:
-            out = subprocess.check_output(
-                ["tasklist", "/FO", "CSV", "/NH"],
-                text=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            import csv
-            import io
-            reader = csv.reader(io.StringIO(out))
-            seen = set()
-            for row in reader:
-                if len(row) >= 2:
-                    name, pid_str = row[0], row[1]
-                    if filter_q and filter_q.lower() not in name.lower():
-                        continue
-                    if name not in seen:
-                        seen.add(name)
-                        apps.append({"name": name, "pid": int(pid_str) if pid_str.isdigit() else 0})
-        except Exception as e:
-            return ToolResult.failure("list_apps", f"Failed to list apps: {e}")
-    else:
-        apps.append({"name": "dummy_app", "pid": 1001})
-        
-    count = len(apps)
-    return ToolResult(
-        ok=True,
-        tool="list_apps",
-        data={"count": count, "apps": apps},
-        factual_message=f"Found {count} running application{'s' if count != 1 else ''}.",
-        verified=True,
-    )
+    return execute_list(args, task_context, apps=True)
 
 
 def execute_app_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    app = args["app_name"]
-    v_res = verify_process_running(app)
-    
-    return ToolResult(
-        ok=True,
-        tool="app_status",
-        data={"app_name": app, "running": v_res.ok},
-        factual_message=f"Application '{app}' is {'running' if v_res.ok else 'not running'}.",
-        verified=True,
-    )
+    return execute_status(args, task_context)
 
 
 # ---------------------------------------------------------------------------
@@ -587,8 +539,9 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         args_schema=ListAppsArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_list_apps,
-        verifier=verify_noop,
+        verifier=verify_list,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
@@ -599,8 +552,9 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         args_schema=AppStatusArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_app_status,
-        verifier=verify_noop,
+        verifier=verify_status,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
