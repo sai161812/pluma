@@ -1,6 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E38](../../../docs/completion/p11_power_actions.md)
+Current P11 validation update: [E39](../../../docs/completion/p11_argument_validation.md)
+unifies registered planner/executor argument checks and removes private argument
+values from validation errors. 113 focused / 161 affected regression passes;
+P11 remains incomplete and action entry remains disabled.
+
+Previous P11 implementation update: [E38](../../../docs/completion/p11_power_actions.md)
 registers four confirmed native system requests, non-undoable intents and exact
 readback, and refuses missing-policy dispatch before capture. Non-P12 catalog:
 30 implemented, 9 missing, 2 defective, 16 unverified. Four system effects remain

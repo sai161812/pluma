@@ -1,6 +1,35 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 confirmed native system requests
+## Current checkpoint: 2026-10-22, P11 shared argument validation
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E39](docs/completion/p11_argument_validation.md) makes PlanValidator use the
+  registry's complete registered-schema validation. Dictionary arguments no longer
+  pass with only required-key checks; unavailable/unsupported validators refuse.
+  Argument failures omit private Pydantic input values. A-03 bounded invariant is
+  implemented; actual model/configured-step-limit gates remain P13, untouched.
+- Before: **24 failures / 89 passes**. After: focused **113 passed (1.41s)**;
+  affected regression **161 passed / 1 elevation deselected (9.40s)**; raw
+  --runxfail **15 passed (0.72s)**. Actual final exits/hashes match, fixture keys
+  zero, matrix 298/324 PASS, diff check PASS. No device/model mutation performed.
+- Power implementation and missing-policy guard are committed/pushed in
+  `791853d` ([E38](docs/completion/p11_power_actions.md)): 477 affected passes,
+  native read-only/inert transition evidence. Physical power effects remain U.
+- Catalog unchanged: **48 registered / 25 unregistered; 30 IMPLEMENTED /
+  25 MISSING / 2 DEFECTIVE / 16 UNVERIFIED**. Nine P11 missing names:
+  open_file; clipboard_get/set; open_terminal; open_url/list_tabs/focus_tab/
+  close_tab/download_status. App/window mutations, cross-volume move, physical
+  audio/system, clipboard clear/full undo and remaining A/D/H gates stay open.
+- Source parent `791853d`. Commit/push this verified recovery point. Next safe
+  bounded P11 milestone: private in-memory clipboard capture/undo and isolated
+  native clipboard fixtures, followed by its three typed tools. Do not mutate
+  the user's clipboard for tests or infer a format/undo acceptance waiver.
+  Preserve other worktrees, personal data/settings, immutable specs and disabled
+  action entry. No P12 eligibility or full P11 completion claim.
+
+
+## Previous checkpoint: 2026-10-22, P11 confirmed native system requests
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 
