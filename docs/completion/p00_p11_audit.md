@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-22 E33 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-22 E34 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -35,25 +35,25 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E33 address individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E34 address individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
 
 ## P11 catalog: actual remaining work
 
-All 73 exact catalog names: **43 registered / 30 unregistered**. Status across
-all rows: **25 implemented / 30 missing / 2 defective / 16 unverified**. Of the
-30 missing names, **16 are assigned to P12**. They were inspected, not implemented
+All 73 exact catalog names: **44 registered / 29 unregistered**. Status across
+all rows: **25 implemented / 29 missing / 2 defective / 17 unverified**. Of the
+29 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**25 implemented / 14 missing / 2 defective / 16 unverified**.
+**25 implemented / 13 missing / 2 defective / 17 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
 | Windows | None missing; bounded geometry recorded in E30; legacy rows stay unverified |
 | Files | open_file; safe_delete bounded native recovery completed in E32 |
 | Processes | None missing; bounded process controls recorded in E29 |
-| Audio | set_default_audio_device |
+| Audio | None missing; default-device registration and guarded mutation/undo in E34; physical changes unverified |
 | System | lock, sleep_request, restart_request, shutdown_request |
 | Clipboard | clipboard_get, clipboard_set |
 | Terminal | open_terminal; closed run_command/run_powershell completed in E33 |
@@ -71,9 +71,9 @@ Two catalog entries remain defective:
 and connects stop_current to actual priority global STOP with typed pending/
 residual receipts. Four preference/routine capabilities are now implemented.
 
-Sixteen unverified tools: open_app, close_app, focus_app, list_apps, app_status;
+Seventeen unverified tools: open_app, close_app, focus_app, list_apps, app_status;
 list_windows, focus_window, minimize_window, maximize_window, restore_window;
-find_file, move_file, rename_file; set_volume, mute, unmute.
+find_file, move_file, rename_file; set_volume, mute, unmute, set_default_audio_device.
 These need their recorded native identity, verification, inverse/conflict and
 complete-path evidence. Existing functions alone do not close their rows.
 
@@ -110,6 +110,11 @@ other missing/native/inverse/A/D/H gates remain open.
 owner-configured commands, native process/pipe/Job readback and private minimal
 commit intents. Final focused 49; regression 405 with one elevation exclusion;
 raw 15, containment 3, recovery 5. Full P11 remains incomplete.
+
+[E34](p11_audio_guards.md) repairs audio endpoint/state capture, independent
+readback and guarded durable/owned inverses, and registers exact default-device
+selection. Focused 118; final regression 450 with one elevation exclusion;
+raw 15, containment 3, recovery 5. Physical mutation evidence remains open.
 
 ## Cross-cutting findings
 

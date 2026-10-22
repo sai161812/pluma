@@ -10,7 +10,7 @@ Boundary: No audio libraries imported at module level.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
@@ -149,16 +149,21 @@ def _get_audio_endpoint_volume() -> Optional[Dict[str, Any]]:
 
 
 def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool] = None,
-                               expected_endpoint: Optional[str] = None) -> bool:
+                               expected_endpoint: Optional[str] = None, expected_state=None,
+                               scalar_target=None) -> bool:
     """Native setter with endpoint identity; its caller still requires readback."""
     if os.environ.get("PLUMA_EMULATE_AUDIO") == "1":
         if expected_endpoint not in (None, "fixture:default"):
             return False
+        if expected_state is not None and _get_audio_endpoint_volume() != expected_state:
+            return False
+        if scalar_target is not None:
+            level = round(scalar_target * 100)
         _save_mock_audio(level=level, mute=mute)
         return True
     try:
         from pluma.adapters.audio import set_volume
-        state = VolumeData.model_validate(set_volume(level, mute, expected_endpoint))
+        state = VolumeData.model_validate(set_volume(level, mute, expected_endpoint, expected_state, scalar_target))
         return (not state.is_mock and (expected_endpoint is None or state.endpoint_id == expected_endpoint)
                 and (level is None or abs(state.volume - level) <= 2)
                 and (mute is None or state.muted == mute))
@@ -170,32 +175,38 @@ def _set_audio_endpoint_volume(level: Optional[int] = None, mute: Optional[bool]
 # Undo Builders
 # ---------------------------------------------------------------------------
 
+def _volume_prestate(action, args):
+    current = _get_audio_endpoint_volume()
+    if current is None:
+        return None
+    current = VolumeData.model_validate(current).model_dump()
+    return {'action': action, 'guard_version': 1, 'before': current,
+            'target': {'level': args['level']} if action == 'set_volume' else {'muted': action == 'mute'},
+            'previous_volume': current['volume'], 'previous_muted': current['muted']}
+
+
 def undo_builder_set_volume(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Capture previous volume level and mute status before changing volume."""
-    current = _get_audio_endpoint_volume()
-    if not current:
-        return None
-    return {
-        "action": "set_volume",
-        "previous_volume": current["volume"],
-        "previous_muted": current["muted"],
-    }
+    return _volume_prestate('set_volume', args)
 
 
 def undo_builder_mute(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Capture previous mute status before muting."""
-    current = _get_audio_endpoint_volume()
-    if not current:
-        return None
-    return {
-        "action": "mute",
-        "previous_muted": current["muted"],
-    }
+    return _volume_prestate('mute', args)
 
 
 def undo_builder_unmute(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Capture previous mute status before unmuting."""
-    return undo_builder_mute(args)
+    return _volume_prestate('unmute', args)
+
+
+def _pending_prestate(tool, context):
+    if context is None:
+        return None
+    for record in reversed(getattr(context, 'undo_stack', [])):
+        if record.get('action') == 'pending_mutation' and record.get('tool') == tool:
+            return record['pre_state']
+    raise ValueError('Durable audio intent is unavailable.')
 
 
 # ---------------------------------------------------------------------------
@@ -213,10 +224,18 @@ def _audio_change(tool, args, context):
     previous = _get_audio_endpoint_volume()
     if previous is None:
         return ToolResult.failure(tool, "Audio endpoint state could not be read.", "AUDIO_READ_FAILED")
+    try:
+        captured = _pending_prestate(tool, context)
+        if captured is not None and (captured.get('guard_version') != 1 or captured['before'] != previous
+                or captured['action'] != tool
+                or captured['target'] != ({'level': args['level']} if tool == 'set_volume' else {'muted': tool == 'mute'})):
+            raise ValueError('Audio endpoint changed after capture.')
+    except Exception:
+        return ToolResult.failure(tool, 'Captured audio state changed or is unavailable.', 'AUDIO_PRESTATE_CONFLICT')
     level = args["level"] if tool == "set_volume" else None
     mute = None if tool == "set_volume" else tool == "mute"
     _check_cancel(context)
-    if not _set_audio_endpoint_volume(level=level, mute=mute, expected_endpoint=previous["endpoint_id"]):
+    if not _set_audio_endpoint_volume(level=level, mute=mute, expected_endpoint=previous["endpoint_id"], expected_state=previous):
         return ToolResult.failure(tool, "Audio endpoint change could not be verified.", "AUDIO_SET_FAILED")
     _check_cancel(context)
     current = _get_audio_endpoint_volume()
@@ -224,7 +243,7 @@ def _audio_change(tool, args, context):
             or current["is_mock"] != previous["is_mock"]
             or (level is not None and (abs(current["volume"] - level) > 2
                                       or current["muted"] != previous["muted"]))
-            or (mute is not None and current["muted"] != mute)):
+            or (mute is not None and (current["muted"] != mute or current['scalar'] != previous['scalar']))):
         return ToolResult.failure(tool, "Audio endpoint readback did not confirm the change.", "AUDIO_READBACK_FAILED")
     data = {"observed_state": current}
     if level is not None:
@@ -235,9 +254,32 @@ def _audio_change(tool, args, context):
         message = "Muted master audio." if mute else "Unmuted master audio."
     if current["is_mock"]:
         message = "Fixture audio state changed."
+    record = dict(captured or _volume_record(tool, args, previous), after=current)
     return ToolResult.success(tool, data=data, factual_message=message, verified=True,
+        undo_record=record,
         adapter_used="emulated" if current["is_mock"] else "native_api",
-        verify_detail=VerifyResult(ok=True, method="api", detail="Endpoint identity and state read back."))
+        verify_detail=VerifyResult(ok=True, method="api", detail="Endpoint identity and state read back.")).model_copy(
+            update={'private_context': {'audio_receipt': record}})
+
+
+def _volume_record(tool, args, previous):
+    return {'action': tool, 'guard_version': 1, 'before': previous,
+            'target': {'level': args['level']} if tool == 'set_volume' else {'muted': tool == 'mute'},
+            'previous_volume': previous['volume'], 'previous_muted': previous['muted']}
+
+
+def _coherent_volume_receipt(record):
+    before = VolumeData.model_validate(record['before']).model_dump()
+    after = VolumeData.model_validate(record['after']).model_dump()
+    if (record.get('guard_version') != 1 or before['endpoint_id'] != after['endpoint_id']
+            or before['is_mock'] != after['is_mock']):
+        return False
+    if record['action'] == 'set_volume':
+        target = SetVolumeArgs.model_validate(record['target']).level
+        return abs(after['volume'] - target) <= 2 and before['muted'] == after['muted']
+    return (record['action'] in ('mute', 'unmute')
+            and record['target'] == {'muted': record['action'] == 'mute'}
+            and after['muted'] == (record['action'] == 'mute') and before['scalar'] == after['scalar'])
 
 
 def execute_set_volume(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -307,6 +349,9 @@ def _verify_audio_change(result):
     try:
         state = result.data["observed_state"]
         valid = _valid_volume_result(result, state)
+        receipt = result.private_context['audio_receipt']
+        valid = (valid and _coherent_volume_receipt(receipt) and receipt['action'] == result.tool
+                 and receipt['after'] == state and _get_audio_endpoint_volume() == state)
         if result.tool == "set_volume":
             target = SetVolumeArgs(level=result.data["target_level"]).level
             valid = valid and result.data["actual_level"] == state["volume"] and abs(state["volume"] - target) <= 2
@@ -403,3 +448,107 @@ AUDIO_TOOL_SPECS.extend([
              args_schema=ListAudioDevicesArgs, risk_class=RiskClass.READ, timeout_s=5, process_isolated=True,
              executor=execute_list_audio_devices, verifier=verify_audio_devices),
 ])
+
+
+class DefaultAudioArgs(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    endpoint_id: str = Field(min_length=1, max_length=1024, pattern=r'^[^\x00-\x1f]+$')
+    flow: Literal['render', 'capture']
+    role: Literal['console', 'multimedia', 'communications']
+
+
+class DefaultAudioState(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    endpoint_id: str = Field(min_length=1, max_length=1024)
+    flow: Literal['render', 'capture']
+    role: Literal['console', 'multimedia', 'communications']
+
+
+def undo_builder_default(args):
+    from pluma.adapters.audio import read_default
+    state = DefaultAudioState.model_validate(read_default(args['flow'], args['role'])).model_dump()
+    return {'action': 'set_default_audio_device', 'guard_version': 1, 'before': state,
+            'target': DefaultAudioArgs.model_validate(args).model_dump()}
+
+
+def execute_default(args, context=None):
+    from pluma.adapters.audio import set_default
+    try:
+        _check_cancel(context)
+        captured = _pending_prestate('set_default_audio_device', context)
+        if captured is None or captured.get('guard_version') != 1 or captured['target'] != args:
+            raise ValueError('Durable default audio intent is unavailable.')
+        after = DefaultAudioState.model_validate(set_default(args['flow'], args['role'],
+            args['endpoint_id'], captured['before'])).model_dump()
+        _check_cancel(context)
+        record = dict(captured, after=after)
+        result = ToolResult.success('set_default_audio_device', data=after, verified=False,
+            factual_message='Default audio endpoint selection verified.', adapter_used='native_api', undo_record=record).model_copy(
+                update={'private_context': {'audio_receipt': record}})
+        check = verify_default(result)
+        return result.model_copy(update={'verified': check.ok, 'verify_detail': check})
+    except Exception:
+        return ToolResult.failure('set_default_audio_device', 'Default audio endpoint was refused or not verified.', 'AUDIO_DEFAULT_UNVERIFIED')
+
+
+def verify_default(result):
+    from pluma.adapters.audio import read_default
+    try:
+        state = DefaultAudioState.model_validate(result.data).model_dump()
+        receipt = result.private_context['audio_receipt']
+        valid = (result.ok and result.adapter_used == 'native_api' and receipt.get('guard_version') == 1
+            and receipt['action'] == 'set_default_audio_device' and receipt['after'] == receipt['target'] == state
+            and read_default(state['flow'], state['role']) == state)
+    except Exception:
+        valid = False
+    return VerifyResult(ok=bool(valid), method='native_audio_default', detail=(
+        'Exact endpoint/direction/role read back.' if valid else 'Default audio endpoint was not verified.'))
+
+
+AUDIO_TOOL_SPECS.append(ToolSpec(name='set_default_audio_device',
+    description='Set an exact active endpoint for one explicit direction and role.',
+    args_schema=DefaultAudioArgs, risk_class=RiskClass.MEDIUM, timeout_s=5, process_isolated=True,
+    executor=execute_default, verifier=verify_default, undo_builder=undo_builder_default,
+    adapter_priority=[AdapterPriority.NATIVE_API]))
+
+
+def verify_audio_restored(record):
+    if record.get('guard_version') != 1 or 'after' not in record:
+        return False
+    if record['action'] == 'set_default_audio_device':
+        from pluma.adapters.audio import read_default
+        before = DefaultAudioState.model_validate(record['before']).model_dump()
+        return read_default(before['flow'], before['role']) == before
+    before = VolumeData.model_validate(record['before']).model_dump()
+    return _get_audio_endpoint_volume() == before
+
+
+def restore_audio(record):
+    if record.get('guard_version') != 1 or 'after' not in record:
+        raise ValueError('Audio undo lacks a verified guarded receipt.')
+    action = record['action']
+    if action == 'set_default_audio_device':
+        from pluma.adapters.audio import read_default, set_default
+        before = DefaultAudioState.model_validate(record['before']).model_dump()
+        after = DefaultAudioState.model_validate(record['after']).model_dump()
+        if after != record['target'] or (before['flow'], before['role']) != (after['flow'], after['role']):
+            raise ValueError('Audio undo receipt is inconsistent.')
+        if read_default(after['flow'], after['role']) != after:
+            raise ValueError('Default audio changed after this action.')
+        set_default(before['flow'], before['role'], before['endpoint_id'], after)
+    elif action in ('set_volume', 'mute', 'unmute'):
+        if not _coherent_volume_receipt(record):
+            raise ValueError('Audio undo receipt is inconsistent.')
+        before = VolumeData.model_validate(record['before']).model_dump()
+        after = VolumeData.model_validate(record['after']).model_dump()
+        if before['endpoint_id'] != after['endpoint_id'] or before['is_mock'] != after['is_mock']:
+            raise ValueError('Audio undo endpoint identity is inconsistent.')
+        if _get_audio_endpoint_volume() != after:
+            raise ValueError('Audio endpoint/state changed after this action.')
+        if not _set_audio_endpoint_volume(mute=before['muted'], expected_endpoint=before['endpoint_id'],
+                                         expected_state=after, scalar_target=before['scalar']):
+            raise ValueError('Audio undo was refused.')
+    else:
+        raise ValueError('Audio inverse is not registered.')
+    if not verify_audio_restored(record):
+        raise ValueError('Audio undo readback failed.')

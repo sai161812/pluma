@@ -277,57 +277,19 @@ def _recipe_create_folder(undo_data: Dict[str, Any]) -> RollbackStepResult:
 
 
 def _recipe_set_volume(undo_data: Dict[str, Any]) -> RollbackStepResult:
-    """Restore master volume level and mute status."""
-    prev_vol = undo_data.get("previous_volume")
-    prev_muted = undo_data.get("previous_muted")
-
+    """Restore only the captured endpoint with an unchanged verified post-state."""
     try:
-        from pluma.tools.audio import _set_audio_endpoint_volume, _get_audio_endpoint_volume
-        if not _set_audio_endpoint_volume(level=prev_vol, mute=prev_muted):
-            raise RuntimeError("Volume rollback was refused.")
-        observed = _get_audio_endpoint_volume()
-        if (observed is None or (prev_vol is not None and abs(observed["volume"] - prev_vol) > 1)
-                or (prev_muted is not None and observed["muted"] != prev_muted)):
-            raise RuntimeError("Volume rollback postcondition failed.")
-        return RollbackStepResult(
-            ok=True,
-            action="set_volume",
-            message=f"Restored volume to {prev_vol}% (muted={prev_muted}).",
-            data={"volume": prev_vol, "muted": prev_muted},
-        )
-    except Exception as e:
-        return RollbackStepResult(
-            ok=False,
-            action="set_volume",
-            message=f"Failed to restore volume: {e}",
-            error=str(e),
-        )
+        from pluma.tools.audio import restore_audio
+        restore_audio(undo_data)
+        return RollbackStepResult(ok=True, action=undo_data['action'],
+            message='Restored captured audio endpoint state.')
+    except Exception:
+        return RollbackStepResult(ok=False, action=undo_data.get('action', 'set_volume'),
+            message='Audio undo conflicts or could not be verified.', error='ROLLBACK_CONFLICT')
 
 
 def _recipe_mute(undo_data: Dict[str, Any]) -> RollbackStepResult:
-    """Restore mute status."""
-    prev_muted = undo_data.get("previous_muted", False)
-
-    try:
-        from pluma.tools.audio import _set_audio_endpoint_volume, _get_audio_endpoint_volume
-        if not _set_audio_endpoint_volume(mute=prev_muted):
-            raise RuntimeError("Mute rollback was refused.")
-        observed = _get_audio_endpoint_volume()
-        if observed is None or observed["muted"] != prev_muted:
-            raise RuntimeError("Mute rollback postcondition failed.")
-        return RollbackStepResult(
-            ok=True,
-            action="mute",
-            message=f"Restored mute state ({'muted' if prev_muted else 'unmuted'}).",
-            data={"muted": prev_muted},
-        )
-    except Exception as e:
-        return RollbackStepResult(
-            ok=False,
-            action="mute",
-            message=f"Failed to restore mute status: {e}",
-            error=str(e),
-        )
+    return _recipe_set_volume(undo_data)
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +313,7 @@ class RollbackRecipes:
         self.register("copy_file", _recipe_created_target)
         self.register("safe_delete", _recipe_safe_delete)
         self.register("set_volume", _recipe_set_volume)
+        self.register("set_default_audio_device", _recipe_set_volume)
         self.register("mute", _recipe_mute)
         self.register("unmute", _recipe_mute)
 

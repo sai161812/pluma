@@ -26,7 +26,7 @@ def _enumerator():
                                      comtypes.CLSCTX_INPROC_SERVER)
 
 
-def _volume(level=None, mute=None, expected_endpoint=None):
+def _volume(level=None, mute=None, expected_endpoint=None, expected_state=None, scalar_target=None):
     import comtypes
     from pycaw.api.endpointvolume import IAudioEndpointVolume
     enumerator = device = volume = None
@@ -38,6 +38,16 @@ def _volume(level=None, mute=None, expected_endpoint=None):
             raise ValueError("Audio endpoint identity changed.")
         volume = device.Activate(IAudioEndpointVolume._iid_, comtypes.CLSCTX_INPROC_SERVER, None)
         volume = volume.QueryInterface(IAudioEndpointVolume)
+        if expected_state is not None:
+            observed = dict(endpoint_id=identity, scalar=float(volume.GetMasterVolumeLevelScalar()),
+                            muted=bool(volume.GetMute()), is_mock=False)
+            observed['volume'] = round(observed['scalar'] * 100)
+            if observed != expected_state or device.GetState() != 1:
+                raise ValueError('Audio state changed before mutation.')
+        if scalar_target is not None:
+            if type(scalar_target) is not float or not 0 <= scalar_target <= 1:
+                raise ValueError('Invalid scalar target.')
+            volume.SetMasterVolumeLevelScalar(scalar_target, None)
         if level is not None:
             volume.SetMasterVolumeLevelScalar(level / 100.0, None)
         if mute is not None:
@@ -56,8 +66,55 @@ def read_volume():
     return _with_com(_volume)
 
 
-def set_volume(level=None, mute=None, expected_endpoint=None):
-    return _with_com(_volume, level, mute, expected_endpoint)
+def set_volume(level=None, mute=None, expected_endpoint=None, expected_state=None, scalar_target=None):
+    return _with_com(_volume, level, mute, expected_endpoint, expected_state, scalar_target)
+
+
+def _default(flow, role, target=None, expected=None):
+    import comtypes
+    from pycaw.api.mmdeviceapi import IMMEndpoint
+    from pycaw.api.policyconfig import IPolicyConfig
+    from pycaw.constants import CLSID_CPolicyConfigClient
+    flow_id = {'render': 0, 'capture': 1}[flow]
+    role_id = {'console': 0, 'multimedia': 1, 'communications': 2}[role]
+    enumerator = device = policy = None
+    try:
+        enumerator = _enumerator()
+
+        def read():
+            current = enumerator.GetDefaultAudioEndpoint(flow_id, role_id)
+            if current.GetState() != 1 or current.QueryInterface(IMMEndpoint).GetDataFlow() != flow_id:
+                raise ValueError('Default endpoint is inactive or has changed direction.')
+            return {'endpoint_id': current.GetId(), 'flow': flow, 'role': role}
+
+        before = read()
+        if target is None:
+            return before
+        if expected is None or before != expected:
+            raise ValueError('Default endpoint changed before mutation.')
+        device = enumerator.GetDevice(target)
+        if (device.GetId() != target or device.GetState() != 1
+                or device.QueryInterface(IMMEndpoint).GetDataFlow() != flow_id):
+            raise ValueError('Target endpoint is unavailable or has the wrong direction.')
+        if read() != before:
+            raise ValueError('Default endpoint changed before dispatch.')
+        if before['endpoint_id'] != target:
+            policy = comtypes.CoCreateInstance(CLSID_CPolicyConfigClient, IPolicyConfig, comtypes.CLSCTX_INPROC_SERVER)
+            policy.SetDefaultEndpoint(target, role_id)
+        after = read()
+        if after['endpoint_id'] != target:
+            raise ValueError('Default endpoint readback failed.')
+        return after
+    finally:
+        enumerator = device = policy = None
+
+
+def read_default(flow, role):
+    return _with_com(_default, flow, role)
+
+
+def set_default(flow, role, target, expected):
+    return _with_com(_default, flow, role, target, expected)
 
 
 def _devices(max_entries, context):

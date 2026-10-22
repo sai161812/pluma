@@ -1,4 +1,4 @@
-"""Bounded, capsule-owned execution of registered recycle inverse phases.
+"""Bounded, capsule-owned execution of registered native inverse phases.
 
 Cleanup workers cannot plan or dispatch ordinary tools. They run only a closed
 inverse on executor-captured evidence after the original executor has drained.
@@ -16,7 +16,7 @@ from pluma.tools.base import ToolResult
 
 class InverseRequest(BaseModel):
     model_config = {'extra': 'forbid', 'strict': True}
-    action: Literal['safe_delete', 'pending_mutation']
+    action: Literal['safe_delete', 'pending_mutation', 'set_volume', 'mute', 'unmute', 'set_default_audio_device']
     state: dict[str, Any]
 
 
@@ -38,11 +38,13 @@ def apply_owned(action, state, capsule, *, timeout_s=10):
     with capsule.work_lock:
         capsule.inverse_workers[key] = controller
     outcome = RollbackStepResult(ok=False, action=action,
-        message='Owned recycle inverse was not verified.', error='INVERSE_UNVERIFIED')
+        message='Owned native inverse was not verified.', error='INVERSE_UNVERIFIED')
     errors = []
     try:
         args = InverseRequest(action=action, state=state).model_dump()
-        request = WorkerRequest(capsule.task_id, 'undo_last', args, timeout_s)
+        import os
+        request = WorkerRequest(capsule.task_id, 'undo_last', args, timeout_s,
+            env_overrides={key: value for key, value in os.environ.items() if key.startswith('PLUMA_')})
         status, response = controller.execute_call(execute_inverse, args, request, timeout_s)
         if status == 'ok' and 'inverse' in response.result.data:
             candidate = RollbackStepResult(**response.result.data['inverse'])

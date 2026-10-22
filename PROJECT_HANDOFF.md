@@ -1,6 +1,31 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 controlled command tools
+## Current checkpoint: 2026-10-22, P11 guarded audio and default-device tool
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E34](docs/completion/p11_audio_guards.md) guards volume/mute/unmute with
+  captured endpoint and exact before/after state, independent current readback,
+  newer-edit conflict refusal and unrounded-scalar undo. Legacy unsafe receipts
+  are refused. Automatic inverses run in bounded capsule-owned cleanup workers;
+  durable manual undo remains at-most-once with native/SQLite readback.
+- set_default_audio_device is now registered: exact endpoint/direction/role,
+  MEDIUM approval, active-target check, native default readback and guarded undo.
+  Real current-endpoint selection does not change settings. Isolated transition
+  fixtures are not physical evidence: all four audio mutation rows remain
+  UNVERIFIED pending actual physical changes. No acceptance waiver is inferred.
+- Focused **118 passed (27.14s)**; final affected regression **450 passed /
+  1 elevation deselected (123.39s)**. Raw --runxfail 15 (0.51s), containment 3
+  (3.26s), recovery 5 (0.55s). Exact commands/hashes/limits are recorded in E34.
+- Catalog **44 registered / 29 unregistered; 25 IMPLEMENTED / 29 MISSING /
+  2 DEFECTIVE / 17 UNVERIFIED**. Sixteen missing P12 names are untouched;
+  **13 P11 names missing**: open_file; system four; clipboard get/set;
+  open_terminal; browser five. Legacy native/inverse/A/D/H gates remain.
+- Source parent `8fc1d02` (pushed E33). Commit/push this verified checkpoint;
+  then continue P11's find_file bounded native candidates/readback gap. Preserve
+  all worktrees, disabled action entry, personal settings and immutable specs.
+
+## Previous checkpoint: 2026-10-22, P11 controlled command tools
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

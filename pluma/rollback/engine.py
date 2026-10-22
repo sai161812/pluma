@@ -51,9 +51,9 @@ class RollbackEngine:
         self.task_resolver = None
 
     def _apply(self, task_id, action, state):
-        guarded_recycle = action == 'safe_delete' or (action == 'pending_mutation' and state.get('tool') == 'safe_delete')
+        owned_inverse = action in ('safe_delete', 'set_volume', 'mute', 'unmute', 'set_default_audio_device') or (action == 'pending_mutation' and state.get('tool') == 'safe_delete')
         capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
-        if guarded_recycle and capsule is not None:
+        if owned_inverse and capsule is not None:
             from pluma.rollback.owned import apply_owned
             return apply_owned(action, state, capsule)
         return self._recipes.apply(action, state)
