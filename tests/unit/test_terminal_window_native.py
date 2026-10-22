@@ -5,6 +5,8 @@ import pytest
 
 from pluma.adapters import app_launch as native
 from pluma.core.task_supervisor import TaskState
+from pluma.memory.activity import ActivityQuery
+from pluma.tools import system
 from pluma.tools import terminal
 from pluma.tools.registry import ToolArgumentError
 from tests.unit.test_app_launch_native import private_desktop
@@ -20,10 +22,13 @@ class InDesktop:
     def __call__(self, args, context=None):
         with desktop(self.name):
             if self.operation == 'execute': return terminal.execute_open_terminal(args, context)
-            return terminal.verify_open_terminal(args)
+            if self.operation == 'verify': return terminal.verify_open_terminal(args)
+            if self.operation == 'undo': return system.execute_undo_last(args, context)
+            if self.operation == 'verify_undo': return system.verify_undo_last(args)
+            raise AssertionError('Unknown terminal fixture operation.')
 
 
-@pytest.mark.parametrize('completion', ['success', 'stop'])
+@pytest.mark.parametrize('completion', ['success', 'stop', 'manual_undo_refuses'])
 def test_real_powershell_open_only(runtime, monkeypatch, completion):
     import win32process
     import _winapi
@@ -50,11 +55,24 @@ def test_real_powershell_open_only(runtime, monkeypatch, completion):
                 assert cap.state == TaskState.SUCCEEDED
                 assert native.verify(state)
                 assert all(r.released_at is not None for r in cap.owned_resources if r.resource_type == 'subprocess')
-            else:
+            elif completion == 'stop':
                 runtime.supervisor.request_stop(cap.task_id)
                 assert cap.terminal_ready.wait(8)
                 assert cap.state == TaskState.STOPPED, cap.stop_error
                 assert native.verify(state, restored=True)
+            else:
+                runtime.supervisor.finalize_task(cap.task_id, TaskState.SUCCEEDED)
+                assert cap.state == TaskState.SUCCEEDED and native.verify(state)
+                with desktop(name):
+                    assert native.windows(state['pid'], state['creation_time']) == []
+                undo_spec = runtime.tool_registry.lookup('undo_last')
+                monkeypatch.setattr(undo_spec, 'executor', InDesktop(name, 'undo'))
+                monkeypatch.setattr(undo_spec, 'verifier', InDesktop(name, 'verify_undo'))
+                undo = runtime.tool_registry.execute('undo_last', {}, task(runtime), runtime.ledger)
+                assert not undo.ok and undo.error_code == 'UNDO_UNVERIFIED', undo
+                assert native.verify(state), 'Unsafe console close must leave PowerShell running.'
+                assert runtime.db.execute_read_one('SELECT state FROM undo_claims')['state'] == 'unverified'
+                assert len(ActivityQuery(runtime.db).available_undo_records_for_task(cap.task_id)) == 1
         finally:
             if state and not native.verify(state, restored=True):
                 # Exact newly created fixture only; production never force-undoes

@@ -1,5 +1,71 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
+## Current checkpoint: 2026-10-22, P11 terminal undo boundary
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
+
+- [E51](docs/completion/p11_terminal_undo_boundary.md) verifies the exact
+  opening-only PowerShell behavior on a never-visible private desktop. The
+  separate console host owns the native window; `undo_last` returns
+  `UNDO_UNVERIFIED` and leaves the exact PowerShell process running instead of
+  guessing a target or force-closing user-managed work. The focused native
+  fixture passed **3 tests in 2.28s**.
+- [E50](docs/completion/p11_policy_acceptance.md) passes 58 focused policy,
+  schema, UI and factual-summary tests. [E49](docs/completion/p11_shared_tool_deadline.md)
+  closes D-09 with 117 timeout/ownership/cleanup/rollback passes.
+- P11 remains open for catalog-wide `undo_last`, native focus/audio mutation
+  evidence, D-10 runtime adapter behavior, native H-04 confirmation UI and
+  H-05 elevation integration. No UAC, live focus/audio mutation or physical
+  power action was tested. The 16 P12 entries remain untouched.
+- Requirements matrix audit passed **298 source items / 324 rows**. P12 is
+  forbidden; next safe work stays within P11.
+
+## Previous checkpoint: 2026-10-22, P11 D-09 timeout gate closed
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
+
+- [E49](docs/completion/p11_shared_tool_deadline.md) now closes D-09: one
+  `ToolSpec` deadline covers policy, pre-state, durable journaling, execution
+  and readback. The focused timeout/ownership/cleanup/rollback run passed
+  **117 tests in 40.52s**. D-09 is `IMPLEMENTED` in the matrix.
+- [E50](docs/completion/p11_policy_acceptance.md) closes backend A-07 and
+  H-01/H-02/H-06/H-07 evidence, adds exact Recycle Bin effect confirmation for
+  `safe_delete`, and rejects invalid adapter-priority declarations. Its focused
+  suite passed **58 tests in 6.53s**. D-10 runtime adapter selection/retry stays
+  open despite the metadata validation.
+- Remaining P11 blockers include catalog-wide `undo_last`, native focus/audio
+  mutation evidence, D-10 runtime behavior, native H-04 confirmation UI and
+  H-05 elevation integration. There is no ADMIN ToolSpec in the current catalog;
+  no UAC, live focus/audio mutation or physical power action was tested.
+- Requirements matrix audit passed **298 source items / 324 rows**. P12 remains
+  forbidden and untouched.
+
+## Previous checkpoint details: 2026-10-22, P11 policy/factual-copy/adapter contracts
+
+### E50 details
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue P11 only.
+
+- [E50](docs/completion/p11_policy_acceptance.md) adds end-to-end policy
+  evidence for READ, LOW, explicit DENY and persisted secret redaction; the
+  HIGH `safe_delete` callback now states the exact Recycle Bin recovery effect
+  and target. The A-07 check proves planner `purpose` text is excluded from the
+  user-facing multi-step summary. Adapter priorities are now validated as
+  nonempty, unique and ordered; `inspect_active_window` now declares Native API
+  before UIA.
+- Focused verification: **58 passed in 6.53s** across schema, UI, policy,
+  redaction and factual-summary tests. Requirements matrix audit: **298 source
+  items / 324 rows PASS**; `git diff --check` passes.
+- This closes the backend portions of H-01/H-02/H-06/H-07 and A-07. D-10 still
+  lacks runtime adapter selection/retry. H-04 native dialog wiring and H-05
+  elevation dispatch remain open; no ADMIN ToolSpec exists in the P11 catalog.
+  Catalog-wide `undo_last` and D-02/D-03 native changes also remain open. E49
+  later closes the D-09 shared-deadline gate. No real audio, focus, UAC, or
+  power operation was used as a test.
+- No P12 work was started. See E49 for the shared ToolSpec deadline fix.
+
+## Previous checkpoint: 2026-10-22, P11 shared tool deadline
+
 ## Current checkpoint: 2026-10-22, P11 shared tool deadline
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 gates only.

@@ -15,7 +15,7 @@ from __future__ import annotations
 from enum import Enum, IntEnum
 from typing import Any, Callable, Dict, List, Optional, Type, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -126,8 +126,16 @@ class ToolSpec(BaseModel):
     # Adapter selection
     adapter_priority: List[AdapterPriority] = Field(
         default_factory=lambda: [AdapterPriority.NATIVE_API],
-        description="Preferred adapter order. Registry retries in declared sequence.",
+        description=("Ordered adapter capabilities permitted to this tool. "
+                     "Composite executors must follow this order; the registry does not invent fallbacks."),
     )
+
+    @field_validator("adapter_priority")
+    @classmethod
+    def ordered_adapter_priority(cls, value: List[AdapterPriority]) -> List[AdapterPriority]:
+        if not value or len(value) != len(set(value)) or value != sorted(value):
+            raise ValueError("Adapter priority must be nonempty, unique, and ordered by the locked preference.")
+        return value
 
     # Cancellation
     cancellable: bool = Field(

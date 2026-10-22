@@ -24,14 +24,18 @@ used the remaining time.
   `output/p11_power_actions/run_checks.py verification-tools-focused`
 - Result: **79 passed in 49.91s** (exit 0), including verification ownership,
   executor admission, mutation journal, pre-state ownership and ledger runner.
+- Broader deadline/cleanup/rollback command:
+  `output/p11-native-env/Scripts/python.exe -m pytest tests/unit/test_tool_runner_ledger.py tests/unit/test_verification_ownership.py tests/unit/test_executor_admission.py tests/unit/test_prestate_ownership.py tests/unit/test_cleanup_evidence.py tests/unit/test_rollback_engine.py tests/unit/test_rollback_recipes.py tests/unit/test_manual_undo.py -q`
+- Result: **117 passed in 40.52s** (exit 0), covering factual timeout results,
+  owned worker drainage, durable pending-state cleanup, rollback and manual undo.
 - Direct deadline/verification cases:
   **3 passed in 1.54s** (shared policy/executor deadline, expired journal
   acknowledgement refuses dispatch, and blocked-verifier timeout).
 
-## Remaining D-09 scope
+## D-09 disposition
 
-This closes policy and journal time being added on top of the declared call
-timeout. It does not establish the full D-09 gate: native legacy adapters,
-every rollback path, catalog-wide whole-call cleanup and all task outcome
-combinations still need evidence. D-09 therefore remains DEFECTIVE and P11
-remains incomplete.
+The shared call budget plus the focused timeout/cleanup/rollback evidence above
+close the D-09 backend acceptance behavior. This does not certify physical
+device, installed-release or crash-recovery behavior, which remains tracked in
+the later milestones. Other P11 matrix gates remain open; D-09 itself is now
+IMPLEMENTED.

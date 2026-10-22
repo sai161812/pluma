@@ -138,6 +138,13 @@ class PolicyEngine:
                         f"Force process {arguments.get('pid')} to exit? Unsaved work can be lost. This cannot be undone."
                         if tool_name == 'terminate_process' else
                         f"Ask process {arguments.get('pid')} to close? It may prompt to save work. A completed close cannot be undone.")
+                if tool_name == 'safe_delete':
+                    # This tool always recycles; the confirmation must state
+                    # the actual recovery path and must never imply permanent
+                    # deletion or invent a permanent-delete fallback.
+                    prompt = ('Move this exact item to the Windows Recycle Bin? '
+                        'It may be restored from there. PLUMA will not permanently delete it.')
+                    summary = 'Target: ' + arguments['path']
                 if tool_name == 'lock':
                     prompt = 'Lock this Windows session now? Unlocking requires user authentication. PLUMA cannot automatically undo it.'
                 elif tool_name == 'sleep_request':

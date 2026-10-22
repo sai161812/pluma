@@ -60,6 +60,21 @@ def test_approval_is_requested_for_each_call_and_no_session_blanket_is_applied()
                     ('second', 'move_file', {'source': 'a', 'destination': 'c'})]
 
 
+def test_high_risk_safe_delete_confirmation_names_recycle_bin_effect_and_exact_target():
+    seen = []
+    engine = PolicyEngine(confirmation_contract=CallbackConfirmationContract(
+        lambda request: seen.append(request) or ConfirmationResponse(approved=True)))
+    path = r'C:\PLUMA-P11-fixture\owned.txt'
+    result = engine.evaluate('safe_delete', {'path': path}, RiskClass.HIGH, 'owned-delete-fixture')
+    assert result.decision == PolicyDecision.ALLOW and len(seen) == 1
+    request = seen[0]
+    assert request.prompt_message == (
+        'Move this exact item to the Windows Recycle Bin? It may be restored from there. '
+        'PLUMA will not permanently delete it.')
+    assert request.target_summary == 'Target: ' + path
+    assert request.arguments == {'path': path} and not result.requires_confirmation
+
+
 def test_medium_without_approval_never_captures_prestate_or_mutates_and_logs_denial(runtime, monkeypatch, tmp_path):
     source, destination = tmp_path / 'source', tmp_path / 'destination'
     source.write_bytes(b'unchanged')
@@ -156,3 +171,58 @@ def test_restricted_argument_values_are_not_written_to_policy_logs(caplog):
         result = PolicyEngine().evaluate('probe', {'script': 'bcdedit token=private-fixture-secret'},
                                           RiskClass.HIGH, 'owned')
     assert result.decision == PolicyDecision.DENY and 'private-fixture-secret' not in caplog.text
+
+
+def test_read_policy_allows_verified_memory_read_and_logs(runtime, monkeypatch):
+    monkeypatch.setattr(job_object, 'WindowsJobObject', NATIVE_JOB)
+    cap = task(runtime)
+    result = runtime.tool_registry.execute('get_preference', {'key': 'policy.read.fixture'}, cap, runtime.ledger)
+    assert result.ok and result.verified
+    row = ActivityQuery(runtime.db).actions_for_task(cap.task_id)[0]
+    assert row['tool'] == 'get_preference' and row['risk'] == 'READ'
+    assert row['approval_state'] == 'ALLOW' and row['verified']
+
+
+def test_low_policy_allows_verified_reversible_file_action_and_logs(runtime, monkeypatch, tmp_path):
+    monkeypatch.setattr(job_object, 'WindowsJobObject', NATIVE_JOB)
+    cap = task(runtime)
+    folder = tmp_path / 'policy-low-folder'
+    result = runtime.tool_registry.execute('create_folder', {'path': str(folder)}, cap, runtime.ledger)
+    assert result.ok and result.verified and folder.is_dir()
+    row = ActivityQuery(runtime.db).actions_for_task(cap.task_id)[0]
+    undo = ActivityQuery(runtime.db).available_undo_records_for_task(cap.task_id)
+    assert row['tool'] == 'create_folder' and row['risk'] == 'LOW'
+    assert row['approval_state'] == 'ALLOW' and row['verified'] and len(undo) == 1
+
+
+def test_explicit_deny_is_logged_and_executor_never_runs(runtime):
+    calls = []
+    runtime.tool_registry.register(ToolSpec(name='policy_explicit_deny_probe', description='Deny fixture',
+        args_schema={'type': 'object', 'additionalProperties': False}, risk_class=RiskClass.LOW,
+        timeout_s=1, executor=lambda args: calls.append(True) or ToolResult.success(
+            'policy_explicit_deny_probe', factual_message='Inert fixture.'),
+        verifier=lambda result: VerifyResult(ok=True, method='fixture', detail='Inert readback.')))
+    runtime.tool_registry._policy_engine = PolicyEngine(
+        rules=PolicyRules(overrides={'policy_explicit_deny_probe': 'DENY'}))
+    cap = task(runtime)
+    result = runtime.tool_registry.execute('policy_explicit_deny_probe', {}, cap, runtime.ledger)
+    assert not result.ok and result.error_code == 'POLICY_DENIED' and not calls
+    row = ActivityQuery(runtime.db).actions_for_task(cap.task_id)[0]
+    assert row['approval_state'] == 'DENY' and not row['verified']
+    assert json.loads(row['result_json']) == {'executed': False}
+
+
+def test_secret_arguments_and_result_data_are_redacted_in_persisted_history(runtime):
+    secret = 'private-fixture-secret-92741'
+    runtime.tool_registry.register(ToolSpec(name='policy_redaction_probe', description='Redaction fixture',
+        args_schema={'type': 'object', 'properties': {'password': {'type': 'string'}},
+                     'required': ['password'], 'additionalProperties': False},
+        risk_class=RiskClass.READ, timeout_s=1,
+        executor=lambda args: ToolResult.success('policy_redaction_probe',
+            data={'password': args['password']}, factual_message='Read fixture value.'),
+        verifier=lambda result: VerifyResult(ok=True, method='fixture', detail='Inert readback.')))
+    cap = task(runtime)
+    result = runtime.tool_registry.execute('policy_redaction_probe', {'password': secret}, cap, runtime.ledger)
+    assert result.ok and result.verified
+    row = ActivityQuery(runtime.db).actions_for_task(cap.task_id)[0]
+    assert secret not in json.dumps(row)
