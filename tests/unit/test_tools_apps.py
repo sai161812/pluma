@@ -2,6 +2,7 @@
 
 import sys
 import time
+import os
 import pytest
 
 from pluma.tools.apps import (
@@ -28,49 +29,23 @@ def test_list_apps_and_app_status() -> None:
     assert res.data["count"] > 0
 
     # Query status of python executable
-    res_stat = execute_app_status({"app_name": "python"})
+    from pluma.core.ownership import get_process_creation_time
+    res_stat = execute_app_status({'pid': os.getpid(), 'creation_time': get_process_creation_time(os.getpid())})
     assert res_stat.ok is True
     assert res_stat.verified is True
 
 
-def test_open_and_close_fixture_app() -> None:
-    # 1. Verify forbidden executables (python, cmd, powershell) are rejected per risk policy
-    forbidden_res = execute_open_app({
-        "app_name": sys.executable,
-        "arguments": ["tests/fixtures/fixture_app.py", "spin"],
-    })
-    assert forbidden_res.ok is False
-    assert "forbidden" in forbidden_res.error.lower()
+@pytest.mark.parametrize('name', ['cmd', 'powershell', sys.executable, 'unknown.exe'])
+def test_unregistered_launch_rejected_before_execution(registry, name):
+    from pluma.tools.registry import ToolArgumentError
+    with pytest.raises(ToolArgumentError): registry.validate_call('open_app', {'app_name': name})
 
-    # 2. Open standard app (e.g. notepad.exe on Windows)
-    if sys.platform == "win32":
-        open_res = execute_open_app({
-            "app_name": "notepad.exe",
-            "arguments": [],
-        })
-        assert open_res.ok is True
-        assert open_res.verified is True
-        assert "pid" in open_res.data
-        pid = open_res.data["pid"]
 
-        try:
-            # Check app status
-            stat_res = execute_app_status({"app_name": str(pid)})
-            assert stat_res.ok is True
-            assert stat_res.data["running"] is True
+def test_direct_launch_without_owned_journal_refuses():
+    result = execute_open_app({'app_name': 'notepad', 'arguments': []})
+    assert not result.ok and not result.verified and result.error_code == 'APP_LAUNCH_UNVERIFIED'
 
-            # Close the app
-            close_res = execute_close_app({"app_name": str(pid), "force": True})
-            assert close_res.ok is True
-            assert close_res.verified is True
 
-            # Verify it's not running
-            time.sleep(0.3)
-            stat_after = execute_app_status({"app_name": str(pid)})
-            assert stat_after.data["running"] is False
-        finally:
-            import subprocess
-            try:
-                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
-            except Exception:
-                pass
+# Positive native open, status/ownership and close/undo assertions now live in
+# test_app_launch_native.py and test_app_close_native.py on owned private-desktop
+# fixtures. No direct Notepad launch or raw-PID taskkill against user apps.

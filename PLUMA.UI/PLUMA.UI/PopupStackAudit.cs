@@ -29,7 +29,14 @@ namespace PLUMA.UI
             _host.FramePresented+=snapshot=>
             {
                 frames.Add(snapshot.ToArray());
-                visibleLayoutsReady &= _host.Windows.Where(window=>window.Alpha>0.01).All(window=>window.IsLayoutReady);
+                var unready = _host.Windows.Where(window=>window.Alpha>0.01 && !window.IsLayoutReady).ToArray();
+                if (unready.Length > 0)
+                {
+                    if (visibleLayoutsReady)
+                        foreach (var window in unready)
+                            report.WriteLine($"UNREADY alpha {window.Alpha}; root {window.Root.ActualWidth}x{window.Root.ActualHeight}; content {window.HostedContent?.ActualWidth}x{window.HostedContent?.ActualHeight}; content loaded {window.HostedContent?.IsLoaded}; native {window.ReadBounds()}");
+                    visibleLayoutsReady = false;
+                }
             };
             void Check(bool result,string label)
             {
@@ -79,6 +86,7 @@ namespace PLUMA.UI
             var replacement=new ToastNotification(); replacement.Show("Updated second notice");
             nint originalHandle=_host.HandleFor("B");
             Check(_host.Present("B",24,replacement,lifetime:TimeSpan.FromSeconds(30)),"stable entry updates");
+            Check(_host.Windows.All(window=>window.Alpha<=0.01 || window.IsLayoutReady),"same-class replacement stays transparent until its new content is loaded");
             await Settle();
             Check(_host.Count==2 && _host.Snapshot().Select(p=>p.Key).SequenceEqual(new[]{"A","B"}),"updates do not duplicate or reorder entries");
             Check(_host.HandleFor("B")==originalHandle,"updates reuse the existing native window");
@@ -158,6 +166,7 @@ namespace PLUMA.UI
             Check(_host.Snapshot().Last().Key=="burst-11","latest burst notice remains at bottom");
             nint runningHandle=_host.HandleFor("task");
             Check(_host.Present("task",20,new CancellationAnimation {IsActive=true}),"STOP feedback admitted during crowded stack");
+            Check(_host.Windows.All(window=>window.Alpha<=0.01 || window.IsLayoutReady),"STOP class replacement stays transparent until its native client layout is ready");
             await Settle(); Bounds();
             Check(_host.Snapshot().Any(p=>p.Key=="task"),"STOP presentation is not left in routine overflow");
             Check(_host.HandleFor("task")==runningHandle,"STOP replaces existing progress without creating another window");

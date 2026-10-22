@@ -98,9 +98,10 @@ def test_recipe_create_folder_existed_before_preserved(tmp_path):
     assert folder.exists()
 
 
-def test_recipe_set_volume():
+def test_legacy_audio_undo_without_endpoint_receipt_is_refused(monkeypatch):
+    from pluma.tools import audio
+    monkeypatch.setattr(audio, '_set_audio_endpoint_volume', lambda **kwargs: pytest.fail('Legacy undo must not mutate audio'))
     r = RollbackRecipes()
     undo_data = {'action': 'set_volume', 'previous_volume': 35, 'previous_muted': False}
     res = r.apply('set_volume', undo_data)
-    assert res.ok
-    assert '35%' in res.message
+    assert not res.ok and res.error == 'ROLLBACK_CONFLICT'

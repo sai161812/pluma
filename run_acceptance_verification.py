@@ -292,11 +292,13 @@ if __name__ == "__main__":
         + "\n"
     )
     full_log = header + "\n".join(plugin.lines) + footer
-    with open("test_run_raw.log", "w", encoding="utf-8") as f:
+    output_dir = PROJECT_ROOT / "output" / "verification"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_dir / "test_run_raw.log", "w", encoding="utf-8") as f:
         f.write(full_log)
-    with open("ACCEPTANCE_TEST_RAW_LOG.txt", "w", encoding="utf-8") as f:
+    with open(output_dir / "ACCEPTANCE_TEST_RAW_LOG.txt", "w", encoding="utf-8") as f:
         f.write(full_log)
 
     print(f"\nALL {plugin.passed}/{total_tests} TESTS COMPLETED IN {elapsed:.2f}s ({pass_rate:.1f}% PASS RATE).")
-    print(f"Log written to: test_run_raw.log and ACCEPTANCE_TEST_RAW_LOG.txt ({total_tests} records).")
+    print(f"Logs written under {output_dir}: test_run_raw.log and ACCEPTANCE_TEST_RAW_LOG.txt ({total_tests} records).")
     sys.exit(int(ret))

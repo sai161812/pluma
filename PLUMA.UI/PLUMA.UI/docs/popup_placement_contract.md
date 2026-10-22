@@ -271,6 +271,14 @@ backgrounds on surfaces 17, 19 and 24 fill the shared 112-DIP class viewport via
 the scoped native minimum-height resource, including the themed border. Short
 messages must not leave an unused host-background strip below the notice.
 
+The same readiness gate applies when replacing content in an existing native
+window, including a progress-to-STOP update. Preserve its identity and ordering,
+pause its display lifetime, and keep replacement content transparent until it
+is Loaded and the XAML/native client bounds match. Then use the existing entry
+fade; do not animate visible content through a mismatched client size or count
+an unready replacement as displayed. Native audit checks both same-class and
+STOP replacements and every sampled visible frame.
+
 ## Historical verification of the requirements-only update
 
 - Confirmed that membership covers exactly the 15 surface IDs selected by the

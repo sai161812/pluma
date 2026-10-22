@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 # Standard tool groupings
 FILE_TOOLS = [
+    "open_file",
+    "safe_delete",
+    "copy_file",
+    "list_folder",
+    "file_info",
     "list_files",
     "find_file",
     "move_file",
@@ -42,6 +47,9 @@ UI_PERCEPTION_TOOLS = [
 ]
 
 AUDIO_TOOLS = [
+    "set_default_audio_device",
+    "get_volume",
+    "list_audio_devices",
     "get_volume_status",
     "set_volume",
     "mute",
@@ -51,6 +59,8 @@ AUDIO_TOOLS = [
 ]
 
 WINDOW_MANAGEMENT_TOOLS = [
+    "move_window",
+    "resize_window",
     "minimize_window",
     "maximize_window",
     "restore_window",
@@ -60,9 +70,13 @@ WINDOW_MANAGEMENT_TOOLS = [
 ]
 
 SYSTEM_CLIPBOARD_TOOLS = [
+    'clipboard_get', 'clipboard_set',
+    'lock', 'sleep_request', 'restart_request', 'shutdown_request',
+    "save_preference", "get_preference", "create_routine", "run_routine",
     "get_system_status",
     "system_status",
     "battery_status",
+    "network_status",
     "clear_clipboard",
     "clipboard_clear",
     "get_clipboard_text",
@@ -73,14 +87,20 @@ SYSTEM_CLIPBOARD_TOOLS = [
     "undo_last",
     "stop_current",
     "list_processes",
+    "process_info",
+    "process_usage",
+    "graceful_close_process",
+    "terminate_process",
     "get_process_status",
     "kill_process",
 ]
 
 # Route to standard tool name mappings
+TERMINAL_TOOLS = ['run_command', 'run_powershell', 'run_project_command', 'open_terminal']
+BROWSER_TOOLS = ['open_url', 'list_tabs', 'focus_tab', 'close_tab', 'download_status']
 ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
     RouteMode.FAST: [],  # FAST route bypasses LLM planning entirely
-    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + WINDOW_MANAGEMENT_TOOLS + AUDIO_TOOLS + SYSTEM_CLIPBOARD_TOOLS,
+    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + WINDOW_MANAGEMENT_TOOLS + AUDIO_TOOLS + SYSTEM_CLIPBOARD_TOOLS + TERMINAL_TOOLS + BROWSER_TOOLS,
     RouteMode.SCREEN: UI_PERCEPTION_TOOLS + WINDOW_MANAGEMENT_TOOLS,
     RouteMode.DEEP: (
         FILE_TOOLS
@@ -89,6 +109,8 @@ ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
         + UI_PERCEPTION_TOOLS
         + AUDIO_TOOLS
         + SYSTEM_CLIPBOARD_TOOLS
+        + TERMINAL_TOOLS
+        + BROWSER_TOOLS
     ),
 }
 
@@ -121,12 +143,18 @@ class ToolSubsetSelector:
         # If command hints at specific domain in SMART route, can prioritize or trim
         if route_enum == RouteMode.SMART and command:
             cmd_lower = command.lower()
+            if any(k in cmd_lower for k in ("routine", "preference", "remember")):
+                return base_names
+            if any(k in cmd_lower for k in ('terminal', 'powershell', 'diagnostic', 'project command')):
+                return TERMINAL_TOOLS
+            if any(k in cmd_lower for k in ('browser', 'website', 'url', 'tab', 'download')):
+                return BROWSER_TOOLS
+            file_hint = any(k in cmd_lower for k in ("file", "folder", "directory", "move", "rename", "pdf", "doc"))
+            if file_hint:
+                return FILE_TOOLS + ["open_app", "focus_window"] + (SYSTEM_CLIPBOARD_TOOLS if "clipboard" in cmd_lower else [])
             # If purely clipboard task
             if any(k in cmd_lower for k in ("clipboard", "copy", "paste")):
                 return SYSTEM_CLIPBOARD_TOOLS + APP_WINDOW_TOOLS
-            # If purely file task
-            if any(k in cmd_lower for k in ("file", "folder", "directory", "move", "rename", "pdf", "doc")):
-                return FILE_TOOLS + ["open_app", "focus_window"]
 
         return base_names
 

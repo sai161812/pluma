@@ -102,8 +102,8 @@ class PolicyRules:
             if isinstance(v, str) and ("\\" in v or "/" in v or ":" in v):
                 if self.is_protected_path(v):
                     logger.warning(
-                        "Tool '%s' targets protected system path '%s' -> RESTRICTED",
-                        tool_name, v,
+                        "Tool '%s' targets a protected system path -> RESTRICTED",
+                        tool_name,
                     )
                     return RiskClass.RESTRICTED
 
@@ -111,14 +111,19 @@ class PolicyRules:
             if isinstance(v, str) and (" " in v or ";" in v or "|" in v):
                 if self.contains_restricted_command(v):
                     logger.warning(
-                        "Tool '%s' contains restricted shell command '%s' -> RESTRICTED",
-                        tool_name, v[:80],
+                        "Tool '%s' contains a restricted command -> RESTRICTED",
+                        tool_name,
                     )
                     return RiskClass.RESTRICTED
 
         # 2. Check explicit tool overrides
         if tool_name in self._overrides:
-            return self._overrides[tool_name]
+            override = self._overrides[tool_name]
+            rank = {RiskClass.READ: 0, RiskClass.LOW: 1, RiskClass.MEDIUM: 2,
+                    RiskClass.HIGH: 3, RiskClass.ADMIN: 4, RiskClass.DENY: 5, RiskClass.RESTRICTED: 5}
+            # Configuration can tighten a registered contract, never lower its
+            # mandatory intent, confirmation, elevation or denied boundary.
+            return override if rank[override] >= rank[default_risk] else default_risk
 
         # 3. Default tool risk class
         return default_risk

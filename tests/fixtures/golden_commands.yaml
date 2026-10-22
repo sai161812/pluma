@@ -263,12 +263,11 @@ commands:
   input_mode: text
   expected_route: FAST
   expected_tools:
-  - open_app
+  - open_terminal
   expected_risk: LOW
   no_llm: true
   no_ocr: true
-  normalized_args:
-    app_name: wt
+  normalized_args: {}
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
@@ -277,12 +276,11 @@ commands:
   input_mode: text
   expected_route: FAST
   expected_tools:
-  - open_app
+  - open_terminal
   expected_risk: LOW
   no_llm: true
   no_ocr: true
-  normalized_args:
-    app_name: powershell
+  normalized_args: {}
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true

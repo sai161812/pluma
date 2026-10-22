@@ -22,7 +22,7 @@ namespace PLUMA.UI
         {
             get
             {
-                if (!Root.IsLoaded || Root.XamlRoot is not { } xamlRoot || Root.ActualWidth <= 0 || Root.ActualHeight <= 0) return false;
+                if (!Root.IsLoaded || _content is not { IsLoaded: true } || Root.XamlRoot is not { } xamlRoot || Root.ActualWidth <= 0 || Root.ActualHeight <= 0) return false;
                 if (!PopupDesktopPlacement.Native.GetClientRect(Handle, out var client)) throw new Win32Exception("Could not verify popup client layout.");
                 return Math.Abs(Root.ActualWidth*xamlRoot.RasterizationScale-(client.Right-client.Left)) <= 1 &&
                     Math.Abs(Root.ActualHeight*xamlRoot.RasterizationScale-(client.Bottom-client.Top)) <= 1;

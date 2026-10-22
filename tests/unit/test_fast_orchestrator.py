@@ -148,7 +148,7 @@ class TestOrchestratorFastRoute:
     def test_mute_fast_route_succeeds(self, orchestrator: Orchestrator) -> None:
         result = orchestrator.execute(_req("mute"))
         assert result.route == RouteMode.FAST
-        assert result.final_state == "SUCCEEDED"
+        assert result.final_state == "SUCCEEDED", result
         assert len(result.steps) == 1
         assert result.steps[0].tool == "mute"
 
@@ -169,14 +169,21 @@ class TestOrchestratorFastRoute:
         finally:
             orchestrator.execute(_req("close notepad"))
 
-    def test_show_activity_fast_route(self, orchestrator: Orchestrator) -> None:
-        result = orchestrator.execute(_req("show activity"))
-        assert result.route == RouteMode.FAST
-        assert result.final_state == "SUCCEEDED"
+    def test_show_activity_fast_route(self, orchestrator: Orchestrator, tmp_path: Path) -> None:
+        from pluma.memory.db import DbConnection
+        from pluma.memory.activity import ActivityLedger
+        with DbConnection(str(tmp_path / "owned-history.db")) as db:
+            configured = Orchestrator(registry=orchestrator._registry,
+                supervisor=orchestrator._supervisor, ledger=ActivityLedger(db))
+            result = configured.execute(_req("show activity"))
+            assert result.route == RouteMode.FAST
+            assert result.final_state == "SUCCEEDED"
 
     def test_stop_fast_route(self, orchestrator: Orchestrator) -> None:
         result = orchestrator.execute(_req("stop"))
         assert result.route == RouteMode.FAST
+        assert result.final_state.startswith("STOPPED")
+        assert orchestrator._supervisor.get_task(result.task_id).cancellation_token.reason.value == "user_stop"
 
     def test_undo_fast_route(self, orchestrator: Orchestrator) -> None:
         result = orchestrator.execute(_req("undo"))
@@ -192,10 +199,15 @@ class TestOrchestratorFastRoute:
         assert result.route == RouteMode.FAST
         assert result.final_state == "SUCCEEDED"
 
-    def test_clear_clipboard_fast_route(self, orchestrator: Orchestrator) -> None:
-        result = orchestrator.execute(_req("clear clipboard"))
-        assert result.route == RouteMode.FAST
-        assert result.final_state == "SUCCEEDED"
+    def test_clear_clipboard_fast_route(self, orchestrator: Orchestrator, tmp_path: Path) -> None:
+        from pluma.memory.db import DbConnection
+        from pluma.memory.activity import ActivityLedger
+        with DbConnection(str(tmp_path / "owned-clipboard.db")) as db:
+            configured = Orchestrator(registry=orchestrator._registry,
+                supervisor=orchestrator._supervisor, ledger=ActivityLedger(db))
+            result = configured.execute(_req("clear clipboard"))
+            assert result.route == RouteMode.FAST
+            assert result.final_state == "SUCCEEDED", result
 
     def test_minimize_window_fast_route(self, orchestrator: Orchestrator) -> None:
         result = orchestrator.execute(_req("minimize window"))
@@ -259,7 +271,7 @@ class TestOrchestratorLedger:
     def test_task_recorded_to_ledger(
         self, registry: ToolRegistry, supervisor: TaskSupervisor
     ) -> None:
-        """Verify that insert_task and update_task are called on the ledger."""
+        """Verify request, route and authoritative terminal evidence are sent."""
         mock_ledger = MagicMock()
         orch = Orchestrator(registry=registry, supervisor=supervisor, ledger=mock_ledger)
         result = orch.execute(_req("mute"))
@@ -268,8 +280,13 @@ class TestOrchestratorLedger:
         # insert_task must have been called once
         mock_ledger.insert_task.assert_called_once()
 
-        # update_task must have been called at least twice (route + final state)
-        assert mock_ledger.update_task.call_count >= 2
+        mock_ledger.update_task.assert_called_once_with(result.task_id, route="FAST")
+        mock_ledger.finalize_task.assert_called_once()
+        args, fields = mock_ledger.finalize_task.call_args
+        assert args == (result.task_id,)
+        assert fields["final_state"] == result.final_state == supervisor.get_task(result.task_id).state.value
+        assert fields["entries"] == result.cleanup_evidence
+        assert fields["completed_at"] and result.terminal_persisted is True
 
     def test_task_record_contains_command_text(
         self, registry: ToolRegistry, supervisor: TaskSupervisor

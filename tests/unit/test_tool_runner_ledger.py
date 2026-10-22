@@ -8,6 +8,7 @@ from pluma.core.cancellation import TaskCancelledError
 from pluma.core.task_supervisor import TaskSupervisor
 from pluma.memory.activity import ActivityLedger, ActivityQuery, TaskRecord
 from pluma.memory.db import DbConnection
+from tests.fixtures.policy import owned_fixture_policy
 from pluma.tools.registry import (
     ToolArgumentError,
     ToolRegistry,
@@ -20,14 +21,16 @@ from pluma.tools.registry import (
 def db_conn(tmp_path: Path) -> DbConnection:
     conn = DbConnection(str(tmp_path / "test_ledger.db"))
     conn.open()
-    return conn
+    yield conn
+    conn.close()
 
 
 @pytest.fixture
 def registry() -> ToolRegistry:
-    reg = ToolRegistry()
+    reg = ToolRegistry(policy_engine=owned_fixture_policy('move_file', 'undo_last'))
     register_default_tools(reg)
-    return reg
+    yield reg
+    reg.close()
 
 
 def test_registry_contains_at_least_10_tools(registry: ToolRegistry) -> None:
@@ -92,7 +95,7 @@ def test_execute_records_to_activity_ledger(
 
 
 def test_reversible_tool_produces_usable_undo(
-    registry: ToolRegistry, tmp_path: Path
+    registry: ToolRegistry, tmp_path: Path, db_conn: DbConnection
 ) -> None:
     """Phase 2 Gate: Reversible tools produce usable undo records."""
     src = tmp_path / "before.txt"
@@ -102,12 +105,16 @@ def test_reversible_tool_produces_usable_undo(
     supervisor = TaskSupervisor()
     capsule = supervisor.create_task("req-gate-2")
     supervisor.start_task(capsule.task_id)
+    ledger = ActivityLedger(db_conn)
+    ledger.insert_task(TaskRecord(task_id=capsule.task_id, request_id=capsule.request_id,
+        input_mode="text", command_text="Owned move and undo fixture"))
 
     # Move file
     res = registry.execute(
         tool_name="move_file",
         arguments={"source": str(src), "destination": str(dst)},
         task_context=capsule,
+        ledger=ledger,
     )
     assert res.ok is True
     assert res.verified is True
@@ -120,6 +127,7 @@ def test_reversible_tool_produces_usable_undo(
         tool_name="undo_last",
         arguments={},
         task_context=capsule,
+        ledger=ledger,
     )
     assert undo_res.ok is True
     assert undo_res.verified is True

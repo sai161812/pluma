@@ -30,7 +30,7 @@ from pluma.core.multi_step import (
 )
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult, Router
-from pluma.core.task_supervisor import TaskCapsule, TaskState, TaskSupervisor
+from pluma.core.task_supervisor import InvalidTaskTransition, TaskCapsule, TaskState, TaskSupervisor
 from pluma.memory.activity import ActionRecord, ActivityLedger, TaskRecord
 from pluma.memory.redaction import redact_string
 from pluma.rollback.engine import RollbackEngine
@@ -84,11 +84,17 @@ class TaskExecutionResult:
     duration_ms: float = 0.0
     factual_summary: str = ""
     replan_count: int = 0
+    completion_verified: bool = True
+    terminal_persisted: Optional[bool] = None
+    has_residual: bool = False
+    rollback_performed: bool = False
+    rollback_success: Optional[bool] = None
+    cleanup_evidence: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
     def success(self) -> bool:
         """True if the task reached a SUCCEEDED terminal state."""
-        return self.final_state == "SUCCEEDED"
+        return self.final_state == "SUCCEEDED" and self.completion_verified
 
     @property
     def user_message(self) -> str:
@@ -115,7 +121,11 @@ class Orchestrator:
     ) -> None:
         self._registry = registry or _build_default_registry()
         self._supervisor = supervisor or TaskSupervisor(ledger=ledger, rollback_engine=rollback_engine)
+        binder = getattr(self._registry, "bind_stop_service", None)
+        if callable(binder):
+            binder(self._supervisor.request_stop)
         self._ledger = ledger
+        self._supervisor.bind_execution(ledger, rollback_engine)
         self._router = router or Router()
         self._llm_manager = llm_manager
         self._rollback_engine = rollback_engine
@@ -133,6 +143,10 @@ class Orchestrator:
 
     def execute(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None) -> TaskExecutionResult:
         """Execute *request* through the full command lifecycle across all routes."""
+        with self._supervisor.execution_gate.enter():
+            return self._execute_request(request, capsule)
+
+    def _execute_request(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None) -> TaskExecutionResult:
         wall_start = time.perf_counter()
 
         # 1. Use provided Task Capsule or create one
@@ -140,24 +154,12 @@ class Orchestrator:
             capsule = self._supervisor.create_task_capsule(request_id=request.request_id)
         task_id = capsule.task_id
         
-        # Start the task immediately before any routing/planning/perception
-        self._supervisor.start_task(task_id)
-        if capsule.cancellation_token.is_cancelled:
-            self._supervisor.stop_task(task_id)
-            return TaskExecutionResult(
-                task_id=task_id,
-                request_id=request.request_id,
-                route=RouteMode.FAST,
-                route_reason="Cancelled before routing",
-                final_state="STOPPED",
-                error="Task was stopped before routing began.",
-            )
-
         logger.info(
             "task=%s request=%s mode=%s text=%r",
             task_id, request.request_id, request.input_mode.value, redact_string(request.text[:120]),
         )
 
+        capsule.history_expected = True
         # 2. Insert task record into Activity Ledger
         if self._ledger:
             try:
@@ -172,6 +174,19 @@ class Orchestrator:
             except Exception as e:
                 logger.error("Ledger insert_task failed: %s", e)
 
+        # Persist the real request before cancellation can finalize its history.
+        try:
+            self._supervisor.start_task(task_id)
+        except (TaskCancelledError, InvalidTaskTransition):
+            if not capsule.cancellation_token.is_cancelled:
+                raise
+            self._supervisor.stop_task(task_id)
+            return self._project_result(capsule, TaskExecutionResult(
+                task_id=task_id, request_id=request.request_id, route=RouteMode.FAST,
+                route_reason="Cancelled before routing", final_state="STOPPED",
+                error="Task was stopped before routing began.",
+            ))
+
         # 3. Classify route
         route_result: RouteResult = self._router.route(request)
         logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason)
@@ -184,15 +199,42 @@ class Orchestrator:
 
         # 4. Route Dispatch
         if route_result.route == RouteMode.FAST:
-            return self._execute_fast_route(capsule, request, route_result, wall_start)
+            return self._project_result(capsule, self._execute_fast_route(capsule, request, route_result, wall_start))
         elif route_result.route == RouteMode.SMART:
-            return self._execute_smart_route(capsule, request, route_result, wall_start)
+            return self._project_result(capsule, self._execute_smart_route(capsule, request, route_result, wall_start))
         elif route_result.route == RouteMode.SCREEN:
-            return self._execute_screen_route(capsule, request, route_result, wall_start)
+            return self._project_result(capsule, self._execute_screen_route(capsule, request, route_result, wall_start))
         elif route_result.route == RouteMode.DEEP:
-            return self._execute_deep_route(capsule, request, route_result, wall_start)
+            return self._project_result(capsule, self._execute_deep_route(capsule, request, route_result, wall_start))
         else:
-            return self._execute_fast_route(capsule, request, route_result, wall_start)
+            return self._project_result(capsule, self._execute_fast_route(capsule, request, route_result, wall_start))
+
+    def _project_result(self, capsule: TaskCapsule, result: TaskExecutionResult) -> TaskExecutionResult:
+        requested = TaskState(result.final_state)
+        if requested in (TaskState.STOPPED, TaskState.STOPPED_WITH_RESIDUAL):
+            from pluma.core.cancellation import StopReason
+            timed_out = capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
+            # A broken worker seals native admission without a user request.
+            # Route that internal fence through failure cleanup, not user STOP.
+            internal_failure = capsule.cancellation_token.reason in (None, StopReason.INTERNAL_ERROR)
+            if timed_out or internal_failure:
+                self._supervisor.fail_task_with_rollback(capsule.task_id)
+            else:
+                self._supervisor.stop_task(capsule.task_id)
+        if requested == TaskState.FAILED and not capsule.terminal_ready.is_set():
+            self._supervisor.fail_task_with_rollback(capsule.task_id)
+        if requested in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.STOPPED,
+                          TaskState.STOPPED_WITH_RESIDUAL, TaskState.ABORTED_BY_CRASH):
+            self._supervisor.finalize_task(capsule.task_id, requested)
+        original_state = result.final_state
+        for key, value in capsule.outcome_details().items():
+            setattr(result, key, value)
+        if (original_state != result.final_state or result.final_state.startswith("STOPPED")
+                or not result.completion_verified):
+            result.factual_summary = capsule.terminal_summary()
+        if result.terminal_persisted is False:
+            result.factual_summary = capsule.terminal_summary() + " Task history could not be verified."
+        return result
 
     # ------------------------------------------------------------------
     # Route Implementations
@@ -270,29 +312,6 @@ class Orchestrator:
             if not last_error:
                 last_error = "Task was stopped by user request."
 
-        if final_state == "STOPPED":
-            self._supervisor.stop_task(task_id)
-        else:
-            try:
-                if final_state == "SUCCEEDED":
-                    self._supervisor.mark_succeeded(task_id)
-                else:
-                    self._supervisor.mark_failed(task_id)
-            except Exception:
-                pass
-
-        if self._ledger:
-            try:
-                self._ledger.update_task(
-                    task_id,
-                    final_state=final_state,
-                    completed_at=datetime.now(timezone.utc).isoformat(),
-                    stop_reason=capsule.cancellation_token.reason.value if capsule.cancellation_token.is_cancelled and capsule.cancellation_token.reason else None,
-                    error_code="TOOL_FAILED" if final_state == "FAILED" else None,
-                )
-            except Exception as e:
-                logger.error("Ledger update_task (final) failed: %s", e)
-
         summary = last_message if final_state == "SUCCEEDED" else (last_error or "Task completed.")
         return TaskExecutionResult(
             task_id=task_id,
@@ -338,7 +357,6 @@ class Orchestrator:
         except Exception as exc:
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
             logger.error("Task %s: SMART route planning failed: %s", task_id, exc)
-            self._supervisor.transition(task_id, TaskState.FAILED)
             return TaskExecutionResult(
                 task_id=task_id,
                 request_id=request.request_id,
@@ -405,7 +423,6 @@ class Orchestrator:
             )
         except Exception as exc:
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
-            self._supervisor.transition(task_id, TaskState.FAILED)
             return TaskExecutionResult(
                 task_id=task_id,
                 request_id=request.request_id,
@@ -460,7 +477,6 @@ class Orchestrator:
             )
         except Exception as exc:
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
-            self._supervisor.transition(task_id, TaskState.FAILED)
             return TaskExecutionResult(
                 task_id=task_id,
                 request_id=request.request_id,
@@ -490,18 +506,6 @@ class Orchestrator:
         """Convert MultiStepExecutionResult to TaskExecutionResult and update ledger."""
         duration_ms = (time.perf_counter() - wall_start) * 1000.0
         final_state_str = ms_res.final_state.value
-
-        if self._ledger:
-            try:
-                self._ledger.update_task(
-                    capsule.task_id,
-                    final_state=final_state_str,
-                    completed_at=datetime.now(timezone.utc).isoformat(),
-                    stop_reason=capsule.cancellation_token.reason.value if capsule.cancellation_token.is_cancelled and capsule.cancellation_token.reason else None,
-                    error_code="TOOL_FAILED" if final_state_str == "FAILED" else None,
-                )
-            except Exception as e:
-                logger.error("Ledger update_task failed: %s", e)
 
         step_records = [
             StepRecord(

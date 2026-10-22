@@ -9,7 +9,9 @@ Spec §14, §15:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
+import json
 from enum import Enum
 import logging
 from typing import Any, Dict, Optional
@@ -37,6 +39,7 @@ class PolicyEvaluationResult:
     reason: str
     requires_confirmation: bool = False
     requires_elevation: bool = False
+    execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
     @property
     def is_allowed(self) -> bool:
@@ -56,9 +59,11 @@ class PolicyEngine:
         self,
         rules: Optional[PolicyRules] = None,
         confirmation_contract: Optional[ConfirmationContract] = None,
+        command_catalog_path: Optional[str] = None,
     ) -> None:
         self.rules = rules or PolicyRules()
         self.confirmation_contract = confirmation_contract
+        self.command_catalog_path = command_catalog_path
 
     def evaluate(
         self,
@@ -69,6 +74,19 @@ class PolicyEngine:
     ) -> PolicyEvaluationResult:
         """Evaluate a tool invocation against policy rules and confirmation boundaries."""
         risk = self.rules.classify(tool_name, arguments, default_risk=default_risk)
+        binding = None
+        if tool_name == 'run_project_command':
+            try:
+                from pluma.adapters.commands import project_binding
+                binding = project_binding(self.command_catalog_path, arguments)
+            except Exception:
+                return PolicyEvaluationResult(PolicyDecision.DENY, RiskClass.HIGH,
+                    'Configured command is unavailable, private, changed or lacks trusted owner configuration.')
+            material = {'working_directory': binding['cwd'], **{
+                f'argument_{index}': value for index, value in enumerate(binding['argv'][1:])}}
+            risk = self.rules.classify(tool_name, material, default_risk=risk)
+            if risk in (RiskClass.READ, RiskClass.LOW, RiskClass.MEDIUM):
+                risk = RiskClass.HIGH
 
         # 1. RESTRICTED & DENY: Strictly forbidden
         if risk in (RiskClass.RESTRICTED, RiskClass.DENY):
@@ -79,8 +97,8 @@ class PolicyEngine:
                 reason=f"Tool '{tool_name}' is forbidden under {risk.value} risk policy.",
             )
 
-        # 2. READ, LOW, MEDIUM: Safe to execute autonomously (MEDIUM captures undo)
-        if risk in (RiskClass.READ, RiskClass.LOW, RiskClass.MEDIUM):
+        # 2. READ and LOW do not require material-operation approval.
+        if risk in (RiskClass.READ, RiskClass.LOW):
             return PolicyEvaluationResult(
                 decision=PolicyDecision.ALLOW,
                 risk_class=risk,
@@ -97,41 +115,59 @@ class PolicyEngine:
                 requires_elevation=True,
             )
 
-        # 4. HIGH: Material state changes requiring confirmation
-        if risk == RiskClass.HIGH:
-            if self.confirmation_contract is not None:
-                req = ConfirmationRequest(
-                    task_id=task_id or "task-unknown",
-                    tool_name=tool_name,
-                    arguments=arguments,
-                    risk_class=risk,
-                    reason=f"High-risk operation: '{tool_name}' creates material state changes.",
-                    prompt_message=f"Allow PLUMA to execute '{tool_name}'?",
-                )
-                logger.info("Requesting user confirmation for high-risk tool '%s'...", tool_name)
-                response = self.confirmation_contract.request_confirmation(req)
-                if response.approved:
-                    logger.info("User APPROVED execution of tool '%s'.", tool_name)
-                    return PolicyEvaluationResult(
-                        decision=PolicyDecision.ALLOW,
-                        risk_class=risk,
-                        reason="User approved high-risk operation.",
-                    )
-                else:
-                    logger.warning("User DENIED execution of tool '%s'.", tool_name)
-                    return PolicyEvaluationResult(
-                        decision=PolicyDecision.DENY,
-                        risk_class=risk,
-                        reason=f"User denied high-risk operation: {response.reason or 'User cancelled'}.",
-                    )
-
-            # If no confirmation contract attached, flag as requiring confirmation
-            return PolicyEvaluationResult(
-                decision=PolicyDecision.REQUIRE_CONFIRMATION,
-                risk_class=risk,
-                reason=f"Tool '{tool_name}' is high-risk and requires user confirmation.",
-                requires_confirmation=True,
-            )
+        # Without a trusted exact-call intent proof, MEDIUM requires explicit
+        # approval too. Natural language and planner arguments cannot grant it.
+        if risk in (RiskClass.MEDIUM, RiskClass.HIGH):
+            if self.confirmation_contract is None:
+                return PolicyEvaluationResult(PolicyDecision.REQUIRE_CONFIRMATION, risk,
+                    "Explicit approval is required for this operation.", requires_confirmation=True)
+            if not isinstance(task_id, str) or not task_id.strip():
+                return PolicyEvaluationResult(PolicyDecision.DENY, risk,
+                    "Operation denied because no task identity was supplied.")
+            try:
+                args = deepcopy(arguments)
+                encoded = json.dumps(args, sort_keys=True, ensure_ascii=False, allow_nan=False)
+                prompt = f"Allow {tool_name.replace('_', ' ')} with these arguments?"
+                summary = None
+                if binding is not None:
+                    import subprocess
+                    summary = 'Directory: ' + binding['cwd'] + '\nCommand: ' + subprocess.list2cmdline(binding['argv'])
+                    prompt = 'Run this configured project command? It may change files or external state. No automatic undo is available.'
+                if tool_name in ('terminate_process', 'graceful_close_process'):
+                    prompt = (
+                        f"Force process {arguments.get('pid')} to exit? Unsaved work can be lost. This cannot be undone."
+                        if tool_name == 'terminate_process' else
+                        f"Ask process {arguments.get('pid')} to close? It may prompt to save work. A completed close cannot be undone.")
+                if tool_name == 'safe_delete':
+                    # This tool always recycles; the confirmation must state
+                    # the actual recovery path and must never imply permanent
+                    # deletion or invent a permanent-delete fallback.
+                    prompt = ('Move this exact item to the Windows Recycle Bin? '
+                        'It may be restored from there. PLUMA will not permanently delete it.')
+                    summary = 'Target: ' + arguments['path']
+                if tool_name == 'lock':
+                    prompt = 'Lock this Windows session now? Unlocking requires user authentication. PLUMA cannot automatically undo it.'
+                elif tool_name == 'sleep_request':
+                    prompt = 'Put this computer to sleep now? Running work and this connection may pause until resume. PLUMA cannot automatically undo it.'
+                elif tool_name in ('restart_request', 'shutdown_request'):
+                    operation = 'Restart' if tool_name == 'restart_request' else 'Shut down'
+                    prompt = (f"{operation} this computer after {arguments['delay_seconds']} seconds? This affects all sessions. "
+                              'Apps will not be forcibly closed and may block the operation. STOP cannot promise reversal after Windows accepts it.')
+                request = ConfirmationRequest(task_id=task_id, tool_name=tool_name,
+                    arguments=args, risk_class=risk,
+                    reason="Explicit approval of this exact operation is required.", prompt_message=prompt,
+                    target_summary=summary)
+                response = self.confirmation_contract.request_confirmation(request)
+                intact = (request.task_id == task_id and request.tool_name == tool_name
+                    and request.risk_class == risk and request.target_summary == summary and json.dumps(request.arguments,
+                        sort_keys=True, ensure_ascii=False, allow_nan=False) == encoded)
+                if intact and isinstance(response, ConfirmationResponse) and response.approved is True:
+                    return PolicyEvaluationResult(PolicyDecision.ALLOW, risk,
+                        "User approved this exact operation.", execution_binding=binding)
+            except Exception:
+                return PolicyEvaluationResult(PolicyDecision.DENY, risk,
+                    "Operation denied because approval could not be verified.")
+            return PolicyEvaluationResult(PolicyDecision.DENY, risk, "User denied the operation or approval was invalid.")
 
         # Fail-closed for any unclassified or unknown risk
         logger.error("Policy fail-closed for unclassified risk '%s' on tool '%s'.", risk, tool_name)

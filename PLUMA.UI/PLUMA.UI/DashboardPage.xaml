@@ -48,7 +48,7 @@
                     <TextBlock Text="Command entry"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                CharacterSpacing="40" />
-                    <AutoSuggestBox PlaceholderText="Ask PLUMA to do something"
+                    <AutoSuggestBox x:Name="CommandInput" PlaceholderText="Ask PLUMA to do something" IsEnabled="False"
                                     HorizontalAlignment="Stretch">
                         <AutoSuggestBox.QueryIcon>
                             <SymbolIcon Symbol="Find" />
@@ -73,7 +73,7 @@
                         CornerRadius="{ThemeResource OverlayCornerRadius}">
                     <StackPanel Spacing="8">
                         <TextBlock Text="Active task" Style="{StaticResource CaptionTextBlockStyle}" />
-                        <TextBlock Text="Running"
+                        <TextBlock x:Name="TaskStateText" Text="Unavailable"
                                    FontSize="18"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
@@ -88,7 +88,7 @@
                         CornerRadius="{ThemeResource OverlayCornerRadius}">
                     <StackPanel Spacing="8">
                         <TextBlock Text="Current route" Style="{StaticResource CaptionTextBlockStyle}" />
-                        <TextBlock Text="Screen"
+                        <TextBlock x:Name="RouteText" Text="Unavailable"
                                    FontSize="18"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
@@ -101,12 +101,19 @@
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="{ThemeResource OverlayCornerRadius}">
-                    <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="8" RowSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                         <TextBlock Text="Core health" Style="{StaticResource CaptionTextBlockStyle}" />
-                        <TextBlock Text="Connected"
+                        <Button x:Name="CoreRefreshButton" Grid.Column="1" Grid.RowSpan="2" VerticalAlignment="Top"
+                                Click="OnRefreshCore" IsEnabled="False" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="4"
+                                AutomationProperties.Name="Refresh core connection" ToolTipService.ToolTip="Refresh core connection">
+                            <SymbolIcon Symbol="Refresh" />
+                        </Button>
+                        <TextBlock x:Name="CoreHealthText" Grid.Row="1" Text="Disconnected"
                                    FontSize="18"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
+                    </Grid>
                 </Border>
             </Grid>
 
@@ -130,10 +137,7 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="Current activity"
                                    Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <ListView IsHitTestVisible="False"
-                                  SelectionMode="None">
-                            <ListViewItem Content="Reading the active window" />
-                        </ListView>
+                        <ListView x:Name="CurrentActivityList" IsHitTestVisible="False" SelectionMode="None" />
                     </StackPanel>
                 </Border>
 
@@ -148,12 +152,7 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="Recent activity"
                                    Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <ListView IsItemClickEnabled="False"
-                                  SelectionMode="None">
-                            <ListViewItem Content="Opened Calculator" />
-                            <ListViewItem Content="Found quarterly report.pdf" />
-                            <ListViewItem Content="Closed Notepad" />
-                        </ListView>
+                        <ListView x:Name="RecentActivityList" IsItemClickEnabled="False" SelectionMode="None" />
                     </StackPanel>
                 </Border>
 
@@ -167,12 +166,7 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="Live messages"
                                    Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <ListView IsItemClickEnabled="False"
-                                  SelectionMode="None">
-                            <ListViewItem Content="Captured active window" />
-                            <ListViewItem Content="Detected visible text" />
-                            <ListViewItem Content="Locating Downloads" />
-                        </ListView>
+                        <ListView x:Name="LiveMessagesList" IsItemClickEnabled="False" SelectionMode="None" />
                     </StackPanel>
                 </Border>
             </Grid>

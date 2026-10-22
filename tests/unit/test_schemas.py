@@ -313,6 +313,23 @@ class TestFactualMessage:
         assert result.verified
 
 
+def test_tool_adapter_priority_is_unique_and_in_declared_order() -> None:
+    from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec
+    from pluma.tools.registry import get_default_tool_registry
+
+    with pytest.raises(ValidationError, match="Adapter priority"):
+        ToolSpec(name="bad_adapter_order", description="Invalid priority fixture",
+            args_schema={"type": "object"}, risk_class=RiskClass.READ, timeout_s=1,
+            executor=lambda args: ToolResult.success("bad_adapter_order", factual_message="Fixture."),
+            verifier=lambda result: None,
+            adapter_priority=[AdapterPriority.UIA, AdapterPriority.NATIVE_API])
+
+    registry = get_default_tool_registry()
+    assert all(spec.adapter_priority == sorted(spec.adapter_priority)
+               and len(spec.adapter_priority) == len(set(spec.adapter_priority))
+               for spec in registry.list_specs())
+
+
 # ---------------------------------------------------------------------------
 # CancellationToken tests
 # ---------------------------------------------------------------------------

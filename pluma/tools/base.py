@@ -12,10 +12,11 @@ No OS-automation, ML, or adapter code in this module.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Type, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +55,65 @@ class AdapterPriority(IntEnum):
     KEYBOARD = 4            # SendInput / stable shortcuts
     OCR_GROUNDED = 5        # OCR-based window-relative interaction
     RAW_COORDINATE = 6      # Last resort: validated fresh snapshot coordinate
+
+
+class AdapterUnavailable(Exception):
+    """An adapter declined before dispatch; the next declared adapter is safe to try.
+
+    Adapters must raise this only when they have made no external state change.
+    Ordinary errors and returned failures stop the chain because their effects
+    may be partial or uncertain.
+    """
+
+
+@dataclass(frozen=True)
+class AdapterDispatcher:
+    """Ordered runtime fallback for one typed tool.
+
+    A fallback occurs only when the current adapter raises
+    :class:`AdapterUnavailable` before dispatch. The ToolSpec validator binds
+    this exact ordered list to ``adapter_priority``.
+    """
+
+    tool_name: str
+    adapters: Dict[AdapterPriority, Callable[..., "ToolResult"]]
+
+    def __post_init__(self) -> None:
+        priorities = tuple(self.adapters)
+        if (not self.tool_name or not priorities
+                or priorities != tuple(sorted(priorities))
+                or len(priorities) != len(set(priorities))
+                or any(not callable(adapter) for adapter in self.adapters.values())):
+            raise ValueError("Adapter dispatcher requires callable adapters in unique priority order.")
+
+    @property
+    def priorities(self) -> tuple[AdapterPriority, ...]:
+        return tuple(self.adapters)
+
+    def __call__(self, args: Dict[str, Any], task_context: Any = None) -> "ToolResult":
+        unavailable: List[str] = []
+        for priority, adapter in self.adapters.items():
+            token = getattr(task_context, "cancellation_token", None)
+            if token is not None:
+                token.raise_if_cancelled()
+            try:
+                result = adapter(args, task_context)
+            except AdapterUnavailable:
+                unavailable.append(priority.name.lower())
+                continue
+            if not isinstance(result, ToolResult):
+                raise TypeError("Adapter returned an invalid tool result.")
+            if result.tool != self.tool_name:
+                return ToolResult.failure(self.tool_name,
+                    "Adapter returned a result for a different tool.", "ADAPTER_RESULT_MISMATCH")
+            # Once an adapter returns, its effects may have occurred. Never
+            # retry a failure or an unverified result through a weaker method.
+            return result.model_copy(update={"adapter_used": priority.name.lower()})
+
+        tried = ", ".join(unavailable)
+        return ToolResult.failure(self.tool_name,
+            "No declared adapter could handle this operation." + (f" Tried: {tried}." if tried else ""),
+            "ADAPTERS_UNAVAILABLE")
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +162,13 @@ class ToolSpec(BaseModel):
 
     # Execution contract
     timeout_s: float = Field(gt=0, le=300, description="Hard wall-clock timeout in seconds.")
+    process_isolated: bool = Field(
+        default=False,
+        description="Require a killable owned worker; never fall back to an in-process call.",
+    )
+    execution_scope: Literal["adapter", "task_service"] = "adapter"
+    non_undoable: bool = Field(default=False,
+        description="Journal irreversible intent before dispatch; never expose it as an available inverse.")
     executor: Callable[..., "ToolResult"] = Field(
         description="Callable that performs the action. Injected by the adapter layer."
     )
@@ -112,15 +179,37 @@ class ToolSpec(BaseModel):
         default=None,
         description=(
             "Callable that captures pre-state before execution and returns an undo record. "
-            "None for non-reversible operations."
+            "For non_undoable tools this captures a non-undoable intent, never an inverse."
         ),
+    )
+    elevation_operation: Optional[Literal["FLUSH_DNS"]] = Field(
+        default=None,
+        description="Closed broker operation for the registered one-operation ADMIN path.",
     )
 
     # Adapter selection
     adapter_priority: List[AdapterPriority] = Field(
         default_factory=lambda: [AdapterPriority.NATIVE_API],
-        description="Preferred adapter order. Registry retries in declared sequence.",
+        description=("Ordered adapter capabilities permitted to this tool. "
+                     "Composite executors must follow this order; the registry does not invent fallbacks."),
     )
+
+    @field_validator("adapter_priority")
+    @classmethod
+    def ordered_adapter_priority(cls, value: List[AdapterPriority]) -> List[AdapterPriority]:
+        if not value or len(value) != len(set(value)) or value != sorted(value):
+            raise ValueError("Adapter priority must be nonempty, unique, and ordered by the locked preference.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_runtime_contracts(self) -> "ToolSpec":
+        if isinstance(self.executor, AdapterDispatcher) and self.executor.priorities != tuple(self.adapter_priority):
+            raise ValueError("Adapter dispatcher order must exactly match ToolSpec.adapter_priority.")
+        if self.elevation_operation is not None:
+            if (self.name != "flush_dns_cache" or self.risk_class != RiskClass.ADMIN
+                    or not self.process_isolated or not self.non_undoable or self.undo_builder is None):
+                raise ValueError("FLUSH_DNS is restricted to the owned, journaled flush_dns_cache ADMIN tool.")
+        return self
 
     # Cancellation
     cancellable: bool = Field(
@@ -184,6 +273,7 @@ class ToolResult(BaseModel):
     error: Optional[str] = None                 # Factual error message.
     error_code: Optional[str] = None            # Machine-readable error class.
     undo_record: Optional[Dict[str, Any]] = None  # Pre-state for rollback.
+    private_context: Dict[str, Any] = Field(default_factory=dict, exclude=True, repr=False)
 
     @classmethod
     def success(

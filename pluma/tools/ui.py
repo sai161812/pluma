@@ -398,7 +398,7 @@ INSPECT_ACTIVE_WINDOW_SPEC = ToolSpec(
     timeout_s=5.0,
     executor=execute_inspect_active_window,
     verifier=verify_noop,
-    adapter_priority=[AdapterPriority.UIA, AdapterPriority.NATIVE_API],
+    adapter_priority=[AdapterPriority.NATIVE_API, AdapterPriority.UIA],
     cancellable=True,
 )
 

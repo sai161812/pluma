@@ -93,6 +93,7 @@ class PromptBuilder:
         if prior_step_results:
             step_lines = []
             for idx, res in enumerate(prior_step_results, start=1):
+                res = redact_sensitive_data(res)
                 tool = res.get("tool", "unknown")
                 ok = res.get("ok", False)
                 msg = res.get("factual_message", "")

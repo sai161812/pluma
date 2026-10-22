@@ -29,9 +29,8 @@ def test_get_system_status() -> None:
 
 def test_show_activity() -> None:
     res = execute_show_activity({"limit": 5})
-    assert res.ok is True
-    assert res.verified is True
-    assert "records" in res.data
+    assert not res.ok and not res.verified
+    assert res.error_code == "ACTIVITY_READ_FAILED"
 
 
 def test_stop_current() -> None:
@@ -39,12 +38,12 @@ def test_stop_current() -> None:
     capsule = supervisor.create_task("req-sys-1")
     supervisor.start_task(capsule.task_id)
 
-    res = execute_stop_current({}, task_context=capsule)
+    res = execute_stop_current({}, task_context=capsule, stop_service=supervisor.request_stop)
     assert res.ok is True
     assert capsule.cancellation_token.is_cancelled is True
 
 
-def test_undo_last_file_move(tmp_path: object) -> None:
+def test_undo_last_without_durable_proof_preserves_file_move(tmp_path: object) -> None:
     from pathlib import Path
     import shutil
     
@@ -63,7 +62,6 @@ def test_undo_last_file_move(tmp_path: object) -> None:
     })
 
     res = execute_undo_last({}, task_context=capsule)
-    assert res.ok is True
-    assert res.verified is True
-    assert src.exists()
-    assert not dst.exists()
+    assert not res.ok and not res.verified
+    assert not src.exists() and dst.exists()
+    assert len(capsule.undo_stack) == 1

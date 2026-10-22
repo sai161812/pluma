@@ -37,60 +37,10 @@ def get_pipe_name() -> str:
 
 
 def _verify_win32_file_dacl(filepath: str) -> None:
-    """Verify that the file DACL grants access only to the current user."""
-    import ctypes
-    from ctypes import wintypes
-    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    """Verify the opened credential handle, never an earlier path snapshot."""
+    from pluma.adapters.credentials import verify_windows_credential
+    verify_windows_credential(filepath)
 
-    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-    advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
-    advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
-    advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
-    advapi32.GetNamedSecurityInfoW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
-    advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.ULONG)]
-    advapi32.SetSecurityInfo.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-
-
-    TOKEN_QUERY = 0x0008
-    h_token = wintypes.HANDLE()
-    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(h_token)):
-        raise RuntimeError("OpenProcessToken failed")
-
-    TOKEN_USER = 1
-    needed = wintypes.DWORD(0)
-    advapi32.GetTokenInformation(h_token, TOKEN_USER, None, 0, ctypes.byref(needed))
-    buf = ctypes.create_string_buffer(needed.value)
-    if not advapi32.GetTokenInformation(h_token, TOKEN_USER, buf, needed, ctypes.byref(needed)):
-        kernel32.CloseHandle(h_token)
-        raise RuntimeError("GetTokenInformation failed")
-    kernel32.CloseHandle(h_token)
-
-    sid_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
-    sid_str_ptr = ctypes.c_wchar_p()
-    if not advapi32.ConvertSidToStringSidW(sid_ptr, ctypes.byref(sid_str_ptr)):
-        raise RuntimeError("ConvertSidToStringSidW failed")
-    current_sid_str = sid_str_ptr.value
-
-    SE_FILE_OBJECT = 1
-    DACL_SECURITY_INFORMATION = 4
-    OWNER_SECURITY_INFORMATION = 1
-    pSD = ctypes.c_void_p()
-    ret = advapi32.GetNamedSecurityInfoW(
-        filepath, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION,
-        None, None, None, None, ctypes.byref(pSD)
-    )
-    if ret != 0:
-        raise RuntimeError(f"GetNamedSecurityInfoW failed with {ret}")
-
-    str_sd = ctypes.c_wchar_p()
-    if not advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW(
-        pSD, 1, DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION, ctypes.byref(str_sd), None
-    ):
-        raise RuntimeError("ConvertSecurityDescriptorToStringSecurityDescriptorW failed")
-    
-    if "WD" in str_sd.value or "BU" in str_sd.value or "AN" in str_sd.value:
-         raise RuntimeError(f"Insecure DACL detected: {str_sd.value}")
 
 def _get_or_create_ipc_secret(paths_root: Optional[str] = None) -> bytes:
     """Get or create the persistent random IPC authentication secret.
@@ -104,6 +54,10 @@ def _get_or_create_ipc_secret(paths_root: Optional[str] = None) -> bytes:
     sec_dir = os.path.join(root, "Pluma")
     os.makedirs(sec_dir, exist_ok=True)
     sec_file = os.path.join(sec_dir, "ipc_secret.key")
+
+    if sys.platform == "win32":
+        from pluma.adapters.credentials import load_windows_credential
+        return load_windows_credential(sec_file)
 
     if os.path.exists(sec_file):
         if sys.platform == "win32":
@@ -242,6 +196,9 @@ class IpcServer:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._client_semaphore = threading.Semaphore(32)
+        self._clients_lock = threading.RLock()
+        self._clients = {}
+        self._closing = False
 
         # Load auth secret immediately if authentication is required so startup fails closed
         if require_auth:
@@ -256,6 +213,8 @@ class IpcServer:
         """Start the IPC server in a daemon thread."""
         from multiprocessing.connection import Listener
 
+        if self._closing:
+            raise RuntimeError("IPC server is shutting down.")
         try:
             self._listener = Listener(self.address)
             # Restrict DACL to current user on Windows after pipe creation
@@ -275,6 +234,9 @@ class IpcServer:
                 if not self._listener:
                     break
                 conn = self._listener.accept()
+                if not self._running:
+                    conn.close()
+                    break
                 # Bound the client semaphore
                 if not self._client_semaphore.acquire(timeout=1.0):
                     logger.warning("IPC server saturated, dropping client")
@@ -286,7 +248,13 @@ class IpcServer:
                     daemon=True,
                     name="PlumaIpcClient",
                 )
-                client_thread.start()
+                with self._clients_lock:
+                    if self._closing:
+                        conn.close()
+                        self._client_semaphore.release()
+                        continue
+                    self._clients[client_thread] = conn
+                    client_thread.start()
             except EOFError:
                 pass
             except Exception as e:
@@ -297,6 +265,13 @@ class IpcServer:
         try:
             self._handle_client(conn)
         finally:
+            with self._clients_lock:
+                try:
+                    conn.close()
+                except OSError:
+                    logger.error("IPC connection closure remains unverified.")
+                else:
+                    self._clients.pop(threading.current_thread(), None)
             self._client_semaphore.release()
 
     def _handle_client(self, conn: Any) -> None:
@@ -305,100 +280,142 @@ class IpcServer:
         If require_auth is True, performs HMAC challenge-response before accepting any command.
         Authentication failure closes the connection silently (fail-closed).
         """
-        with conn:
+        # The wrapper owns close under _clients_lock, shared with shutdown.
+        try:
+            # --- Authentication handshake (fail-closed) ---
+            if self._require_auth and self._secret is not None:
+                try:
+                    # 1. Send an ephemeral 32-byte challenge nonce to the client
+                    challenge = secrets.token_bytes(IPC_CHALLENGE_SIZE)
+                    conn.send_bytes(challenge)
+
+                    # 2. Wait for client to respond with HMAC token
+                    auth_ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
+                    if not auth_ready:
+                        logger.warning("IPC auth timeout: client did not respond to challenge in %.1fs", self._read_timeout_s)
+                        return  # Close silently — no error response (fail-closed)
+
+                    token_received = conn.recv_bytes(64)
+                    expected_token = _compute_ipc_response(self._secret, challenge)
+
+                    if len(token_received) != 32 or not hmac.compare_digest(token_received, expected_token):
+                        logger.warning("IPC authentication failed: token mismatch. Closing connection.")
+                        return  # Close silently — no error response (fail-closed)
+
+                    # 3. Acknowledge authentication success
+                    conn.send_bytes(b"AUTH_OK")
+                    logger.debug("IPC client authenticated successfully.")
+                except Exception as auth_err:
+                    logger.warning("IPC auth error: %s. Closing connection.", auth_err)
+                    return  # Close silently
+
+            # --- Normal request processing ---
+            # Enforce server read timeout so a slow/hanging client cannot stall
+            ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
+            if not ready:
+                logger.warning("IPC client read timed out after %.1fs", self._read_timeout_s)
+                try:
+                    conn.send_bytes(json.dumps(
+                        {"status": "error", "message": "Read timeout"}
+                    ).encode("utf-8"))
+                except Exception:
+                    pass
+                return
+
+            msg_bytes = conn.recv_bytes(self._max_message_size)
+
+            # Parse and validate JSON
             try:
-                # --- Authentication handshake (fail-closed) ---
-                if self._require_auth and self._secret is not None:
-                    try:
-                        # 1. Send an ephemeral 32-byte challenge nonce to the client
-                        challenge = secrets.token_bytes(IPC_CHALLENGE_SIZE)
-                        conn.send_bytes(challenge)
+                req = json.loads(msg_bytes.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
+                conn.send_bytes(json.dumps(
+                    {"status": "error", "message": f"Malformed JSON request: {parse_err}"}
+                ).encode("utf-8"))
+                return
 
-                        # 2. Wait for client to respond with HMAC token
-                        auth_ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
-                        if not auth_ready:
-                            logger.warning("IPC auth timeout: client did not respond to challenge in %.1fs", self._read_timeout_s)
-                            return  # Close silently — no error response (fail-closed)
+            if not isinstance(req, dict):
+                conn.send_bytes(json.dumps(
+                    {"status": "error", "message": "Request must be a JSON object (dict)."}
+                ).encode("utf-8"))
+                return
 
-                        token_received = conn.recv_bytes(64)
-                        expected_token = _compute_ipc_response(self._secret, challenge)
-
-                        if len(token_received) != 32 or not hmac.compare_digest(token_received, expected_token):
-                            logger.warning("IPC authentication failed: token mismatch. Closing connection.")
-                            return  # Close silently — no error response (fail-closed)
-
-                        # 3. Acknowledge authentication success
-                        conn.send_bytes(b"AUTH_OK")
-                        logger.debug("IPC client authenticated successfully.")
-                    except Exception as auth_err:
-                        logger.warning("IPC auth error: %s. Closing connection.", auth_err)
-                        return  # Close silently
-
-                # --- Normal request processing ---
-                # Enforce server read timeout so a slow/hanging client cannot stall
-                ready = multiprocessing.connection.wait([conn], timeout=self._read_timeout_s)
-                if not ready:
-                    logger.warning("IPC client read timed out after %.1fs", self._read_timeout_s)
-                    try:
-                        conn.send_bytes(json.dumps(
-                            {"status": "error", "message": "Read timeout"}
-                        ).encode("utf-8"))
-                    except Exception:
-                        pass
+            # Shutdown admission is serialized with connection ownership.
+            with self._clients_lock:
+                if self._closing:
                     return
-
-                msg_bytes = conn.recv_bytes(self._max_message_size)
-
-                # Parse and validate JSON
-                try:
-                    req = json.loads(msg_bytes.decode("utf-8"))
-                except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
-                    conn.send_bytes(json.dumps(
-                        {"status": "error", "message": f"Malformed JSON request: {parse_err}"}
-                    ).encode("utf-8"))
-                    return
-
-                if not isinstance(req, dict):
-                    conn.send_bytes(json.dumps(
-                        {"status": "error", "message": "Request must be a JSON object (dict)."}
-                    ).encode("utf-8"))
-                    return
-
-                # Dispatch to handler
-                try:
-                    resp = self._command_handler(req)
-                    resp_bytes = json.dumps(resp).encode("utf-8")
-                    # Bound the response size too
-                    if len(resp_bytes) > self._max_message_size:
-                        resp_bytes = json.dumps(
-                            {"status": "error", "message": "Response too large"}
-                        ).encode("utf-8")
-                    conn.send_bytes(resp_bytes)
-                except Exception as e:
-                    logger.error("Error processing IPC message: %s", e)
-                    try:
-                        conn.send_bytes(json.dumps(
-                            {"status": "error", "message": str(e)}
-                        ).encode("utf-8"))
-                    except Exception:
-                        pass
-            except EOFError:
-                pass
+            # Dispatch to handler (ResidentCore also gates admission).
+            try:
+                resp = self._command_handler(req)
+                resp_bytes = json.dumps(resp).encode("utf-8")
+                # Bound the response size too
+                if len(resp_bytes) > self._max_message_size:
+                    resp_bytes = json.dumps(
+                        {"status": "error", "message": "Response too large"}
+                    ).encode("utf-8")
+                conn.send_bytes(resp_bytes)
             except Exception as e:
-                logger.error("IPC client handling error: %s", e)
+                logger.error("Error processing IPC message: %s", e)
+                try:
+                    conn.send_bytes(json.dumps(
+                        {"status": "error", "message": str(e)}
+                    ).encode("utf-8"))
+                except Exception:
+                    pass
+        except EOFError:
+            pass
+        except Exception as e:
+            logger.error("IPC client handling error: %s", e)
 
-    def stop(self) -> None:
-        """Stop the IPC server and release resources."""
-        self._running = False
-        if self._listener:
-            try:
-                self._listener.close()
-            except Exception:
-                pass
+    def begin_shutdown(self) -> None:
+        with self._clients_lock:
+            self._closing = True
+            self._running = False
+
+    def stop(self, timeout_s: float = 1.0) -> None:
+        """Close transport handles and join every retained listener/client owner."""
+        self.begin_shutdown()
+        deadline = time.monotonic() + timeout_s
+        if self._listener and self._thread is not None and self._thread.is_alive():
+            # PipeListener.close only closes queued handles, not the handle
+            # currently inside ConnectNamedPipe. Wake OUR accept before closing.
+            if sys.platform == "win32":
+                import _winapi
+                try:
+                    wake = _winapi.CreateFile(self.address, _winapi.GENERIC_READ | _winapi.GENERIC_WRITE,
+                        0, 0, _winapi.OPEN_EXISTING, _winapi.FILE_FLAG_OVERLAPPED, 0)
+                except OSError:
+                    pass  # busy/absent accept is checked by join, never success
+                else:
+                    _winapi.CloseHandle(wake)
+            else:
+                import socket
+                wake = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                wake.settimeout(0.1)
+                try:
+                    wake.connect(self.address)
+                finally:
+                    wake.close()
+        with self._clients_lock:
+            clients = list(self._clients.items())
+            for thread, conn in clients:
+                try:
+                    conn.close()  # interrupt I/O; wrapper uses this same close lock
+                except OSError:
+                    pass  # retained mapping/handle prevents a clean drain claim
+        threads = [thread for thread, conn in clients]
+        if self._thread is not None:
+            threads.append(self._thread)
+        for thread in threads:
+            if thread is not threading.current_thread():
+                thread.join(timeout=max(0, deadline - time.monotonic()))
+        with self._clients_lock:
+            if self._clients or any(thread.is_alive() for thread in threads):
+                raise RuntimeError("IPC owners remain active.")
+        self._thread = None
+        if self._listener is not None:
+            self._listener.close()
             self._listener = None
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=1.0)
-        logger.info("IPC Server stopped.")
+
 
 
 def _restrict_pipe_to_current_user(pipe_name: str) -> None:

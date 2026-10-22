@@ -26,6 +26,7 @@
     <Page Include="../PLUMA.UI/RiskApprovalDialog.xaml" Link="RiskApprovalDialog.xaml" />
     <Compile Include="../PLUMA.UI/SettingsPage.xaml.cs" Link="SettingsPage.xaml.cs" />
     <Compile Include="../PLUMA.UI/DashboardPage.xaml.cs" Link="DashboardPage.xaml.cs" />
+    <Compile Include="../PLUMA.UI/CoreStatus.cs" Link="CoreStatus.cs" />
     <Compile Include="../PLUMA.UI/PolicyBlockNotice.xaml.cs" Link="PolicyBlockNotice.xaml.cs" />
     <Compile Include="../PLUMA.UI/RiskApprovalDialog.xaml.cs" Link="RiskApprovalDialog.xaml.cs" />
     <Page Include="../PLUMA.UI/LiveMessageFeed.xaml" Link="LiveMessageFeed.xaml" />
