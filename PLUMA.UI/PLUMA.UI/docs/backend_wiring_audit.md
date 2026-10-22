@@ -1,9 +1,9 @@
 # Backend audit before action wiring
 
-Current P11 implementation update: [E34](../../../docs/completion/p11_audio_guards.md)
-guards audio mutation/undo and registers exact default-device selection. Physical
-audio mutations remain unverified. Non-P12 catalog:
-25 implemented, 13 missing, 2 defective, 17 unverified. P11 incomplete; P12 forbidden; action
+Current P11 implementation update: [E35](../../../docs/completion/p11_file_search.md)
+adds bounded native search candidates, explicit criteria and independent identity
+readback. Non-P12 catalog:
+26 implemented, 13 missing, 2 defective, 16 unverified. P11 incomplete; P12 forbidden; action
 entry disabled. Historical evidence retains its own source provenance.
 
 Overall [P00-P11 audit](../../../docs/completion/p00_p11_audit.md): P11 is NOT

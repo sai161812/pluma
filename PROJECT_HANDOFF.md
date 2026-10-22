@@ -1,6 +1,28 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 guarded audio and default-device tool
+## Current checkpoint: 2026-10-22, P11 bounded native file search
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+
+- [E35](docs/completion/p11_file_search.md) replaces find_file's implicit root
+  and no-op verifier with strict explicit-root/basename/type/time criteria,
+  owned bounded native enumeration, candidate/directory identities and independent
+  readback. Duplicates remain distinct; limited results cannot claim uniqueness.
+  Missing/access/reparse/replacement conflicts fail closed. No automatic action.
+- Focused **82 passed (20.74s)**; affected regression **424 passed /
+  1 elevation deselected (72.63s)**. Raw --runxfail 15 (0.40s), containment 3
+  (2.79s), recovery 5 (0.45s). Actual exits zero; hashes match; fixture keys zero.
+  Real owned native text/voice/SQLite, junction and STOP/timeout evidence is in E35.
+- Catalog **44 registered / 29 unregistered; 26 IMPLEMENTED / 29 MISSING /
+  2 DEFECTIVE / 16 UNVERIFIED**. Sixteen missing P12 names untouched; **13 P11
+  names missing**: open_file; system four; clipboard get/set; open_terminal;
+  browser five. Remaining legacy app/window/file/audio, clipboard/undo and
+  A/D/H gates stay open. Full §26.3 planner/file-story acceptance is not inferred.
+- Source parent `b524b04` (pushed E34). Commit/push this verified checkpoint;
+  continue remaining P11 guarded native inverse/file gaps. Preserve other
+  worktrees, personal settings, disabled action entry and immutable specifications.
+
+## Previous checkpoint: 2026-10-22, P11 guarded audio and default-device tool
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
 

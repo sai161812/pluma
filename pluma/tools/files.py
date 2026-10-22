@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import (
@@ -36,11 +36,37 @@ class ListFilesArgs(BaseModel):
 
 class FindFileArgs(BaseModel):
     """Arguments for find_file."""
-    model_config = {"extra": "forbid"}
-    directory: str = Field(default=".", description="Root directory to search within.")
+    model_config = {"extra": "forbid", "strict": True}
+    directory: str = Field(min_length=1, max_length=32767, description="Explicit absolute search root.")
     pattern: str = Field(min_length=1, max_length=128, description="Glob search pattern (e.g. '*.txt').")
-    max_depth: int = Field(default=5, ge=1, le=10, description="Maximum directory search depth.")
+    max_depth: int = Field(default=5, ge=0, le=10, description="Directory descent depth; zero searches only the root.")
     max_results: int = Field(default=50, ge=1, le=200, description="Maximum number of matches to return.")
+    max_scan_entries: int = Field(default=4096, ge=1, le=4096)
+    kind: Literal['any', 'file', 'directory'] = 'any'
+    created_after_ns: int | None = Field(default=None, ge=0)
+    created_before_ns: int | None = Field(default=None, ge=0)
+    modified_after_ns: int | None = Field(default=None, ge=0)
+    modified_before_ns: int | None = Field(default=None, ge=0)
+
+    @field_validator('directory')
+    @classmethod
+    def explicit_root(cls, value):
+        return FileInfoArgs.explicit_filesystem_path(value)
+
+    @field_validator('pattern')
+    @classmethod
+    def basename_pattern(cls, value):
+        if any(char in value for char in '\\/:\0'):
+            raise ValueError('Search pattern must match a basename, not a path or stream.')
+        return value
+
+    @model_validator(mode='after')
+    def coherent_times(self):
+        for field in ('created', 'modified'):
+            after, before = getattr(self, field + '_after_ns'), getattr(self, field + '_before_ns')
+            if after is not None and before is not None and after >= before:
+                raise ValueError('Search time interval must be nonempty, with an inclusive lower and exclusive upper bound.')
+        return self
 
 
 class FileInfoArgs(BaseModel):
@@ -317,55 +343,22 @@ def execute_list_files(args: Dict[str, Any], task_context: Any = None) -> ToolRe
 
 
 def execute_find_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    import fnmatch
-    import os
-    from pathlib import Path
-    
-    root_dir = Path(args.get("directory", ".")).resolve()
-    if not root_dir.exists() or not root_dir.is_dir():
-        return ToolResult.failure("find_file", f"Search root '{root_dir}' does not exist or is not a directory.")
-        
-    pattern = args["pattern"]
-    max_depth = args.get("max_depth", 5)
-    max_results = args.get("max_results", 50)
-    
-    matches: List[Dict[str, Any]] = []
-    root_depth = len(root_dir.parts)
-    
+    from pluma.adapters.file_search import search
+    from pluma.core.cancellation import TaskCancelledError
     try:
-        for current_root, dirs, files in os.walk(root_dir):
-            if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-                return ToolResult.failure("find_file", "Search cancelled by task token.", error_code="TASK_CANCELLED")
-
-            current_path = Path(current_root)
-            depth = len(current_path.parts) - root_depth
-            if depth >= max_depth:
-                dirs.clear()  # Do not recurse further
-                
-            for name in files + dirs:
-                if fnmatch.fnmatch(name, pattern):
-                    full_p = current_path / name
-                    is_d = full_p.is_dir()
-                    matches.append({
-                        "name": name,
-                        "path": str(full_p.resolve()),
-                        "is_dir": is_d,
-                    })
-                    if len(matches) >= max_results:
-                        break
-            if len(matches) >= max_results:
-                break
-                
-        count = len(matches)
-        return ToolResult(
-            ok=True,
-            tool="find_file",
-            data={"pattern": pattern, "count": count, "matches": matches},
-            factual_message=f"Found {count} match{'es' if count != 1 else ''} for '{pattern}'.",
-            verified=True,
-        )
-    except Exception as e:
-        return ToolResult.failure("find_file", str(e))
+        values = FindFileArgs.model_validate(args).model_dump()
+        data, proof = search(values, getattr(task_context, 'cancellation_token', None))
+        result = ToolResult.success('find_file', data=data, verified=False,
+            factual_message=f"Returned {data['count']} file search candidates; bounded search " +
+                ('stopped at a limit.' if data['limited'] else 'completed within the requested depth.'),
+            adapter_used='native_handle').model_copy(update={'private_context': {'search_observation': proof}})
+        checked = verify_find_file(result)
+        return result.model_copy(update={'verified': checked.ok, 'verify_detail': checked})
+    except TaskCancelledError:
+        return ToolResult.failure('find_file', 'File search was stopped.', 'TASK_CANCELLED')
+    except Exception:
+        return ToolResult.failure('find_file', 'File search could not be verified; root, access, reparse or changed-target conflict.',
+                                  'FILE_SEARCH_UNVERIFIED')
 
 
 def _execute_guarded_move(tool, args, task_context):
@@ -537,7 +530,17 @@ def verify_list_files(result: ToolResult) -> VerifyResult:
 
 
 def verify_find_file(result: ToolResult) -> VerifyResult:
-    return verify_noop(result)
+    from pluma.adapters.file_search import verify
+    try:
+        args = FindFileArgs.model_validate({key: result.data[key] for key in FindFileArgs.model_fields}).model_dump()
+        valid = (result.ok and result.adapter_used == 'native_handle'
+                 and type(result.data['count']) is int and type(result.data['scanned_entries']) is int
+                 and type(result.data['limited']) is bool and type(result.data['unambiguous']) is bool
+                 and verify(result.data, result.private_context['search_observation'], args))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=bool(valid), method='native_candidate_and_directory_readback', detail=(
+        'Bounded candidate identities and directory readback verified.' if valid else 'File search was not verified.'))
 
 
 def _verify_guarded_move(result: ToolResult) -> VerifyResult:
@@ -647,6 +650,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=FindFileArgs,
         risk_class=RiskClass.READ,
         timeout_s=10.0,
+        process_isolated=True,
         executor=execute_find_file,
         verifier=verify_find_file,
         undo_builder=None,
