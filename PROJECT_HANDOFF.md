@@ -1,6 +1,31 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 guarded window state
+## Current checkpoint: 2026-10-22, P11 native cross-volume move
+
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue every remaining P11 tool.
+
+- [E43](docs/completion/p11_cross_volume_move.md): move_file now supports bounded
+  cross-volume regular files using verified copy followed by Recycle Bin recovery.
+  Source is never permanently deleted; streams and exact created destination are
+  verified. Manual and owned STOP undo preserve newer content and original paths.
+  Cross-volume folders refuse before copying; same-volume folders still work.
+- Native C:/D: focused **8 passed (11.18s)**; final affected regression **151 passed
+  (92.58s)** including 10 final cross-volume/stream-guard tests. E43 records the
+  preserved receipt-immutability failure and repaired alternate-stream copy-undo
+  sharing defect, plus exact recovery of its four initial fixture originals.
+  All source hashes/exits/fixture keys match; no personal files were mutated.
+- Catalog **50 registered / 23 unregistered; 37 IMPLEMENTED / 23 MISSING /
+  1 DEFECTIVE / 12 UNVERIFIED**. Seven P11 names missing: open_file;
+  open_terminal; browser five. App lifecycle/focus, physical audio/system, full
+  undo_last and remaining A/D/H evidence remain open. E42 is pushed in `b90b71b`.
+- Source parent `b90b71b`. Commit/push this checkpoint and continue remaining P11
+  app/focus and launch ownership, followed by open_file/open_terminal/browser.
+  Owner requires no more questions, docs/prior commits for choices, every tool
+  implemented, no P12 and no overengineering. Preserve personal data/settings,
+  immutable master, other worktrees and disabled action entry.
+
+
+## Previous checkpoint: 2026-10-22, P11 guarded window state
 
 **P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue all remaining P11 tools.
 

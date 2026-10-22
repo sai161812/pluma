@@ -1,6 +1,11 @@
 # Backend audit before action wiring
 
-Current P11 window-state update: [E42](../../../docs/completion/p11_window_state.md)
+Current P11 file move update: [E43](../../../docs/completion/p11_cross_volume_move.md)
+adds native C:/D: regular-file move, recycle-only source recovery and safe undo.
+151 affected passes. Non-P12 catalog: 37 implemented, 7 missing, 1 defective,
+12 unverified. P11 incomplete; P12 forbidden; action entry disabled.
+
+Previous P11 window-state update: [E42](../../../docs/completion/p11_window_state.md)
 implements guarded minimize/maximize/restore and conflict-safe native undo.
 171 affected / 19 commit-focused passes. Non-P12 catalog: 36 implemented,
 7 missing, 1 defective, 13 unverified. P11 incomplete; P12 forbidden.

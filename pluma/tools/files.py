@@ -189,8 +189,12 @@ def undo_builder_move_file(args: Dict[str, Any]) -> Dict[str, Any]:
     from pluma.memory.redaction import redact_string
     if redact_string(source) != source or redact_string(destination) != destination:
         raise ValueError("Private path pre-state cannot be safely journaled.")
+    state = capture(source, destination)
+    if state['source_parent']['volume'] != state['destination_parent']['volume']:
+        from pluma.adapters.cross_volume_move import capture as capture_cross_volume
+        return capture_cross_volume(str(Path(source)), str(Path(destination)))
     return {"action": "move_file", "source": str(Path(source)), "destination": str(Path(destination)),
-            "guard_version": 1, **capture(source, destination)}
+            "guard_version": 1, **state}
 
 
 def undo_builder_rename_file(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -382,13 +386,18 @@ def _execute_guarded_move(tool, args, task_context):
                 raise ValueError("File mutation does not match its arguments.")
         elif Path(source) != Path(args["path"]) or Path(destination) != Path(args["path"]).with_name(args["new_name"]):
             raise ValueError("Rename does not match its arguments.")
-        move(source, destination, state["identity"], getattr(task_context, "cancellation_token", None),
-             parents=(state["source_parent"], state["destination_parent"]))
+        if state.get('cross_volume') is True:
+            from pluma.adapters.cross_volume_move import apply
+            state = apply(state, getattr(task_context, 'cancellation_token', None))
+        else:
+            move(source, destination, state["identity"], getattr(task_context, "cancellation_token", None),
+                 parents=(state["source_parent"], state["destination_parent"]))
         data = {"source": source, "destination": destination} if tool == "move_file" else {
             "original_path": source, "new_path": destination}
         result = ToolResult.success(tool, data=data, verified=True,
             factual_message="Moved one filesystem target." if tool == "move_file" else "Renamed one filesystem target.",
-            adapter_used="native_handle").model_copy(update={"private_context": {"file_move": state}})
+            adapter_used="native_handle", undo_record=state if state.get('cross_volume') else None).model_copy(
+                update={"private_context": {"file_move": state}})
         proof = verify_move_file(result) if tool == "move_file" else verify_rename_file(result)
         return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
     except Exception:
@@ -551,7 +560,12 @@ def _verify_guarded_move(result: ToolResult) -> VerifyResult:
         destination = state.get("destination", state.get("new_path"))
         data = {"source": source, "destination": destination} if result.tool == "move_file" else {
             "original_path": source, "new_path": destination}
-        valid = result.ok and state['action'] == result.tool and result.data == data and verify_move(source, destination, state["identity"])
+        if state.get('cross_volume') is True:
+            from pluma.adapters.cross_volume_move import verify
+            observed = result.undo_record == state and verify(state)
+        else:
+            observed = verify_move(source, destination, state["identity"])
+        valid = result.ok and state['action'] == result.tool and result.data == data and observed
     except Exception:
         valid = False
     return VerifyResult(ok=valid, method="native_identity_and_digest",

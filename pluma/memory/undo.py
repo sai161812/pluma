@@ -128,6 +128,9 @@ def verify(receipt):
             from pluma.adapters.file_operations import verify_restored
             return verify_restored(state)
         if state['action'] in ('move_file', 'rename_file') and state.get('guard_version') == 1:
+            if state.get('cross_volume') is True:
+                from pluma.adapters.cross_volume_move import verify
+                return verify(state, restored=True)
             from pluma.adapters.file_identity import verify_restore
             return verify_restore(state)
         return state['action'] == 'memory_write' and row(db, state['kind'], state['key']) == state['before']

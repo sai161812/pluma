@@ -67,7 +67,10 @@ def _copy_observe(handle, path, token=None):
         if name == '::$DATA':
             digest = ordinary['digest']
         else:
-            with identity._open(str(path) + name) as stream_handle:
+            # An inverse may already hold DELETE on the primary stream. This
+            # secondary reader must share that right; the primary handle still
+            # denies outside writers/deletion throughout the fingerprint.
+            with identity._open(str(path) + name, share_delete=True) as stream_handle:
                 observed = identity._observe(stream_handle, Path(str(path) + name), token)
                 if observed['size_bytes'] != size:
                     raise ValueError('File stream size changed.')

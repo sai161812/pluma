@@ -99,7 +99,11 @@ def _recipe_pending_mutation(undo_data: Dict[str, Any]) -> RollbackStepResult:
 def _recipe_guarded_file(undo_data: Dict[str, Any]) -> RollbackStepResult:
     from pluma.adapters.file_identity import restore
     try:
-        restore(undo_data)
+        if undo_data.get('cross_volume') is True:
+            from pluma.adapters.cross_volume_move import restore as restore_cross_volume
+            restore_cross_volume(undo_data)
+        else:
+            restore(undo_data)
         return RollbackStepResult(ok=True, action=undo_data["action"], message="Restored captured filesystem target.")
     except Exception:
         return RollbackStepResult(ok=False, action=undo_data["action"],

@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-22 E42 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 audit; 2026-10-22 E43 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -13,7 +13,7 @@ dark UI, disabled action entry, other worktrees/recovery points and draft PRs.
 No P12 UIA/OCR/input implementation or later milestone is authorized here.
 
 Fresh inventory uses default ToolSpec registration without executing tools.
-`output/p11_power_actions/catalog-audit-e42.json` records the current 73-name
+`output/p11_power_actions/catalog-audit-e43.json` records the current 73-name
 registration/status counts and exact missing P11 names; ToolSpec source and
 E38 tests establish risk, timeout, ownership, builder and verifier contracts. Matrix
 checker independently validates 298 source items and 324 traceable rows.
@@ -38,7 +38,7 @@ these bounded checks and is not silently counted as passed.
 | P08 | Bounded BA-08 gate passes | E13/E16 pending/stopped/residual/error receipts; no invented live event API. |
 | P09 | Bounded BA-09 gate passes | E14 native atomic owner/ACL credential checks and authenticated Python/C# interoperability; fresh compatibility result recorded below. |
 | P10 | Covered owned-Windows safety gate passes | E16 plus fresh raw audit, native worker/descendant/unrelated-resource/rollback/shutdown regressions; no full catalog or product claim. |
-| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E42 address individual gaps only. No eligibility for P12. |
+| P11 | **FAIL / INCOMPLETE** | Missing tools and open backend A/D/H portions remain. E17-E43 address individual gaps only. No eligibility for P12. |
 
 E06-E16 historical detail lives in the linked
 [requirements/evidence matrix](requirements_matrix.md). Reviewed-source results and checkpoint are recorded below.
@@ -48,10 +48,10 @@ E06-E16 historical detail lives in the linked
 ## P11 catalog: actual remaining work
 
 All 73 exact catalog names: **50 registered / 23 unregistered**. Status across
-all rows: **36 implemented / 23 missing / 1 defective / 13 unverified**. Of the
+all rows: **37 implemented / 23 missing / 1 defective / 12 unverified**. Of the
 23 missing names, **16 are assigned to P12**. They were inspected, not implemented
 or declared optional. For the other 57 catalog entries relevant to this audit:
-**36 implemented / 7 missing / 1 defective / 13 unverified**.
+**37 implemented / 7 missing / 1 defective / 12 unverified**.
 
 | P11 area | Missing exact tools |
 |---|---|
@@ -75,14 +75,14 @@ One catalog entry remains defective:
 and connects stop_current to actual priority global STOP with typed pending/
 residual receipts. Four preference/routine capabilities are now implemented.
 
-Thirteen unverified tools: open_app, close_app, focus_app;
+Twelve unverified tools: open_app, close_app, focus_app;
 focus_window;
-move_file; set_volume, mute, unmute, set_default_audio_device;
+set_volume, mute, unmute, set_default_audio_device;
 lock, sleep_request, restart_request, shutdown_request.
 These need their recorded native identity, verification, inverse/conflict and
 complete-path evidence. Existing functions alone do not close their rows.
 
-Thirty-six bounded implemented catalog tools: minimize_window, maximize_window, restore_window, clipboard_set, clipboard_clear, clipboard_get, list_apps, app_status, list_windows, rename_file, find_file, file_info, list_processes,
+Thirty-seven bounded implemented catalog tools: move_file, minimize_window, maximize_window, restore_window, clipboard_set, clipboard_clear, clipboard_get, list_apps, app_status, list_windows, rename_file, find_file, file_info, list_processes,
 process_info, process_usage, get_volume, list_audio_devices, battery_status,
 get_system_status, network_status, show_activity, stop_current, save_preference,
 get_preference, create_routine, run_routine, copy_file, list_folder, create_folder, graceful_close_process, terminate_process, move_window, resize_window, safe_delete, run_command and run_powershell. This is backend owned-fixture
