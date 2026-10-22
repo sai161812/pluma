@@ -95,6 +95,12 @@ def cleanup_resources(resources: List[OwnedResource], *, deferred: bool = False)
                         check.verified = True
             except Exception:
                 check.errors.append("TEMP_CLEANUP_OR_READBACK_FAILED")
+        elif res.resource_type == 'browser_tab':
+            try:
+                from pluma.adapters.browser import tab_absent
+                check.verified = tab_absent(res.metadata['browser_state'])
+            except Exception:
+                check.errors.append('BROWSER_TAB_READBACK_FAILED')
         elif res.resource_type == "subprocess" and res.external_id:
             try:
                 check.verified = subprocess_absent(int(res.external_id), identity["creation_time"],

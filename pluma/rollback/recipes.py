@@ -70,6 +70,20 @@ def _recipe_app_launch(undo_data):
             message='Application changed or refused graceful undo; no force fallback.', error='ROLLBACK_CONFLICT')
 
 
+def _recipe_browser(undo_data):
+    from pluma.adapters.browser import restore, restored, recover_pending
+    try:
+        if undo_data['action'] == 'browser_tab_pending' or undo_data['action'] == 'browser_tab' and 'navigation' not in undo_data:
+            recover_pending(undo_data)
+        else:
+            restore(undo_data)
+            if not restored(undo_data): raise ValueError('Browser inverse readback failed.')
+        return RollbackStepResult(ok=True, action=undo_data['action'], message='Owned browser inverse verified.')
+    except Exception:
+        return RollbackStepResult(ok=False, action=undo_data.get('action', 'browser_tab'),
+            message='Browser changed or inverse could not be verified; newer work preserved.', error='ROLLBACK_CONFLICT')
+
+
 def _recipe_window_focus(undo_data):
     from pluma.adapters.window_focus import restore
     try:
@@ -360,6 +374,9 @@ class RollbackRecipes:
         self.register("window_state", _recipe_window_state)
         self.register("window_focus", _recipe_window_focus)
         self.register("app_launch", _recipe_app_launch)
+        self.register('browser_tab', _recipe_browser)
+        self.register('browser_focus', _recipe_browser)
+        self.register('browser_tab_pending', _recipe_browser)
         self.register("pending_mutation", _recipe_pending_mutation)
         self.register("move_file", _recipe_move_file)
         self.register("rename_file", _recipe_rename_file)

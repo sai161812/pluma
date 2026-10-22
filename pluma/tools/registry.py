@@ -963,7 +963,8 @@ class ToolRegistry:
         effective_risk = spec.risk_class
         approval_state = "NOT_CONFIGURED"
         clipboard_mutation = tool_name in ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')
-        if tool_name in ('minimize_window', 'maximize_window', 'restore_window', 'focus_window', 'focus_app', 'open_app', 'open_terminal') and (task_context is None or ledger is None):
+        if tool_name in ('minimize_window', 'maximize_window', 'restore_window', 'focus_window', 'focus_app', 'open_app', 'open_terminal',
+                         'open_url', 'open_file', 'focus_tab', 'close_tab') and (task_context is None or ledger is None):
             return _record_no_execution(ledger, task_context, step_index, tool_name,
                 validated_args, effective_risk, 'UNAVAILABLE', ToolResult.failure(tool_name,
                     'Window state changes require an owned task and undo journal.', 'WINDOW_JOURNAL_REQUIRED'))
@@ -1597,6 +1598,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.processes import PROCESS_TOOL_SPECS
     from pluma.tools.memory import MEMORY_TOOL_SPECS
     from pluma.tools.terminal import TERMINAL_TOOL_SPECS
+    from pluma.tools.browser import BROWSER_TOOL_SPECS
     from pluma.tools.ui import ALL_UI_TOOLS
     from pluma.tools.windows import WINDOW_TOOL_SPECS
 
@@ -1609,6 +1611,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + PROCESS_TOOL_SPECS
         + MEMORY_TOOL_SPECS
         + TERMINAL_TOOL_SPECS
+        + BROWSER_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS
         + ALL_UI_TOOLS
     )

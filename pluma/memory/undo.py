@@ -7,6 +7,7 @@ from pluma.memory.tool_store import connect, row
 
 SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete', 'pending_mutation', 'set_volume', 'mute', 'unmute', 'set_default_audio_device'}
 SUPPORTED_ACTIONS.update(('clipboard_restore', 'window_state', 'window_focus', 'app_launch'))
+SUPPORTED_ACTIONS.update(('browser_tab', 'browser_focus'))
 
 
 def peek_clipboard_ref(args, context):
@@ -100,6 +101,9 @@ def verify(receipt):
         if observed is None or list(observed) != [0, 1, 'verified']:
             return False
         state = receipt['undo_data']
+        if state['action'] in ('browser_tab', 'browser_focus'):
+            from pluma.adapters.browser import restored
+            return restored(state)
         if state['action'] == 'clipboard_restore':
             from pluma.adapters.clipboard_native import observe, text_of
             current = observe()

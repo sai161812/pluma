@@ -52,6 +52,16 @@ class RollbackEngine:
         self.clipboard_inverse = None
 
     def _apply(self, task_id, action, state):
+        if action == 'pending_mutation' and state.get('tool') in ('open_url', 'open_file', 'focus_tab'):
+            capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+            pending = dict(state['pre_state'])
+            if 'launch' in pending and capsule is not None:
+                matches = [item for item in capsule.owned_resources
+                    if item.metadata.get('persistent_launch_id') == pending['launch']['launch_id']]
+                if len(matches) == 1:
+                    pending.update(pid=matches[0].metadata['pid'], creation_time=matches[0].metadata['creation_time'])
+            from pluma.rollback.owned import apply_owned
+            return apply_owned(pending['action'], pending, capsule) if capsule is not None else self._recipes.apply(pending['action'], pending)
         if self.clipboard_inverse is not None and (action == 'clipboard_restore' or
                 action == 'pending_mutation' and state.get('tool') in
                 ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')):
@@ -68,7 +78,8 @@ class RollbackEngine:
                 metadata = resources[0].metadata
                 return apply_owned('app_launch', dict(pending, pid=metadata['pid'], creation_time=metadata['creation_time']), capsule)
         owned_inverse = action in ('safe_delete', 'set_volume', 'mute', 'unmute', 'set_default_audio_device',
-            'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'window_state', 'window_focus', 'app_launch') or (
+            'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'window_state', 'window_focus', 'app_launch',
+            'browser_tab', 'browser_focus', 'browser_tab_pending') or (
                 action == 'pending_mutation' and state.get('tool') == 'safe_delete')
         capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
         if owned_inverse and capsule is not None:

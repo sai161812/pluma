@@ -265,6 +265,9 @@ class TaskCapsule(BaseModel):
         for res in self.owned_resources:
             if res.ownership != ResourceOwnership.PLUMA_CREATED:
                 continue
+            if res.resource_type == 'browser_tab' and not stopping and self.state == TaskState.SUCCEEDED:
+                res.released_at = datetime.now(timezone.utc)
+                continue
             if res.metadata.get('promote_on_success') is True:
                 with self.work_lock:
                     job = res.metadata.get('persistent_job')
@@ -282,6 +285,9 @@ class TaskCapsule(BaseModel):
                             if check.verified:
                                 check.code = 'PERSISTENT_APP_PROMOTED_TO_USER'
                                 res.released_at = datetime.now(timezone.utc)
+                                for child in self.owned_resources:
+                                    if child.metadata.get('browser_launch_id') == res.metadata.get('persistent_launch_id'):
+                                        child.released_at = res.released_at
                         except Exception:
                             check.errors.append('APP_JOB_CLOSE_FAILED')
                     checks.append(check)

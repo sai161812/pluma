@@ -1,6 +1,6 @@
 # Overall P00-P11 completion audit
 
-2026-10-20 audit; 2026-10-22 E47 implementation/evidence update, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
+2026-10-20 overall audit; 2026-10-22 E47/E48 implementation and evidence updates, Asia/Calcutta. **P11 IS NOT COMPLETE. P12 MUST NOT START.**
 This corrects any earlier statement that P11 was finished. Commits, tool names
 and large passing test counts are not substitutes for the prompt's gate.
 
@@ -208,4 +208,4 @@ Next safe milestone remains P11: close defective tools and bounded
 catalog/inverse/irreversible/backend gates, with separate tested commits. Do not
 call P11 complete until its required rows pass. P12 remains expressly forbidden.
 
-E47 implements owner-scoped opening-only PowerShell; see [evidence](p11_terminal_open.md). No command entry/client automation. Native focused 7 / affected 364 pass. Six missing P11 names remain. Full undo/device/A/D/H gates remain open; no P12.
+E47 implements owner-scoped opening-only PowerShell; see [evidence](p11_terminal_open.md). E48 implements the six remaining P11 catalog names for owned browser tabs and file viewing; see [evidence](p11_browser_tools.md). Browser focused native checks pass 12/12. Affected regression reached 204 pass / 1 intermittent existing private-desktop teardown failure; the exact failed case passed on retry, and the failure remains recorded. Catalog is 57 registered / 16 unregistered; 46 IMPLEMENTED / 16 MISSING / 1 DEFECTIVE / 10 UNVERIFIED. No exact P11 tool name remains missing, but `undo_last`, physical focus/audio/system, and required A/D/H evidence remain open. P11 remains incomplete; no P12.

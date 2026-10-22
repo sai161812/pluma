@@ -1,9 +1,24 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 opening-only PowerShell
+## Current checkpoint: 2026-10-22, P11 owned browser tools
 
-**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 only.
+**P11 IS NOT COMPLETE. P12 MUST NOT START.** Continue remaining P11 acceptance gates only.
 
+- [E48](docs/completion/p11_browser_tools.md) implements and registers the six
+  remaining missing names: `open_file`, `open_url`, `list_tabs`, `focus_tab`,
+  `close_tab`, `download_status`. Native Edge/Chrome tests use separate PLUMA
+  profiles, a private desktop and a loopback site; personal profiles and tabs
+  are never attached. Live locked History DBs report unavailable; remote website
+  effects and confirmed closed tabs are non-undoable.
+- Native browser focused **12 passed (18.25s)**. Browser affected regression
+  reached **204 passed / 1 failed (69.19s)**: an existing app-launch test hit
+  intermittent private desktop teardown (`SetThreadDesktop`, WinError 0). The
+  exact failed case passed on retry (**1 passed, 2.19s**); that fixture flake
+  remains recorded rather than claiming the whole regression was green.
+- Catalog now has **57 registered / 16 unregistered; 46 IMPLEMENTED / 16 MISSING /
+  1 DEFECTIVE / 10 UNVERIFIED**. No exact P11 catalog name remains missing.
+  `undo_last`, physical focus2/audio4/system4 and required A/D/H evidence remain
+  open, so P11 is still incomplete. No waiver exists.
 - Owner clarification: open_terminal only opens PowerShell; commands are entered
   manually. Empty typed arguments, no terminal typing/client automation, cwd
   control or elevation. Fixed native new-console launch uses existing Job/STOP
@@ -12,13 +27,11 @@
   Process success persistence, STOP drain and schema-before-policy are covered.
   Obsolete terminal routes now resolve to open_terminal. Live terminal inverse
   refuses when no safely attributable GUI-close target exists; no force fallback.
-- Catalog **51 registered / 22 unregistered; 40 IMPLEMENTED / 22 MISSING /
-  1 DEFECTIVE / 10 UNVERIFIED**. Six P11 tools remain missing: open_file and
-  open_url/list_tabs/focus_tab/close_tab/download_status. Physical focus2/audio4/
-  system4, full undo_last and A/D/H remain open. No waiver or P12 eligibility.
-- Source parent 99255f9. Next safe work is owned Edge/Chrome browser tools plus
-  browser-backed file/PDF viewing. No new questions, personal profiles, settings
-  changes, UI redesign, action-entry enabling or repeated completed audits.
+- At E47 the catalog was **51 registered / 22 unregistered; 40 IMPLEMENTED /
+  22 MISSING / 1 DEFECTIVE / 10 UNVERIFIED**. E48 is the current count above.
+- E47 source parent `99255f9`; E48 is the next committed checkpoint. Continue
+  only remaining P11 acceptance gaps; no questions, personal profiles/settings,
+  UI redesign, action-entry enabling, P12, or repeated completed audits.
 
 ## Previous checkpoint: 2026-10-22, P11 owned persistent application launch
 

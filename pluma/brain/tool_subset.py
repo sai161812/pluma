@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Standard tool groupings
 FILE_TOOLS = [
+    "open_file",
     "safe_delete",
     "copy_file",
     "list_folder",
@@ -96,9 +97,10 @@ SYSTEM_CLIPBOARD_TOOLS = [
 
 # Route to standard tool name mappings
 TERMINAL_TOOLS = ['run_command', 'run_powershell', 'run_project_command', 'open_terminal']
+BROWSER_TOOLS = ['open_url', 'list_tabs', 'focus_tab', 'close_tab', 'download_status']
 ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
     RouteMode.FAST: [],  # FAST route bypasses LLM planning entirely
-    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + WINDOW_MANAGEMENT_TOOLS + AUDIO_TOOLS + SYSTEM_CLIPBOARD_TOOLS + TERMINAL_TOOLS,
+    RouteMode.SMART: FILE_TOOLS + APP_WINDOW_TOOLS + WINDOW_MANAGEMENT_TOOLS + AUDIO_TOOLS + SYSTEM_CLIPBOARD_TOOLS + TERMINAL_TOOLS + BROWSER_TOOLS,
     RouteMode.SCREEN: UI_PERCEPTION_TOOLS + WINDOW_MANAGEMENT_TOOLS,
     RouteMode.DEEP: (
         FILE_TOOLS
@@ -108,6 +110,7 @@ ROUTE_TOOL_MAP: Dict[RouteMode, List[str]] = {
         + AUDIO_TOOLS
         + SYSTEM_CLIPBOARD_TOOLS
         + TERMINAL_TOOLS
+        + BROWSER_TOOLS
     ),
 }
 
@@ -144,6 +147,8 @@ class ToolSubsetSelector:
                 return base_names
             if any(k in cmd_lower for k in ('terminal', 'powershell', 'diagnostic', 'project command')):
                 return TERMINAL_TOOLS
+            if any(k in cmd_lower for k in ('browser', 'website', 'url', 'tab', 'download')):
+                return BROWSER_TOOLS
             file_hint = any(k in cmd_lower for k in ("file", "folder", "directory", "move", "rename", "pdf", "doc"))
             if file_hint:
                 return FILE_TOOLS + ["open_app", "focus_window"] + (SYSTEM_CLIPBOARD_TOOLS if "clipboard" in cmd_lower else [])
