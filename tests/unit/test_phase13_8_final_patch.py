@@ -386,7 +386,7 @@ class TestOcrFreshnessAndVerification:
                 return [OcrWord(text=text, confidence=0.99, bounds=BoundingBox(left=10, top=10, right=50, bottom=20))]
 
         class DummyOcrManager:
-            def run_ocr(self, image_bytes):
+            def run_ocr(self, image_bytes, cancellation_token=None):
                 return DummyOcrResult()
 
         monkeypatch.setattr("pluma.tools.ui.ActiveWindowContext", lambda: DummyContext())
@@ -439,7 +439,7 @@ class TestOcrFreshnessAndVerification:
         assert res.verified is False
         assert res.verify_detail is not None
         assert res.verify_detail.ok is False
-        assert "postcondition not confirmed visually" in str(res.verify_detail.detail)
+        assert "remains at the same bounds" in str(res.verify_detail.detail)
 
 
 # ===========================================================================

@@ -244,11 +244,17 @@ class OcrAdapter:
         start_ms = time.perf_counter()
         try:
             words = active_backend.recognize(image_bytes)
+            # Backends such as PaddleOCR perform a synchronous native call.
+            # The owning process worker supplies the hard cancellation bound;
+            # this post-call check prevents any result or follow-up action from
+            # proceeding when cancellation arrived during recognition.
+            if cancellation_token is not None:
+                cancellation_token.raise_if_cancelled()
         except TaskCancelledError:
             raise
         except Exception as exc:
             logger.warning("OCR recognition error: %s", exc)
-            words = []
+            raise RuntimeError(f"OCR recognition failed: {type(exc).__name__}.") from exc
 
         duration_ms = (time.perf_counter() - start_ms) * 1000.0
         full_text = " ".join(w.text for w in words)

@@ -64,3 +64,21 @@ def test_ocr_lifecycle_cancellation() -> None:
 
     with pytest.raises(TaskCancelledError):
         manager.run_ocr(b"BM_TEST", cancellation_token=token)
+
+
+def test_ocr_lifecycle_raises_if_stop_arrives_during_recognition() -> None:
+    token = CancellationToken()
+    backend = MagicMock()
+
+    def cancel_during_recognition(_image: bytes):
+        token.cancel()
+        return []
+
+    backend.recognize.side_effect = cancel_during_recognition
+    manager = OcrLifecycleManager(custom_backend=backend)
+
+    with pytest.raises(TaskCancelledError):
+        manager.run_ocr(b"BM_TEST", cancellation_token=token)
+
+    assert token.is_cancelled
+    backend.recognize.assert_called_once_with(b"BM_TEST")

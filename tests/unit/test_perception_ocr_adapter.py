@@ -65,6 +65,15 @@ def test_ocr_adapter_custom_backend() -> None:
     mock_backend.recognize.assert_called_once_with(dummy_bytes)
 
 
+def test_ocr_adapter_does_not_turn_recognition_errors_into_empty_text() -> None:
+    mock_backend = MagicMock()
+    mock_backend.recognize.side_effect = ValueError("bad image data")
+    adapter = OcrAdapter(custom_backend=mock_backend)
+
+    with pytest.raises(RuntimeError, match="OCR recognition failed: ValueError"):
+        adapter.run(b"BM_DUMMY")
+
+
 def test_ocr_adapter_cancellation_token() -> None:
     mock_backend = MagicMock()
     adapter = OcrAdapter(custom_backend=mock_backend)

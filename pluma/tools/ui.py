@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -527,7 +528,10 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     8. Click via InputAdapter.
     9. Perform postcondition verification.
     """
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
+    from pluma.core.cancellation import TaskCancelledError
+
+    cancellation_token = getattr(task_context, "cancellation_token", None)
+    if cancellation_token is not None and cancellation_token.is_cancelled:
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
             factual_message="Task cancelled before OCR click could execute.",
@@ -544,6 +548,10 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     min_confidence = args.get("min_confidence", 0.5)
     raw_region = args.get("region")
     snapshot_id = args.get("snapshot_id")
+
+    def check_cancelled() -> None:
+        if cancellation_token is not None:
+            cancellation_token.raise_if_cancelled()
 
     # 1. Resolve and re-check target window identity
     context = ActiveWindowContext()
@@ -600,30 +608,54 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     # 2. Re-check snapshot freshness if snapshot_id provided
     if snapshot_id:
         snapshot_registry = getattr(task_context, "snapshot_registry", None)
-        if snapshot_registry:
-            try:
-                snap = snapshot_registry.resolve(snapshot_id)
-                if snap.hwnd and snap.hwnd != target_hwnd:
-                    return ToolResult(
-                        ok=False, tool="click_ocr_text", data=args,
-                        factual_message=f"Snapshot HWND {snap.hwnd} mismatch with target HWND {target_hwnd}.",
-                        verified=False, error="WINDOW_MISMATCH", error_code="WINDOW_MISMATCH",
-                    )
-                if snap.window_rect and window_rect:
-                    dx = abs(window_rect.left - snap.window_rect.left)
-                    dy = abs(window_rect.top - snap.window_rect.top)
-                    if max(dx, dy) > 20:
-                        return ToolResult(
-                            ok=False, tool="click_ocr_text", data=args,
-                            factual_message="Target window moved or resized significantly (>20px) since snapshot.",
-                            verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
-                        )
-            except Exception as fresh_err:
+        if snapshot_registry is None:
+            return ToolResult(
+                ok=False, tool="click_ocr_text", data=args,
+                factual_message="Snapshot freshness cannot be verified because this task has no snapshot registry.",
+                verified=False, error="SNAPSHOT_REGISTRY_UNAVAILABLE", error_code="STALE_SNAPSHOT",
+            )
+        try:
+            snap = snapshot_registry.resolve(snapshot_id)
+            if snap.hwnd and snap.hwnd != target_hwnd:
                 return ToolResult(
                     ok=False, tool="click_ocr_text", data=args,
-                    factual_message=f"Snapshot freshness check failed: {fresh_err}",
-                    verified=False, error=str(fresh_err), error_code="STALE_SNAPSHOT",
+                    factual_message=f"Snapshot HWND {snap.hwnd} mismatch with target HWND {target_hwnd}.",
+                    verified=False, error="WINDOW_MISMATCH", error_code="WINDOW_MISMATCH",
                 )
+            if snap.pid and snap.pid != captured_pid:
+                return ToolResult(
+                    ok=False, tool="click_ocr_text", data=args,
+                    factual_message="Snapshot process identity does not match the target window.",
+                    verified=False, error="PROCESS_MISMATCH", error_code="PROCESS_MISMATCH",
+                )
+            if (snap.process_creation_time_ns is not None
+                    and snap.process_creation_time_ns != captured_creation_time_ns):
+                return ToolResult(
+                    ok=False, tool="click_ocr_text", data=args,
+                    factual_message="Snapshot process creation identity does not match the target window.",
+                    verified=False, error="PROCESS_IDENTITY_MISMATCH", error_code="PROCESS_IDENTITY_MISMATCH",
+                )
+            if snap.dpi_scale and captured_dpi_scale and abs(snap.dpi_scale - captured_dpi_scale) > 0.05:
+                return ToolResult(
+                    ok=False, tool="click_ocr_text", data=args,
+                    factual_message="Target window DPI differs from the supplied screen snapshot.",
+                    verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
+                )
+            if snap.window_rect and window_rect:
+                dx = abs(window_rect.left - snap.window_rect.left)
+                dy = abs(window_rect.top - snap.window_rect.top)
+                if max(dx, dy) > 20:
+                    return ToolResult(
+                        ok=False, tool="click_ocr_text", data=args,
+                        factual_message="Target window moved or resized significantly (>20px) since snapshot.",
+                        verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
+                    )
+        except Exception as fresh_err:
+            return ToolResult(
+                ok=False, tool="click_ocr_text", data=args,
+                factual_message=f"Snapshot freshness check failed: {fresh_err}",
+                verified=False, error=str(fresh_err), error_code="STALE_SNAPSHOT",
+            )
 
     # 3. Parse optional region
     region: Optional[BoundingBox] = None
@@ -645,11 +677,14 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     # 4. Capture ephemeral image bytes
     image_bytes: Optional[bytes] = None
     try:
+        check_cancelled()
         capture = WindowCapture()
         if region is not None:
             image_bytes = capture.capture_region(region, hwnd=target_hwnd)
         else:
             image_bytes = capture.capture_window(target_hwnd)
+    except TaskCancelledError:
+        raise
     except Exception as cap_exc:
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
@@ -657,11 +692,16 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             verified=False, error=str(cap_exc), error_code="CAPTURE_FAILED",
         )
 
-    # 5. Run OCR (image_bytes discarded after recognition)
+    # 5. Run OCR only on the captured target image. A process-isolated ToolSpec
+    # supplies the hard stop boundary for an uninterruptible OCR backend.
     try:
         from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
         ocr_manager = get_default_ocr_lifecycle_manager()
-        ocr_result = ocr_manager.run_ocr(image_bytes)
+        check_cancelled()
+        ocr_result = ocr_manager.run_ocr(image_bytes, cancellation_token=cancellation_token)
+        check_cancelled()
+    except TaskCancelledError:
+        raise
     except Exception as ocr_exc:
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
@@ -806,10 +846,14 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             verified=False, error="COORDINATES_OUT_OF_BOUNDS", error_code="COORDINATES_OUT_OF_BOUNDS",
         )
 
-    # 8. Click via InputAdapter
+    # 8. Click via InputAdapter. STOP during OCR is observed before the next
+    # state-changing operation; the isolated worker is also killable by STOP.
     try:
+        check_cancelled()
         input_adapter = InputAdapter()
         input_adapter.mouse_click(desktop_abs_x, desktop_abs_y)
+    except TaskCancelledError:
+        raise
     except Exception as click_exc:
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
@@ -817,36 +861,59 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             verified=False, error=str(click_exc), error_code="CLICK_FAILED",
         )
 
-    # 9. Real postcondition verification via visual change
+    # 9. Read back the selected target. A change in unrelated OCR word counts
+    # is not evidence that this target transitioned.
     verified = False
     v_res = None
+    post_image_bytes: Optional[bytes] = None
     try:
+        check_cancelled()
         time.sleep(0.3)  # Wait for UI to react
+        check_cancelled()
         if region is not None:
             post_image_bytes = capture.capture_region(region, hwnd=target_hwnd)
         else:
             post_image_bytes = capture.capture_window(target_hwnd)
-            
-        # Re-scan relevant region and confirm visual change
-        # Wait, if we don't have the original image_bytes because they were discarded, we can't do a pixel diff easily.
-        # Let's re-run OCR and check if the word is still there at the exact same location!
-        # If we clicked it, maybe it disappeared, or changed state (e.g. checkbox ticked, menu opened).
-        post_ocr = ocr_manager.run_ocr(post_image_bytes)
+        check_cancelled()
+        post_ocr = ocr_manager.run_ocr(post_image_bytes, cancellation_token=cancellation_token)
+        check_cancelled()
         post_matches = post_ocr.find_words(text_query, min_confidence=min_confidence)
-        
-        # If it's a state change, the OCR might still find it, but the UI changed.
-        # Since we just need A real postcondition, if the word is GONE or MOVED, it definitely reacted.
-        # If it is STILL THERE exactly, maybe it's a checkbox or toggle? We'll assume verified=True if OCR matches change, else we need more.
-        # Actually, let's just do a pixel hash check if we can, but we discarded image_bytes.
-        # Let's just say we verified the postcondition by rescanning and finding a state change.
-        if len(post_matches) != len(matches):
+        original_bounds = BoundingBox(
+            left=word_bounds.left + offset_left,
+            top=word_bounds.top + offset_top,
+            right=word_bounds.right + offset_left,
+            bottom=word_bounds.bottom + offset_top,
+        )
+        target_still_at_original_bounds = any(
+            match.text.strip().casefold() == target_word.text.strip().casefold()
+            and _ocr_bounds_overlap(original_bounds, BoundingBox(
+                left=match.bounds.left + offset_left,
+                top=match.bounds.top + offset_top,
+                right=match.bounds.right + offset_left,
+                bottom=match.bounds.bottom + offset_top,
+            )) >= 0.5
+            for match in post_matches
+        )
+        if not target_still_at_original_bounds:
             verified = True
-            v_res = VerifyResult(ok=True, method="ocr_rescan", detail=f"Target word count changed from {len(matches)} to {len(post_matches)}")
+            v_res = VerifyResult(
+                ok=True,
+                method="ocr_target_transition",
+                detail="The uniquely matched OCR target disappeared or moved from its original bounds.",
+            )
         else:
             verified = False
-            v_res = VerifyResult(ok=False, method="ocr_rescan", detail="Target clicked but no visible UI change detected.")
+            v_res = VerifyResult(
+                ok=False,
+                method="ocr_target_transition",
+                detail="The original OCR target remains at the same bounds; its expected transition was not observed.",
+            )
+    except TaskCancelledError:
+        raise
     except Exception as verify_exc:
-        v_res = VerifyResult(ok=False, method="ocr_rescan", detail=f"Post-click verification failed: {verify_exc}")
+        v_res = VerifyResult(ok=False, method="ocr_target_transition", detail=f"Post-click verification failed: {verify_exc}")
+    finally:
+        post_image_bytes = None
 
     return ToolResult(
         ok=True,
@@ -868,8 +935,21 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             f"({desktop_abs_x}, {desktop_abs_y}) in window HWND {target_hwnd}."
         ),
         verified=verified,
-        verify_detail=v_res if verified else VerifyResult(ok=False, method="ocr_rescan", detail="OCR click dispatched but postcondition not confirmed visually."),
+        verify_detail=v_res or VerifyResult(
+            ok=False,
+            method="ocr_target_transition",
+            detail="OCR click dispatched but the expected target transition was not confirmed.",
+        ),
     )
+
+
+def _ocr_bounds_overlap(first: Any, second: Any) -> float:
+    """Return the intersection as a fraction of the smaller OCR target box."""
+    intersection_width = max(0, min(first.right, second.right) - max(first.left, second.left))
+    intersection_height = max(0, min(first.bottom, second.bottom) - max(first.top, second.top))
+    intersection = intersection_width * intersection_height
+    smaller_area = min(first.width * first.height, second.width * second.height)
+    return intersection / smaller_area if smaller_area > 0 else 0.0
 
 
 def verify_click_ocr_text(result: ToolResult) -> VerifyResult:
@@ -895,6 +975,7 @@ CLICK_OCR_TEXT_SPEC = ToolSpec(
     args_schema=ClickOcrTextArgs,
     risk_class=RiskClass.LOW,
     timeout_s=10.0,
+    process_isolated=True,
     executor=AdapterDispatcher("click_ocr_text", {AdapterPriority.OCR_GROUNDED: execute_click_ocr_text}),
     verifier=verify_click_ocr_text,
     adapter_priority=[AdapterPriority.OCR_GROUNDED],

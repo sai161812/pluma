@@ -1,6 +1,16 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P12 bounded slice E-05 (E64)
+## Current checkpoint: 2026-10-25, P12 bounded slice E-06–E-10 (E65)
+
+**E-06 through E-10 pass; P12 remains open.** [E65](docs/completion/p12_e06_e10.md) records target-HWND-only window/region capture, target-specific OCR transition readback, textless-target refusal, in-memory screenshot privacy, and STOP termination of an owned OCR worker. The actual crop in the native E-06 case comes from the owned Win32 HWND. The OCR result and input are injected for deterministic transition/refusal checks; no OCR accuracy or locked PaddleOCR/ONNX engine pass is claimed.
+
+- The focused UI/perception/dispatch/worker regression passed **161 tests in 36.16s**, zero skips. The native Win32 semantic suite passed **6 tests in 2.77s**, zero skips. E65 includes an uncooperative OCR-worker STOP case that verifies the worker is absent and no later click begins.
+- The latest separate WPF fixture retest failed before readiness with CLR exit code `3762504530` (`0xE0434352`); it was executed and not skipped. The earlier E-01/E-02 WPF pass remains recorded in E62, and this regression error is retained in E65 rather than counted as a pass.
+- E-01/E-02 remain evidenced by [E62](docs/completion/p12_e01_e02.md); E-03/E-04 by [E63](docs/completion/p12_e03_e04.md); E-05 by [E64](docs/completion/p12_e05.md). The remaining 16 screen-control catalog entries and the locked OCR engine configuration remain P12 work. E65 does not claim full P12 or product completion.
+
+Next safe step, only when instructed: continue with one of the remaining P12 screen-control catalog entries. Keep work on `p12-preparation`; do not start P13 or merge automatically.
+
+## Previous checkpoint: 2026-10-25, P12 bounded slice E-05 (E64)
 
 **E-05 geometry/DPI refresh passes on `p12-preparation`; P12 remains open.** [E64](docs/completion/p12_e05.md) records unit movement/DPI/process-identity checks and registered-tool refusal after an owned native window moves during OCR. The executor reads fresh process identity, geometry and DPI after OCR and before coordinate conversion, refuses stale targets, and does not dispatch input. The DPI drift path is covered deterministically; no system display scaling was changed.
 

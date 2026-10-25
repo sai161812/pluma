@@ -21,7 +21,13 @@ from pluma.perception.ocr_adapter import OcrResult, OcrWord
 from pluma.perception.snapshot_registry import SnapshotRegistry
 from pluma.tools.base import AdapterPriority
 from pluma.tools.registry import ToolRegistry
-from pluma.tools.ui import CLICK_ELEMENT_SPEC, CLICK_OCR_TEXT_SPEC, INSPECT_ACTIVE_WINDOW_SPEC
+from pluma.tools.ui import (
+    CLICK_ELEMENT_SPEC,
+    CLICK_OCR_TEXT_SPEC,
+    INSPECT_ACTIVE_WINDOW_SPEC,
+    execute_click_ocr_text,
+)
+from pluma.perception.capture import WindowCapture
 
 from tests.fixtures.desktop_thread import desktop_thread
 
@@ -44,6 +50,7 @@ def owned_uia_window(tmp_path: Path):
     )
     hwnd = None
     duplicate_hwnd = None
+    textless_hwnd = None
     fixture_pid = None
     fixture_creation_time = None
     failure = None
@@ -53,7 +60,8 @@ def owned_uia_window(tmp_path: Path):
             if ready.is_file():
                 state = json.loads(ready.read_text(encoding="utf-8"))
                 fixture_pid = int(state.get("pid", 0))
-                if not fixture_pid or not state.get("hwnd") or not state.get("duplicate_hwnd"):
+                if (not fixture_pid or not state.get("hwnd") or not state.get("duplicate_hwnd")
+                        or not state.get("textless_hwnd")):
                     raise AssertionError(
                         f"UIA fixture published invalid process/window identity {state!r}."
                     )
@@ -64,6 +72,7 @@ def owned_uia_window(tmp_path: Path):
                     )
                 hwnd = int(state["hwnd"])
                 duplicate_hwnd = int(state["duplicate_hwnd"])
+                textless_hwnd = int(state["textless_hwnd"])
                 fixture_creation_time = psutil.Process(fixture_pid).create_time()
                 break
             if process.poll() is not None:
@@ -77,6 +86,7 @@ def owned_uia_window(tmp_path: Path):
             "process": process,
             "hwnd": hwnd,
             "duplicate_hwnd": duplicate_hwnd,
+            "textless_hwnd": textless_hwnd,
             "pid": fixture_pid,
         }
     except Exception as exc:
@@ -91,7 +101,7 @@ def owned_uia_window(tmp_path: Path):
                 user = c.WinDLL("user32", use_last_error=True)
                 user.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
                 user.PostMessageW.restype = w.BOOL
-                for owned_hwnd in (hwnd, duplicate_hwnd):
+                for owned_hwnd in (hwnd, duplicate_hwnd, textless_hwnd):
                     if owned_hwnd:
                         user.PostMessageW(owned_hwnd, 0x0010, 0, 0)  # WM_CLOSE, owned fixture only
             try:
@@ -398,7 +408,9 @@ def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
     user.SetWindowPos.argtypes = [w.HWND, w.HWND, c.c_int, c.c_int, c.c_int, c.c_int, w.UINT]
     user.SetWindowPos.restype = w.BOOL
 
-    def move_owned_window_during_ocr(_: object, image_bytes: bytes) -> OcrResult:
+    def move_owned_window_during_ocr(
+        _: object, image_bytes: bytes, cancellation_token=None
+    ) -> OcrResult:
         assert image_bytes == b"BM_BYTES"
         moved = user.SetWindowPos(
             w.HWND(hwnd), None,
@@ -424,7 +436,9 @@ def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
     monkeypatch.setattr("pluma.adapters.input.InputAdapter.mouse_click", lambda self, x, y: clicks.append((x, y)))
 
     registry = ToolRegistry()
-    registry.register(CLICK_OCR_TEXT_SPEC)
+    # This case injects OCR behavior in-process to move only the owned fixture;
+    # the separate E-10 test exercises the production owned-process boundary.
+    registry.register(CLICK_OCR_TEXT_SPEC.model_copy(update={"process_isolated": False}))
     context = SimpleNamespace(
         task_id="p12-e05-native",
         cancellation_token=CancellationToken(),
@@ -445,3 +459,87 @@ def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
         assert fresh.rect != initial.rect
     finally:
         registry.close()
+
+
+@desktop_thread
+def test_p12_e06_e09_ocr_captures_only_owned_region_in_memory(
+    owned_uia_window,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pluma.adapters.input import InputAdapter
+    from pluma.adapters.screen import ScreenAdapter
+
+    hwnd = owned_uia_window["hwnd"]
+    _selected, native_context = _bind_owned_window_context(monkeypatch, hwnd)
+    target_rect = native_context.get_window_info(hwnd).rect
+    region = {"left": 20, "top": 20, "right": 180, "bottom": 120}
+    recognized_images: list[bytes] = []
+
+    def inspect_only_captured_region(self, image_bytes, cancellation_token=None):
+        recognized_images.append(image_bytes)
+        assert image_bytes[:2] == b"BM"
+        assert int.from_bytes(image_bytes[18:22], "little", signed=True) == 160
+        assert abs(int.from_bytes(image_bytes[22:26], "little", signed=True)) == 100
+        if len(recognized_images) == 1:
+            return OcrResult(words=[OcrWord(
+                text="Submit", confidence=0.99,
+                bounds=BoundingBox(left=10, top=10, right=60, bottom=30),
+            )])
+        return OcrResult(words=[])
+
+    monkeypatch.setattr(
+        "pluma.perception.ocr_lifecycle.OcrLifecycleManager.run_ocr",
+        inspect_only_captured_region,
+    )
+    monkeypatch.setattr("pluma.tools.ui.time.sleep", lambda _: None)
+    monkeypatch.setattr(
+        ScreenAdapter,
+        "capture_to_temp_file",
+        lambda *args, **kwargs: pytest.fail("Default OCR capture must stay in memory."),
+    )
+    clicks: list[tuple[int, int]] = []
+    monkeypatch.setattr(InputAdapter, "mouse_click", lambda self, x, y: clicks.append((x, y)))
+
+    result = execute_click_ocr_text({
+        "text": "Submit", "hwnd": hwnd, "region": region,
+    })
+
+    assert result.ok and result.verified, result.factual_message
+    assert len(recognized_images) == 2
+    assert clicks and target_rect.left + 20 <= clicks[0][0] < target_rect.left + 180
+    assert target_rect.top + 20 <= clicks[0][1] < target_rect.top + 120
+    assert b"BM" not in repr(result.data).encode()
+
+
+@desktop_thread
+def test_p12_e08_textless_owned_window_fails_without_guessed_click(
+    owned_uia_window,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pluma.adapters.input import InputAdapter
+
+    hwnd = owned_uia_window["textless_hwnd"]
+    selected, _ = _bind_owned_window_context(monkeypatch, hwnd)
+    controls = UiaAdapter().get_control_tree(hwnd)
+    actionable = [
+        control for control in controls
+        if control.control_type in {"Button", "Edit", "CheckBox", "RadioButton", "Hyperlink", "ComboBox"}
+    ]
+    assert actionable == [], f"Textless fixture unexpectedly exposed actionable UIA controls: {actionable!r}"
+
+    monkeypatch.setattr(
+        "pluma.perception.ocr_lifecycle.OcrLifecycleManager.run_ocr",
+        lambda self, image_bytes, cancellation_token=None: OcrResult(words=[]),
+    )
+    clicks: list[tuple[int, int]] = []
+    monkeypatch.setattr(InputAdapter, "mouse_click", lambda self, x, y: clicks.append((x, y)))
+    result = execute_click_ocr_text({
+        "text": "unknown graphic target",
+        "hwnd": hwnd,
+        "region": {"left": 20, "top": 40, "right": 300, "bottom": 180},
+    })
+
+    assert selected["hwnd"] == hwnd
+    assert not result.ok and not result.verified
+    assert result.error_code == "OCR_NO_MATCH"
+    assert clicks == []

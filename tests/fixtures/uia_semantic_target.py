@@ -61,11 +61,14 @@ def main() -> None:
 
     open_windows = 0
     duplicate_labels = False
+    textless_window = False
 
     def handle(hwnd: int, message: int, wp: int, lp: int) -> int:
         nonlocal open_windows
         if message == 0x0001:  # WM_CREATE
             open_windows += 1
+            if textless_window:
+                return 0
             button = user.CreateWindowExW(
                 0, "BUTTON", "Submit", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                 24, 28, 150, 36, hwnd, w.HMENU(BUTTON_ID), instance, None,
@@ -126,9 +129,15 @@ def main() -> None:
     if not user.RegisterClassW(c.byref(definition)):
         raise c.WinError()
 
-    def create_window(title: str, x: int, include_duplicate_labels: bool) -> int:
-        nonlocal duplicate_labels
+    def create_window(
+        title: str,
+        x: int,
+        include_duplicate_labels: bool,
+        include_textless_canvas: bool = False,
+    ) -> int:
+        nonlocal duplicate_labels, textless_window
         duplicate_labels = include_duplicate_labels
+        textless_window = include_textless_canvas
         hwnd = user.CreateWindowExW(
             WS_EX_NOACTIVATE, class_name, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
             x, 160, 420, 240, None, None, instance, None,
@@ -141,6 +150,7 @@ def main() -> None:
 
     hwnd = create_window("PLUMA P12 UIA fixture", 180, False)
     duplicate_hwnd = create_window("PLUMA P12 duplicate-label fixture", 620, True)
+    textless_hwnd = create_window("PLUMA P12 textless fixture", 1060, False, True)
 
     temporary = ready_path.with_suffix(".partial")
     temporary.write_text(
@@ -149,6 +159,7 @@ def main() -> None:
             "parent_pid": os.getppid(),
             "hwnd": int(hwnd),
             "duplicate_hwnd": duplicate_hwnd,
+            "textless_hwnd": textless_hwnd,
         }),
         encoding="utf-8",
     )

@@ -58,6 +58,7 @@ class WorkerRequest:
     storage_path: Optional[str] = None
     supervisor_pid: Optional[int] = None
     execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    screen_snapshot: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
 
 @dataclass
@@ -200,6 +201,13 @@ def _worker_process_loop(
             worker_ctx.storage_path = worker_req.storage_path
             worker_ctx.supervisor_pid = worker_req.supervisor_pid
             worker_ctx.execution_binding = worker_req.execution_binding
+            if worker_req.screen_snapshot is not None:
+                from pluma.perception.element_refs import ScreenSnapshot
+                from pluma.perception.snapshot_registry import SnapshotRegistry
+                worker_ctx.snapshot_registry = SnapshotRegistry()
+                worker_ctx.snapshot_registry.register(
+                    ScreenSnapshot.model_validate(worker_req.screen_snapshot)
+                )
             
             res = _invoke_executor(executor_fn, args, worker_ctx, admission)
                 
@@ -1243,6 +1251,39 @@ class ToolRegistry:
                 else:
                     return ToolResult.failure(tool_name, "Parent UI Grounding rejected: no snapshot registry on task_context.")
 
+        # Process-isolated screen tools receive only the resolved, short-lived
+        # metadata for the requested snapshot. They do not inherit the parent's
+        # in-memory registry, and a missing/expired reference must fail closed.
+        screen_snapshot = None
+        snapshot_id = validated_args.get("snapshot_id")
+        if snapshot_id:
+            snapshot_registry = getattr(task_context, "snapshot_registry", None)
+            if snapshot_registry is None:
+                return _record_no_execution(
+                    ledger, task_context, step_index, tool_name, validated_args,
+                    effective_risk, approval_state,
+                    ToolResult.failure(
+                        tool_name,
+                        "Screen snapshot cannot be verified because this task has no snapshot registry.",
+                        error_code="STALE_SNAPSHOT",
+                    ),
+                )
+            try:
+                snapshot = snapshot_registry.resolve(snapshot_id)
+                screen_snapshot = snapshot.model_dump(
+                    mode="json", exclude={"image_ref", "is_expired"}
+                )
+            except Exception as snapshot_error:
+                return _record_no_execution(
+                    ledger, task_context, step_index, tool_name, validated_args,
+                    effective_risk, approval_state,
+                    ToolResult.failure(
+                        tool_name,
+                        f"Screen snapshot freshness check failed: {snapshot_error}",
+                        error_code="STALE_SNAPSHOT",
+                    ),
+                )
+
         worker_req = WorkerRequest(
             task_id=task_id,
             tool_name=tool_name,
@@ -1254,6 +1295,7 @@ class ToolRegistry:
             storage_path=getattr(task_context, "storage_path", None),
             supervisor_pid=os.getpid(),
             execution_binding=execution_binding,
+            screen_snapshot=screen_snapshot,
         )
 
 
