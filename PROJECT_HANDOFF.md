@@ -1,6 +1,38 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P13 bounded packet E70
+## Current checkpoint: 2026-10-26, P13 bounded packet E71
+
+**P13 remains in progress and is not complete.** E71 makes planner STOP
+responsive while waiting for an owned inference future and preserves user STOP
+outcomes through SMART/SCREEN/DEEP planner failures. Its blocked SMART fixture
+proves no tool starts after STOP. The still-running inference future remains
+owned and causes residual cleanup; E71 does not claim native worker termination.
+This completes only the bounded STOP-responsiveness subtask; E70's F-07/F-08
+worker-absence gate remains open.
+See [E71](docs/completion/p13_f08_stop_wait.md) for reproduction, code hashes,
+exact commands and limitations.
+
+- Implementation commits: `6a06fc41a92a397e002f5a9bef0aa822fde1c79c` and
+  `15c19a4a1cdc7a2093999d308332c391ad678083` on `p12-preparation`; recovery
+  point before E71: `bee6626fb83c20c87df0f3ea12b470eb164b6701`.
+- Final affected regression: **420 passed, zero failed/errors/skips**, with
+  `--runxfail`; runtime shutdown, planner adapter/lifecycle/validator, schemas,
+  multi-step, router and FAST suites ran on Windows/Python 3.12.10/pytest 8.3.3.
+- The pre-fix blocked-backend regression failed at the 250 ms STOP-return
+  assertion. `llama_cpp` is unavailable here, so native generation, process
+  absence, real-model quality and physical unload were not tested.
+- F-07/F-08 and B-06 remain unverified until native inference is moved behind a
+  task-owned cancellable worker and STOP/timeout prove worker absence. Other P13
+  gaps include A-04/A-05/A-06, the still-unverified F rows, and real lifecycle
+  idle/unload/cycle evidence. Full list and matrix references are in E71 and
+  [`requirements_matrix.md`](docs/completion/requirements_matrix.md).
+
+Next safe packet: implement and verify task-owned native inference cancellation,
+timeout, process absence and cleanup/ledger readback. Then address configured
+plan limits and remaining P13 acceptance. Do not advance to P14 before P13
+gates pass; no P14 work or merge is authorized here.
+
+## Previous checkpoint: 2026-10-26, P13 first bounded packet E70
 
 **P12 remains complete; P13 is in progress and is not complete.** E70 repairs the first P13 gap recorded in [E69](docs/completion/p12_final_audit.md): SMART planning now sends only file-tool schemas for Downloads/file tasks, while explicit browser, website, URL, tab and URL-download requests keep the browser tool subset. The validator continues to reject any tool outside the selected subset. [E70](docs/completion/p13_e01_tool_subset.md) records the reproduction, implementation, exact checks, source hashes and remaining P13 gates.
 
