@@ -1,6 +1,6 @@
 # PLUMA live requirements and evidence matrix
 
-Latest P11 gate: [E60](p11_merge_readiness.md) closes P00-P11 implementation with owner-approved final focus/audio acceptance deferral. Physical effects stay UNVERIFIED below. P12 has not started; no merge occurred.
+Latest checkpoint: [E61](p11_main_merge.md) records P00-P11 merged into main through PRs 1 and 2, with tree-equivalent tested code and post-merge verification. [E60](p11_merge_readiness.md) retains the owner-approved final focus/audio acceptance deferral. Physical effects remain UNVERIFIED below. P12 is prepared, not started; its missing catalog/E-01 to E-10 rows stay open.
 
 Implementation inventory: all 57 non-screen section-21 names are registered; the remaining 16 screen-control names remain P12 work. E58 repairs production D-10 and DNS-only elevation, superseding E57. Historical evidence remains traceable, but current native failures are not acceptance. H-04 native confirmation UI remains P16 work.
 
