@@ -50,6 +50,7 @@ class RollbackEngine:
         self._recipes = recipes or RollbackRecipes()
         self.task_resolver = None
         self.clipboard_inverse = None
+        self.screen_text_inverse = None
 
     def _apply(self, task_id, action, state):
         if action == 'pending_mutation' and state.get('tool') in ('open_url', 'open_file', 'focus_tab'):
@@ -67,6 +68,10 @@ class RollbackEngine:
                 ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')):
             capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
             return self.clipboard_inverse(state if action == 'clipboard_restore' else state['pre_state'], capsule)
+        if self.screen_text_inverse is not None and (action == 'screen_control_text' or
+                action == 'pending_mutation' and state.get('tool') in ('set_control_text', 'type_text')):
+            capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+            return self.screen_text_inverse(state if action == 'screen_control_text' else state['pre_state'], capsule)
         if action == 'pending_mutation' and state.get('tool') in ('open_app', 'open_terminal'):
             capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
             pending = state['pre_state']

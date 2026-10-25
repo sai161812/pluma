@@ -44,6 +44,22 @@ UI_PERCEPTION_TOOLS = [
     "click_element",
     "type_into_element",
     "click_ocr_text",
+    "get_active_window_context",
+    "inspect_window_controls",
+    "capture_target_window",
+    "read_visible_text",
+    "find_visible_text",
+    "refresh_screen_snapshot",
+    "find_control",
+    "invoke_control",
+    "set_control_text",
+    "read_control_text",
+    "wait_for_control",
+    "invoke_screen_element",
+    "press_key",
+    "hotkey",
+    "type_text",
+    "click_window_relative",
 ]
 
 AUDIO_TOOLS = [

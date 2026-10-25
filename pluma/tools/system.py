@@ -267,14 +267,21 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
     from pluma.rollback.recipes import RollbackRecipes
     try:
         path = getattr(task_context, "storage_path", None)
-        private = (getattr(task_context, 'execution_binding', None) or {}).get('clipboard_private')
-        receipt = claim_latest(path, task_context.task_id, private)
+        binding = getattr(task_context, 'execution_binding', None) or {}
+        private = binding.get('clipboard_private')
+        screen_text_private = binding.get('screen_text_private')
+        receipt = claim_latest(path, task_context.task_id, private, screen_text_private)
     except Exception:
         return ToolResult.failure("undo_last", "No safe unclaimed undo record is available.", "UNDO_UNAVAILABLE")
     try:
         task_context.cancellation_token.raise_if_cancelled()
         state = receipt['undo_data']
-        payload = dict(state, clipboard_private=receipt['clipboard_private']) if state['action'] == 'clipboard_restore' else state
+        if state['action'] == 'clipboard_restore':
+            payload = dict(state, clipboard_private=receipt['clipboard_private'])
+        elif state['action'] == 'screen_control_text':
+            payload = dict(state, screen_text_private=receipt['screen_text_private'])
+        else:
+            payload = state
         inverse = RollbackRecipes().apply(state['action'], payload)
         if state['action'] == 'clipboard_restore' and inverse.ok:
             receipt['clipboard_restore_proof'] = inverse.data['clipboard_inverse_proof']

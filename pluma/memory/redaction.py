@@ -27,6 +27,7 @@ _SENSITIVE_KEY_SUBSTRINGS = (
     "access_key", "session_token", "jwt", "client_secret",
     "clipboard", "audio_path", "raw_audio",
     "command_output",
+    "screen_input", "visible_text", "control_text", "expected_control_text",
 )
 
 

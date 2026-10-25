@@ -1,14 +1,16 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P12 bounded slice E-06–E-10 (E65)
+## Current checkpoint: 2026-10-25, P12 exact screen-control catalog (E66)
 
-**E-06 through E-10 pass; P12 remains open.** [E65](docs/completion/p12_e06_e10.md) records target-HWND-only window/region capture, target-specific OCR transition readback, textless-target refusal, in-memory screenshot privacy, and STOP termination of an owned OCR worker. The actual crop in the native E-06 case comes from the owned Win32 HWND. The OCR result and input are injected for deterministic transition/refusal checks; no OCR accuracy or locked PaddleOCR/ONNX engine pass is claimed.
+**The 16 exact Section 21 screen-control catalog entries are implemented and registered.** [E66](docs/completion/p12_screen_control_catalog.md) records the typed ToolSpecs, SCREEN/DEEP routes, target-scoped snapshot/OCR behavior, UIA readback, private text undo and E-01 through E-10 verification evidence. P12 is not fully closed: `CORE-OCR` still lacks the locked PaddleOCR/ONNX tiny/small configuration and accuracy evidence.
 
-- The focused UI/perception/dispatch/worker regression passed **161 tests in 36.16s**, zero skips. The native Win32 semantic suite passed **6 tests in 2.77s**, zero skips. E65 includes an uncooperative OCR-worker STOP case that verifies the worker is absent and no later click begins.
-- The latest separate WPF fixture retest failed before readiness with CLR exit code `3762504530` (`0xE0434352`); it was executed and not skipped. The earlier E-01/E-02 WPF pass remains recorded in E62, and this regression error is retained in E65 rather than counted as a pass.
-- E-01/E-02 remain evidenced by [E62](docs/completion/p12_e01_e02.md); E-03/E-04 by [E63](docs/completion/p12_e03_e04.md); E-05 by [E64](docs/completion/p12_e05.md). The remaining 16 screen-control catalog entries and the locked OCR engine configuration remain P12 work. E65 does not claim full P12 or product completion.
+- Focused screen/UIA/OCR/dispatch/rollback regressions: **251 passed in 45.37s; zero skips**. The current owned Win32 semantic/UIA acceptance suite: **7 passed in 3.02s; zero skips**. E-07 target-transition and E-10 owned-worker STOP cases pass in the focused OCR integration tests.
+- The latest WPF retest was executed, not skipped, and failed before readiness because Windows Application Control blocked the fixture DLL (`0x800711C7`; CLR exit `3762504530`). Rebuilding under ignored repository `output/` was blocked the same way. The policy was not changed; E62 retains the earlier successful WPF run. The limitation and exact failure evidence are in E66.
+- The related manual-undo/rollback regression passed **17 tests in 8.81s**. An ancillary clipboard-write suite could not initialize its isolated station: Windows reported the named station already exists (21 setup errors; 22 other cases passed); it refused to reuse that station and no clipboard mutation ran.
+- The exact tool list is now **73/73 section-21 names** (57 non-screen and 16 screen); the default registry exposes 85 names including utility and compatibility tools. E66 does not claim that P12's OCR-engine gate or the full product is complete.
+- Final validation: `py_compile` passed for all 18 changed Python source/test modules; the requirements-matrix validator passed with **298 source items and 324 traceable rows**; `git diff --check` passed (Git emitted only its LF-to-CRLF normalization advisory for tracked files).
 
-Next safe step, only when instructed: continue with one of the remaining P12 screen-control catalog entries. Keep work on `p12-preparation`; do not start P13 or merge automatically.
+Next safe step: wait for the owner's instruction on the remaining `CORE-OCR` P12 gate. Keep work on `p12-preparation`; do not start P13 or merge automatically.
 
 ## Previous checkpoint: 2026-10-25, P12 bounded slice E-05 (E64)
 

@@ -19,10 +19,12 @@ from pluma.tools.ui import (
     execute_inspect_active_window,
     execute_type_into_element,
 )
+from pluma.tools.screen_catalog import SCREEN_CONTROL_TOOLS
 
 
 def test_ui_tool_specs_metadata() -> None:
-    assert len(ALL_UI_TOOLS) == 4
+    assert len(ALL_UI_TOOLS) == 20
+    assert len(SCREEN_CONTROL_TOOLS) == 16
 
     assert INSPECT_ACTIVE_WINDOW_SPEC.name == "inspect_active_window"
     assert INSPECT_ACTIVE_WINDOW_SPEC.risk_class == RiskClass.READ

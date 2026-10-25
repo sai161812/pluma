@@ -296,14 +296,14 @@ def test_audit_terminal_task_memory_bounding() -> None:
     assert len(supervisor._tasks) == 25
 
 
-def test_audit_registry_exposes_33_tools() -> None:
-    """Audit: Verify the default tool registry exposes exactly 33 registered tools."""
+def test_audit_registry_exposes_85_tools() -> None:
+    """Audit: Verify P12's exact Section 21 screen catalog is registered."""
     from pluma.tools.registry import get_default_tool_registry
     reg = get_default_tool_registry()
 
-    assert len(reg) == 33
-    assert len(reg.list_tools()) == 33
-    assert len(reg.list_tool_names()) == 33
+    assert len(reg) == 85
+    assert len(reg.list_tools()) == 85
+    assert len(reg.list_tool_names()) == 85
     assert "move_file" in reg.list_tool_names()
     assert "inspect_active_window" in reg.list_tool_names()
     assert "undo_last" in reg.list_tool_names()

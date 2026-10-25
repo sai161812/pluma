@@ -27,6 +27,10 @@ from pluma.tools.ui import (
     INSPECT_ACTIVE_WINDOW_SPEC,
     execute_click_ocr_text,
 )
+from pluma.tools.screen_catalog import (
+    INSPECT_WINDOW_CONTROLS_SPEC,
+    INVOKE_CONTROL_SPEC,
+)
 from pluma.perception.capture import WindowCapture
 
 from tests.fixtures.desktop_thread import desktop_thread
@@ -543,3 +547,58 @@ def test_p12_e08_textless_owned_window_fails_without_guessed_click(
     assert not result.ok and not result.verified
     assert result.error_code == "OCR_NO_MATCH"
     assert clicks == []
+
+
+@desktop_thread
+def test_p12_exact_catalog_inspect_and_invoke_use_uia_first(
+    owned_uia_window,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the Section 21 public names against one owned native Win32 window."""
+    from types import SimpleNamespace
+
+    from pluma.core.cancellation import CancellationToken
+    from pluma.perception.snapshot_registry import SnapshotRegistry
+    import pluma.tools.screen_catalog as screen_catalog
+
+    native_context = ActiveWindowContext()
+    hwnd = owned_uia_window["hwnd"]
+
+    class OwnedContext:
+        def get_active_window(self):
+            return native_context.get_window_info(hwnd)
+
+        def get_window_info(self, target):
+            return native_context.get_window_info(target)
+
+        def get_process_creation_time_ns(self, pid):
+            return native_context.get_process_creation_time_ns(pid)
+
+    monkeypatch.setattr(screen_catalog, "ActiveWindowContext", lambda: OwnedContext())
+    monkeypatch.setattr(
+        "pluma.tools.ui.execute_click_ocr_text",
+        lambda *args, **kwargs: pytest.fail("UIA control invocation must not fall back to OCR."),
+    )
+    context = SimpleNamespace(
+        task_id="p12-catalog-native",
+        snapshot_registry=SnapshotRegistry(),
+        cancellation_token=CancellationToken(),
+    )
+
+    inspected = INSPECT_WINDOW_CONTROLS_SPEC.executor(
+        {"hwnd": hwnd, "max_controls": 50}, context
+    )
+    assert inspected.ok and inspected.verified, inspected.factual_message
+    from pluma.perception.element_refs import ScreenSnapshot
+    snapshot = ScreenSnapshot.model_validate(inspected.data["raw_snapshot"])
+    context.snapshot_registry.register(snapshot)
+    submit = [item for item in snapshot.controls if item.label == "Submit" and item.control_type == "Button"]
+    assert len(submit) == 1
+
+    invoked = INVOKE_CONTROL_SPEC.executor({
+        "snapshot_id": snapshot.snapshot_id,
+        "target_ref": f"{snapshot.snapshot_id}::{submit[0].element_id}",
+        "expected_enabled": False,
+    }, context)
+    assert invoked.ok and invoked.verified, invoked.factual_message
+    assert invoked.adapter_used == "uia"

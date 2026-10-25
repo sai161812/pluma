@@ -1,6 +1,7 @@
 """Durable, at-most-once manual undo. Unknown claims never auto-repeat effects."""
 from datetime import datetime, timezone
 import json
+import time
 import uuid
 
 from pluma.memory.tool_store import connect, row
@@ -8,6 +9,7 @@ from pluma.memory.tool_store import connect, row
 SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete', 'pending_mutation', 'set_volume', 'mute', 'unmute', 'set_default_audio_device'}
 SUPPORTED_ACTIONS.update(('clipboard_restore', 'window_state', 'window_focus', 'app_launch'))
 SUPPORTED_ACTIONS.update(('browser_tab', 'browser_focus'))
+SUPPORTED_ACTIONS.add('screen_control_text')
 
 
 def _is_legacy_without_guard(state):
@@ -35,12 +37,21 @@ def _latest_available(db):
 
 def peek_clipboard_ref(args, context):
     with connect(context.storage_path) as db:
-        _, state = _latest_available(db)
+        latest = _latest_available(db)
+        state = latest[1] if latest else {}
         return {'action': 'private_clipboard_lookup',
                 'undo_ref': state.get('undo_ref') if state.get('action') == 'clipboard_restore' else None}
 
 
-def claim_latest(path, task_id, clipboard_private=None):
+def peek_screen_text_ref(args, context):
+    with connect(context.storage_path) as db:
+        latest = _latest_available(db)
+        state = latest[1] if latest else {}
+        return {'action': 'private_screen_text_lookup',
+                'undo_ref': state.get('undo_ref') if state.get('action') == 'screen_control_text' else None}
+
+
+def claim_latest(path, task_id, clipboard_private=None, screen_text_private=None):
     with connect(path, write=True) as db:
         db.execute('BEGIN IMMEDIATE')
         try:
@@ -52,6 +63,14 @@ def claim_latest(path, task_id, clipboard_private=None):
             if state['action'] == 'clipboard_restore' and (not clipboard_private
                     or clipboard_private.get('record') != state or clipboard_private.get('after_proof') is None):
                 raise ValueError('Private clipboard undo expired or lacks a verified write receipt.')
+            if state['action'] == 'screen_control_text':
+                from pluma.tools.screen_catalog import SCREEN_TEXT_UNDO_TTL_S
+                if (not screen_text_private or screen_text_private.get('record') != state
+                        or screen_text_private.get('undo_ref') != state.get('undo_ref')
+                        or not isinstance(screen_text_private.get('before_value'), str)
+                        or not isinstance(screen_text_private.get('after_value'), str)
+                        or time.monotonic() - screen_text_private.get('created_monotonic', 0) > SCREEN_TEXT_UNDO_TTL_S):
+                    raise ValueError('Private screen-text undo expired or lacks a verified text transition.')
             pending_recycle = (state['action'] == 'pending_mutation' and state.get('tool') == 'safe_delete'
                 and state.get('pre_state', {}).get('guard_version') == 1)
             if state['action'] == 'pending_mutation' and not pending_recycle:
@@ -93,6 +112,8 @@ def claim_latest(path, task_id, clipboard_private=None):
     result = {'storage_path': path, 'action_id': record['action_id'], 'operation_id': operation, 'undo_data': state}
     if state['action'] == 'clipboard_restore':
         result['clipboard_private'] = clipboard_private
+    if state['action'] == 'screen_control_text':
+        result['screen_text_private'] = screen_text_private
     return result
 
 
@@ -130,6 +151,9 @@ def verify(receipt):
             current = observe()
             return (current['proof'] == receipt['clipboard_restore_proof']
                     and text_of(current) == receipt['clipboard_private']['clipboard_before'])
+        if state['action'] == 'screen_control_text':
+            from pluma.tools.screen_catalog import verify_screen_control_text
+            return verify_screen_control_text(state, receipt['screen_text_private'], restored=True)
         if state['action'] in ('set_volume', 'mute', 'unmute', 'set_default_audio_device'):
             from pluma.tools.audio import verify_audio_restored
             return verify_audio_restored(state)

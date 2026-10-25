@@ -539,6 +539,7 @@ class ToolRegistry:
         self._worker_controllers: Dict[str, TaskWorkerController] = {}
         self._idle_workers: List[TaskWorkerController] = []
         self._clipboard_undo_cache: Dict[str, Any] = {}
+        self._screen_text_undo_cache: Dict[str, Any] = {}
         self.clipboard_task_resolver = None
         from pluma.core.shutdown import WorkGate
         self.work_gate = WorkGate()
@@ -610,6 +611,7 @@ class ToolRegistry:
             if failures:
                 raise RuntimeError("Owned worker cleanup remains unverified.")
             self._clipboard_undo_cache.clear()
+            self._screen_text_undo_cache.clear()
 
     def restore_clipboard(self, state, capsule):
         from copy import deepcopy
@@ -635,6 +637,29 @@ class ToolRegistry:
                     if previous['after_proof'] == entry['before_proof']:
                         previous['after_proof'] = dict(restored_proof)
 
+    def restore_screen_control_text(self, state, capsule):
+        """Apply a private, identity-bound screen-text inverse after STOP drain."""
+        from copy import deepcopy
+        from pluma.rollback.owned import apply_owned
+        from pluma.rollback.recipes import RollbackStepResult
+        from pluma.tools.screen_catalog import SCREEN_TEXT_UNDO_TTL_S
+        reference = state.get('undo_ref')
+        with self._lock:
+            entry = deepcopy(self._screen_text_undo_cache.get(reference))
+        if (capsule is None or not entry or entry.get('record') != state
+                or entry.get('undo_ref') != reference
+                or entry.get('after_value') is None
+                or time.monotonic() - entry.get('created_monotonic', 0) > SCREEN_TEXT_UNDO_TTL_S):
+            return RollbackStepResult(ok=False, action='screen_control_text',
+                message='Private screen-text undo is unavailable or its effect is uncertain.',
+                error='SCREEN_TEXT_UNDO_UNAVAILABLE')
+        outcome = apply_owned('screen_control_text',
+            dict(state, screen_text_private=entry), capsule)
+        if outcome.ok:
+            with self._lock:
+                self._screen_text_undo_cache.pop(reference, None)
+        return outcome
+
     def begin_shutdown(self) -> None:
         self.work_gate.begin_shutdown()
 
@@ -652,11 +677,27 @@ class ToolRegistry:
         try:
             if spec.process_isolated:
                 import pickle
+                screen_snapshot = None
+                snapshot_id = arguments.get("snapshot_id")
+                if snapshot_id:
+                    snapshot_registry = getattr(context, "snapshot_registry", None)
+                    if snapshot_registry is None:
+                        return ToolResult.failure(spec.name,
+                            "Screen pre-state cannot be captured without this task's snapshot registry.",
+                            error_code="STALE_SNAPSHOT")
+                    try:
+                        screen_snapshot = snapshot_registry.resolve(snapshot_id).model_dump(
+                            mode="json", exclude={"image_ref", "is_expired"})
+                    except Exception as snapshot_error:
+                        return ToolResult.failure(spec.name,
+                            f"Screen pre-state snapshot is stale: {snapshot_error}",
+                            error_code="STALE_SNAPSHOT")
                 request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
                     storage_path=getattr(context, "storage_path", None),
                     supervisor_pid=os.getpid(),
                     execution_binding=execution_binding,
-                    env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")})
+                    env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")},
+                    screen_snapshot=screen_snapshot)
                 # Required isolation fails closed before calling any builder.
                 try:
                     pickle.dumps((capture, arguments, request))
@@ -1147,6 +1188,35 @@ class ToolRegistry:
                     return _record_no_execution(ledger, task_context, step_index, tool_name,
                         validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
                             'Private clipboard undo could not be retained. No write was executed.', 'CLIPBOARD_UNDO_UNAVAILABLE'))
+            if tool_name in ('set_control_text', 'type_text'):
+                try:
+                    from copy import deepcopy
+                    from pluma.tools.screen_catalog import (
+                        SCREEN_TEXT_UNDO_MAX, SCREEN_TEXT_UNDO_TTL_S, seal_screen_text_capture,
+                    )
+                    pre_undo_data, captured = seal_screen_text_capture(pre_undo_data)
+                    with self._lock:
+                        expired = [reference for reference, entry in self._screen_text_undo_cache.items()
+                            if time.monotonic() - entry['created_monotonic'] > SCREEN_TEXT_UNDO_TTL_S]
+                        for reference in expired:
+                            self._screen_text_undo_cache.pop(reference, None)
+                        if len(self._screen_text_undo_cache) >= SCREEN_TEXT_UNDO_MAX:
+                            raise ValueError('Private screen-text undo capacity is full.')
+                        private_entry = {
+                            'record': deepcopy(pre_undo_data),
+                            'undo_ref': pre_undo_data['undo_ref'],
+                            'before_value': captured['before_value'],
+                            'after_value': (validated_args['screen_input'] if tool_name == 'set_control_text'
+                                else validated_args['expected_control_text']),
+                            'created_monotonic': time.monotonic(),
+                        }
+                        self._screen_text_undo_cache[private_entry['undo_ref']] = deepcopy(private_entry)
+                    execution_binding = {'screen_text_private': private_entry}
+                except Exception:
+                    return _record_no_execution(ledger, task_context, step_index, tool_name,
+                        validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                            'Private screen-text undo could not be retained. No text change was executed.',
+                            'SCREEN_TEXT_UNDO_UNAVAILABLE'))
             if spec.non_undoable and pre_undo_data.get("non_undoable") is not True:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
@@ -1175,6 +1245,30 @@ class ToolRegistry:
             reference = lookup.data['pre_state'].get('undo_ref')
             with self._lock:
                 execution_binding = {'clipboard_private': deepcopy(self._clipboard_undo_cache.get(reference))}
+            timeout_s -= time.perf_counter() - lookup_started
+            if timeout_s <= 0:
+                from pluma.core.cancellation import StopReason
+                if token is not None:
+                    token.cancel(StopReason.TASK_TIMEOUT)
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        'Undo lookup exhausted the tool deadline. No inverse was executed.', 'TOOL_TIMEOUT'))
+
+        if tool_name == 'undo_last' and self._screen_text_undo_cache:
+            from copy import deepcopy
+            from pluma.memory.undo import peek_screen_text_ref
+            from pluma.tools.screen_catalog import SCREEN_TEXT_UNDO_TTL_S
+            lookup_started = time.perf_counter()
+            lookup_spec = spec.model_copy(update={'undo_builder': peek_screen_text_ref})
+            lookup = self._owned_prestate(lookup_spec, validated_args, task_context, token, timeout_s)
+            if not lookup.ok:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, lookup)
+            reference = lookup.data['pre_state'].get('undo_ref')
+            with self._lock:
+                entry = deepcopy(self._screen_text_undo_cache.get(reference))
+            if entry and time.monotonic() - entry.get('created_monotonic', 0) <= SCREEN_TEXT_UNDO_TTL_S:
+                execution_binding = dict(execution_binding or {}, screen_text_private=entry)
             timeout_s -= time.perf_counter() - lookup_started
             if timeout_s <= 0:
                 from pluma.core.cancellation import StopReason
@@ -1442,16 +1536,30 @@ class ToolRegistry:
                             except Exception:
                                 result = ToolResult.failure(tool_name,
                                     'Worker resource ownership could not be recorded.', 'RESOURCE_OWNERSHIP_FAILED')
-                    # Propagate snapshot
-                    if tool_name == "inspect_active_window" and result.ok and task_context:
+                    # Promote internal snapshot payloads to the task-scoped
+                    # registry, then remove them before the action ledger can
+                    # retain a full screen tree or OCR dump.
+                    if tool_name in {
+                        "inspect_active_window", "inspect_window_controls",
+                        "refresh_screen_snapshot", "read_visible_text",
+                        "find_visible_text", "wait_for_control",
+                    } and result.ok and task_context:
                         registry = getattr(task_context, "snapshot_registry", None)
-                        if registry and "raw_snapshot" in result.data:
+                        if "raw_snapshot" in result.data:
                             try:
                                 from pluma.perception.element_refs import ScreenSnapshot
-                                raw = result.data.pop("raw_snapshot")
+                                result_data = dict(result.data)
+                                raw = result_data.pop("raw_snapshot")
+                                if registry is None:
+                                    raise ValueError("task snapshot registry is unavailable")
                                 registry.register(ScreenSnapshot.model_validate(raw))
+                                result = result.model_copy(update={"data": result_data})
                             except Exception:
-                                pass
+                                result = ToolResult.failure(
+                                    tool_name,
+                                    "Fresh screen snapshot could not be registered to this task.",
+                                    error_code="SNAPSHOT_REGISTRATION_FAILED",
+                                )
                     # A stale worker snapshot must not erase a retained journal.
                     # Failed undo must not pop its pre-state in the parent.
                     if payload.final_undo_stack is not None and task_context and hasattr(task_context, "undo_stack"):
@@ -1671,6 +1779,9 @@ class ToolRegistry:
             state = receipt.get('undo_data', {})
             if state.get('action') == 'clipboard_restore':
                 self._consume_clipboard_undo(state.get('undo_ref'), receipt['clipboard_restore_proof'])
+            elif state.get('action') == 'screen_control_text':
+                with self._lock:
+                    self._screen_text_undo_cache.pop(state.get('undo_ref'), None)
         return final_result
 
     # ------------------------------------------------------------------

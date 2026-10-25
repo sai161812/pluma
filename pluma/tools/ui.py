@@ -989,3 +989,9 @@ ALL_UI_TOOLS: List[ToolSpec] = [
     TYPE_INTO_ELEMENT_SPEC,
     CLICK_OCR_TEXT_SPEC,
 ]
+
+# Exact Section 21 public names. Existing shorter aliases remain available for
+# compatibility, while route selection and new plans use these catalog tools.
+from pluma.tools.screen_catalog import SCREEN_CONTROL_TOOLS
+
+ALL_UI_TOOLS.extend(SCREEN_CONTROL_TOOLS)
