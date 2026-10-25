@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../PLUMA.UI/AudioSpectrumAnalyzer.cs" Link="AudioSpectrumAnalyzer.cs" />
+    <Compile Include="../PLUMA.UI/VoiceWaveformMotion.cs" Link="VoiceWaveformMotion.cs" />
+  </ItemGroup>
+</Project>

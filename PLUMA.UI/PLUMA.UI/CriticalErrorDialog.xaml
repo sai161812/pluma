@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="PLUMA.UI.CriticalErrorDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PLUMA.UI"
+    Title="Core unavailable" PrimaryButtonText="Restart core" CloseButtonText="Close"
+    DefaultButton="Close" IsPrimaryButtonEnabled="False" PrimaryButtonClick="OnRestartClick">
+    <StackPanel Spacing="16" Width="440" MinWidth="0">
+        <local:PopupMessageText x:Name="ErrorText" IsTextSelectionEnabled="True"
+                   FontSize="14" MaxHeight="96" />
+        <Expander x:Name="DetailsExpander" Header="Technical details" HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Stretch" Visibility="Collapsed">
+                <local:PopupMessageText x:Name="DetailsText" IsTextSelectionEnabled="True"
+                           FontSize="12" MaxHeight="160" />
+        </Expander>
+    </StackPanel>
+</ContentDialog>

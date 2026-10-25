@@ -30,3 +30,13 @@ models/
 # Test artifacts
 .pytest_cache/
 *.log
+
+# WinUI build output and local Visual Studio state
+PLUMA.UI/**/bin/
+PLUMA.UI/**/obj/
+.vs/
+*.csproj.user
+*.suo
+
+# Explicit local preview/audit exports
+/output/
