@@ -89,11 +89,11 @@ window-state refusal code). The P12-scoped run above includes that file's
 85-tool catalog assertion, which passes. These unrelated failures were not
 changed as part of P12.
 
-## Remaining P12 acceptance
+## P12 acceptance status
 
 E-02 through E-10 have current owned-fixture evidence in E62-E66. E-01 passes
-for Win32 in E66, and E62 records an earlier WPF pass. The most recent current
-WPF test attempt failed before fixture readiness because Windows Application
-Control blocked its generated fixture DLL (`0x800711C7`). The policy was not
-changed or bypassed, so a permitted current-build WPF retest is still required
-before P12 can be marked fully closed. No P13 work was started.
+for Win32 in E66 and for the current-build WPF fixture in [E68](p12_wpf_retest.md).
+The earlier Application Control block recorded above did not recur; the policy
+was not changed or bypassed. `CORE-OCR` and all E-01 through E-10 gates are now
+complete. The fixed OCR corpus and 100%, 125%, and 150% scaling quality/latency
+measurements remain assigned to P26. No P13 work was started.

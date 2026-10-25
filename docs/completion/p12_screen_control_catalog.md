@@ -51,7 +51,7 @@ the private text inverse into automatic rollback.
 
 | Gate | Current evidence |
 |---|---|
-| E-01 | Native Win32 semantic inspection passes in `test_p12_e01_e02_semantic_inspection_and_submit_use_uia_only`; the exact catalog's native UIA inspection also passes. The WPF fixture was attempted and is blocked by Windows Application Control, as detailed below. Its earlier successful run remains in E62. |
+| E-01 | Native Win32 and current-build WPF semantic inspection pass. The WPF retest is recorded in E68; the earlier Application Control block below is historical and did not recur. The exact catalog's native UIA inspection also passes. |
 | E-02 | The owned Win32 Submit control is invoked through UIA, with an independent enabled-state and status readback; OCR is not called. |
 | E-03 | Duplicate UIA labels are refused before mutation in the owned Win32 fixture. |
 | E-04 | A changed target HWND/process is rejected before the UIA action adapter is reached. |
@@ -95,10 +95,11 @@ in that command passed. The fixture refused to reuse the existing station, so
 no clipboard mutation ran. The directly relevant manual-undo and rollback
 regressions passed in the focused suite.
 
-## Remaining P12 work
+## P12 acceptance status
 
-The exact 16-name screen catalog is complete. P12 overall remains open for the
-locked PaddleOCR/ONNX tiny/small backend configuration and associated accuracy
-evidence (`CORE-OCR`), and a permitted current-build WPF E-01 retest. The WPF
-rerun remains blocked by the active application control policy; no setting was
-weakened. Do not start P13 automatically.
+E-01 through E-10 and the exact 16-name screen catalog have passing evidence
+across E62-E68. The production PaddleOCR/ONNX backend is implemented and
+exercised in [E67](p12_ocr_runtime.md); E68 closes the final current-build WPF
+E-01 retest. P12 acceptance is closed. The fixed OCR corpus and 100%, 125%, and
+150% scaling quality/latency measurements remain assigned to P26. Do not start
+P13 automatically.
