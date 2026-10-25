@@ -142,7 +142,8 @@ class ActivityLedger:
                 record.task_id, record.request_id, record.input_mode.lower(),
                 redacted_cmd, record.created_at, record.started_at,
                 record.completed_at, record.final_state, record.route,
-                record.active_process, record.active_window,
+                redact_string(record.active_process) if record.active_process else record.active_process,
+                redact_string(record.active_window) if record.active_window else record.active_window,
                 record.stop_reason, record.error_code,
             ),
         )
@@ -163,8 +164,12 @@ class ActivityLedger:
             raise ValueError(f"update_task: disallowed fields {bad!r}")
         if not fields:
             return
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        values = list(fields.values()) + [task_id]
+        safe_fields = dict(fields)
+        for name in ("active_process", "active_window"):
+            if safe_fields.get(name):
+                safe_fields[name] = redact_string(safe_fields[name])
+        set_clause = ", ".join(f"{k} = ?" for k in safe_fields)
+        values = list(safe_fields.values()) + [task_id]
         self._db.execute_write(
             f"UPDATE tasks SET {set_clause} WHERE task_id = ?",
             values,

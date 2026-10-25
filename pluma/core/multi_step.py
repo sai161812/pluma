@@ -95,6 +95,7 @@ class MultiStepOrchestrator:
         command_text: str,
         context: Optional[Dict[str, Any]] = None,
         permitted_tool_specs: Optional[List[Dict[str, Any]]] = None,
+        route: RouteMode = RouteMode.SMART,
     ) -> MultiStepExecutionResult:
         """Execute a multi-step Plan with per-step observation, stop-latch checks, and replanning."""
         start_time = time.perf_counter()
@@ -197,6 +198,7 @@ class MultiStepOrchestrator:
                         ledger=self.ledger,
                         step_index=step_idx,
                         policy_engine=self.policy_engine,
+                        planner_target_ref=tool_call.target_ref,
                     )
                 except TaskCancelledError:
                     return self._handle_stop(capsule, executed_records, start_time,
@@ -311,6 +313,7 @@ class MultiStepOrchestrator:
                         permitted_tool_specs=permitted_tool_specs or [],
                         prior_step_results=prior_results_for_replan,
                         cancellation_token=token,
+                        route=route,
                     )
                     if replan_plan and replan_plan.steps:
                         logger.info("Task %s: Replan yielded %d new steps.", task_id, len(replan_plan.steps))

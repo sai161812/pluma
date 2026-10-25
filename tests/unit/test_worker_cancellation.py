@@ -99,8 +99,8 @@ def test_real_response_wait_stops_owned_worker(controller, tmp_path, cooperative
             executing = pool.submit(controller.execute_call, OwnedProbe(str(tmp_path), cooperative), {}, request(), 30,
                                     job_object=capsule_job, cancellation_token=token)
             await_file(tmp_path / "entered", executing)
-            proc = controller._proc
             identity = dict(controller.worker_identity)
+            pid = identity["pid"]
             started = time.monotonic()
             token.cancel()
             controller.terminate_and_join()
@@ -108,14 +108,14 @@ def test_real_response_wait_stops_owned_worker(controller, tmp_path, cooperative
             status, _ = executing.result(2)
         assert elapsed < 1.5  # independent of the 30-second tool deadline
         record_property("owned_stop_seconds", elapsed)
-        assert status == "cancelled" and not proc.is_alive()
-        assert identity["pid"] == proc.pid and identity["creation_time"] > 0
+        assert status == "cancelled" and controller._proc is None
+        assert identity["pid"] == pid and identity["creation_time"] > 0
         assert identity["task_id"] == "p03" and identity["ownership"] == "PLUMA_CREATED"
         assert identity["command_class"] == "tool_worker"
         assert controller.worker_identity["exit_code"] is not None
         assert not (tmp_path / "late").exists()
         if cooperative:
-            assert (tmp_path / "cooperated").exists() and proc.exitcode == 0
+            assert (tmp_path / "cooperated").exists() and controller.worker_identity["exit_code"] == 0
         controller.terminate_and_join()  # repeated disposal, no restart
         assert controller.execute_call(OwnedProbe(str(tmp_path)), {}, request(), 1)[0] == "cancelled"
     finally:
@@ -137,7 +137,7 @@ def test_real_owned_descendant_stops_unrelated_fixture_survives(controller, tmp_
             controller.terminate_and_join()
             assert executing.result(2)[0] == "cancelled"
         assert _winapi.WaitForSingleObject(child_handle, 1000) == _winapi.WAIT_OBJECT_0
-        assert not controller._proc.is_alive()
+        assert controller._proc is None
         assert unrelated.poll() is None
         assert not (tmp_path / "late").exists()
     finally:
@@ -170,7 +170,7 @@ def test_controller_interrupts_real_full_request_pipe(controller, tmp_path, monk
             assert time.monotonic() - began < 1.5
         assert executing.result(2)[0] == ("cancelled" if cancel else "timeout")
     assert token.is_cancelled and token.wait_for_cancel(0)
-    assert not controller._proc.is_alive() and controller._conn is None
+    assert controller._proc is None and controller._conn is None
     assert not (tmp_path / "entered").exists()
 
 
@@ -178,7 +178,7 @@ def test_controller_response_deadline_terminates_worker(controller, tmp_path):
     began = time.monotonic()
     assert controller.execute_call(OwnedProbe(str(tmp_path)), {}, request(), 0.8)[0] == "timeout"
     assert time.monotonic() - began < 2
-    assert not controller._proc.is_alive() and controller._conn is None
+    assert controller._proc is None and controller._conn is None
     assert not (tmp_path / "late").exists()
 
 
@@ -278,7 +278,7 @@ def test_stop_during_os_start_retains_owner_until_start_returns(controller, tmp_
         finally:
             release.set()
         assert executing.result(3)[0] == "cancelled"
-    assert not controller._proc.is_alive()
+    assert controller._proc is None
     assert not (tmp_path / "entered").exists()
     assert controller._conn is None
 
@@ -346,7 +346,7 @@ def test_failed_cleanup_retains_owned_references_and_can_retry(controller, failu
 def test_containment_failure_never_admits_executor(controller, tmp_path):
     job = SimpleNamespace(assign_process=lambda pid: (_ for _ in ()).throw(OSError("Injected containment refusal")))
     status, _ = controller.execute_call(OwnedProbe(str(tmp_path)), {}, request(), 5, job_object=job)
-    assert status == "error" and not controller._proc.is_alive()
+    assert status == "error" and controller._proc is None
     assert controller._conn is None and not (tmp_path / "entered").exists()
 
 
@@ -358,7 +358,7 @@ def test_repeated_disposal_is_safe_concurrently(controller, tmp_path):
         for future in stopping:
             future.result(2)
         assert executing.result(2)[0] == "cancelled"
-    assert not controller._proc.is_alive() and controller._conn is None
+    assert controller._proc is None and controller._conn is None
 
 
 def test_idle_pool_never_retags_an_old_task_controller():
@@ -371,7 +371,7 @@ def test_idle_pool_never_retags_an_old_task_controller():
         assert new is not old and old.task_id == "old"
         assert new.execute_call(owned_noop, {}, request("new"), 5)[0] == "ok"
         old.terminate_and_join()
-        assert new._proc.is_alive() and not old._proc.is_alive()
+        assert new._proc.is_alive() and old._proc is None
         assert new.worker_identity["task_id"] == "new"
     finally:
         registry.close()
@@ -436,7 +436,7 @@ def test_registry_cancellation_is_unverified_and_persisted(tmp_path):
         actions = ActivityQuery(db).actions_for_task(capsule.task_id)
         assert len(actions) == 1 and not actions[0]["verified"]
         assert capsule.undo_stack == [] and not (tmp_path / "late").exists()
-        assert not capsule.worker_controller._proc.is_alive()
+        assert capsule.worker_controller._proc is None
     finally:
         registry.close()
         capsule.close_resources()
@@ -459,9 +459,11 @@ def test_registry_startup_assertion_drains_before_pool_join(tmp_path):
             with owned_registry_execution(registry, capsule, None) as executing:
                 await_file(tmp_path / "entered", executing)
                 proc = capsule.worker_controller._proc
+                worker_pid = proc.pid
                 raise StartupAssertion("Injected startup observation failure")
         assert time.monotonic() - began < 6  # does not wait for the 30-second tool
-        assert capsule.stop_latch_set and not proc.is_alive()
+        assert capsule.stop_latch_set and capsule.worker_controller._proc is None
+        assert capsule.worker_controller.worker_identity["pid"] == worker_pid
         assert capsule.worker_controller.verify_cleanup() is True
         assert executing.done() and not (tmp_path / "late").exists()
     finally:

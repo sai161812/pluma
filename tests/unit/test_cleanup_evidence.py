@@ -561,14 +561,16 @@ def test_real_supervisor_cleanup_reads_worker_and_descendant_absence(tmp_path):
                 executing = pool.submit(registry.execute, "worker_probe", {}, capsule, ledger=supervisor._ledger)
                 await_file(tmp_path / "entered", executing)
                 worker = capsule.worker_controller
-                proc = worker._proc
+                worker_pid = worker.worker_identity["pid"]
+                worker_created = worker.worker_identity["creation_time"]
                 child_handle = _winapi.OpenProcess(0x100000, False, int((tmp_path / "child").read_text()))
                 stop(supervisor, capsule)
                 result = executing.result(2)
             assert not result.ok and not result.verified and result.error_code == "TASK_CANCELLED"
             assert capsule.state == TaskState.STOPPED and not capsule.cleanup_pending
             assert capsule.worker_controller is None and capsule.job_object is None
-            assert not proc.is_alive() and worker.verify_cleanup()
+            assert worker._proc is None and worker.verify_cleanup()
+            assert ownership.subprocess_absent(worker_pid, worker_created) is True
             assert _winapi.WaitForSingleObject(child_handle, 1000) == _winapi.WAIT_OBJECT_0
             assert unrelated.poll() is None and not (tmp_path / "late").exists()
             query = ActivityQuery(db)

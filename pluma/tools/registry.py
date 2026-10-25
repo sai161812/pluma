@@ -355,11 +355,16 @@ class TaskWorkerController:
                     raise RuntimeError("Owned worker exit was not verified; cleanup retained.")
                 if self.worker_identity is not None:
                     self.worker_identity["exit_code"] = proc.exitcode
+            if proc is not None:
+                close_process = getattr(proc, "close", None)
+                if callable(close_process):
+                    close_process()
+                    self._proc = None
             if conn is not None:
                 conn.close()
                 self._conn = None
-            # Retain the exited Process for identity/readback. Its native handles
-            # follow its normal multiprocessing finalizer/object lifetime.
+            # Keep PID/creation/exit facts in worker_identity, but close the
+            # multiprocessing process handles as part of task cleanup.
         finally:
             self._cleanup_lock.release()
 
@@ -958,9 +963,13 @@ class ToolRegistry:
         ledger: Any = None,
         step_index: int = 0,
         policy_engine: Any = None,
+        planner_target_ref: Optional[str] = None,
     ) -> ToolResult:
         with self.work_gate.enter():
-            return self._execute_call(tool_name, arguments, task_context, ledger, step_index, policy_engine)
+            return self._execute_call(
+                tool_name, arguments, task_context, ledger, step_index, policy_engine,
+                planner_target_ref=planner_target_ref,
+            )
 
     def _execute_call(
         self,
@@ -970,6 +979,7 @@ class ToolRegistry:
         ledger: Any = None,
         step_index: int = 0,
         policy_engine: Any = None,
+        planner_target_ref: Optional[str] = None,
     ) -> ToolResult:
         """Execute a tool call with validation, policy check, cancellation check, verification, and undo capture."""
         from pluma.core.cancellation import TaskCancelledError
@@ -1022,6 +1032,19 @@ class ToolRegistry:
                 except Exception:
                     return ToolResult.failure(tool_name, "STOP history could not be verified.", "LEDGER_WRITE_FAILED")
             return result
+
+        if task_context is not None and hasattr(task_context, "tool_registry"):
+            task_context.tool_registry = self
+
+        if planner_target_ref is not None:
+            refused = self._validate_planner_target_ref(
+                tool_name, planner_target_ref, validated_args, task_context
+            )
+            if refused is not None:
+                return _record_no_execution(
+                    ledger, task_context, step_index, tool_name, validated_args,
+                    spec.risk_class, "NOT_EVALUATED", refused,
+                )
 
         if task_context is not None and hasattr(task_context, "next_action_index"):
             with task_context.work_lock:
@@ -1818,6 +1841,40 @@ class ToolRegistry:
                 "cancellable": spec.cancellable,
             })
         return result
+
+    @staticmethod
+    def _validate_planner_target_ref(
+        tool_name: str,
+        target_ref: str,
+        arguments: Dict[str, Any],
+        task_context: Any,
+    ) -> Optional[ToolResult]:
+        """Reject stale or mismatched planner references before policy/dispatch."""
+        def refusal() -> ToolResult:
+            return ToolResult.failure(
+                tool_name,
+                "Planner target reference is unknown, expired, or mismatched. No action was executed.",
+                error_code="STALE_TARGET_REF",
+            )
+
+        if not isinstance(target_ref, str):
+            return refusal()
+        snapshot_id, separator, element_id = target_ref.partition("::")
+        if not separator or not snapshot_id or not element_id or "::" in element_id:
+            return refusal()
+        argument_snapshot_id = arguments.get("snapshot_id")
+        argument_target_ref = arguments.get("target_ref")
+        if ((argument_snapshot_id is not None and argument_snapshot_id != snapshot_id)
+                or (argument_target_ref is not None and argument_target_ref != target_ref)):
+            return refusal()
+        snapshot_registry = getattr(task_context, "snapshot_registry", None)
+        if snapshot_registry is None:
+            return refusal()
+        try:
+            snapshot_registry.resolve_element(snapshot_id, element_id)
+        except Exception:
+            return refusal()
+        return None
 
     # Alias for convenience
     schemas_for_planner = schema_for_planner

@@ -7,8 +7,9 @@ from pathlib import Path
 import tempfile
 import pytest
 
-from pluma.app import run_app, setup_logging, shutdown_logging
+from pluma.app import PlumaApplicationRuntime, run_app, setup_logging, shutdown_logging
 from pluma.config.paths import PlumaPaths
+from pluma.config.loader import load_config
 
 
 def test_app_recover_only_mode() -> None:
@@ -52,3 +53,24 @@ def test_setup_logging_creates_log_file() -> None:
             assert "Test log message for lifecycle verification." in content
         finally:
             shutdown_logging()
+
+
+def test_runtime_wires_configured_planner_limits_and_model_lifecycle() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        paths = PlumaPaths(
+            local_app_data=str(Path(temp_dir) / "LocalPluma"),
+            roaming_app_data=str(Path(temp_dir) / "RoamingPluma"),
+        )
+        config = load_config()
+        config["agent"]["max_plan_steps"] = 4
+        config["runtime"]["model_idle_unload_seconds"] = 7
+        config["brain"]["model_name"] = "planner-fixture.gguf"
+        runtime = PlumaApplicationRuntime(paths=paths, config=config)
+        try:
+            assert runtime.llm_lifecycle.adapter.max_plan_steps == 4
+            assert runtime.llm_lifecycle.idle_unload_seconds == 7
+            assert runtime.llm_lifecycle.adapter.model_path == str(
+                paths.llm_models_dir / "planner-fixture.gguf"
+            )
+        finally:
+            runtime.close()

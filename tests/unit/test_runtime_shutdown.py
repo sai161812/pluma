@@ -798,11 +798,13 @@ def test_real_runtime_shutdown_verifies_owned_tree_and_unrelated_survival(runtim
             child = int((tmp_path / 'child').read_text())
             created = get_process_creation_time(child)
             controller = cap.worker_controller
-            root = controller._proc
+            root_pid = controller.worker_identity['pid']
+            root_created = controller.worker_identity['creation_time']
             result = runtime.close()
             executing.result(3)
         assert result.complete and cap.stop_latch_set
-        assert controller.verify_cleanup() is True and not root.is_alive()
+        assert controller.verify_cleanup() is True and controller._proc is None
+        assert subprocess_absent(root_pid, root_created) is True
         assert subprocess_absent(child, created) is True
         assert unrelated.poll() is None and not (tmp_path / 'late').exists()
         assert cap.job_object is None and cap.worker_controller is None

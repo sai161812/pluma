@@ -47,6 +47,35 @@ _TERMINAL_STATES: frozenset[TaskState] = frozenset({
     TaskState.ABORTED_BY_CRASH,
 })
 
+
+class _CompletedSignal:
+    """Handle-free, permanently signaled state for retained terminal tasks."""
+
+    def is_set(self) -> bool:
+        return True
+
+    def set(self) -> None:
+        return None
+
+    def wait(self, timeout: Optional[float] = None) -> bool:
+        return True
+
+
+class _TerminalLock:
+    """Lock-compatible no-op after a task has no concurrent owners."""
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        return True
+
+    def release(self) -> None:
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
 _TRANSITIONS: Dict[TaskState, frozenset[TaskState]] = {
     TaskState.CREATED: frozenset({TaskState.RUNNING, TaskState.FAILED, TaskState.ABORTED_BY_CRASH, TaskState.STOPPING}),
     TaskState.RUNNING: frozenset({
@@ -169,6 +198,7 @@ class TaskCapsule(BaseModel):
 
     # Active task-owned ToolRegistry worker controller (not serializable)
     worker_controller: Any = Field(default=None, exclude=True)
+    tool_registry: Any = Field(default=None, exclude=True)
     inverse_workers: Dict[str, Any] = Field(default_factory=dict, exclude=True)
     storage_path: Optional[str] = Field(default=None, exclude=True)
     tool_services: Any = Field(default=None, exclude=True)
@@ -326,7 +356,7 @@ class TaskCapsule(BaseModel):
             if isinstance(owned_checks, list):
                 checks.extend(item for item in owned_checks if isinstance(item, CleanupEvidence))
             if verified:
-                registry = getattr(self, "_tool_registry", None)
+                registry = self.tool_registry or getattr(self, "_tool_registry", None)
                 if registry is not None:
                     try:
                         registry.cleanup_task(self.task_id, recycle=False)
@@ -339,6 +369,7 @@ class TaskCapsule(BaseModel):
             checks.append(check)
             if verified:
                 self.worker_controller = None
+                self.tool_registry = None
         if self.snapshot_registry is not None:
             check = CleanupEvidence(resource_id="snapshots:" + self.task_id, kind="snapshots", code="SNAPSHOT_RELEASE_UNVERIFIED")
             try:
@@ -353,6 +384,27 @@ class TaskCapsule(BaseModel):
             checks.append(check)
         self.cleanup_evidence.extend(checks)
         return checks
+
+    def release_terminal_sync_handles(self) -> bool:
+        """Drop native synchronization handles from a fully quiescent task.
+
+        Recent terminal capsules stay in memory for history/status reads. Their
+        locks, events and process-admission event no longer need Windows kernel
+        handles once terminal readiness and all cleanup have been verified.
+        Residual work/ownership keeps the original synchronization objects.
+        """
+        if (self.state not in _TERMINAL_STATES or not self.terminal_ready.is_set()
+                or self.cleanup_pending or self.owned_work or self.voice_session is not None
+                or self.worker_controller is not None or self.job_object is not None
+                or self.snapshot_registry is not None or self.inverse_workers):
+            return False
+        if any(resource.metadata.get("persistent_job") is not None
+               for resource in self.owned_resources):
+            return False
+        self.cancellation_token.retire_after_task_completion()
+        self.work_lock = _TerminalLock()
+        self.terminal_ready = _CompletedSignal()
+        return True
 
 
 
@@ -521,6 +573,7 @@ class TaskSupervisor:
             if new_state in _TERMINAL_STATES:
                 self._persist_terminal(capsule)
                 capsule.terminal_ready.set()
+                capsule.release_terminal_sync_handles()
                 self.prune_terminal_tasks()
 
     def bind_execution(self, ledger: Any = None, rollback_engine: Any = None) -> None:
@@ -557,6 +610,7 @@ class TaskSupervisor:
                 else:
                     self._persist_terminal(capsule)
                     capsule.terminal_ready.set()
+                    capsule.release_terminal_sync_handles()
                     self.prune_terminal_tasks()
                     return capsule
         self.stop_task(task_id)
@@ -688,6 +742,7 @@ class TaskSupervisor:
             self._transition(capsule, final_state)
             self._persist_terminal(capsule)
             capsule.terminal_ready.set()
+            capsule.release_terminal_sync_handles()
             self.prune_terminal_tasks()
 
     def _persist_cleanup_report(self, capsule: TaskCapsule) -> None:

@@ -84,14 +84,16 @@ class PlumaApplicationRuntime:
 
         # Model & Planner Lifecycles (Zero-ML at startup; auto-unloaded on idle)
         model_name = get(self.config, "brain", "model_name", default="qwen3-4b.gguf")
-        model_path = get(self.config, "brain", "model_path", default=str(paths.models_dir / model_name))
-        idle_seconds = float(get(self.config, "brain", "idle_unload_seconds", default=30.0))
+        model_path = get(self.config, "brain", "model_path", default=str(paths.llm_models_dir / model_name))
+        idle_seconds = float(get(self.config, "runtime", "model_idle_unload_seconds", default=30.0))
+        max_plan_steps = get(self.config, "agent", "max_plan_steps", default=8)
 
         from pluma.brain.lifecycle import LlmLifecycleManager
         self.llm_lifecycle = LlmLifecycleManager(
             model_path=model_path,
             registry=self.tool_registry,
             idle_unload_seconds=idle_seconds,
+            max_plan_steps=max_plan_steps,
         )
 
         self.orchestrator = Orchestrator(

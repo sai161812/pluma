@@ -16,7 +16,7 @@ from __future__ import annotations
 import threading
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 
 class ExecutorAdmission:
@@ -34,6 +34,20 @@ class ExecutorAdmission:
         if not handle:
             raise ctypes.WinError()
         self._attach(handle)
+
+    @property
+    def is_closed(self) -> bool:
+        return getattr(self, "_handle", None) is None
+
+    def close(self) -> None:
+        """Release the parent event handle after the owned worker has exited."""
+        if self.is_closed:
+            return
+        finalizer = getattr(self, "_finalizer", None)
+        if finalizer is not None and finalizer.still_active():
+            finalizer()
+        self._handle = None
+        self._finalizer = None
 
     @staticmethod
     def _kernel():
@@ -61,6 +75,8 @@ class ExecutorAdmission:
         self._attach(handle)
 
     def is_cancelled(self) -> bool:
+        if self.is_closed:
+            raise RuntimeError("Task worker admission handle is closed.")
         import _winapi
         state = _winapi.WaitForSingleObject(self._handle, 0)
         if state not in (_winapi.WAIT_OBJECT_0, _winapi.WAIT_TIMEOUT):
@@ -68,6 +84,8 @@ class ExecutorAdmission:
         return state == _winapi.WAIT_OBJECT_0
 
     def cancel(self) -> None:
+        if self.is_closed:
+            raise RuntimeError("Task worker admission handle is closed.")
         import ctypes
         if not self._kernel().SetEvent(self._handle):
             raise ctypes.WinError()
@@ -83,6 +101,43 @@ class StopReason(str, Enum):
     TASK_TIMEOUT = "task_timeout"   # Task exceeded its hard wall-clock limit
     INTERNAL_ERROR = "internal_error"  # Orchestrator detected an unrecoverable state
     POLICY_DENY = "policy_deny"     # Policy engine rejected a required action
+
+
+class _FrozenEvent:
+    """Handle-free event state retained after a task's workers have exited."""
+
+    def __init__(self, is_set: bool) -> None:
+        self._is_set = is_set
+
+    def is_set(self) -> bool:
+        return self._is_set
+
+    def set(self) -> None:
+        self._is_set = True
+
+    def wait(self, timeout: Optional[float] = None) -> bool:
+        if self._is_set:
+            return True
+        if timeout is not None and timeout > 0:
+            import time
+            time.sleep(timeout)
+        return False
+
+
+class _NoopLock:
+    """Lock-compatible terminal state after the task has no concurrent owners."""
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        return True
+
+    def release(self) -> None:
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
 
 
 class CancellationToken:
@@ -101,11 +156,12 @@ class CancellationToken:
     """
 
     def __init__(self) -> None:
-        self._event: threading.Event = threading.Event()
+        self._event: Any = threading.Event()
         self._reason: Optional[StopReason] = None
         self._cancelled_at: Optional[datetime] = None
-        self._lock: threading.Lock = threading.Lock()
+        self._lock: Any = threading.Lock()
         self._process_admission: Optional[ExecutorAdmission] = None
+        self._retired = False
 
     # ------------------------------------------------------------------
     # Cancellation state
@@ -117,7 +173,7 @@ class CancellationToken:
 
         Safe to call from any thread without holding the lock.
         """
-        if self._process_admission is not None:
+        if self._process_admission is not None and not self._process_admission.is_closed:
             return self._process_admission.is_cancelled()
         return self._event.is_set()
 
@@ -174,12 +230,31 @@ class CancellationToken:
         creation is serialized with cancel, including cancellation before spawn.
         """
         with self._lock:
+            if self._retired:
+                raise RuntimeError("A terminal task cannot admit new worker processes.")
             if self._process_admission is None:
                 gate = ExecutorAdmission()
                 if self._event.is_set():
                     gate.cancel()
                 self._process_admission = gate
             return self._process_admission
+
+    def retire_after_task_completion(self) -> None:
+        """Release Windows synchronization handles after all task workers exit.
+
+        The supervisor calls this only after terminal cleanup and ledger
+        readback. A completed task may remain in memory for recent history,
+        so its synchronization state must no longer own native handles.
+        """
+        with self._lock:
+            gate = self._process_admission
+            if gate is not None:
+                gate.close()
+                self._process_admission = None
+            cancelled = self._event.is_set()
+            self._event = _FrozenEvent(cancelled)
+            self._lock = _NoopLock()
+            self._retired = True
 
     # ------------------------------------------------------------------
     # Cooperative wait (read path)

@@ -119,3 +119,33 @@ def test_validate_plan_exceeds_max_steps() -> None:
 
     with pytest.raises(PlanValidationError, match="exceeds maximum allowed"):
         validator.validate_plan(plan, max_steps=2)
+
+
+def test_validator_enforces_its_configured_maximum() -> None:
+    registry = get_default_tool_registry()
+    validator = PlanValidator(registry=registry, max_steps=2)
+    payload = {
+        "route": "SMART",
+        "mode": "multi_step",
+        "steps": [
+            {"tool": "list_files", "arguments": {"path": f"C:\\tmp\\{i}"}, "purpose": "List"}
+            for i in range(3)
+        ],
+    }
+    with pytest.raises(PlanValidationError, match=r"exceeds maximum allowed \(2\)"):
+        validator.parse_and_validate_json(json.dumps(payload))
+
+
+def test_invalid_configured_maximum_fails_closed() -> None:
+    with pytest.raises(ValueError, match="max_steps must be an integer"):
+        PlanValidator(registry=get_default_tool_registry(), max_steps=21)
+    with pytest.raises(ValueError, match="max_steps must be an integer"):
+        PlanValidator(registry=get_default_tool_registry(), max_steps=True)
+
+
+def test_malformed_json_error_does_not_echo_model_output() -> None:
+    validator = PlanValidator(registry=get_default_tool_registry())
+    secret = "private-context-marker-9f64"
+    with pytest.raises(PlanValidationError) as error:
+        validator.parse_and_validate_json(f"broken {secret}")
+    assert secret not in str(error.value)

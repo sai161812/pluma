@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 from unittest.mock import MagicMock
 import pytest
@@ -36,6 +37,7 @@ def test_llama_cpp_adapter_plan_success() -> None:
     assert plan.steps[0].tool == "create_folder"
     assert plan.steps[0].arguments["path"] == "C:\\docs"
     mock_backend.generate.assert_called_once()
+    assert mock_backend.generate.call_args.kwargs["temperature"] == 0.0
 
 
 def test_llama_cpp_adapter_complex_file_command() -> None:
@@ -97,3 +99,82 @@ def test_llama_cpp_adapter_cancellation() -> None:
         adapter.plan("Do something", cancellation_token=token)
 
     mock_backend.generate.assert_not_called()
+
+
+def test_configured_plan_limit_is_enforced_by_adapter() -> None:
+    mock_backend = MagicMock()
+    mock_backend.generate.return_value = (
+        '{"route":"SMART","mode":"multi_step","steps":['
+        '{"tool":"list_files","arguments":{"path":"C:\\\\one"},"purpose":"List"},'
+        '{"tool":"list_files","arguments":{"path":"C:\\\\two"},"purpose":"List"},'
+        '{"tool":"list_files","arguments":{"path":"C:\\\\three"},"purpose":"List"}]}'
+    )
+    adapter = LlamaCppAdapter(custom_backend=mock_backend, max_plan_steps=2)
+    with pytest.raises(PlannerError, match="validation failed"):
+        adapter.plan("List three directories")
+
+
+def test_native_generation_does_not_retry_without_schema() -> None:
+    from pluma.brain.llama_cpp_adapter import _NativeLlamaCppBackend, _planner_generation_schema
+
+    fake_llm = MagicMock()
+    fake_llm.create_chat_completion.side_effect = RuntimeError("schema unsupported")
+    backend = _NativeLlamaCppBackend("unused.gguf")
+    backend._llm = fake_llm
+
+    with pytest.raises(RuntimeError, match="schema unsupported"):
+        backend.generate("prompt", system_prompt="system")
+
+    fake_llm.create_chat_completion.assert_called_once()
+    sent_format = fake_llm.create_chat_completion.call_args.kwargs["response_format"]
+    assert sent_format["type"] == "json_object"
+    assert sent_format["schema"] == _planner_generation_schema(8)
+
+
+def test_native_generation_schema_requires_mode_arguments_and_configured_bound() -> None:
+    from pluma.brain.llama_cpp_adapter import _planner_generation_schema
+
+    schema = _planner_generation_schema(3)
+    assert {"mode", "steps"}.issubset(schema["required"])
+    assert schema["properties"]["steps"]["maxItems"] == 3
+    assert {"tool", "arguments", "purpose"}.issubset(
+        schema["$defs"]["ToolCall"]["required"]
+    )
+    assert "maxItems" not in Plan.model_json_schema()["properties"]["steps"]
+
+
+def test_native_runtime_requires_task_owned_capsule(tmp_path: Path) -> None:
+    model_path = tmp_path / "fixture.gguf"
+    model_path.write_bytes(b"fixture only; no inference")
+    adapter = LlamaCppAdapter(model_path=str(model_path))
+    adapter.load()
+
+    assert adapter.uses_task_owned_native_runtime is True
+    assert adapter.is_loaded is False
+    with pytest.raises(PlannerError, match="owned task capsule"):
+        adapter.plan("List files")
+
+
+def test_sensitive_context_and_clipboard_are_excluded_from_model_prompt() -> None:
+    mock_backend = MagicMock()
+    mock_backend.generate.return_value = (
+        '{"route":"SMART","mode":"direct","steps":'
+        '[{"tool":"list_files","arguments":{"path":"C:\\\\safe"},"purpose":"List"}]}'
+    )
+    adapter = LlamaCppAdapter(custom_backend=mock_backend)
+    password = "sk-sensitiveplannercontext000000000000000000"
+    clipboard = "private-clipboard-fixture-marker"
+
+    adapter.plan(
+        "List files",
+        context={"active_window_title": f"Settings api_key={password}", "clipboard": clipboard},
+        prior_step_results=[{
+            "tool": "clipboard_get",
+            "ok": True,
+            "data": {"clipboard_text": clipboard},
+        }],
+    )
+
+    prompts = repr(mock_backend.generate.call_args.kwargs)
+    assert password not in prompts
+    assert clipboard not in prompts

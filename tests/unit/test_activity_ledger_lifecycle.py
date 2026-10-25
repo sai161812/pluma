@@ -57,6 +57,31 @@ def test_task_lifecycle_writes_and_queries(memory_db):
     assert t2["started_at"] == "2026-08-22T00:00:01Z"
 
 
+def test_task_context_is_redacted_on_insert_and_update(memory_db):
+    ledger = ActivityLedger(memory_db)
+    query = ActivityQuery(memory_db)
+    secret = "sk-pluma-context-fixture-7d31f0-secretvalue"
+    task_id = "task-context-redact-1"
+    ledger.insert_task(TaskRecord(
+        task_id=task_id,
+        request_id="req-context-redact",
+        input_mode="text",
+        command_text="List files in Downloads",
+        active_window=f"Settings api_key={secret}",
+    ))
+
+    inserted = query.task_by_id(task_id)
+    assert inserted is not None
+    assert secret not in json.dumps(inserted)
+    assert "[REDACTED]" in inserted["active_window"]
+
+    ledger.update_task(task_id, active_window=f"Browser token={secret}")
+    updated = query.task_by_id(task_id)
+    assert updated is not None
+    assert secret not in json.dumps(updated)
+    assert "[REDACTED]" in updated["active_window"]
+
+
 def test_action_records_and_redaction(memory_db):
     ledger = ActivityLedger(memory_db)
     query = ActivityQuery(memory_db)

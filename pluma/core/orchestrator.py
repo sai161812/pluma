@@ -134,7 +134,7 @@ class Orchestrator:
             supervisor=self._supervisor,
             ledger=self._ledger,
             rollback_engine=self._rollback_engine,
-            planner=self._llm_manager.adapter if self._llm_manager and hasattr(self._llm_manager, "adapter") else None,
+            planner=self._llm_manager if self._llm_manager and hasattr(self._llm_manager, "plan") else None,
         )
 
     # ------------------------------------------------------------------
@@ -341,6 +341,8 @@ class Orchestrator:
             from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
             llm = get_default_llm_lifecycle_manager()
 
+        permitted_tool_specs = self._permitted_planner_tools(llm, request.text, RouteMode.SMART)
+
         context = {
             "active_process": request.active_process,
             "active_window_title": request.active_window_title,
@@ -351,6 +353,7 @@ class Orchestrator:
             plan = llm.plan(
                 command=request.text,
                 context=context,
+                permitted_tool_specs=permitted_tool_specs,
                 cancellation_token=capsule.cancellation_token,
                 route=RouteMode.SMART,
             )
@@ -377,6 +380,8 @@ class Orchestrator:
             initial_plan=plan,
             command_text=request.text,
             context=context,
+            permitted_tool_specs=permitted_tool_specs,
+            route=RouteMode.SMART,
         )
 
         return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
@@ -420,10 +425,18 @@ class Orchestrator:
 
         # If deterministic router already produced an unambiguous plan
         if route_result.plan and route_result.plan.steps:
+            permitted_tool_specs = None
+            if self._multi_step.planner is not None:
+                planner = self._llm_manager or self._multi_step.planner
+                permitted_tool_specs = self._permitted_planner_tools(
+                    planner, request.text, RouteMode.SCREEN
+                )
             ms_res = self._multi_step.execute_plan(
                 capsule=capsule,
                 initial_plan=route_result.plan,
                 command_text=request.text,
+                permitted_tool_specs=permitted_tool_specs,
+                route=RouteMode.SCREEN,
             )
             return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
@@ -437,9 +450,12 @@ class Orchestrator:
             from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
             llm = get_default_llm_lifecycle_manager()
 
+        permitted_tool_specs = self._permitted_planner_tools(llm, request.text, RouteMode.SCREEN)
+
         try:
             plan = llm.plan(
                 command=request.text,
+                permitted_tool_specs=permitted_tool_specs,
                 screen_snapshot=snapshot,
                 cancellation_token=capsule.cancellation_token,
                 route=RouteMode.SCREEN,
@@ -464,6 +480,8 @@ class Orchestrator:
             capsule=capsule,
             initial_plan=plan,
             command_text=request.text,
+            permitted_tool_specs=permitted_tool_specs,
+            route=RouteMode.SCREEN,
         )
         return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
@@ -487,9 +505,12 @@ class Orchestrator:
             from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
             llm = get_default_llm_lifecycle_manager()
 
+        permitted_tool_specs = self._permitted_planner_tools(llm, request.text, RouteMode.DEEP)
+
         try:
             plan = llm.plan(
                 command=request.text,
+                permitted_tool_specs=permitted_tool_specs,
                 screen_snapshot=snapshot,
                 cancellation_token=capsule.cancellation_token,
                 route=RouteMode.DEEP,
@@ -514,6 +535,8 @@ class Orchestrator:
             capsule=capsule,
             initial_plan=plan,
             command_text=request.text,
+            permitted_tool_specs=permitted_tool_specs,
+            route=RouteMode.DEEP,
         )
         return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
@@ -551,6 +574,13 @@ class Orchestrator:
             factual_summary=ms_res.factual_summary,
             replan_count=ms_res.replan_count,
         )
+
+    @staticmethod
+    def _permitted_planner_tools(llm: Any, command: str, route: RouteMode):
+        """Resolve one route-specific whitelist for initial planning and replans."""
+        adapter = getattr(llm, "adapter", llm)
+        resolver = getattr(adapter, "get_permitted_tool_specs", None)
+        return resolver(command, route) if callable(resolver) else None
 
     @staticmethod
     def _planning_stop_result(capsule, request, route_result, wall_start):

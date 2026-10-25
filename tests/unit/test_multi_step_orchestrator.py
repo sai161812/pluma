@@ -16,7 +16,7 @@ from pluma.core.orchestrator import Orchestrator
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import Router
 from pluma.core.task_supervisor import TaskState, TaskSupervisor
-from pluma.memory.activity import ActivityLedger
+from pluma.memory.activity import ActivityLedger, ActivityQuery
 from pluma.memory.db import DbConnection
 from pluma.rollback.engine import RollbackEngine
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
@@ -260,6 +260,47 @@ def test_orchestrator_smart_route_e2e() -> None:
     assert len(res.steps) == 2
     assert res.steps[0].tool == "create_folder"
     assert res.steps[1].tool == "list_files"
+
+
+def test_planner_reasoning_marker_is_not_written_to_activity_ledger(tmp_path) -> None:
+    db = DbConnection(str(tmp_path / "planner-history.sqlite"))
+    db.open()
+    ledger = ActivityLedger(db=db)
+    registry = get_default_tool_registry()
+    hidden_marker = "PRIVATE_CHAIN_OF_THOUGHT_FIXTURE_8f71"
+    backend = MagicMock()
+    backend.generate.return_value = json.dumps({
+        "route": "SMART",
+        "mode": "direct",
+        "steps": [{
+            "tool": "list_files",
+            "arguments": {"path": str(tmp_path)},
+            "purpose": hidden_marker,
+        }],
+    })
+    manager = LlmLifecycleManager(custom_backend=backend)
+    supervisor = TaskSupervisor(ledger=ledger)
+    orchestrator = Orchestrator(
+        registry=registry,
+        supervisor=supervisor,
+        ledger=ledger,
+        router=Router(),
+        llm_manager=manager,
+    )
+
+    result = orchestrator.execute(PlumaRequest(
+        input_mode=InputMode.TEXT,
+        text="Compare the contents of this directory with a list of files",
+    ))
+
+    assert result.route == RouteMode.SMART
+    assert result.final_state == "SUCCEEDED"
+    try:
+        rows = ActivityQuery(db).actions_for_task(result.task_id)
+        persisted = json.dumps({"actions": rows, "task": ActivityQuery(db).task_by_id(result.task_id)})
+        assert hidden_marker not in persisted
+    finally:
+        db.close()
 
 
 def test_orchestrator_screen_route_e2e() -> None:
