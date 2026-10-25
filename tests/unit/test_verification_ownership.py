@@ -123,7 +123,9 @@ class NativeVerifier:
 
     def __call__(self, result):
         root = Path(self.root)
-        (root / 'verification-entered').write_text(str(os.getpid()), encoding='utf-8')
+        marker = root / 'verification-entered.tmp'
+        marker.write_text(str(os.getpid()), encoding='utf-8')
+        marker.replace(root / 'verification-entered')
         if self.mode == 'block':
             time.sleep(30)
             (root / 'verification-late').touch()

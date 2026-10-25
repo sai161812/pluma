@@ -87,6 +87,7 @@ def test_success_requires_independent_empty_cache_observation(monkeypatch, readb
     def read(ctx, timeout):
         assert ctx is context and timeout > 0
         assert len(context.resources) == 1
+        assert context.resources[0][0][3]["lifetime"] == "task"
         assert native.events[:4] == ["launch", "identity", "contain", "admit"]
         if readback is None:
             raise RuntimeError("Readback unavailable")

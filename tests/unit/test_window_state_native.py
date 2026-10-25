@@ -20,6 +20,7 @@ from pluma.brain.schemas import Plan, ToolCall, RouteMode
 from tests.unit.test_memory_tools import approved
 from tests.unit.test_process_control_native import owned_target
 from tests.unit.test_runtime_shutdown import runtime, task
+from tests.fixtures.desktop_thread import desktop_thread
 
 
 @contextmanager
@@ -81,6 +82,7 @@ def bind(runtime, monkeypatch, name):
 
 @pytest.mark.parametrize('tool', list(native.TOOLS))
 @pytest.mark.parametrize('inverse', ['manual', 'automatic'])
+@desktop_thread
 def test_native_state_readback_and_safe_inverse(runtime, monkeypatch, tmp_path, tool, inverse):
     with owned_target(runtime, tmp_path / 'target', 'state') as (target, handle, fixture):
         marker = json.loads((tmp_path / 'target/ready.json').read_text())
@@ -113,6 +115,7 @@ def test_native_state_readback_and_safe_inverse(runtime, monkeypatch, tmp_path, 
 
 
 @pytest.mark.parametrize('tool', list(native.TOOLS))
+@desktop_thread
 def test_newer_placement_conflict_is_preserved(runtime, monkeypatch, tmp_path, tool):
     with owned_target(runtime, tmp_path / 'target', 'state') as (target, handle, fixture):
         marker = json.loads((tmp_path / 'target/ready.json').read_text())
@@ -139,6 +142,7 @@ def test_window_schema_refuses_before_policy_or_worker(runtime, monkeypatch, arg
     assert not decisions and not runtime.tool_registry._worker_controllers
 
 
+@desktop_thread
 def test_stale_identity_and_stop_never_change_window(runtime, monkeypatch, tmp_path):
     with owned_target(runtime, tmp_path / 'target', 'state') as (target, handle, fixture):
         marker = json.loads((tmp_path / 'target/ready.json').read_text())
@@ -156,6 +160,7 @@ def test_stale_identity_and_stop_never_change_window(runtime, monkeypatch, tmp_p
 
 
 @pytest.mark.parametrize('mode', ['text', 'voice'])
+@desktop_thread
 def test_text_voice_window_state_pipeline(runtime, monkeypatch, tmp_path, mode):
     with owned_target(runtime, tmp_path / 'target', 'state') as (target, handle, fixture):
         marker = json.loads((tmp_path / 'target/ready.json').read_text())
@@ -172,6 +177,7 @@ def test_text_voice_window_state_pipeline(runtime, monkeypatch, tmp_path, mode):
         with desktop(marker['desktop']): assert native.observe(target)['placement']['show'] == 3
 
 
+@desktop_thread
 def test_active_window_change_is_refused_and_newer_placement_preserved(runtime, tmp_path):
     with owned_target(runtime, tmp_path / 'target', 'state') as (target, handle, fixture):
         marker = json.loads((tmp_path / 'target/ready.json').read_text())

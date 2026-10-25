@@ -181,6 +181,7 @@ def run_dns_cache_flush(*, task_id: str, timeout_s: float, task_context: Any) ->
         task_context.register_owned_resource("subprocess", "PLUMA_CREATED", str(pid), {
             "task_id": task_id, "pid": pid, "creation_time": created,
             "command_class": "elevation_operation", "operation": "FLUSH_DNS",
+            "lifetime": "task",
         })
         token.raise_if_cancelled()
         if time.monotonic() >= deadline:

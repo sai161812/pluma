@@ -1,6 +1,17 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P11 implementation repair (E58)
+## Current checkpoint: 2026-10-25, P11 acceptance retry (E59)
+
+**P11 acceptance is progressing; P12 has not started.** [E59](docs/completion/p11_acceptance_retry.md) supersedes E58's current clipboard, foreground-read and UAC blockers with fresh native evidence.
+
+- Desktop/window/terminal: **28 passed**. Isolated plain-text clipboard copy/paste/clear/undo regression: **283 passed**, inner/outer exit zero, no owned processes left, personal clipboard unchanged. Elevation/policy/dispatch/evidence focused suite: **77 passed**. Zero skipped in these runs.
+- Real production DNS flush now passes: ADMIN / REQUIRE_ELEVATION, independent observed cache count zero, verified ledger success, committed non-undoable effect and `CLOSED_VERIFIED` shutdown. Acceptance exposed a missing task-lifetime resource field: fixed before the successful retry; identity and containment remain mandatory.
+- The combined audio/window suite reproduced all 14 private-desktop fixture failures. Fresh joined test threads repair the COM/main-thread desktop interaction while retaining all native assertions. Its next run passed 271 cases and found a separate partial marker-file write/read race; marker publication is now atomic. Final combined run: **272 passed in 113.95s, zero failed/skipped**. Focused verifier checks passed 24 and contract checks passed 45. E59 retains both preceding failures and final passing evidence.
+- Actual foreground inspection is a read, not D-02 focus-transition evidence. D-02 and D-03 physical audio transition/readback remain unverified. Physical lock/sleep/restart/shutdown was not performed; D-08's stated gate is policy/confirmation before dispatch, covered by fixtures. Do not invent a requirement to reboot the owner's machine merely to satisfy that policy gate. No physical power success is claimed.
+
+Next safe work remains bounded P11 native focus/audio acceptance. Do not start P12 automatically. Historical failures below remain traceable and do not override E59's specific passing retries.
+
+## Previous checkpoint: 2026-10-25, P11 implementation repair (E58)
 
 **P11 acceptance remains open. P12 has not started and must not start automatically.**
 

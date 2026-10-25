@@ -13,6 +13,7 @@ from tests.unit.test_app_launch_native import private_desktop
 from tests.unit.test_window_state_native import desktop
 from tests.unit.test_memory_tools import approved
 from tests.unit.test_runtime_shutdown import runtime, task
+from tests.fixtures.desktop_thread import desktop_thread
 
 
 @dataclass
@@ -29,6 +30,7 @@ class InDesktop:
 
 
 @pytest.mark.parametrize('completion', ['success', 'stop', 'manual_undo_refuses'])
+@desktop_thread
 def test_real_powershell_open_only(runtime, monkeypatch, completion):
     import win32process
     import _winapi
