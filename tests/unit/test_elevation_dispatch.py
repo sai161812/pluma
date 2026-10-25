@@ -21,7 +21,8 @@ def inert_elevation_executor(args, context):
     assert pending["non_undoable"] is True
     assert pending["pre_state"]["operation"] == "FLUSH_DNS"
     return ToolResult.success("flush_dns_cache",
-        data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True},
+        data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True,
+                "cache_entry_count": 0, "cache_readback_observed": True},
         factual_message="Inert one-operation elevation route completed.",
         verified=False, adapter_used="one_operation_uac")
 
@@ -32,8 +33,11 @@ def test_operation_schema_exposes_only_dns_flush():
     with pytest.raises(ValidationError):
         ElevationOperation(op_type=ElevationOpType.FLUSH_DNS, service_name="Spooler")
     assert "Clear-DnsClientCache" in DNS_FLUSH_SCRIPT
-    assert "-ExecutionPolicy" not in dns_flush_arguments()
-    assert "Bypass" not in " ".join(dns_flush_arguments())
+    arguments = dns_flush_arguments("Local\\PLUMA-DNS-" + "a" * 32)
+    assert "-ExecutionPolicy" not in arguments
+    assert "Bypass" not in " ".join(arguments)
+    with pytest.raises(ValueError):
+        dns_flush_arguments("planner supplied command")
 
 
 def test_broker_dispatches_only_to_injected_native_runner():
@@ -42,7 +46,8 @@ def test_broker_dispatches_only_to_injected_native_runner():
     def runner(**kwargs):
         received.update(kwargs)
         return ToolResult.success("flush_dns_cache",
-            data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True},
+            data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True,
+                "cache_entry_count": 0, "cache_readback_observed": True},
             factual_message="Inert runner receipt.", verified=False, adapter_used="one_operation_uac")
 
     context = object()
@@ -128,7 +133,8 @@ def test_flush_executor_requires_exact_runtime_binding_and_durable_intent(monkey
     def inert_execute_operation(self, operation, *, task_id, task_context, timeout_s=None):
         calls.append((operation, task_id, task_context, timeout_s))
         return ToolResult.success("flush_dns_cache",
-            data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True},
+            data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True,
+                "cache_entry_count": 0, "cache_readback_observed": True},
             factual_message="Inert broker result.", adapter_used="one_operation_uac")
 
     monkeypatch.setattr(ElevationBroker, "execute_operation", inert_execute_operation)

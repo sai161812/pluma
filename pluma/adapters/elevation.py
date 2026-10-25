@@ -1,226 +1,223 @@
-"""Narrow native one-operation elevation adapter.
-
-Only the statically selected DNS cache flush is supported. No planner-supplied
-script, path, service name or command line reaches this adapter.
-"""
-
+"""Fixed one-operation UAC with pre-dispatch ownership and independent DNS readback."""
 from __future__ import annotations
 
-import os
+import re
 import subprocess
 import sys
 import time
+import uuid
+from types import SimpleNamespace
 from typing import Any
 
 from pluma.tools.base import ToolResult
 
-DNS_FLUSH_SCRIPT = "$ErrorActionPreference='Stop'; try { Clear-DnsClientCache -ErrorAction Stop; exit 0 } catch { exit 1 }"
+DNS_FLUSH_SCRIPT = (
+    "Import-Module (Join-Path $PSHOME 'Modules\\DnsClient\\DnsClient.psd1') -ErrorAction Stop; "
+    "DnsClient\\Clear-DnsClientCache -ErrorAction Stop"
+)
+DNS_READ_SCRIPT = (
+    "$ErrorActionPreference='Stop'; "
+    "Import-Module (Join-Path $PSHOME 'Modules\\DnsClient\\DnsClient.psd1') -ErrorAction Stop; "
+    "$count=@(DnsClient\\Get-DnsClientCache -ErrorAction Stop).Count; "
+    "[Console]::Out.Write($count)"
+)
 
 
-def dns_flush_arguments() -> list[str]:
-    """Fixed PowerShell arguments for the sole supported privileged operation."""
-    return ["-NoProfile", "-NonInteractive", "-Command", DNS_FLUSH_SCRIPT]
+def dns_flush_arguments(gate_name: str) -> list[str]:
+    """The only variable is an executor-created event name, never planner data."""
+    if not re.fullmatch(r"Local\\PLUMA-DNS-[0-9a-f]{32}", gate_name):
+        raise ValueError("Invalid elevation admission event.")
+    script = (
+        "$ErrorActionPreference='Stop'; try { "
+        "$gate=[Threading.EventWaitHandle]::OpenExisting('" + gate_name + "',"
+        "[Security.AccessControl.EventWaitHandleRights]::Synchronize); "
+        "try { if (-not $gate.WaitOne(15000)) { exit 2 } } finally { $gate.Close() }; "
+        + DNS_FLUSH_SCRIPT + "; exit 0 } catch { exit 1 }"
+    )
+    return ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script]
+
+
+class _WindowsElevation:
+    """Retain the exact launch handle even if PID/creation-time lookup fails."""
+
+    def __init__(self):
+        import win32api
+        import win32event
+        from pluma.core.job_object import WindowsJobObject
+        self.process = None
+        self.job = None
+        self.gate = None
+        self.gate_name = "Local\\PLUMA-DNS-" + uuid.uuid4().hex
+        try:
+            self.job = WindowsJobObject(kill_on_close=True)
+            self.gate = win32event.CreateEvent(None, True, False, self.gate_name)
+            if win32api.GetLastError() == 183:
+                raise RuntimeError("Elevation admission event already exists.")
+        except Exception:
+            self.close()
+            raise
+
+    def launch(self):
+        import pythoncom
+        from win32com.shell import shell
+        from pluma.adapters.commands import windows_directory
+        windows = windows_directory()
+        powershell = windows / "System32/WindowsPowerShell/v1.0/powershell.exe"
+        # NOASYNC keeps ShellExecute in this owned, killable worker. A child
+        # created after STOP cannot mutate: its admission event is never set.
+        pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
+        try:
+            receipt = shell.ShellExecuteEx(
+                fMask=0x40 | 0x100 | 0x400, lpVerb="runas", lpFile=str(powershell),
+                lpParameters=subprocess.list2cmdline(dns_flush_arguments(self.gate_name)),
+                lpDirectory=str(windows), nShow=0,
+            )
+        finally:
+            pythoncom.CoUninitialize()
+        self.process = receipt.get("hProcess")
+        if self.process is None:
+            raise RuntimeError("The elevated child handle is unavailable.")
+
+    def identity(self):
+        import win32process
+        from pluma.core.job_object import owned_process_creation_time
+        pid = win32process.GetProcessId(self.process)
+        created = owned_process_creation_time(SimpleNamespace(sentinel=int(self.process)))
+        if pid <= 0 or created <= 0:
+            raise RuntimeError("The elevated child identity is unavailable.")
+        return pid, created
+
+    def contain(self, pid):
+        self.job.assign_handle(int(self.process), process_id=pid)
+
+    def admit(self):
+        import win32event
+        win32event.SetEvent(self.gate)
+
+    def exited(self, timeout_ms=0):
+        import win32event
+        status = win32event.WaitForSingleObject(self.process, timeout_ms)
+        if status not in (0, 258):
+            raise RuntimeError("The elevated child wait failed.")
+        return status == 0
+
+    def exit_code(self):
+        import win32process
+        if not self.exited():
+            raise RuntimeError("The elevated child has not exited.")
+        return win32process.GetExitCodeProcess(self.process)
+
+    def close(self):
+        """Every path terminates/waits through the retained handle before release."""
+        import win32api
+        verified = True
+        if self.process is not None:
+            try:
+                if not self.exited():
+                    win32api.TerminateProcess(self.process, 1)
+            except Exception:
+                # Job close provides a second containment boundary.
+                pass
+        if self.job is not None:
+            try:
+                self.job.close()
+            except Exception:
+                verified = False
+        if self.process is not None:
+            try:
+                verified = self.exited(1000) and verified
+            except Exception:
+                verified = False
+            finally:
+                self.process.Close()
+                self.process = None
+        if self.gate is not None:
+            self.gate.Close()
+            self.gate = None
+        return verified
+
+
+def read_dns_cache(task_context, timeout_s):
+    """Read only the count through the existing owned suspended-command adapter."""
+    from pluma.adapters.commands import run, windows_directory
+    if timeout_s <= 0:
+        raise TimeoutError("DNS readback exhausted the tool deadline.")
+    system = windows_directory() / "System32"
+    binding = {
+        "command_id": "dns_cache_readback",
+        "argv": [str(system / "WindowsPowerShell/v1.0/powershell.exe"),
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", DNS_READ_SCRIPT],
+        "cwd": str(system), "timeout_s": min(timeout_s, 8.0),
+        "read_only": True, "encoding": "utf-8",
+    }
+    observed, proof = run(binding, task_context)
+    output = observed["command_output"]
+    raw = output["stdout"].strip()
+    if (observed["exit_code"] != 0 or proof["exit_readback"] != 0
+            or proof["tree_empty"] is not True or output["stderr"].strip()
+            or not re.fullmatch(r"[0-9]{1,10}", raw)):
+        raise ValueError("DNS cache readback was unavailable or malformed.")
+    return {"cache_entry_count": int(raw), "cache_readback_observed": True}
 
 
 def run_dns_cache_flush(*, task_id: str, timeout_s: float, task_context: Any) -> ToolResult:
-    """Run one fixed DNS cache flush through UAC and an owned child process."""
     tool = "flush_dns_cache"
     if sys.platform != "win32":
-        return ToolResult.failure(tool, "One-operation elevation is available only on Windows.", "UNSUPPORTED_PLATFORM")
-    if (not isinstance(task_id, str) or not task_id
-            or not callable(getattr(task_context, "register_owned_resource", None))):
-        return ToolResult.failure(tool, "An owned task is required for elevation.", "ELEVATION_OWNERSHIP_REQUIRED")
-
+        return ToolResult.failure(tool, "One-operation elevation requires Windows.", "UNSUPPORTED_PLATFORM")
     token = getattr(task_context, "cancellation_token", None)
-    if token is None:
-        return ToolResult.failure(tool, "Task cancellation is unavailable for elevation.", "ELEVATION_CANCELLATION_UNAVAILABLE")
-
-    job = None
-    process_handle = None
-    assigned = False
-    launched = False
-    t0 = time.perf_counter()
+    if (not task_id or getattr(task_context, "task_id", None) != task_id or token is None
+            or not callable(getattr(task_context, "register_owned_resource", None))):
+        return ToolResult.failure(tool, "An owned cancellable task is required.", "ELEVATION_OWNERSHIP_REQUIRED")
+    native = None
+    start = time.monotonic()
+    deadline = start + min(max(float(timeout_s), .1), 30.0)
     try:
         token.raise_if_cancelled()
-        import ctypes
-        from ctypes import wintypes
-        from pathlib import Path
-        from pluma.core.job_object import WindowsJobObject
-
-        system_root = os.environ.get("SystemRoot")
-        if not system_root:
-            return ToolResult.failure(tool, "Windows system directory is unavailable.", "ELEVATION_UNAVAILABLE")
-        powershell = Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-        if not powershell.is_file():
-            return ToolResult.failure(tool, "Windows PowerShell is unavailable.", "ELEVATION_UNAVAILABLE")
-
-        # This fixed script performs one operation. It contains no user data and
-        # does not weaken the machine's PowerShell execution policy.
-        parameters = subprocess.list2cmdline(dns_flush_arguments())
-
-        class SHELLEXECUTEINFOW(ctypes.Structure):
-            _fields_ = [
-                ("cbSize", wintypes.DWORD), ("fMask", wintypes.ULONG),
-                ("hwnd", wintypes.HWND), ("lpVerb", wintypes.LPCWSTR),
-                ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
-                ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int),
-                ("hInstApp", wintypes.HINSTANCE), ("lpIDList", ctypes.c_void_p),
-                ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
-                ("dwHotKey", wintypes.DWORD), ("DUMMYUNIONNAME", wintypes.HANDLE),
-                ("hProcess", wintypes.HANDLE),
-            ]
-
-        SEE_MASK_NOCLOSEPROCESS = 0x00000040
-        SEE_MASK_NOASYNC = 0x00000100
-        SEE_MASK_FLAG_NO_UI = 0x00000400
-        SW_HIDE = 0
-        WAIT_OBJECT_0 = 0
-        WAIT_TIMEOUT = 0x00000102
-        ERROR_CANCELLED = 1223
-        WAIT_SLICE_MS = 50
-
-        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(SHELLEXECUTEINFOW)]
-        shell32.ShellExecuteExW.restype = wintypes.BOOL
-        kernel32.GetProcessId.argtypes = [wintypes.HANDLE]
-        kernel32.GetProcessId.restype = wintypes.DWORD
-        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-        kernel32.WaitForSingleObject.restype = wintypes.DWORD
-        kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
-        kernel32.GetProcessTimes.argtypes = [
-            wintypes.HANDLE, ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
-            ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
-        ]
-        kernel32.GetProcessTimes.restype = wintypes.BOOL
-        kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
-        kernel32.TerminateProcess.restype = wintypes.BOOL
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-        kernel32.CloseHandle.restype = wintypes.BOOL
-
-        # The local kill-on-close job is owned by this task worker. If STOP or
-        # timeout interrupts the worker, closing its handle terminates only the
-        # exact child created below.
-        job = WindowsJobObject(name=None, kill_on_close=True)
-        request = SHELLEXECUTEINFOW()
-        request.cbSize = ctypes.sizeof(SHELLEXECUTEINFOW)
-        request.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI
-        request.lpVerb = "runas"
-        request.lpFile = str(powershell)
-        request.lpParameters = parameters
-        request.lpDirectory = system_root
-        request.nShow = SW_HIDE
-
-        if not shell32.ShellExecuteExW(ctypes.byref(request)):
-            error = ctypes.get_last_error()
-            code = "ELEVATION_CANCELLED" if error == ERROR_CANCELLED else "ELEVATION_LAUNCH_FAILED"
-            message = "The one-operation UAC request was cancelled." if error == ERROR_CANCELLED else "The one-operation UAC request could not be started."
-            return ToolResult.failure(tool, message, code,
-                duration_ms=(time.perf_counter() - t0) * 1000.0, adapter_used="one_operation_uac")
-
-        process_handle = request.hProcess
-        launched = bool(process_handle)
-        if not launched:
-            return ToolResult.failure(tool, "The elevated process handle was unavailable.", "ELEVATION_HANDLE_UNAVAILABLE",
-                duration_ms=(time.perf_counter() - t0) * 1000.0, adapter_used="one_operation_uac")
-
-        pid = int(kernel32.GetProcessId(process_handle))
-        created, exited, kernel_time, user_time = (wintypes.FILETIME() for _ in range(4))
-        if pid <= 0 or not kernel32.GetProcessTimes(process_handle, ctypes.byref(created), ctypes.byref(exited),
-                ctypes.byref(kernel_time), ctypes.byref(user_time)):
-            return ToolResult.failure(tool, "Elevated process identity could not be verified.", "ELEVATION_IDENTITY_UNAVAILABLE",
-                duration_ms=(time.perf_counter() - t0) * 1000.0, adapter_used="one_operation_uac")
-        creation_time = (created.dwHighDateTime << 32) | created.dwLowDateTime
-
-        try:
-            job.assign_handle(process_handle, process_id=pid)
-            assigned = True
-        except Exception:
-            # The process may already have exited before assignment. Otherwise
-            # terminate only the process returned by ShellExecuteEx and verify
-            # its exit before refusing the operation.
-            if kernel32.WaitForSingleObject(process_handle, 0) != WAIT_OBJECT_0:
-                kernel32.TerminateProcess(process_handle, 1)
-                kernel32.WaitForSingleObject(process_handle, 1000)
-                return ToolResult.failure(tool, "Elevated process containment failed; the effect may be uncertain.",
-                    "ELEVATION_CONTAINMENT_FAILED", duration_ms=(time.perf_counter() - t0) * 1000.0,
-                    adapter_used="one_operation_uac")
-
-        task_context.register_owned_resource("subprocess", "PLUMA_CREATED", str(pid), metadata={
-            "creation_time": creation_time,
-            "command_class": "elevation_operation",
-            "operation": "FLUSH_DNS",
+        native = _WindowsElevation()
+        token.raise_if_cancelled()
+        native.launch()
+        pid, created = native.identity()
+        native.contain(pid)
+        task_context.register_owned_resource("subprocess", "PLUMA_CREATED", str(pid), {
+            "task_id": task_id, "pid": pid, "creation_time": created,
+            "command_class": "elevation_operation", "operation": "FLUSH_DNS",
         })
-
-        deadline = time.monotonic() + min(max(float(timeout_s), 0.1), 30.0)
-        while True:
-            try:
-                token.raise_if_cancelled()
-            except Exception:
-                if kernel32.WaitForSingleObject(process_handle, 0) != WAIT_OBJECT_0:
-                    kernel32.TerminateProcess(process_handle, 1)
-                    kernel32.WaitForSingleObject(process_handle, 1000)
-                return ToolResult.failure(tool, "Elevation was stopped; the effect may be uncertain.",
-                    "TASK_CANCELLED", duration_ms=(time.perf_counter() - t0) * 1000.0,
-                    adapter_used="one_operation_uac")
-
-            remaining_ms = int(max(0.0, deadline - time.monotonic()) * 1000.0)
-            wait = kernel32.WaitForSingleObject(process_handle, min(WAIT_SLICE_MS, remaining_ms))
-            if wait == WAIT_OBJECT_0:
-                break
-            if wait != WAIT_TIMEOUT:
-                return ToolResult.failure(tool, "Elevated process exit could not be read back.", "ELEVATION_WAIT_FAILED",
-                    duration_ms=(time.perf_counter() - t0) * 1000.0, adapter_used="one_operation_uac")
-            if remaining_ms <= 0:
-                kernel32.TerminateProcess(process_handle, 1)
-                kernel32.WaitForSingleObject(process_handle, 1000)
-                return ToolResult.failure(tool, "The elevated operation timed out; the effect may be uncertain.",
-                    "ELEVATION_TIMEOUT", duration_ms=(time.perf_counter() - t0) * 1000.0,
-                    adapter_used="one_operation_uac")
-
-        exit_code = wintypes.DWORD()
-        if (not kernel32.GetExitCodeProcess(process_handle, ctypes.byref(exit_code))
-                or kernel32.WaitForSingleObject(process_handle, 0) != WAIT_OBJECT_0):
-            return ToolResult.failure(tool, "Elevated process completion could not be verified.", "ELEVATION_READBACK_FAILED",
-                duration_ms=(time.perf_counter() - t0) * 1000.0, adapter_used="one_operation_uac")
-        if assigned and job.active_process_count() != 0:
-            return ToolResult.failure(tool, "Owned elevated process cleanup could not be verified.", "ELEVATION_CLEANUP_UNVERIFIED",
-                duration_ms=(time.perf_counter() - t0) * 1000.0, adapter_used="one_operation_uac")
-        if exit_code.value != 0:
-            return ToolResult.failure(tool, "The DNS cache flush command reported failure.", "ELEVATED_OPERATION_FAILED",
-                duration_ms=(time.perf_counter() - t0) * 1000.0, adapter_used="one_operation_uac")
-        return ToolResult.success(tool,
-            data={"operation": "FLUSH_DNS", "exit_code": int(exit_code.value), "process_exit_observed": True},
-            factual_message="The one-operation DNS cache flush completed and its process exit was verified.",
-            verified=False, duration_ms=(time.perf_counter() - t0) * 1000.0,
-            adapter_used="one_operation_uac")
+        token.raise_if_cancelled()
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Elevation admission exceeded its deadline.")
+        native.admit()
+        while not native.exited(50) or native.job.active_process_count() != 0:
+            token.raise_if_cancelled()
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Elevation exceeded its deadline.")
+        if native.exit_code() != 0 or native.job.active_process_count() != 0:
+            return ToolResult.failure(tool, "The elevated operation or child cleanup failed.",
+                "ELEVATED_OPERATION_FAILED", adapter_used="one_operation_uac")
+        token.raise_if_cancelled()
+        readback = read_dns_cache(task_context, deadline - time.monotonic())
+        if readback["cache_entry_count"] != 0:
+            return ToolResult.failure(tool,
+                "The DNS cache was still populated at readback; the flush effect is unverified.",
+                "DNS_CACHE_NOT_EMPTY", adapter_used="one_operation_uac").model_copy(update={"data": readback})
+        return ToolResult.success(tool, data={
+            "operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True,
+            **readback,
+        }, factual_message="Flushed the DNS cache and independently observed an empty cache.",
+            verified=False, adapter_used="one_operation_uac",
+            duration_ms=(time.monotonic() - start) * 1000)
     except Exception:
-        # If a failure occurs after process creation, the retained exact handle
-        # and kill-on-close job prevent an untracked elevated child.
-        if process_handle is not None:
-            try:
-                import ctypes
-                from ctypes import wintypes
-                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-                if kernel32.WaitForSingleObject(process_handle, 0) != 0:
-                    kernel32.TerminateProcess(process_handle, 1)
-                    kernel32.WaitForSingleObject(process_handle, 1000)
-            except Exception:
-                pass
-        return ToolResult.failure(tool, "The one-operation elevation adapter failed; the effect may be uncertain.",
-            "ELEVATION_ADAPTER_FAILED", duration_ms=(time.perf_counter() - t0) * 1000.0,
-            adapter_used="one_operation_uac" if launched else None)
+        return ToolResult.failure(tool,
+            "The one-operation elevation or DNS readback failed; effects may be uncertain.",
+            "ELEVATION_OPERATION_FAILED", adapter_used="one_operation_uac")
     finally:
-        if process_handle is not None:
+        # A return before identity/containment/registration is not an exception.
+        # Cleanup belongs here so such returns and all raised failures are covered.
+        if native is not None:
             try:
-                import ctypes
-                from ctypes import wintypes
-                ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(process_handle))
+                clean = native.close()
             except Exception:
-                pass
-        if job is not None:
-            try:
-                job.close()
-            except Exception:
-                pass
+                clean = False
+            if not clean:
+                return ToolResult.failure(tool,
+                    "Elevated child termination could not be verified.",
+                    "ELEVATION_CLEANUP_UNVERIFIED", adapter_used="one_operation_uac")

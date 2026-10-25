@@ -1,6 +1,16 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-22, P11 final closure (E57)
+## Current checkpoint: 2026-10-25, P11 implementation repair (E58)
+
+**P11 acceptance remains open. P12 has not started and must not start automatically.**
+
+[E58](docs/completion/p11_production_dispatch_repair.md) supersedes E57's completion claim. Source inspection confirmed three defects despite E57's passing inert fixtures: unused production dispatcher, an uncontained elevated-child cleanup path, and exit-only DNS verification. All three have now been repaired. Production ToolSpecs use their declared dispatchers; multiple priorities cannot bypass dispatch. Elevation retains the original process handle, closes every failure path, and gates mutation until containment and ownership registration. DNS success requires an independent observed empty cache, never only process exit.
+
+The final focused suite passed **113 tests, zero skipped**. Broader regression: **1,189 passed / 14 private-desktop fixture failures / zero skipped**; clipboard regression: **254 passed / 29 OpenClipboard access-denied failures / zero skipped**. The window-state suite passed all 19 cases separately, which does not erase the combined failures. Nine new evidence-reporting checks passed. E58 records exact commands. Real non-elevated child cleanup, admission event and read-only DNS observations passed. The foreground check failed `NO_ACTIVE_WINDOW`; real UAC/DNS acceptance timed out with uncertain non-undoable effects, followed by verified runtime shutdown. The owner replied **?Interactive checks unavailable now?** on October 25; this is not a test pass or renewed waiver. Do not repeat interactive operations until available.
+
+Remaining gates include current clipboard access and combined private-desktop fixture failures, live foreground/focus, physical audio changes, physical system actions and successful fixed-operation UAC/DNS readback. Existing inert/native-read-only evidence remains useful but does not certify those effects. All 57 non-screen master catalog names are registered; the 16 screen-control catalog names and H-04 native approval surface remain assigned to P12 and P16 respectively. The next safe step is controlled native P11 acceptance when an interactive environment is available, **not P12**.
+
+## Previous checkpoint: 2026-10-22, P11 final closure (E57)
 
 **P11 is complete under the owner-approved native-test limitation in E57. P12 has not started. Do not advance automatically.**
 

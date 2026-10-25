@@ -347,9 +347,14 @@ def verify_flush_dns_cache(result: ToolResult) -> VerifyResult:
     data = result.data if isinstance(result.data, dict) else {}
     valid = (result.ok and result.tool == "flush_dns_cache"
         and result.adapter_used == "one_operation_uac"
-        and data == {"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True})
-    return VerifyResult(ok=valid, method="elevated_process_exit_readback", detail=(
-        "The fixed DNS operation exited successfully and its process termination was read back."
+        and data == {"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True,
+            "cache_entry_count": 0, "cache_readback_observed": True}
+        and type(data.get("cache_entry_count")) is int
+        and type(data.get("exit_code")) is int
+        and data.get("process_exit_observed") is True
+        and data.get("cache_readback_observed") is True)
+    return VerifyResult(ok=valid, method="independent_dns_cache_readback", detail=(
+        "The fixed DNS operation exited and an independent cache read observed zero entries."
         if valid else "The fixed DNS operation or its process exit was not verified."))
 
 

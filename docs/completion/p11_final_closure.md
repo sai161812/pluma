@@ -1,4 +1,6 @@
-# E57: P11 final closure under owner-approved native-test limits
+# E57: historical P11 closure claim (superseded by E58)
+
+**Correction (2026-10-25): [E58](p11_production_dispatch_repair.md) supersedes this completion claim. Production dispatch, child cleanup and DNS postcondition defects were subsequently confirmed and repaired. The current request requires passing checks; unavailable interactive checks do not constitute acceptance. The following is historical evidence only.**
 
 2026-10-22, Asia/Calcutta; branch `ui-wiring`, source parent `ca96cd6`.
 P11 is complete under the specific owner-approved test limitation recorded

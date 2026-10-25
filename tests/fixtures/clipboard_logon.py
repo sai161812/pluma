@@ -27,6 +27,15 @@ def token_state(process):
         token.Close()
 
 
+def recorded_test_exit(path):
+    """A successfully closed runner is not evidence that its pytest run passed."""
+    report = json.loads(path.read_text(encoding='utf-8'))
+    code = report.get('exit')
+    if type(code) is not int or code < 0:
+        raise ValueError('Missing or invalid clipboard test exit status.')
+    return code
+
+
 def run(label):
     if not label.startswith(('clipboard-focused-', 'clipboard-regression-')) or not label.replace('-', '').isalnum():
         raise ValueError('Only the closed clipboard test suites are supported.')
@@ -39,6 +48,9 @@ def run(label):
     original_token = token_state(win32api.GetCurrentProcess())
     root = Path.cwd()
     output = root / 'output/p11_power_actions' / (label + '-logon.json')
+    test_report = output.with_name(label + '.json')
+    if test_report.exists():
+        raise ValueError('Use a fresh evidence label; refusing a stale test report.')
     supervisor = TaskSupervisor()
     capsule = supervisor.create_task('p11-native-clipboard-logon-fixture')
     supervisor.start_task(capsule.task_id)
@@ -96,6 +108,7 @@ def run(label):
         exit_code = w.DWORD()
         assert kernel.GetExitCodeProcess(process.handle, c.byref(exit_code))
         metadata['runner_exit'] = exit_code.value
+        metadata['test_exit'] = recorded_test_exit(test_report)
     finally:
         # Drain only this suspended/registered process tree, even after startup
         # assertion failures. Read the actual Job count before closing it.
@@ -118,9 +131,11 @@ def run(label):
         metadata['interactive_clipboard_sequence_unchanged'] = user.GetClipboardSequenceNumber() == original_clipboard_sequence
         output.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
         assert metadata['interactive_clipboard_sequence_unchanged']
-    supervisor.finalize_task(capsule.task_id, TaskState.SUCCEEDED)
+    passed = metadata['runner_exit'] == 0 and metadata['test_exit'] == 0
+    supervisor.finalize_task(capsule.task_id, TaskState.SUCCEEDED if passed else TaskState.FAILED)
     print(json.dumps(metadata))
+    return 0 if passed else 1
 
 
 if __name__ == '__main__':
-    run(sys.argv[1])
+    raise SystemExit(run(sys.argv[1]))

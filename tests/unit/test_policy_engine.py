@@ -171,7 +171,8 @@ def test_elevation_broker_execution() -> None:
     def inert_runner(**kwargs):
         observed.update(kwargs)
         return ToolResult.success("flush_dns_cache",
-            data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True},
+            data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True,
+                "cache_entry_count": 0, "cache_readback_observed": True},
             factual_message="Inert test runner result.", adapter_used="one_operation_uac")
 
     task_context = object()

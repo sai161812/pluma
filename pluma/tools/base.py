@@ -81,6 +81,7 @@ class AdapterDispatcher:
     def __post_init__(self) -> None:
         priorities = tuple(self.adapters)
         if (not self.tool_name or not priorities
+                or any(not isinstance(priority, AdapterPriority) for priority in priorities)
                 or priorities != tuple(sorted(priorities))
                 or len(priorities) != len(set(priorities))
                 or any(not callable(adapter) for adapter in self.adapters.values())):
@@ -203,6 +204,8 @@ class ToolSpec(BaseModel):
 
     @model_validator(mode="after")
     def validate_runtime_contracts(self) -> "ToolSpec":
+        if len(self.adapter_priority) > 1 and not isinstance(self.executor, AdapterDispatcher):
+            raise ValueError("Multiple adapter priorities require an AdapterDispatcher executor.")
         if isinstance(self.executor, AdapterDispatcher) and self.executor.priorities != tuple(self.adapter_priority):
             raise ValueError("Adapter dispatcher order must exactly match ToolSpec.adapter_priority.")
         if self.elevation_operation is not None:
