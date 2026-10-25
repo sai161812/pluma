@@ -2,7 +2,7 @@
 
 ## Current checkpoint: 2026-10-25, P12 exact screen-control catalog (E66)
 
-**The 16 exact Section 21 screen-control catalog entries are implemented and registered.** [E66](docs/completion/p12_screen_control_catalog.md) records the typed ToolSpecs, SCREEN/DEEP routes, target-scoped snapshot/OCR behavior, UIA readback, private text undo and E-01 through E-10 verification evidence. P12 is not fully closed: `CORE-OCR` still lacks the locked PaddleOCR/ONNX tiny/small configuration and accuracy evidence.
+**The 16 exact Section 21 screen-control catalog entries are implemented and registered.** [E66](docs/completion/p12_screen_control_catalog.md) records the typed ToolSpecs, SCREEN/DEEP routes, target-scoped snapshot/OCR behavior, UIA readback, private text undo and E-01 through E-10 evidence. P12 is not fully closed: `CORE-OCR` still lacks the locked PaddleOCR/ONNX tiny/small configuration and accuracy evidence, and the current-build WPF E-01 retest remains blocked by Windows Application Control.
 
 - Focused screen/UIA/OCR/dispatch/rollback regressions: **251 passed in 45.37s; zero skips**. The current owned Win32 semantic/UIA acceptance suite: **7 passed in 3.02s; zero skips**. E-07 target-transition and E-10 owned-worker STOP cases pass in the focused OCR integration tests.
 - The latest WPF retest was executed, not skipped, and failed before readiness because Windows Application Control blocked the fixture DLL (`0x800711C7`; CLR exit `3762504530`). Rebuilding under ignored repository `output/` was blocked the same way. The policy was not changed; E62 retains the earlier successful WPF run. The limitation and exact failure evidence are in E66.
@@ -10,7 +10,7 @@
 - The exact tool list is now **73/73 section-21 names** (57 non-screen and 16 screen); the default registry exposes 85 names including utility and compatibility tools. E66 does not claim that P12's OCR-engine gate or the full product is complete.
 - Final validation: `py_compile` passed for all 18 changed Python source/test modules; the requirements-matrix validator passed with **298 source items and 324 traceable rows**; `git diff --check` passed (Git emitted only its LF-to-CRLF normalization advisory for tracked files).
 
-Next safe step: wait for the owner's instruction on the remaining `CORE-OCR` P12 gate. Keep work on `p12-preparation`; do not start P13 or merge automatically.
+Next safe step: continue only with the remaining P12 gates: the locked `CORE-OCR` configuration/accuracy evidence and a permitted current-build WPF E-01 retest. Keep work on `p12-preparation`; do not start P13 or merge automatically.
 
 ## Previous checkpoint: 2026-10-25, P12 bounded slice E-05 (E64)
 

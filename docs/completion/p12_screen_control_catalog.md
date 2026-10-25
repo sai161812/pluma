@@ -7,8 +7,9 @@ All 16 exact Section 21 screen-control names are now registered as typed
 Win32 acceptance suite passes all seven cases, covering E-01 through E-06,
 E-08 and E-09; E-07 and E-10 pass in the focused OCR integration tests. P12 is
 still open: the locked PaddleOCR/ONNX tiny/small configuration and its accuracy
-evidence are not part of this catalog change and remain `CORE-OCR` work. No P13
-work was started.
+evidence remain `CORE-OCR` work. The fresh WPF E-01 retest was blocked before
+readiness by Windows Application Control; E62 retains the earlier WPF pass.
+No P13 work was started.
 
 ## Catalog implementation
 
@@ -98,6 +99,6 @@ regressions passed in the focused suite.
 
 The exact 16-name screen catalog is complete. P12 overall remains open for the
 locked PaddleOCR/ONNX tiny/small backend configuration and associated accuracy
-evidence (`CORE-OCR`). The WPF rerun remains blocked by the active application
-control policy; no setting was weakened. Await the owner's next instruction;
-do not start P13 automatically.
+evidence (`CORE-OCR`), and a permitted current-build WPF E-01 retest. The WPF
+rerun remains blocked by the active application control policy; no setting was
+weakened. Do not start P13 automatically.
