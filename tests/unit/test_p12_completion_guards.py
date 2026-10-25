@@ -237,7 +237,7 @@ def _denied_initial_observation(args, task_context):
 
 @pytest.mark.parametrize("route", ["SCREEN", "DEEP"])
 @pytest.mark.parametrize("denied", [False, True])
-def test_routed_perception_is_owned_uia_only_and_registered_before_planning(tmp_path, route, denied):
+def test_routed_perception_is_owned_uia_only_and_registered_before_planning(tmp_path, monkeypatch, route, denied):
     from unittest.mock import MagicMock
     from pluma.brain.schemas import Plan, ToolCall, RouteMode
     from pluma.core.orchestrator import Orchestrator
@@ -248,7 +248,8 @@ def test_routed_perception_is_owned_uia_only_and_registered_before_planning(tmp_
     from tests.unit.test_multi_step_orchestrator import _owned_semantic_fixture
     registry = ToolRegistry()
     register_default_tools(registry)
-    registry.lookup("inspect_window_controls").executor = _denied_initial_observation if denied else _owned_semantic_fixture
+    monkeypatch.setattr(registry.lookup("inspect_window_controls"), "executor",
+        _denied_initial_observation if denied else _owned_semantic_fixture)
     route_enum = RouteMode(route)
     observed = []
     def plan(**kwargs):

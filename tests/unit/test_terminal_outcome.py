@@ -30,6 +30,18 @@ from pluma.tools.registry import ToolRegistry
 from tests.unit.test_cleanup_evidence import Job
 
 
+def _inert_screen_observation(args, context):
+    from datetime import datetime, timedelta, timezone
+    from pluma.perception.element_refs import ScreenSnapshot, BoundingBox
+    now = datetime.now(timezone.utc)
+    snapshot = ScreenSnapshot(created_at=now, expires_at=now + timedelta(seconds=3),
+        active_process='fixture.exe', active_window_title='Fixture',
+        window_rect=BoundingBox(left=0, top=0, right=100, bottom=100), dpi_scale=1)
+    context.snapshot_registry.register(snapshot)
+    return ToolResult.success('inspect_window_controls', {'snapshot_id': snapshot.snapshot_id},
+        'Inert semantic observation for terminal-state tests.', verified=True)
+
+
 @pytest.fixture
 def harness(tmp_path, monkeypatch):
     monkeypatch.setattr(job_object, 'WindowsJobObject', Job)
@@ -38,6 +50,11 @@ def harness(tmp_path, monkeypatch):
     ledger = ActivityLedger(db)
     supervisor = TaskSupervisor(ledger=ledger, rollback_engine=RollbackEngine(ledger=ledger))
     registry = ToolRegistry()
+    registry.register(ToolSpec(name='inspect_window_controls', description='Inert perception fixture',
+        args_schema={'type': 'object'}, risk_class=RiskClass.READ, timeout_s=1,
+        executor=_inert_screen_observation,
+        verifier=lambda result: VerifyResult(ok=result.ok and result.verified,
+            method='inert_fixture', detail='Terminal-state fixture observation.')))
     # Do not change the shared time module or physical adapters.
     original_stop = supervisor.stop_task
     monkeypatch.setattr(supervisor, 'stop_task', lambda tid, reason=StopReason.USER_STOP, grace_s=0:
@@ -113,15 +130,7 @@ def test_routes_stop_project_state_evidence_and_reopened_sqlite(harness, route, 
         cap.cancellation_token.cancel()
         return ToolResult(ok=True, tool='outcome_probe', factual_message='Fixture read.', verified=True)
     register(h, execute)
-    if route == RouteMode.DEEP:
-        # DEEP's perception dependency is inert, not a desktop capture.
-        from pluma.perception.context import ActiveWindowContext
-        from pluma.perception.uia_snapshot import UiaSnapshotBuilder
-        from unittest.mock import patch
-        with patch.object(ActiveWindowContext, '__init__', lambda self: None), patch.object(UiaSnapshotBuilder, 'capture', return_value=None):
-            result = orchestrator(h, route).execute(req, cap)
-    else:
-        result = orchestrator(h, route).execute(req, cap)
+    result = orchestrator(h, route).execute(req, cap)
     assert result.final_state == ('STOPPED' if effect == 'clean' else 'STOPPED_WITH_RESIDUAL')
     assert result.success is False and result.rollback_performed is True
     row, report = stored(h, cap, result)
@@ -168,9 +177,6 @@ def test_empty_fast_plan_is_finalized(harness):
 
 @pytest.mark.parametrize('route', [RouteMode.SMART, RouteMode.SCREEN, RouteMode.DEEP])
 def test_stop_during_failed_planning_preserves_residual(harness, route):
-    from unittest.mock import patch
-    from pluma.perception.context import ActiveWindowContext
-    from pluma.perception.uia_snapshot import UiaSnapshotBuilder
     h = harness
     req = request()
     cap = h.supervisor.create_task(req.request_id)
@@ -178,8 +184,7 @@ def test_stop_during_failed_planning_preserves_residual(harness, route):
     def failed(**kwargs):
         h.supervisor.stop_task(cap.task_id)
         raise RuntimeError('Planner cancelled')
-    with patch.object(ActiveWindowContext, '__init__', lambda self: None), patch.object(UiaSnapshotBuilder, 'capture', return_value=None):
-        result = orchestrator(h, route, llm=SimpleNamespace(plan=failed), steps=False).execute(req, cap)
+    result = orchestrator(h, route, llm=SimpleNamespace(plan=failed), steps=False).execute(req, cap)
     assert result.final_state == 'STOPPED_WITH_RESIDUAL'
     stored(h, cap, result)
 
