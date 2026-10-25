@@ -11,6 +11,7 @@ import os
 
 
 BUTTON_ID = 4101
+SECOND_BUTTON_ID = 4103
 STATUS_ID = 4102
 WM_COMMAND = 0x0111
 WM_CLOSE = 0x0010
@@ -58,21 +59,32 @@ def main() -> None:
     kernel.GetModuleHandleW.argtypes = [w.LPCWSTR]
     kernel.GetModuleHandleW.restype = w.HINSTANCE
 
+    open_windows = 0
+    duplicate_labels = False
+
     def handle(hwnd: int, message: int, wp: int, lp: int) -> int:
+        nonlocal open_windows
         if message == 0x0001:  # WM_CREATE
+            open_windows += 1
             button = user.CreateWindowExW(
                 0, "BUTTON", "Submit", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                 24, 28, 150, 36, hwnd, w.HMENU(BUTTON_ID), instance, None,
             )
+            second_button = None
+            if duplicate_labels:
+                second_button = user.CreateWindowExW(
+                    0, "BUTTON", "Submit", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                    24, 76, 150, 36, hwnd, w.HMENU(SECOND_BUTTON_ID), instance, None,
+                )
             status = user.CreateWindowExW(
                 0, "STATIC", "Ready", WS_CHILD | WS_VISIBLE | SS_LEFT,
-                24, 82, 220, 28, hwnd, w.HMENU(STATUS_ID), instance, None,
+                24, 132 if duplicate_labels else 82, 220, 28, hwnd, w.HMENU(STATUS_ID), instance, None,
             )
-            if not button or not status:
+            if not button or (duplicate_labels and not second_button) or not status:
                 return -1
             return 0
-        if message == WM_COMMAND and (wp & 0xFFFF) == BUTTON_ID and ((wp >> 16) & 0xFFFF) == BN_CLICKED:
-            button = user.GetDlgItem(hwnd, BUTTON_ID)
+        if message == WM_COMMAND and (wp & 0xFFFF) in {BUTTON_ID, SECOND_BUTTON_ID} and ((wp >> 16) & 0xFFFF) == BN_CLICKED:
+            button = user.GetDlgItem(hwnd, wp & 0xFFFF)
             status = user.GetDlgItem(hwnd, STATUS_ID)
             if button:
                 user.EnableWindow(button, False)
@@ -83,7 +95,9 @@ def main() -> None:
             user.DestroyWindow(hwnd)
             return 0
         if message == WM_DESTROY:
-            user.PostQuitMessage(0)
+            open_windows -= 1
+            if open_windows == 0:
+                user.PostQuitMessage(0)
             return 0
         return int(user.DefWindowProcW(hwnd, message, wp, lp))
 
@@ -112,18 +126,30 @@ def main() -> None:
     if not user.RegisterClassW(c.byref(definition)):
         raise c.WinError()
 
-    hwnd = user.CreateWindowExW(
-        WS_EX_NOACTIVATE, class_name, "PLUMA P12 UIA fixture", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-        180, 160, 420, 240, None, None, instance, None,
-    )
-    if not hwnd:
-        raise c.WinError()
-    user.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
-    user.UpdateWindow(hwnd)
+    def create_window(title: str, x: int, include_duplicate_labels: bool) -> int:
+        nonlocal duplicate_labels
+        duplicate_labels = include_duplicate_labels
+        hwnd = user.CreateWindowExW(
+            WS_EX_NOACTIVATE, class_name, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            x, 160, 420, 240, None, None, instance, None,
+        )
+        if not hwnd:
+            raise c.WinError()
+        user.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
+        user.UpdateWindow(hwnd)
+        return int(hwnd)
+
+    hwnd = create_window("PLUMA P12 UIA fixture", 180, False)
+    duplicate_hwnd = create_window("PLUMA P12 duplicate-label fixture", 620, True)
 
     temporary = ready_path.with_suffix(".partial")
     temporary.write_text(
-        json.dumps({"pid": os.getpid(), "parent_pid": os.getppid(), "hwnd": int(hwnd)}),
+        json.dumps({
+            "pid": os.getpid(),
+            "parent_pid": os.getppid(),
+            "hwnd": int(hwnd),
+            "duplicate_hwnd": duplicate_hwnd,
+        }),
         encoding="utf-8",
     )
     temporary.replace(ready_path)

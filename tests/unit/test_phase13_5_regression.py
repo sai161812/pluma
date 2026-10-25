@@ -131,6 +131,16 @@ class TestUISnapshotGrounding:
         )
         snap = ctx.snapshot_registry.resolve("snap-test-001")
         snap.controls.append(btn)
+        snap.ocr_words.append(ScreenElement(
+            element_id="ocr-somebutton",
+            snapshot_id="snap-test-001",
+            source=ElementSource.OCR,
+            label="SomeButton",
+            control_type="StaticText",
+            bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+            confidence=0.95,
+            invocation_capability="click",
+        ))
 
         reg = get_default_tool_registry()
         result = reg.execute(
@@ -142,6 +152,47 @@ class TestUISnapshotGrounding:
         if result.error:
             assert not any(ge in result.error.lower() for ge in grounding_errors), \
                 f"Valid snapshot should not cause grounding error: {result.error}"
+
+    @pytest.mark.parametrize(
+        ("tool_name", "action_args"),
+        [
+            ("click_element", {"expected_enabled": False}),
+            ("type_into_element", {"text": "private fixture text"}),
+        ],
+    )
+    def test_duplicate_ui_labels_are_rejected_before_dispatch(self, tool_name, action_args):
+        """A matching label must be unique within its perception source before action."""
+        from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement
+        from pluma.tools.registry import get_default_tool_registry
+
+        ctx = self._make_task_context_with_registry(register_snapshot=True, expired=False)
+        snapshot = ctx.snapshot_registry.resolve("snap-test-001")
+        for element_id in ("save-first", "save-second"):
+            snapshot.controls.append(ScreenElement(
+                element_id=element_id,
+                snapshot_id=snapshot.snapshot_id,
+                source=ElementSource.UIA,
+                label="Save",
+                control_type="Button",
+                bounds=BoundingBox(left=10, top=10, right=100, bottom=40),
+                confidence=1.0,
+                invocation_capability="invoke",
+            ))
+
+        result = get_default_tool_registry().execute(
+            tool_name,
+            {
+                **action_args,
+                "snapshot_id": snapshot.snapshot_id,
+                "target_ref": f"{snapshot.snapshot_id}::save-first",
+            },
+            task_context=ctx,
+        )
+
+        assert result.ok is False
+        assert result.verified is False
+        assert result.error_code == "UI_AMBIGUOUS_TARGET"
+        assert "2 UIA elements match" in result.error
 
 
     def test_freshness_checker_not_called_with_ttl_seconds_kwarg(self):

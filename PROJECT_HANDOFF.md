@@ -1,14 +1,21 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P12 first bounded slice E-01/E-02 (E62)
+## Current checkpoint: 2026-10-25, P12 bounded slice E-03/E-04 (E63)
 
-**E-01 and E-02 now pass on `p12-preparation`; P12 remains open.** [E62](docs/completion/p12_e01_e02.md) records native Win32 and WPF inspection, Win32 Submit invocation, source hashes, focused regressions and implementation fixes. Registered inspection selected UIA on both owned fixtures; the Win32 click tool invoked Submit, then read back its disabled state and “Submitted” status. The Win32 acceptance's OCR/capture guards were never accessed, and neither fixture activates or inspects a pre-existing user window. E-03 through E-10 remain open.
+**E-03 and E-04 now pass on `p12-preparation`; P12 remains open.** [E63](docs/completion/p12_e03_e04.md) records owned-window results, focused regressions and source hashes. Registry grounding refuses duplicate same-source labels before an action worker starts. The native Win32 fixture exposed two real UIA Submit controls with the same label; the registered click tool refused the target, and independent UIA reads confirmed both controls remained enabled. A second registered-tool case changed the task's active context from one owned HWND to another and rejected the original reference before constructing the UIA action adapter.
 
-- The native test exposed and fixed three concrete gaps: the registry did not pass resolved snapshot grounding to its owned-thread executor; Win32 window rectangles varied with the caller thread's DPI context; and UIA click success did not require an expected postcondition. Grounding now travels in a per-call context overlay, rectangle reads temporarily use the target window's DPI-awareness context and restore it, and `click_element` requires a caller-supplied expected enabled state before it can report verified success.
-- From baseline `26dc279`, focused UI, verifier, dispatch, snapshot/freshness, Win32, native geometry and grounding regressions passed **79 tests in 18.51s**, zero failures/errors/skips. The combined native Win32/WPF acceptance passed **2 tests in 5.00s**, zero failures/errors/skips. Environment: Windows 11 build 26200, Python 3.12.10, pytest 8.3.3, pywinauto 0.6.9, .NET SDK 10.0.401 and WPF runtime 8.0.31. Exact commands and reports are under ignored `output/p12-e01-e02/`; source SHA256 values are in E62.
-- No additional section-21 screen tool names were added. The remaining 16 screen-control catalog names and E-03 through E-10 remain P12 work. This checkpoint does not claim full P12 or product completion.
+- The active-window switch is controlled by the test context, which returns fresh native identity and geometry for either exact owned fixture HWND. The current desktop session does not provide foreground/focus acceptance; the tests do not activate or inspect any pre-existing user window.
+- From E62 baseline `69a8119`, focused UI, verifier, dispatch, snapshot/freshness, Win32, native geometry, OCR ambiguity and grounding regressions passed **87 tests in 17.54s**, zero failures/errors/skips. Combined native Win32/WPF and E-03/E-04 acceptance passed **4 tests in 5.51s**, zero failures/errors/skips. Environment: Windows 11 build 26200, Python 3.12.10, pytest 8.3.3 and pywinauto 0.6.9. Exact commands and reports are under ignored `output/p12-e03-e04/`; source SHA256 values are in E63.
+- E-01/E-02 remain evidenced by [E62](docs/completion/p12_e01_e02.md). No additional section-21 screen tool names were added. E-05 through E-10 and the remaining 16 screen-control catalog names remain P12 work. This checkpoint does not claim full P12 or product completion.
 
-Next safe bounded task, only when instructed: E-03/E-04 duplicate-label refusal and stale-reference rejection on the owned semantic fixture. Keep work on `p12-preparation`; do not merge or start later P12 slices automatically.
+Next safe bounded task, only when instructed: E-05 geometry/DPI refresh before coordinate fallback. Keep work on `p12-preparation`; do not merge or start later P12 slices automatically.
+
+## Previous checkpoint: 2026-10-25, P12 first bounded slice E-01/E-02 (E62)
+
+**E-01 and E-02 pass on `p12-preparation`; P12 remains open.** [E62](docs/completion/p12_e01_e02.md) records native Win32 and WPF inspection, Win32 Submit invocation, focused regressions and implementation fixes. E63 above adds duplicate-label and stale-reference acceptance. E-05 through E-10 and the remaining screen catalog names remain open.
+
+- E62's native test exposed and fixed three concrete gaps: the registry did not pass resolved snapshot grounding to its owned-thread executor; Win32 window rectangles varied with the caller thread's DPI context; and UIA click success did not require an expected postcondition. E62 retains exact baseline test results and source hashes.
+- No additional section-21 screen tool names were added, and no foreground/focus acceptance was claimed.
 
 ## Previous checkpoint: 2026-10-25, P00-P11 merged into main (E61)
 

@@ -1207,6 +1207,23 @@ class ToolRegistry:
                         snapshot = snapshot_registry.resolve(snapshot_id)
                         element_id = target_ref.split("::")[-1]
                         element = snapshot_registry.resolve_element(snapshot_id, element_id)
+                        label_key = element.label.strip().casefold()
+                        same_source_matches = [
+                            candidate
+                            for candidate in (*snapshot.controls, *snapshot.ocr_words)
+                            if candidate.source == element.source
+                            and candidate.label.strip().casefold() == label_key
+                        ]
+                        if label_key and len(same_source_matches) > 1:
+                            return ToolResult.failure(
+                                tool_name,
+                                (
+                                    f"Parent UI grounding refused ambiguous label {element.label!r}: "
+                                    f"{len(same_source_matches)} {element.source.value} elements match. "
+                                    "Use a unique target or ask for clarification."
+                                ),
+                                error_code="UI_AMBIGUOUS_TARGET",
+                            )
                         grounded_ui_target = {
                             "snapshot_hwnd": snapshot.hwnd,
                             "snapshot_pid": snapshot.pid,
