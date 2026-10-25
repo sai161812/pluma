@@ -133,6 +133,25 @@ class WorkerTaskContext:
         )
 
 
+class _ExecutorContextOverlay:
+    """Expose per-call UI grounding without mutating the shared task context."""
+
+    __slots__ = ("_source", "grounded_ui_target")
+
+    def __init__(self, source: Any, grounded_ui_target: Dict[str, Any]) -> None:
+        object.__setattr__(self, "_source", source)
+        object.__setattr__(self, "grounded_ui_target", grounded_ui_target)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_source"), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in {"_source", "grounded_ui_target"}:
+            object.__setattr__(self, name, value)
+            return
+        setattr(object.__getattribute__(self, "_source"), name, value)
+
+
 def _invoke_executor(
     executor_fn: Callable[..., Any],
     args: Dict[str, Any],
@@ -1424,8 +1443,11 @@ class ToolRegistry:
             observation = {"started": False}
             future = None
             try:
+                executor_context = task_context
+                if grounded_ui_target is not None and task_context is not None:
+                    executor_context = _ExecutorContextOverlay(task_context, grounded_ui_target)
                 future = self.submit_owned(
-                    _invoke_executor, spec.executor, validated_args, task_context, token, observation,
+                    _invoke_executor, spec.executor, validated_args, executor_context, token, observation,
                     task_id=getattr(task_context, "task_id", None), _task_context=task_context,
                 )
                 try:

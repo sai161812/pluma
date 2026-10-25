@@ -1,14 +1,24 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P00-P11 merged into main (E61)
+## Current checkpoint: 2026-10-25, P12 first bounded slice E-01/E-02 (E62)
 
-**P00-P11 is merged into GitHub main. P12 is ready for its first bounded task and has not started.** The owner authorized the merge and P12 preparation on 2026-10-25. [E61](docs/completion/p11_main_merge.md) records the actual commits, checks, recovery points and next task. Live focus/audio acceptance remains explicitly deferred to final validation under E60; no physical pass or full-product release is claimed.
+**E-01 and E-02 now pass on `p12-preparation`; P12 remains open.** [E62](docs/completion/p12_e01_e02.md) records the native fixture results, source hashes, focused regressions and implementation fixes. The fixture is an owned Win32 window; registered inspection and click tools selected UIA, Submit was invoked, the disabled state and “Submitted” status were read back, and OCR/capture guards were never accessed. The fixture does not activate or inspect a pre-existing user window. WPF-specific provider behavior and E-03 through E-10 remain open.
+
+- The native test exposed and fixed three concrete gaps: the registry did not pass resolved snapshot grounding to its owned-thread executor; Win32 window rectangles varied with the caller thread's DPI context; and UIA click success did not require an expected postcondition. Grounding now travels in a per-call context overlay, rectangle reads temporarily use the target window's DPI-awareness context and restore it, and `click_element` requires a caller-supplied expected enabled state before it can report verified success.
+- From baseline `26dc279`, focused UI, verifier, dispatch, snapshot/freshness, Win32, native geometry and grounding regressions passed **79 tests in 18.51s**, zero failures/errors/skips. Native E-01/E-02 acceptance passed **1 test in 0.93s**, zero failures/errors/skips, on Windows 11 build 26200, Python 3.12.10, pytest 8.3.3 and pywinauto 0.6.9. Exact commands and reports are under ignored `output/p12-e01-e02/`; source SHA256 values are in E62.
+- No additional section-21 screen tool names were added. The remaining 16 screen-control catalog names and E-03 through E-10 remain P12 work. This checkpoint does not claim full P12, WPF acceptance or product completion.
+
+Next safe bounded task, only when instructed: E-03/E-04 duplicate-label refusal and stale-reference rejection on the owned semantic fixture. Keep work on `p12-preparation`; do not merge or start later P12 slices automatically.
+
+## Previous checkpoint: 2026-10-25, P00-P11 merged into main (E61)
+
+**P00-P11 is merged into GitHub main.** The owner authorized the merge and P12 preparation on 2026-10-25. [E61](docs/completion/p11_main_merge.md) records the actual commits, checks, recovery points and P12 starting point. Live focus/audio acceptance remains explicitly deferred to final validation under E60; no physical pass or full-product release is claimed.
 
 - [PR 1](https://github.com/sai161812/pluma/pull/1) merged the approved dark UI foundation as `3cb367d3a387987b6872c493521eeaab59651d68`.
 - [PR 2](https://github.com/sai161812/pluma/pull/2) was retargeted to main, updated with current validation/limitations and merged as `812a8b9c05e7c7e8852be1841ae5e47677f6382f`. Both merges preserved ancestry and used exact expected-head SHA guards. Development/recovery branches and other worktrees were preserved.
 - The resulting main tree exactly matches tested P11 head `34a8471`: no merge-resolution code or untested integration delta. Windows UI workflow [40199073748](https://github.com/sai161812/pluma/actions/runs/40199073748) passed on that head. E60's 435 prerequisite, 1,274 catalog, 319 routing and 283 clipboard passes remain applicable. Fresh post-merge verification on actual main commit `812a8b9`: **435 safety prerequisites passed in 56.63s, zero failed/skipped**, and **39 C#/Python IPC checks passed** again. Matrix validation passes 298 source items / 324 rows.
 
-Next safe task, only when instructed: execute the first bounded P12 E-01/E-02 semantic-inspection gap from the current main baseline. Inspect existing adapters/tests and exact missing registry names first; use owned fixture windows, semantic UIA before OCR, strict reference lifetime and independent readback. Do not enable command entry, invent UI design or silently expand to all screen tools. E-01 through E-10 and all 16 missing P12 catalog names remain open in the matrix.
+At E61, P12 was prepared but not started. Its first bounded task was E-01/E-02 semantic inspection using an owned fixture, UIA before OCR, strict target identity and independent readback. E62 above records completion of that slice; the remaining 16 missing P12 catalog names remain open.
 
 ## Previous checkpoint: 2026-10-25, P00-P11 merge preparation (E60)
 

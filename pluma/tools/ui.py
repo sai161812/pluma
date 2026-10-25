@@ -44,6 +44,13 @@ class ClickElementArgs(BaseModel):
     name: Optional[str] = Field(default=None, description="Name or title text of target element.")
     auto_id: Optional[str] = Field(default=None, description="UIA AutomationId of target element.")
     control_type: Optional[str] = Field(default=None, description="UIA control type.")
+    expected_enabled: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Expected enabled state of the invoked control after the action. "
+            "Without this readback request, dispatch is refused before action."
+        ),
+    )
 
 
 class TypeIntoElementArgs(BaseModel):
@@ -167,6 +174,14 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
             verified=False, error="TASK_CANCELLED",
         )
 
+    expected_enabled = args.get("expected_enabled")
+    if not isinstance(expected_enabled, bool):
+        return ToolResult.failure(
+            "click_element",
+            "UIA click refused before dispatch: an expected enabled-state transition is required.",
+            error_code="UI_POSTCONDITION_REQUIRED",
+        )
+
     snapshot_id = args.get("snapshot_id")
     target_ref = args.get("target_ref")
 
@@ -244,6 +259,20 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
     verifier = ScreenVerifier(uia_adapter=adapter)
 
     try:
+        before = adapter.find_control(
+            hwnd=hwnd,
+            auto_id=auto_id,
+            name=name,
+            control_type=control_type,
+            timeout_s=3.0,
+        )
+        if before.is_enabled is expected_enabled:
+            return ToolResult.failure(
+                "click_element",
+                "UIA click refused before dispatch: the expected enabled state is already present, so no transition could be verified.",
+                error_code="UI_NO_EXPECTED_TRANSITION",
+            )
+
         adapter.invoke_control(
             hwnd=hwnd,
             auto_id=auto_id,
@@ -252,14 +281,22 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
             timeout_s=3.0,
         )
 
-        v_res = verifier.verify_control_invoked(hwnd=hwnd, auto_id=auto_id, name=name)
+        v_res = verifier.verify_control_enabled(
+            hwnd=hwnd,
+            expected_enabled=expected_enabled,
+            auto_id=auto_id,
+            name=name,
+        )
         target_label = name or auto_id or control_type or "unknown"
 
         return ToolResult(
             ok=True,
             tool="click_element",
             data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "control_type": control_type, "snapshot_id": snapshot_id, "target_ref": target_ref},
-            factual_message=f"Clicked UI element '{target_label}' in window HWND {hwnd}.",
+            factual_message=(
+                f"Invoked UI element '{target_label}' in window HWND {hwnd}. "
+                + "Expected enabled-state transition was read back."
+            ),
             verified=v_res.ok,
             verify_detail=v_res,
         )

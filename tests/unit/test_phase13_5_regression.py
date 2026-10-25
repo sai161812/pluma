@@ -57,6 +57,8 @@ class TestUISnapshotGrounding:
 
         ctx = MagicMock()
         ctx.snapshot_registry = registry
+        ctx.next_action_index = 0
+        ctx.tool_call_count = 0
         ctx.cancellation_token = MagicMock()
         ctx.cancellation_token.is_cancelled = False
         return ctx
@@ -83,6 +85,8 @@ class TestUISnapshotGrounding:
         
         ctx = MagicMock()
         ctx.snapshot_registry = None  # No registry
+        ctx.next_action_index = 0
+        ctx.tool_call_count = 0
         ctx.cancellation_token = MagicMock()
         ctx.cancellation_token.is_cancelled = False
 

@@ -80,10 +80,11 @@ def test_execute_inspect_active_window(mock_builder_cls: MagicMock, mock_context
 @patch("pluma.tools.ui.ScreenVerifier")
 def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
     mock_adapter = MagicMock()
+    mock_adapter.find_control.return_value.is_enabled = True
     mock_adapter_cls.return_value = mock_adapter
 
     mock_verifier = MagicMock()
-    mock_verifier.verify_control_invoked.return_value = MagicMock(ok=True)
+    mock_verifier.verify_control_enabled.return_value = MagicMock(ok=True)
     mock_verifier_cls.return_value = mock_verifier
 
     mock_ctx = MagicMock()
@@ -109,16 +110,110 @@ def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapte
     }
     task_ctx.cancellation_token = MagicMock(is_cancelled=False)
 
-    result = execute_click_element({"snapshot_id": "snap-1", "target_ref": "snap-1::btn_save"}, task_context=task_ctx)
+    result = execute_click_element({
+        "snapshot_id": "snap-1", "target_ref": "snap-1::btn_save",
+        "expected_enabled": False,
+    }, task_context=task_ctx)
     assert result.ok
     assert result.verified
     assert mock_adapter.invoke_control.called
+    mock_verifier.verify_control_enabled.assert_called_once_with(
+        hwnd=456, expected_enabled=False, auto_id="btn_save", name="Save"
+    )
     assert "Save" in result.factual_message
+
+
+@patch("pluma.tools.ui.ActiveWindowContext")
+@patch("pluma.tools.ui.UiaAdapter")
+@patch("pluma.tools.ui.ScreenVerifier")
+def test_execute_click_element_without_postcondition_is_refused_before_dispatch(
+    mock_verifier_cls: MagicMock,
+    mock_adapter_cls: MagicMock,
+    mock_active_ctx_cls: MagicMock,
+) -> None:
+    mock_ctx = MagicMock()
+    active = MagicMock()
+    active.is_valid = True
+    active.hwnd = 456
+    active.pid = 1000
+    active.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
+    active.dpi_scale = 1.0
+    mock_ctx.get_active_window.return_value = active
+    mock_active_ctx_cls.return_value = mock_ctx
+
+    task_ctx = MagicMock()
+    task_ctx.grounded_ui_target = {
+        "snapshot_hwnd": 456,
+        "snapshot_pid": 1000,
+        "snapshot_creation_time_ns": None,
+        "snapshot_dpi_scale": 1.0,
+        "auto_id": "btn_submit",
+        "name": "Submit",
+        "control_type": "Button",
+    }
+    task_ctx.cancellation_token = MagicMock(is_cancelled=False)
+
+    result = execute_click_element(
+        {"snapshot_id": "snap-1", "target_ref": "snap-1::btn_submit"},
+        task_context=task_ctx,
+    )
+
+    assert not result.ok
+    assert not result.verified
+    assert result.error_code == "UI_POSTCONDITION_REQUIRED"
+    mock_adapter_cls.return_value.invoke_control.assert_not_called()
+    mock_verifier_cls.return_value.verify_control_enabled.assert_not_called()
+
+
+@patch("pluma.tools.ui.ActiveWindowContext")
+@patch("pluma.tools.ui.UiaAdapter")
+def test_execute_click_element_refuses_when_expected_state_is_already_present(
+    mock_adapter_cls: MagicMock,
+    mock_active_ctx_cls: MagicMock,
+) -> None:
+    mock_ctx = MagicMock()
+    active = MagicMock()
+    active.is_valid = True
+    active.hwnd = 456
+    active.pid = 1000
+    active.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
+    active.dpi_scale = 1.0
+    mock_ctx.get_active_window.return_value = active
+    mock_ctx.get_process_creation_time_ns.return_value = 123456789
+    mock_active_ctx_cls.return_value = mock_ctx
+
+    adapter = mock_adapter_cls.return_value
+    adapter.find_control.return_value.is_enabled = False
+    task_ctx = MagicMock()
+    task_ctx.grounded_ui_target = {
+        "snapshot_hwnd": 456,
+        "snapshot_pid": 1000,
+        "snapshot_creation_time_ns": 123456789,
+        "snapshot_dpi_scale": 1.0,
+        "auto_id": "btn_submit",
+        "name": "Submit",
+        "control_type": "Button",
+    }
+    task_ctx.cancellation_token = MagicMock(is_cancelled=False)
+
+    result = execute_click_element(
+        {
+            "snapshot_id": "snap-1",
+            "target_ref": "snap-1::btn_submit",
+            "expected_enabled": False,
+        },
+        task_context=task_ctx,
+    )
+
+    assert not result.ok
+    assert result.error_code == "UI_NO_EXPECTED_TRANSITION"
+    adapter.invoke_control.assert_not_called()
 
 @patch("pluma.tools.ui.ActiveWindowContext")
 @patch("pluma.tools.ui.UiaAdapter")
 def test_execute_click_element_not_found(mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
     mock_adapter = MagicMock()
+    mock_adapter.find_control.return_value.is_enabled = True
     mock_adapter.invoke_control.side_effect = Exception("Not found")
     mock_adapter_cls.return_value = mock_adapter
 
@@ -145,7 +240,10 @@ def test_execute_click_element_not_found(mock_adapter_cls: MagicMock, mock_activ
     }
     task_ctx.cancellation_token = MagicMock(is_cancelled=False)
 
-    result = execute_click_element({"snapshot_id": "snap-1", "target_ref": "snap-1::btn_missing"}, task_context=task_ctx)
+    result = execute_click_element({
+        "snapshot_id": "snap-1", "target_ref": "snap-1::btn_missing",
+        "expected_enabled": False,
+    }, task_context=task_ctx)
     assert not result.ok
     pass
 
