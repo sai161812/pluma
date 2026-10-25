@@ -355,6 +355,9 @@ class Orchestrator:
                 route=RouteMode.SMART,
             )
         except Exception as exc:
+            stopped = self._planning_stop_result(capsule, request, route_result, wall_start)
+            if stopped is not None:
+                return stopped
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
             logger.error("Task %s: SMART route planning failed: %s", task_id, exc)
             return TaskExecutionResult(
@@ -442,6 +445,9 @@ class Orchestrator:
                 route=RouteMode.SCREEN,
             )
         except Exception as exc:
+            stopped = self._planning_stop_result(capsule, request, route_result, wall_start)
+            if stopped is not None:
+                return stopped
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
             return TaskExecutionResult(
                 task_id=task_id,
@@ -489,6 +495,9 @@ class Orchestrator:
                 route=RouteMode.DEEP,
             )
         except Exception as exc:
+            stopped = self._planning_stop_result(capsule, request, route_result, wall_start)
+            if stopped is not None:
+                return stopped
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
             return TaskExecutionResult(
                 task_id=task_id,
@@ -541,6 +550,23 @@ class Orchestrator:
             duration_ms=duration_ms,
             factual_summary=ms_res.factual_summary,
             replan_count=ms_res.replan_count,
+        )
+
+    @staticmethod
+    def _planning_stop_result(capsule, request, route_result, wall_start):
+        """Keep a latched user STOP distinct from a planner failure."""
+        if (not capsule.cancellation_token.is_cancelled
+                or capsule.cancellation_token.reason != StopReason.USER_STOP):
+            return None
+        return TaskExecutionResult(
+            task_id=capsule.task_id,
+            request_id=request.request_id,
+            route=route_result.route,
+            route_reason=route_result.reason,
+            final_state="STOPPED",
+            error="Planning stopped by user request.",
+            duration_ms=(time.perf_counter() - wall_start) * 1000.0,
+            factual_summary="Task stopped during planning.",
         )
 
 

@@ -76,6 +76,16 @@ def test_llama_cpp_adapter_invalid_output_raises_error() -> None:
         adapter.plan("Do something")
 
 
+def test_backend_timeout_error_is_not_misreported_as_inference_deadline() -> None:
+    class Backend:
+        def generate(self, **kwargs):
+            raise TimeoutError("fixture backend timeout")
+
+    adapter = LlamaCppAdapter(custom_backend=Backend(), inference_timeout_s=1.0)
+    with pytest.raises(PlannerError, match="Model generation failed"):
+        adapter.plan("Do something")
+
+
 def test_llama_cpp_adapter_cancellation() -> None:
     mock_backend = MagicMock()
     adapter = LlamaCppAdapter(custom_backend=mock_backend)

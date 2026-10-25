@@ -28,6 +28,9 @@ from pluma.tools.registry import ToolRegistry, get_default_tool_registry
 
 logger = logging.getLogger(__name__)
 
+# Keep planner STOP responsive while waiting on the owned inference future.
+_INFERENCE_WAIT_POLL_S = 0.025
+
 
 # ---------------------------------------------------------------------------
 # Backend Protocol for dependency injection
@@ -236,18 +239,43 @@ class LlamaCppAdapter(PlannerInterface):
                 temperature=0.1,
                 cancellation_token=cancellation_token,
             )
-            try:
-                raw_output = future.result(timeout=self.inference_timeout_s)
-            except (TimeoutError, concurrent.futures.TimeoutError):
-                raise PlannerTimeoutError(
-                    f"LLM planning inference timed out after {self.inference_timeout_s:.1f}s."
-                )
+            deadline = start_t + max(0.0, self.inference_timeout_s)
+            while True:
+                if cancellation_token is not None:
+                    cancellation_token.raise_if_cancelled("Planning was stopped during model inference.")
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    if future.done():
+                        raw_output = future.result()
+                        break
+                    # This cancels queued work. Running work stays registered on
+                    # its task capsule until its actual exit is read back.
+                    future.cancel()
+                    raise PlannerTimeoutError(
+                        f"LLM planning inference timed out after {self.inference_timeout_s:.1f}s."
+                    )
+                try:
+                    raw_output = future.result(timeout=min(_INFERENCE_WAIT_POLL_S, remaining))
+                    break
+                except concurrent.futures.TimeoutError:
+                    if future.done():
+                        # A backend can itself raise TimeoutError. Preserve that
+                        # generation failure instead of spinning until the outer deadline.
+                        raw_output = future.result()
+                        break
+                    continue
         except PlannerTimeoutError:
             raise
         except TaskCancelledError as cancel_err:
             raise PlannerCancelledError(f"Planning was cancelled: {cancel_err}") from cancel_err
         except Exception as exc:
             raise PlannerError(f"Model generation failed: {exc}") from exc
+
+        if cancellation_token is not None:
+            try:
+                cancellation_token.raise_if_cancelled("Planning was stopped before plan validation.")
+            except TaskCancelledError as cancel_err:
+                raise PlannerCancelledError(f"Planning was cancelled: {cancel_err}") from cancel_err
 
         duration_ms = (time.perf_counter() - start_t) * 1000.0
         logger.debug("Local planner generation completed in %.1f ms", duration_ms)
@@ -261,5 +289,11 @@ class LlamaCppAdapter(PlannerInterface):
             )
         except PlanValidationError as val_err:
             raise PlannerError(f"Planner output validation failed: {val_err}") from val_err
+
+        if cancellation_token is not None:
+            try:
+                cancellation_token.raise_if_cancelled("Planning was stopped before returning a plan.")
+            except TaskCancelledError as cancel_err:
+                raise PlannerCancelledError(f"Planning was cancelled: {cancel_err}") from cancel_err
 
         return plan
