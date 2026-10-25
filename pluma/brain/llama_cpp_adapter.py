@@ -242,7 +242,14 @@ class LlamaCppAdapter(PlannerInterface):
             deadline = start_t + max(0.0, self.inference_timeout_s)
             while True:
                 if cancellation_token is not None:
-                    cancellation_token.raise_if_cancelled("Planning was stopped during model inference.")
+                    try:
+                        cancellation_token.raise_if_cancelled(
+                            "Planning was stopped during model inference.")
+                    except TaskCancelledError:
+                        # Prevent work that has not entered the executor from
+                        # starting after STOP; a running future remains owned.
+                        future.cancel()
+                        raise
                 remaining = deadline - time.perf_counter()
                 if remaining <= 0:
                     if future.done():

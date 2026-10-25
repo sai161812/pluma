@@ -614,6 +614,61 @@ def test_native_planner_stop_interrupts_wait_and_never_returns_late_plan(runtime
     assert not caller.is_alive()
 
 
+def test_native_planner_stop_cancels_queued_generation_before_executor_entry(runtime, monkeypatch):
+    import pluma.tools.registry as registry_module
+    from pluma.brain.interface import PlannerCancelledError
+    from pluma.brain.llama_cpp_adapter import LlamaCppAdapter
+    from pluma.core.cancellation import StopReason
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    entered_blocker, release_blocker = threading.Event(), threading.Event()
+    backend_started, returned = threading.Event(), threading.Event()
+    outcome = []
+    monkeypatch.setattr(registry_module, '_GLOBAL_TOOL_EXECUTOR', executor)
+    blocker = executor.submit(lambda: (entered_blocker.set(), release_blocker.wait(3)))
+    assert entered_blocker.wait(2)
+
+    class Backend:
+        def generate(self, **kwargs):
+            backend_started.set()
+            return '{"route":"SMART","mode":"direct","steps":[]}'
+
+    cap = task(runtime, 'planner-stop-queued')
+    adapter = LlamaCppAdapter(custom_backend=Backend(), registry=runtime.tool_registry,
+                              inference_timeout_s=2.0)
+
+    def plan():
+        try:
+            outcome.append(adapter.plan(
+                'fixture', permitted_tool_specs=[{'name': 'get_system_status'}],
+                cancellation_token=cap.cancellation_token))
+        except Exception as exc:
+            outcome.append(exc)
+        finally:
+            returned.set()
+
+    caller = threading.Thread(target=plan, name='test-planner-stop-queued-caller')
+    try:
+        caller.start()
+        deadline = time.monotonic() + 2
+        while not cap.owned_work and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert cap.owned_work
+        future = next(item['future'] for item in cap.owned_work.values())
+        assert not future.running()
+        assert cap.cancellation_token.cancel(StopReason.USER_STOP)
+        assert returned.wait(0.25)
+        assert len(outcome) == 1 and isinstance(outcome[0], PlannerCancelledError)
+        assert future.cancelled()
+    finally:
+        release_blocker.set()
+        blocker.result(timeout=2)
+        caller.join(2)
+        executor.shutdown(wait=True)
+    assert not caller.is_alive()
+    assert not backend_started.is_set()
+
+
 def test_stop_during_smart_planning_is_reported_as_stop_and_executes_no_tool(runtime, monkeypatch):
     from pluma.brain.llama_cpp_adapter import LlamaCppAdapter
     from pluma.core.cancellation import StopReason
