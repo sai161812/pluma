@@ -6,7 +6,7 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-10-26):** P00-P11 is merged into main; P12 semantic screen control and targeted OCR are implemented and audited on `p12-preparation`. [E69](docs/completion/p12_final_audit.md) records the gate and current test results. Text action entry and later integration/release acceptance remain open. P13 has not started; its first bounded planner-subset issue is recorded in [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-10-26):** P00-P11 is merged into main; P12 semantic screen control and targeted OCR are implemented and audited on `p12-preparation`. [E69](docs/completion/p12_final_audit.md) records the gate and current test results. Text action entry and later integration/release acceptance remain open. P13 is in progress: [E70](docs/completion/p13_e01_tool_subset.md) fixes the Downloads file/browser planner-schema selection defect; inference ownership/STOP and real-model acceptance remain open. See [the handoff](PROJECT_HANDOFF.md) for the next bounded packet.
 
 ## Demo status
 

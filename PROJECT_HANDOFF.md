@@ -1,21 +1,16 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P12 implementation audit completed (E69)
+## Current checkpoint: 2026-10-26, P13 bounded packet E70
 
-**P12 is complete for its E-01 through E-10 and 16-tool screen-control gate.** The implementation audit reproduced and repaired the three reported defects, then audited aliases, native capture, OCR priority, undo and the routed perception path. [E69](docs/completion/p12_final_audit.md) contains the repairs, exact check selections, source hashes, limitations and the next safe task; [the evidence matrix](docs/completion/requirements_matrix.md) is synchronized.
+**P12 remains complete; P13 is in progress and is not complete.** E70 repairs the first P13 gap recorded in [E69](docs/completion/p12_final_audit.md): SMART planning now sends only file-tool schemas for Downloads/file tasks, while explicit browser, website, URL, tab and URL-download requests keep the browser tool subset. The validator continues to reject any tool outside the selected subset. [E70](docs/completion/p13_e01_tool_subset.md) records the reproduction, implementation, exact checks, source hashes and remaining P13 gates.
 
-- Implementation: `a53940794873acc143ca2b0e3ba876b651a1d52d`; final fixture/source head tested: `a30a80ffe4c56bfe31e3f5e95b40d5d2cb9569b4` on `p12-preparation`.
-- Fresh safety/lifecycle prerequisites: **435 passed in 36.07s**. Catalog/rollback/policy regression: **1,276 passed in 252.12s**. Routing/contracts: **319 passed in 27.58s**. P12 regression/guards: **233 passed in 25.77s**. Native Win32/WPF acceptance: **10 passed in 8.50s**. Every one of these final runs has zero failures, errors, skips or xfails; counts overlap and are not unique-test totals.
-- Native checks cover semantic inspection/invocation, target-scoped capture, and literal text Value readback/private undo on an owned Edit control. STOP during blocked OCR and UIA waiting proves owned-worker absence and no late action. Physical foreground focus is not claimed by the HWND-bound native fixtures.
-- OCR remains the locked PP-OCRv6 small detection/recognition path on ONNX Runtime CPU, lazy and cold at idle. The decoder supplies BGR arrays. Actions require exact labels, confidence at least 0.90, unique targets, fresh observations and verified transitions. The generated quality sample passed **288/288 exact lines** across 36 light/dark/font/size/scale cases, with valid bounds and minimum confidence **0.9386066198**. Models remain outside Git and images stay in memory. P26 retains the broad application corpus and physical scaling/latency benchmarks.
-- SCREEN and DEEP now obtain initial context through registered, owned UIA inspection and register the snapshot before planning. Failed inspection prevents planning. DEEP no longer starts OCR before a tool needs it. Legacy click aliases use policy/intent journals; the text alias uses private guarded undo; unsupported semantic patterns do not silently inject coordinates or key syntax.
-- Optional runtime `pip check`, cold imports, Python compilation, matrix validation (**298 source items / 324 rows**) and diff checks pass. Source/build-specific reports are ignored under `output/p12-verified/`; earlier probes/failures remain under `output/p12-audit/`.
+- Implementation commit: `601fcb500badd87a415ddc322e17407f0cd6897f` on `p12-preparation`; recovery point before this packet: `5c7c260a12c12849cfa7c44f61694f9d41482004` (verified P12 source/documentation head).
+- Reproduced baseline: **65 passed, 1 failed, zero skips**. After repair, the P13 planner/lifecycle/schema baseline passed **72 tests**, and the route/FAST/multi-step regression passed **298 tests**; focused selector/adapter checks passed **13 tests**. All passing runs had zero skips and zero xfails. Counts overlap.
+- The adapter prompt regression confirms the Downloads move plan contains `find_file`/`move_file` and omits browser, app and window schemas. Selector cases preserve explicit website/URL/browser requests and route `Open Downloads` to file tools.
+- Tested on Windows 11 build 26200 with Python 3.12.10 and pytest 8.3.3. Exact reports are ignored under `output/p13-e01/`; this fixture-backed packet did not run a real llama.cpp model and makes no runtime/quality claim.
+- P13 still has open plan-limit/configuration, real inference ownership/cancellation/unload, strict-generation fallback, malformed-output and real-model acceptance gaps. The next safe packet is the planner inference timeout/STOP ownership defect (F-07/F-08): prove an unresponsive native inference worker is actually stopped and absent before task cleanup is reported complete. Then address configured `agent.max_plan_steps` (A-05) and real-model acceptance. See E70 and the matrix.
 
-**P13 preparation:** a read-only planner/lifecycle/schema baseline returned **65 passed, 1 failed; zero skips**. The existing selector treats `downloads` in a file command as browser `download`, offers browser tools, and the validator correctly rejects `find_file`. This is the first bounded P13 task, not an outstanding P12 tool. No planner implementation, model download, P13 feature work or merge was started.
-
-The P11 owner-approved physical-effects limitation, broader release/application coverage and P26 performance corpus remain visible in E57/E67/E69 and the matrix. No new waiver or skipped acceptance check is inferred.
-
-Next safe step, only when instructed: execute the first bounded P13 tool-subset repair using `PLUMA_COMPLETION_PROMPTS.md`. Keep the P12 branch available for review; do not merge or advance automatically.
+The P11 owner-approved physical-effects limitation, broader release/application coverage and P26 performance corpus remain visible in E57/E67/E69 and the matrix. No new waiver or skipped acceptance check is inferred. Keep the branch available for review; do not merge or advance automatically.
 
 ## Previous checkpoint: 2026-10-25, P12 bounded slice E-05 (E64)
 
