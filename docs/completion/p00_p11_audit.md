@@ -1,5 +1,7 @@
 # Overall P00-P11 completion audit
 
+Merged checkpoint: [E61](p11_main_merge.md), 2026-10-25. PRs 1 and 2 are merged into main; the resulting P11 main tree matches tested head `34a8471`. Post-merge verification and the prepared first P12 task are recorded there. E60's specific final-device deferral remains in effect. P12 has not started.
+
 ## Current verdict: 2026-10-25 (E60)
 
 **P00-P11 implementation is complete with owner-approved final focus/audio acceptance deferral.** [E60](p11_merge_readiness.md) supersedes the incomplete statuses below. All 57 non-screen catalog names have typed implementations; no P11 tool is pending. The 16 screen catalog entries remain P12 scope. Live focus/audio rows stay UNVERIFIED until final physical validation, as explicitly directed by the owner. No skipped or blocked check is counted as passing.

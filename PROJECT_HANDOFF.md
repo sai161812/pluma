@@ -1,6 +1,16 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P00-P11 merge preparation (E60)
+## Current checkpoint: 2026-10-25, P00-P11 merged into main (E61)
+
+**P00-P11 is merged into GitHub main. P12 is ready for its first bounded task and has not started.** The owner authorized the merge and P12 preparation on 2026-10-25. [E61](docs/completion/p11_main_merge.md) records the actual commits, checks, recovery points and next task. Live focus/audio acceptance remains explicitly deferred to final validation under E60; no physical pass or full-product release is claimed.
+
+- [PR 1](https://github.com/sai161812/pluma/pull/1) merged the approved dark UI foundation as `3cb367d3a387987b6872c493521eeaab59651d68`.
+- [PR 2](https://github.com/sai161812/pluma/pull/2) was retargeted to main, updated with current validation/limitations and merged as `812a8b9c05e7c7e8852be1841ae5e47677f6382f`. Both merges preserved ancestry and used exact expected-head SHA guards. Development/recovery branches and other worktrees were preserved.
+- The resulting main tree exactly matches tested P11 head `34a8471`: no merge-resolution code or untested integration delta. Windows UI workflow [40199073748](https://github.com/sai161812/pluma/actions/runs/40199073748) passed on that head. E60's 435 prerequisite, 1,274 catalog, 319 routing and 283 clipboard passes remain applicable. Fresh post-merge verification on actual main commit `812a8b9`: **435 safety prerequisites passed in 56.63s, zero failed/skipped**, and **39 C#/Python IPC checks passed** again. Matrix validation passes 298 source items / 324 rows.
+
+Next safe task, only when instructed: execute the first bounded P12 E-01/E-02 semantic-inspection gap from the current main baseline. Inspect existing adapters/tests and exact missing registry names first; use owned fixture windows, semantic UIA before OCR, strict reference lifetime and independent readback. Do not enable command entry, invent UI design or silently expand to all screen tools. E-01 through E-10 and all 16 missing P12 catalog names remain open in the matrix.
+
+## Previous checkpoint: 2026-10-25, P00-P11 merge preparation (E60)
 
 **P00-P11 implementation is complete with the owner-approved deferral of live focus and physical audio acceptance to final validation.** Those effects remain unverified, not permanently waived or reported as passing. P12 has not started. [E60](docs/completion/p11_merge_readiness.md) records the fresh checks and merge plan.
 
