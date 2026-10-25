@@ -1,6 +1,41 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P13 bounded packet E71
+## Current checkpoint: 2026-10-26, P13 planner/runtime acceptance E72
+
+**P13's assigned planner/lifecycle acceptance is complete and ready for
+independent Sol review. P14 has not started.** E72 completes the task-owned native
+llama.cpp worker path, STOP/timeout/crash absence and ledger readback, configured
+plan limits, fail-closed structured generation, planner target admission,
+native planner acceptance, ten-minute idle measurement and 50 native cycles.
+See [E72](docs/completion/p13_native_runtime_acceptance.md) for exact commands,
+model/build identity and limits.
+
+- Implementation commits: `93cb0ae052298aaff745525743e67930feb782cf` and
+  `4e325a4397be70256ac3b6f60cd4630f162ef6dc` on `p12-preparation`; recovery
+  point before this packet: `b00fbd70b910555fe9eae554706aab5132137747`.
+
+- The focused affected regression passed **398 tests, zero failures/errors/
+  skips/xfails**. Actual llama.cpp acceptance passed FAST bypass, two-step
+  planning, failure/replan, native invented-tool rejection, sensitive-context
+  redaction, STOP, timeout and owned-worker crash with cleanup/SQLite readback.
+- The final combined native run is preserved as ignored
+  `output/p13-native/acceptance-report-final.json`; the harness accepts bounded
+  repeated read-only observations while enforcing the configured limit and
+  fixture paths.
+- The 50-cycle run passed **50/50**; RSS delta was **+835,584 bytes**, handle
+  delta **0**, child-process delta **0**. The 600.6-second idle sample recorded
+  **0% GPU / 0 GPU memory**, no model import, child process or screen-capture
+  loop, and cold lifecycle throughout. The idle harness did not start global
+  hotkeys or IPC; installed resident startup remains B-01/P28/P29 scope.
+- Remaining beyond this P13 gate: independent Sol review; broad candidate-model
+  quality/latency and physical resource budgets (P24/P26); installed/package
+  startup, voice/OCR lifecycle and broader product-wide process/privacy gates
+  remain with their matrix owners. No P14 work or merge is authorized here.
+
+Next safe step: independent Sol review of E72 and the P13 source diff. Do not
+start P14 automatically.
+
+## Previous checkpoint: 2026-10-26, P13 bounded packet E71
 
 **P13 remains in progress and is not complete.** E71 makes planner STOP
 responsive while waiting for an owned inference future and preserves user STOP
