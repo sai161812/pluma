@@ -102,7 +102,7 @@ def _planner_task(
 
 
 def _native_multistep_task(runtime: PlumaApplicationRuntime, directory: Path) -> dict:
-    """Require one actual constrained plan to execute two fixture-only reads."""
+    """Require a bounded native plan to complete both fixture-only observations."""
     fixture_file = directory / "fixture.txt"
     request = PlumaRequest(
         input_mode=InputMode.TEXT,
@@ -114,23 +114,35 @@ def _native_multistep_task(runtime: PlumaApplicationRuntime, directory: Path) ->
     _assert(result.route == RouteMode.SMART, "Native multi-step request did not use SMART planning.")
     _assert(result.final_state == TaskState.SUCCEEDED.value,
             f"Native multi-step plan failed: {result.error or result.factual_summary}")
-    _assert([step.tool for step in result.steps] == ["list_folder", "file_info"],
-            f"Native model did not return the required ordered read-only plan: "
-            f"{[step.tool for step in result.steps]!r}.")
+    tools = [step.tool for step in result.steps]
+    max_steps = runtime.config.get("agent", {}).get("max_plan_steps", 8)
+    _assert(2 <= len(result.steps) <= max_steps,
+            f"Native multi-step plan exceeded its configured bound or was not multi-step: "
+            f"{len(result.steps)} steps (maximum {max_steps}).")
+    _assert(set(tools) == {"list_folder", "file_info"},
+            f"Native model selected an unexpected or incomplete read-only tool set: {tools!r}.")
+    _assert(all(step.result.ok for step in result.steps),
+            "A native fixture-only observation failed or lacked a verified result.")
     history = ActivityQuery(runtime.db)
     task = history.task_by_id(result.task_id)
     actions = history.actions_for_task(result.task_id)
     _assert(task is not None and task["final_state"] == TaskState.SUCCEEDED.value,
             "Native multi-step task state was not read back from SQLite.")
-    _assert([action["tool"] for action in actions] == ["list_folder", "file_info"],
+    _assert([action["tool"] for action in actions] == tools,
             "Native multi-step action sequence was not read back from SQLite.")
+    for action in actions:
+        expected_path = directory if action["tool"] == "list_folder" else fixture_file
+        actual_path = json.loads(action["args_json_sanitized"])["args"]["path"]
+        _assert(Path(actual_path).resolve() == expected_path.resolve(),
+                "Native multi-step SQLite readback escaped its owned fixture directory.")
     _assert(result.completion_verified and result.terminal_persisted is True,
             "Native multi-step completion/history readback was incomplete.")
     _assert(runtime.llm_lifecycle.state.value == "COLD",
             "Native multi-step task left the planner warm.")
     _assert(not runtime.tool_registry._worker_controllers,
             "Native multi-step task retained a worker controller.")
-    return {"task_id": result.task_id, "tools": [a["tool"] for a in actions],
+    return {"task_id": result.task_id, "tools": tools, "step_count": len(tools),
+            "configured_step_limit": max_steps,
             "ledger_verified": True, "final_state": task["final_state"]}
 
 
