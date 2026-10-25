@@ -58,6 +58,13 @@ def test_llama_cpp_adapter_complex_file_command() -> None:
     assert len(plan.steps) == 2
     assert plan.steps[0].tool == "find_file"
     assert plan.steps[1].tool == "move_file"
+    system_prompt = mock_backend.generate.call_args.kwargs["system_prompt"]
+    assert "- find_file(" in system_prompt
+    assert "- move_file(" in system_prompt
+    assert "- open_app(" not in system_prompt
+    assert "- focus_window(" not in system_prompt
+    assert "- open_url(" not in system_prompt
+    assert "- download_status(" not in system_prompt
 
 
 def test_llama_cpp_adapter_invalid_output_raises_error() -> None:
