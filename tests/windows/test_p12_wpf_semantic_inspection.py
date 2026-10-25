@@ -142,7 +142,9 @@ def test_p12_e01_wpf_semantic_inspection_uses_uia(
         undo_stack=[],
     )
     registry = ToolRegistry()
-    registry.register(INSPECT_ACTIVE_WINDOW_SPEC)
+    # Bind this exact owned WPF HWND in the test thread; this test proves the
+    # native UIA provider, not foreground focus or the separate worker boundary.
+    registry.register(INSPECT_ACTIVE_WINDOW_SPEC.model_copy(update={"process_isolated": False}))
     try:
         result = registry.execute(
             "inspect_active_window",

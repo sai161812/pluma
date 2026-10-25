@@ -378,6 +378,33 @@ class Orchestrator:
 
         return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
+    def _capture_semantic_context(self, capsule: TaskCapsule):
+        """Observe through the registered, owned UIA tool; OCR remains on demand."""
+        token = capsule.cancellation_token
+        if token.is_cancelled:
+            return None, ToolResult.failure("inspect_window_controls", "Task stopped before screen inspection.", "TASK_CANCELLED")
+        try:
+            result = self._registry.execute("inspect_window_controls", {"max_controls": 50},
+                task_context=capsule, ledger=self._ledger)
+            if token.is_cancelled:
+                return None, ToolResult.failure("inspect_window_controls", "Task stopped during screen inspection.", "TASK_CANCELLED")
+            if not result.ok or not result.verified:
+                return None, result
+            snapshot = capsule.snapshot_registry.resolve(result.data["snapshot_id"])
+            return snapshot, None
+        except TaskCancelledError:
+            return None, ToolResult.failure("inspect_window_controls", "Task stopped during screen inspection.", "TASK_CANCELLED")
+        except Exception:
+            return None, ToolResult.failure("inspect_window_controls", "A verified task-owned screen observation is unavailable.", "SCREEN_OBSERVATION_FAILED")
+
+    @staticmethod
+    def _screen_observation_failure(capsule, request, route_result, wall_start, error):
+        return TaskExecutionResult(task_id=capsule.task_id, request_id=request.request_id,
+            route=route_result.route, route_reason=route_result.reason,
+            final_state="STOPPED" if capsule.cancellation_token.is_cancelled else "FAILED",
+            error=error.factual_message, factual_summary=error.factual_message,
+            duration_ms=(time.perf_counter() - wall_start) * 1000.0)
+
     def _execute_screen_route(
         self,
         capsule: TaskCapsule,
@@ -397,16 +424,9 @@ class Orchestrator:
             )
             return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
-        # Otherwise capture UIA snapshot and query planner
-        snapshot = None
-        try:
-            from pluma.perception.context import ActiveWindowContext
-            from pluma.perception.uia_snapshot import UiaSnapshotBuilder
-            context_inspector = ActiveWindowContext()
-            builder = UiaSnapshotBuilder(context=context_inspector)
-            snapshot = builder.capture(ttl_seconds=3.0)
-        except Exception as exc:
-            logger.debug("Active window snapshot capture failed: %s", exc)
+        snapshot, perception_error = self._capture_semantic_context(capsule)
+        if perception_error is not None:
+            return self._screen_observation_failure(capsule, request, route_result, wall_start, perception_error)
 
         if self._llm_manager:
             llm = self._llm_manager
@@ -451,16 +471,9 @@ class Orchestrator:
         """DEEP route: UIA + OCR + Local LLM + Bounded Multi-Step Execution."""
         task_id = capsule.task_id
 
-        # Capture snapshot with OCR fallback enabled
-        snapshot = None
-        try:
-            from pluma.perception.context import ActiveWindowContext
-            from pluma.perception.uia_snapshot import UiaSnapshotBuilder
-            context_inspector = ActiveWindowContext()
-            builder = UiaSnapshotBuilder(context=context_inspector)
-            snapshot = builder.capture(ttl_seconds=5.0, include_ocr=True)
-        except Exception as exc:
-            logger.debug("DEEP route perception capture failed: %s", exc)
+        snapshot, perception_error = self._capture_semantic_context(capsule)
+        if perception_error is not None:
+            return self._screen_observation_failure(capsule, request, route_result, wall_start, perception_error)
 
         if self._llm_manager:
             llm = self._llm_manager

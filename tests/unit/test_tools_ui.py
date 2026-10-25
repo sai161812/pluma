@@ -30,13 +30,13 @@ def test_ui_tool_specs_metadata() -> None:
     assert INSPECT_ACTIVE_WINDOW_SPEC.risk_class == RiskClass.READ
 
     assert CLICK_ELEMENT_SPEC.name == "click_element"
-    assert CLICK_ELEMENT_SPEC.risk_class == RiskClass.LOW
+    assert CLICK_ELEMENT_SPEC.risk_class == RiskClass.HIGH
 
     assert TYPE_INTO_ELEMENT_SPEC.name == "type_into_element"
     assert TYPE_INTO_ELEMENT_SPEC.risk_class == RiskClass.LOW
 
     assert CLICK_OCR_TEXT_SPEC.name == "click_ocr_text"
-    assert CLICK_OCR_TEXT_SPEC.risk_class == RiskClass.LOW
+    assert CLICK_OCR_TEXT_SPEC.risk_class == RiskClass.HIGH
 
 
 @patch("pluma.tools.ui.ActiveWindowContext")
@@ -80,48 +80,23 @@ def test_execute_inspect_active_window(mock_builder_cls: MagicMock, mock_context
 @patch("pluma.tools.ui.ActiveWindowContext")
 @patch("pluma.tools.ui.UiaAdapter")
 @patch("pluma.tools.ui.ScreenVerifier")
-def test_execute_click_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
-    mock_adapter = MagicMock()
-    mock_adapter.find_control.return_value.is_enabled = True
-    mock_adapter_cls.return_value = mock_adapter
-
-    mock_verifier = MagicMock()
-    mock_verifier.verify_control_enabled.return_value = MagicMock(ok=True)
-    mock_verifier_cls.return_value = mock_verifier
-
-    mock_ctx = MagicMock()
-    active_win = MagicMock()
-    active_win.is_valid = True
-    active_win.hwnd = 456
-    active_win.pid = 1000
-    active_win.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
-    active_win.dpi_scale = 1.0
-    mock_ctx.get_active_window.return_value = active_win
-    mock_ctx.get_process_creation_time_ns.return_value = 123456789
-    mock_active_ctx_cls.return_value = mock_ctx
-
-    task_ctx = MagicMock()
-    task_ctx.grounded_ui_target = {
-        "snapshot_hwnd": 456,
-        "snapshot_pid": 1000,
-        "snapshot_creation_time_ns": 123456789,
-        "snapshot_dpi_scale": 1.0,
-        "auto_id": "btn_save",
-        "name": "Save",
-        "control_type": "Button",
-    }
-    task_ctx.cancellation_token = MagicMock(is_cancelled=False)
-
-    result = execute_click_element({
-        "snapshot_id": "snap-1", "target_ref": "snap-1::btn_save",
-        "expected_enabled": False,
-    }, task_context=task_ctx)
-    assert result.ok
-    assert result.verified
-    assert mock_adapter.invoke_control.called
-    mock_verifier.verify_control_enabled.assert_called_once_with(
-        hwnd=456, expected_enabled=False, auto_id="btn_save", name="Save"
-    )
+def test_execute_click_element_success(mock_verifier_cls, mock_adapter_cls, mock_active_ctx_cls):
+    from tests.unit.test_screen_control_catalog import _screen_context
+    context, snapshot, element, native = _screen_context(label="Save", auto_id="btn_save")
+    mock_active_ctx_cls.return_value = native
+    context.grounded_ui_target = {
+        "snapshot_hwnd": snapshot.hwnd, "snapshot_pid": snapshot.pid,
+        "snapshot_creation_time_ns": snapshot.process_creation_time_ns,
+        "snapshot_dpi_scale": snapshot.dpi_scale,
+        "auto_id": element.uia_automation_id, "name": element.label, "control_type": "Button"}
+    mock_adapter_cls.return_value.find_control.return_value.is_enabled = True
+    mock_verifier_cls.return_value.verify_control_enabled.return_value = MagicMock(ok=True)
+    result = execute_click_element({"snapshot_id": snapshot.snapshot_id,
+        "target_ref": f"{snapshot.snapshot_id}::{element.element_id}", "expected_enabled": False}, context)
+    assert result.ok and result.verified
+    mock_adapter_cls.return_value.invoke_control.assert_called_once()
+    mock_verifier_cls.return_value.verify_control_enabled.assert_called_once_with(
+        hwnd=500, expected_enabled=False, auto_id="btn_save", name="Save")
     assert "Save" in result.factual_message
 
 
@@ -249,41 +224,27 @@ def test_execute_click_element_not_found(mock_adapter_cls: MagicMock, mock_activ
     assert not result.ok
     pass
 
-@patch("pluma.tools.ui.ActiveWindowContext")
-@patch("pluma.tools.ui.UiaAdapter")
-@patch("pluma.tools.ui.ScreenVerifier")
-def test_execute_type_into_element_success(mock_verifier_cls: MagicMock, mock_adapter_cls: MagicMock, mock_active_ctx_cls: MagicMock) -> None:
-    mock_adapter = MagicMock()
-    mock_adapter_cls.return_value = mock_adapter
-
-    mock_verifier = MagicMock()
-    mock_verifier.verify_control_text.return_value = MagicMock(ok=True)
-    mock_verifier_cls.return_value = mock_verifier
-
-    mock_ctx = MagicMock()
-    active_win = MagicMock()
-    active_win.is_valid = True
-    active_win.hwnd = 789
-    active_win.pid = 1000
-    active_win.rect = BoundingBox(left=0, top=0, right=800, bottom=600)
-    active_win.dpi_scale = 1.0
-    mock_ctx.get_active_window.return_value = active_win
-    mock_ctx.get_process_creation_time_ns.return_value = 123456789
-    mock_active_ctx_cls.return_value = mock_ctx
-
-    task_ctx = MagicMock()
-    task_ctx.grounded_ui_target = {
-        "snapshot_hwnd": 789,
-        "snapshot_pid": 1000,
-        "snapshot_creation_time_ns": 123456789,
-        "snapshot_dpi_scale": 1.0,
-        "auto_id": "txt_input",
-        "name": "Input",
-        "control_type": "Edit",
-    }
-    task_ctx.cancellation_token = MagicMock(is_cancelled=False)
-
-    result = execute_type_into_element({"text": "Hello World", "snapshot_id": "snap-2", "target_ref": "snap-2::txt_input"}, task_context=task_ctx)
-    assert result.ok
-    assert result.verified
-    assert mock_adapter.set_control_text.called
+def test_execute_type_into_element_success(monkeypatch):
+    import pluma.tools.screen_catalog as catalog
+    from tests.unit.test_screen_control_catalog import _screen_context
+    context, snapshot, element, native = _screen_context(label="Input", control_type="Edit", auto_id="txt_input")
+    monkeypatch.setattr("pluma.tools.ui.ActiveWindowContext", lambda: native)
+    monkeypatch.setattr(catalog, "ActiveWindowContext", lambda: native)
+    state = {"value": "private prior value"}
+    adapter = MagicMock()
+    adapter.find_control.side_effect = lambda **kwargs: ControlInfo(
+        automation_id="txt_input", name="Input", control_type="Edit", class_name="Edit",
+        is_enabled=True, is_visible=True, is_password=False,
+        text_value=state["value"], rect=Rect(10, 20, 110, 55))
+    adapter.set_control_text.side_effect = lambda **kwargs: state.update(value=kwargs["text"])
+    monkeypatch.setattr(catalog, "UiaAdapter", lambda: adapter)
+    args = {"text": "Hello World", "snapshot_id": snapshot.snapshot_id,
+            "target_ref": f"{snapshot.snapshot_id}::{element.element_id}"}
+    record, captured = catalog.seal_screen_text_capture(TYPE_INTO_ELEMENT_SPEC.undo_builder(args, context))
+    assert "private prior value" not in repr(record)
+    context.undo_stack = [{"action": "pending_mutation", "tool": "type_into_element", "pre_state": record}]
+    context.execution_binding = {"screen_text_private": {"record": record, **captured}}
+    result = execute_type_into_element(args, context)
+    assert result.ok and result.verified
+    assert state["value"] == "Hello World"
+    adapter.set_control_text.assert_called_once()

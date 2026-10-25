@@ -155,7 +155,7 @@ def test_paddle_backend_parses_structured_results_without_persisting_images(monk
             return None
 
     numpy_module = ModuleType("numpy")
-    numpy_module.array = lambda value: ("array", value.size)
+    numpy_module.array = MagicMock(return_value=MagicMock())
     pil_module = ModuleType("PIL")
     pil_module.Image = SimpleNamespace(open=lambda stream: FakeImage())
     monkeypatch.setitem(sys.modules, "numpy", numpy_module)
@@ -175,7 +175,9 @@ def test_paddle_backend_parses_structured_results_without_persisting_images(monk
 
     words = backend.recognize(b"ephemeral-image-bytes")
 
-    engine.predict.assert_called_once_with(("array", (200, 100)))
+    numpy_module.array.return_value.__getitem__.assert_called_once_with(
+        (slice(None), slice(None), slice(None, None, -1)))
+    engine.predict.assert_called_once_with(numpy_module.array.return_value.__getitem__.return_value.copy.return_value)
     assert [(word.text, word.confidence) for word in words] == [
         ("Save Changes", 0.97),
         ("Cancel", 0.91),
@@ -204,7 +206,7 @@ def test_paddle_backend_rejects_misaligned_result_fields(monkeypatch) -> None:
             return None
 
     numpy_module = ModuleType("numpy")
-    numpy_module.array = lambda value: value
+    numpy_module.array = MagicMock(return_value=MagicMock())
     pil_module = ModuleType("PIL")
     pil_module.Image = SimpleNamespace(open=lambda _stream: FakeImage())
     monkeypatch.setitem(sys.modules, "numpy", numpy_module)
@@ -239,7 +241,7 @@ def test_paddle_backend_refuses_bounds_outside_input_image(monkeypatch) -> None:
             return None
 
     numpy_module = ModuleType("numpy")
-    numpy_module.array = lambda value: value
+    numpy_module.array = MagicMock(return_value=MagicMock())
     pil_module = ModuleType("PIL")
     pil_module.Image = SimpleNamespace(open=lambda _stream: FakeImage())
     monkeypatch.setitem(sys.modules, "numpy", numpy_module)

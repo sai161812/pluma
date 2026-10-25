@@ -13,7 +13,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
-from pluma.adapters.base import WindowNotFoundError
+from pluma.adapters.base import AccessDeniedError, AdapterError, WindowNotFoundError
+from pluma.adapters.uia import _uia_error
 from pluma.perception.context import ActiveWindowContext, ActiveWindowInfo
 from pluma.perception.element_refs import (
     BoundingBox,
@@ -23,6 +24,13 @@ from pluma.perception.element_refs import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _inspection_failure(exc: Exception) -> AdapterError:
+    mapped = _uia_error(exc, "UI Automation could not read the target control tree.")
+    if isinstance(mapped, AccessDeniedError):
+        return mapped
+    return AdapterError("UI Automation could not read the target control tree.", "UIA_INSPECTION_FAILED")
 
 
 def _map_invocation_capability(control_type: Optional[str]) -> Optional[str]:
@@ -110,11 +118,11 @@ class UiaSnapshotBuilder:
                     )
                     elements.append(elem)
                 except Exception as child_exc:
-                    logger.debug("Failed extracting child control in window %d: %s", hwnd, child_exc)
-        except ImportError:
-            logger.warning("pywinauto is not installed; returning empty UIA control tree.")
+                    raise _inspection_failure(child_exc) from child_exc
+        except ImportError as exc:
+            raise AdapterError("UI Automation is unavailable: pywinauto is not installed.", "UIA_UNAVAILABLE") from exc
         except Exception as exc:
-            logger.debug("UIA tree extraction failed for window %d: %s", hwnd, exc)
+            raise _inspection_failure(exc) from exc
         return elements
 
     def capture(
@@ -139,10 +147,12 @@ class UiaSnapshotBuilder:
             dpi_scale = active_info.dpi_scale
         else:
             w_info = self._context.get_window_info(hwnd)
-            win_rect = w_info.rect if w_info.is_valid else BoundingBox(left=0, top=0, right=1920, bottom=1080)
-            process_name = w_info.process_name if w_info.is_valid else self._context.get_process_name(hwnd)
-            window_title = w_info.window_title if w_info.is_valid else f"HWND:{hwnd}"
-            dpi_scale = w_info.dpi_scale if w_info.is_valid else self._context.get_dpi_scale(hwnd)
+            if not w_info.is_valid or w_info.hwnd != hwnd:
+                raise WindowNotFoundError("Snapshot target window is unavailable.")
+            win_rect = w_info.rect
+            process_name = w_info.process_name
+            window_title = w_info.window_title
+            dpi_scale = w_info.dpi_scale
 
         snapshot_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
@@ -209,7 +219,10 @@ class UiaSnapshotBuilder:
                     )
                     ocr_elements.append(ocr_el)
             except Exception as ocr_exc:
-                logger.debug("OCR fallback pass failed for window %d: %s", hwnd, ocr_exc)
+                from pluma.core.cancellation import TaskCancelledError
+                if isinstance(ocr_exc, TaskCancelledError):
+                    raise
+                raise AdapterError("Requested OCR observation failed.", "OCR_FAILED") from ocr_exc
 
         pid = None
         window_class = None

@@ -10,13 +10,15 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-from pluma.adapters.base import ControlInfo, ElementNotFoundError, ElementUnavailableError, WindowNotFoundError
+from pluma.adapters.base import AccessDeniedError, ControlInfo, ElementNotFoundError, ElementUnavailableError, WindowNotFoundError
 from pluma.adapters.uia import UiaAdapter
 from pluma.perception.context import ActiveWindowContext
+from pluma.perception.ocr_adapter import ACTION_OCR_MIN_CONFIDENCE
 from pluma.perception.uia_snapshot import UiaSnapshotBuilder
 from pluma.tools.base import AdapterDispatcher, AdapterPriority, AdapterUnavailable, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import verify_noop
@@ -57,7 +59,7 @@ class ClickElementArgs(BaseModel):
 class TypeIntoElementArgs(BaseModel):
     """Arguments for type_into_element."""
     model_config = {"extra": "forbid"}
-    text: str = Field(description="Text to type or set into the target element.")
+    text: str = Field(max_length=2048, description="Text to type or set into the target element.")
     snapshot_id: str = Field(description="Mandatory snapshot ID this typing action is grounded in.")
     target_ref: str = Field(description="Mandatory semantic reference string from UI snapshot (snapshot_id::element_id).")
     hwnd: Optional[int] = Field(default=None, description="Target window HWND.")
@@ -155,6 +157,8 @@ def execute_inspect_active_window(args: Dict[str, Any], task_context: Any = None
             ),
             verified=True,
         )
+    except AccessDeniedError as exc:
+        return ToolResult.failure("inspect_active_window", str(exc), "ACCESS_DENIED")
     except Exception as exc:
         return ToolResult(
             ok=False,
@@ -231,23 +235,23 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
                 factual_message="Process creation timestamp mismatch (recycled PID).",
                 verified=False, error="PROCESS_IDENTITY_MISMATCH", error_code="PROCESS_IDENTITY_MISMATCH",
             )
-    if grounded_ui_target["snapshot_dpi_scale"] and abs(active.dpi_scale - grounded_ui_target["snapshot_dpi_scale"]) > 0.05:
+    if grounded_ui_target["snapshot_dpi_scale"] and abs(active.dpi_scale - grounded_ui_target["snapshot_dpi_scale"]) > 1e-6:
         return ToolResult(
             ok=False, tool="click_element", data=args,
             factual_message=f"DPI scaling changed from {grounded_ui_target['snapshot_dpi_scale']} to {active.dpi_scale}",
             verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
         )
     
-    # Check window bounds with 20px tolerance for slight shifts
+    # Reject changed window bounds before dispatch.
     if "snapshot_rect_left" in grounded_ui_target and active.rect:
         dx = abs(active.rect.left - grounded_ui_target["snapshot_rect_left"])
         dy = abs(active.rect.top - grounded_ui_target["snapshot_rect_top"])
         dw = abs((active.rect.right - active.rect.left) - (grounded_ui_target["snapshot_rect_right"] - grounded_ui_target["snapshot_rect_left"]))
         dh = abs((active.rect.bottom - active.rect.top) - (grounded_ui_target["snapshot_rect_bottom"] - grounded_ui_target["snapshot_rect_top"]))
-        if max(dx, dy, dw, dh) > 20:
+        if max(dx, dy, dw, dh) > 0:
             return ToolResult(
                 ok=False, tool="click_element", data=args,
-                factual_message="Active window moved or resized significantly since snapshot. Action aborted for safety.",
+                factual_message="Active window moved or resized since snapshot. Action aborted for safety.",
                 verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
             )
 
@@ -273,6 +277,12 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
                 "UIA click refused before dispatch: the expected enabled state is already present, so no transition could be verified.",
                 error_code="UI_NO_EXPECTED_TRANSITION",
             )
+
+        from pluma.tools.screen_catalog import _target
+        from pluma.perception.element_refs import ElementSource
+        _, _, _, error = _target(args, task_context, "click_element", [ElementSource.UIA], window_context=context)
+        if error:
+            return error
 
         adapter.invoke_control(
             hwnd=hwnd,
@@ -315,131 +325,29 @@ def execute_click_element(args: Dict[str, Any], task_context: Any = None) -> Too
         )
 
 
+def capture_type_into_element_undo(args: Dict[str, Any], task_context: Any = None) -> Dict[str, Any]:
+    from pluma.tools.screen_catalog import _capture_text_undo
+    return _capture_text_undo(args, task_context)
+
+
+def capture_click_intent(args: Dict[str, Any], task_context: Any = None, *, tool_name: str) -> Dict[str, Any]:
+    from pluma.tools.screen_catalog import _intent
+    return _intent(args, task_context, tool_name=tool_name)
+
+
 def execute_type_into_element(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    """Set or type text into a target editable UI element."""
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message="Task cancelled before typing could execute.",
-            verified=False, error="TASK_CANCELLED", error_code="TASK_CANCELLED",
-        )
-
-    text = args["text"]
-    clear_existing = args.get("clear_existing", True)
-    snapshot_id = args.get("snapshot_id")
-    target_ref = args.get("target_ref")
-
-    if not snapshot_id or not target_ref:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message="UI grounding rejected: snapshot_id and target_ref are mandatory for type_into_element.",
-            verified=False, error="UNGROUNDED_UI_ACTION", error_code="UNGROUNDED_UI_ACTION",
-        )
-
-    grounded_ui_target = getattr(task_context, "grounded_ui_target", None)
-    if not grounded_ui_target:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message="UI Grounding rejected: no grounded_ui_target provided by parent.",
-            verified=False, error="NO_GROUNDED_UI_TARGET", error_code="NO_GROUNDED_UI_TARGET",
-        )
-
-    context = ActiveWindowContext()
-    active = context.get_active_window()
-    if not active.is_valid or not active.hwnd:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message="Cannot type: no active foreground window found.",
-            verified=False, error="NO_ACTIVE_WINDOW", error_code="NO_ACTIVE_WINDOW",
-        )
-
-    # Revalidate active window identity against snapshot
-    if grounded_ui_target["snapshot_hwnd"] and active.hwnd != grounded_ui_target["snapshot_hwnd"]:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message=f"Active window HWND changed from {grounded_ui_target['snapshot_hwnd']} to {active.hwnd}",
-            verified=False, error="WINDOW_MISMATCH", error_code="WINDOW_MISMATCH",
-        )
-    if grounded_ui_target["snapshot_pid"] and active.pid and active.pid != grounded_ui_target["snapshot_pid"]:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message=f"Active window PID changed from {grounded_ui_target['snapshot_pid']} to {active.pid}",
-            verified=False, error="PROCESS_MISMATCH", error_code="PROCESS_MISMATCH",
-        )
-    if grounded_ui_target["snapshot_creation_time_ns"] and active.pid:
-        cur_t = context.get_process_creation_time_ns(active.pid)
-        if cur_t and cur_t != grounded_ui_target["snapshot_creation_time_ns"]:
-            return ToolResult(
-                ok=False, tool="type_into_element", data=args,
-                factual_message="Process creation timestamp mismatch (recycled PID).",
-                verified=False, error="PROCESS_IDENTITY_MISMATCH", error_code="PROCESS_IDENTITY_MISMATCH",
-            )
-    if grounded_ui_target["snapshot_dpi_scale"] and abs(active.dpi_scale - grounded_ui_target["snapshot_dpi_scale"]) > 0.05:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message=f"DPI scaling changed from {grounded_ui_target['snapshot_dpi_scale']} to {active.dpi_scale}",
-            verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
-        )
-        
-    # Check window bounds with 20px tolerance for slight shifts
-    if "snapshot_rect_left" in grounded_ui_target and active.rect:
-        dx = abs(active.rect.left - grounded_ui_target["snapshot_rect_left"])
-        dy = abs(active.rect.top - grounded_ui_target["snapshot_rect_top"])
-        dw = abs((active.rect.right - active.rect.left) - (grounded_ui_target["snapshot_rect_right"] - grounded_ui_target["snapshot_rect_left"]))
-        dh = abs((active.rect.bottom - active.rect.top) - (grounded_ui_target["snapshot_rect_bottom"] - grounded_ui_target["snapshot_rect_top"]))
-        if max(dx, dy, dw, dh) > 20:
-            return ToolResult(
-                ok=False, tool="type_into_element", data=args,
-                factual_message="Active window moved or resized significantly since snapshot. Action aborted for safety.",
-                verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
-            )
-
-    hwnd = active.hwnd
-    auto_id = grounded_ui_target["auto_id"]
-    name = grounded_ui_target["name"]
-
-    adapter = UiaAdapter()
-    verifier = ScreenVerifier(uia_adapter=adapter)
-
-    try:
-        adapter.set_control_text(
-            hwnd=hwnd,
-            text=text,
-            auto_id=auto_id,
-            name=name,
-            timeout_s=3.0,
-            clear_existing=clear_existing,
-        )
-
-        v_res = verifier.verify_control_text(
-            hwnd=hwnd,
-            expected_text=text,
-            auto_id=auto_id,
-            name=name,
-        )
-        target_label = name or auto_id or "editable element"
-
-        return ToolResult(
-            ok=True,
-            tool="type_into_element",
-            data={"hwnd": hwnd, "name": name, "auto_id": auto_id, "text_length": len(text), "snapshot_id": snapshot_id, "target_ref": target_ref},
-            factual_message=f"Typed text into '{target_label}' in window HWND {hwnd}.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except (ElementNotFoundError, ElementUnavailableError, WindowNotFoundError) as known_exc:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message=f"Failed to type into element: {known_exc}",
-            verified=False, error=str(known_exc),
-        )
-    except Exception as exc:
-        return ToolResult(
-            ok=False, tool="type_into_element", data=args,
-            factual_message=f"Error typing into UI element: {exc}",
-            verified=False, error=str(exc),
-        )
-
+    """Compatibility alias using the catalog's guarded UIA value and undo path."""
+    from pluma.tools.screen_catalog import execute_set_control_text
+    private = (getattr(task_context, "execution_binding", None) or {}).get("screen_text_private")
+    if not private:
+        return ToolResult.failure("type_into_element", "Private text pre-state is required before changing the control.", "SCREEN_TEXT_UNDO_UNAVAILABLE")
+    replacement = args["text"]
+    if not args.get("clear_existing", True):
+        replacement = private["before_value"] + replacement
+    if len(replacement) > 2048:
+        return ToolResult.failure("type_into_element", "The resulting control value exceeds the bounded text limit.", "TEXT_LIMIT_EXCEEDED")
+    mapped = {"snapshot_id": args["snapshot_id"], "target_ref": args["target_ref"], "screen_input": replacement}
+    return execute_set_control_text(mapped, task_context, tool_name="type_into_element", window_context=ActiveWindowContext())
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +360,7 @@ INSPECT_ACTIVE_WINDOW_SPEC = ToolSpec(
     args_schema=InspectActiveWindowArgs,
     risk_class=RiskClass.READ,
     timeout_s=5.0,
+    process_isolated=True,
     executor=AdapterDispatcher("inspect_active_window", {
         AdapterPriority.NATIVE_API: inspect_active_window_native,
         AdapterPriority.UIA: execute_inspect_active_window,
@@ -465,10 +374,13 @@ CLICK_ELEMENT_SPEC = ToolSpec(
     name="click_element",
     description="Click or invoke a semantic UI element by name, automation ID, or control type.",
     args_schema=ClickElementArgs,
-    risk_class=RiskClass.LOW,
+    risk_class=RiskClass.HIGH,
     timeout_s=5.0,
+    process_isolated=True,
     executor=AdapterDispatcher("click_element", {AdapterPriority.UIA: execute_click_element}),
     verifier=verify_noop,
+    undo_builder=partial(capture_click_intent, tool_name="click_element"),
+    non_undoable=True,
     adapter_priority=[AdapterPriority.UIA],
     cancellable=True,
 )
@@ -479,8 +391,10 @@ TYPE_INTO_ELEMENT_SPEC = ToolSpec(
     args_schema=TypeIntoElementArgs,
     risk_class=RiskClass.LOW,
     timeout_s=5.0,
+    process_isolated=True,
     executor=AdapterDispatcher("type_into_element", {AdapterPriority.UIA: execute_type_into_element}),
     verifier=verify_noop,
+    undo_builder=capture_type_into_element_undo,
     adapter_priority=[AdapterPriority.UIA],
     cancellable=True,
 )
@@ -497,8 +411,8 @@ class ClickOcrTextArgs(BaseModel):
     hwnd: Optional[int] = Field(default=None, description="Target window HWND. If omitted, uses active window.")
     snapshot_id: Optional[str] = Field(default=None, description="Optional snapshot ID to verify target window freshness.")
     min_confidence: float = Field(
-        default=0.5,
-        ge=0.0,
+        default=ACTION_OCR_MIN_CONFIDENCE,
+        ge=ACTION_OCR_MIN_CONFIDENCE,
         le=1.0,
         description="Minimum OCR confidence required to accept a text target.",
     )
@@ -545,7 +459,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
 
     text_query = args["text"]
     hwnd = args.get("hwnd")
-    min_confidence = args.get("min_confidence", 0.5)
+    min_confidence = max(ACTION_OCR_MIN_CONFIDENCE, args.get("min_confidence", ACTION_OCR_MIN_CONFIDENCE))
     raw_region = args.get("region")
     snapshot_id = args.get("snapshot_id")
 
@@ -590,6 +504,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             verified=False, error="WINDOW_GEOMETRY_UNAVAILABLE", error_code="WINDOW_GEOMETRY_UNAVAILABLE",
         )
     captured_dpi_scale = target_info.dpi_scale
+    captured_window_identity = (target_info.window_title, target_info.class_name)
     captured_pid = target_info.pid
     if not captured_pid:
         return ToolResult(
@@ -635,7 +550,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                     factual_message="Snapshot process creation identity does not match the target window.",
                     verified=False, error="PROCESS_IDENTITY_MISMATCH", error_code="PROCESS_IDENTITY_MISMATCH",
                 )
-            if snap.dpi_scale and captured_dpi_scale and abs(snap.dpi_scale - captured_dpi_scale) > 0.05:
+            if snap.dpi_scale and captured_dpi_scale and abs(snap.dpi_scale - captured_dpi_scale) > 1e-6:
                 return ToolResult(
                     ok=False, tool="click_ocr_text", data=args,
                     factual_message="Target window DPI differs from the supplied screen snapshot.",
@@ -644,10 +559,10 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             if snap.window_rect and window_rect:
                 dx = abs(window_rect.left - snap.window_rect.left)
                 dy = abs(window_rect.top - snap.window_rect.top)
-                if max(dx, dy) > 20:
+                if max(dx, dy) > 0:
                     return ToolResult(
                         ok=False, tool="click_ocr_text", data=args,
-                        factual_message="Target window moved or resized significantly (>20px) since snapshot.",
+                        factual_message="Target window moved or resized since snapshot.",
                         verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
                     )
         except Exception as fresh_err:
@@ -656,6 +571,22 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                 factual_message=f"Snapshot freshness check failed: {fresh_err}",
                 verified=False, error=str(fresh_err), error_code="STALE_SNAPSHOT",
             )
+
+    # UIA remains authoritative even when a planner explicitly requested OCR.
+    # A fresh semantic target must be invoked through its stronger adapter.
+    try:
+        semantic = UiaSnapshotBuilder(context=context).capture(hwnd=target_hwnd)
+        semantic_matches = [item for item in semantic.controls
+            if item.label.strip().casefold() == text_query.strip().casefold()]
+        if semantic_matches:
+            code = "UI_AMBIGUOUS_TARGET" if len(semantic_matches) > 1 else "UIA_TARGET_AVAILABLE"
+            return ToolResult.failure("click_ocr_text",
+                "The requested label is exposed by UI Automation; use a unique semantic control reference.", code)
+    except AccessDeniedError as exc:
+        return ToolResult.failure("click_ocr_text", str(exc), "ACCESS_DENIED")
+    except Exception:
+        return ToolResult.failure("click_ocr_text", "Semantic inspection failed before OCR fallback could be authorized.", "UIA_INSPECTION_FAILED")
+    check_cancelled()
 
     # 3. Parse optional region
     region: Optional[BoundingBox] = None
@@ -674,7 +605,9 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                 verified=False, error=str(e), error_code="INVALID_REGION",
             )
 
-    # 4. Capture ephemeral image bytes
+    # 4. Capture ephemeral image bytes. Even calls without a supplied snapshot
+    # must expire their own pixel observation before input.
+    capture_started = time.monotonic()
     image_bytes: Optional[bytes] = None
     try:
         check_cancelled()
@@ -711,8 +644,12 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     finally:
         image_bytes = None  # Explicitly discard ephemeral bytes
 
+    from pluma.tools.screen_catalog import _SNAPSHOT_TTL_S
+    if time.monotonic() - capture_started > _SNAPSHOT_TTL_S:
+        return ToolResult.failure("click_ocr_text", "The OCR observation expired before input; observe the target again.", "STALE_SNAPSHOT")
+
     # 6. Find matching words
-    matches = ocr_result.find_words(text_query, min_confidence=min_confidence)
+    matches = ocr_result.find_words(text_query, min_confidence=min_confidence, exact_match=True)
 
     if len(matches) == 0:
         return ToolResult(
@@ -765,6 +702,8 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             factual_message="Pre-click safety abort: target window process changed after OCR capture.",
             verified=False, error="PROCESS_MISMATCH", error_code="PROCESS_MISMATCH",
         )
+    if (current_active.window_title, current_active.class_name) != captured_window_identity:
+        return ToolResult.failure("click_ocr_text", "The target window identity changed during OCR.", "WINDOW_MISMATCH")
     current_creation_time_ns = context.get_process_creation_time_ns(current_active.pid)
     if current_creation_time_ns is None or current_creation_time_ns != captured_creation_time_ns:
         return ToolResult(
@@ -791,7 +730,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             factual_message="Pre-click safety abort: target window moved or resized after OCR capture.",
             verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
         )
-    if captured_dpi_scale and abs(current_active.dpi_scale - captured_dpi_scale) > 0.05:
+    if captured_dpi_scale and abs(current_active.dpi_scale - captured_dpi_scale) > 1e-6:
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
             factual_message=(
@@ -812,7 +751,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                      return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: HWND mismatch", verified=False, error="WINDOW_MISMATCH")
                 if final_snap.pid and current_active.pid and final_snap.pid != current_active.pid:
                      return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: PID mismatch", verified=False, error="PROCESS_MISMATCH")
-                if final_snap.dpi_scale and abs(current_active.dpi_scale - final_snap.dpi_scale) > 0.05:
+                if final_snap.dpi_scale and abs(current_active.dpi_scale - final_snap.dpi_scale) > 1e-6:
                      return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: DPI mismatch", verified=False, error="DPI_MISMATCH")
                 
                 # Check FULL window geometry/resize
@@ -821,7 +760,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                     dy = abs(current_active.rect.top - final_snap.window_rect.top)
                     dw = abs((current_active.rect.right - current_active.rect.left) - (final_snap.window_rect.right - final_snap.window_rect.left))
                     dh = abs((current_active.rect.bottom - current_active.rect.top) - (final_snap.window_rect.bottom - final_snap.window_rect.top))
-                    if max(dx, dy, dw, dh) > 20:
+                    if max(dx, dy, dw, dh) > 0:
                         return ToolResult(ok=False, tool="click_ocr_text", data=args, factual_message="Pre-click abort: Window moved or resized", verified=False, error="WINDOW_MOVED")
             except Exception as fresh_err:
                 return ToolResult(
@@ -877,7 +816,7 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
         check_cancelled()
         post_ocr = ocr_manager.run_ocr(post_image_bytes, cancellation_token=cancellation_token)
         check_cancelled()
-        post_matches = post_ocr.find_words(text_query, min_confidence=min_confidence)
+        post_matches = post_ocr.find_words(text_query, min_confidence=min_confidence, exact_match=True)
         original_bounds = BoundingBox(
             left=word_bounds.left + offset_left,
             top=word_bounds.top + offset_top,
@@ -973,11 +912,13 @@ CLICK_OCR_TEXT_SPEC = ToolSpec(
         "when UI Automation (click_element) cannot reach the target."
     ),
     args_schema=ClickOcrTextArgs,
-    risk_class=RiskClass.LOW,
+    risk_class=RiskClass.HIGH,
     timeout_s=10.0,
     process_isolated=True,
     executor=AdapterDispatcher("click_ocr_text", {AdapterPriority.OCR_GROUNDED: execute_click_ocr_text}),
     verifier=verify_click_ocr_text,
+    undo_builder=partial(capture_click_intent, tool_name="click_ocr_text"),
+    non_undoable=True,
     adapter_priority=[AdapterPriority.OCR_GROUNDED],
     cancellable=True,
 )

@@ -19,7 +19,7 @@ from pluma.perception.context import ActiveWindowContext
 from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenSnapshot
 from pluma.perception.ocr_adapter import OcrResult, OcrWord
 from pluma.perception.snapshot_registry import SnapshotRegistry
-from pluma.tools.base import AdapterPriority
+from pluma.tools.base import AdapterPriority, RiskClass
 from pluma.tools.registry import ToolRegistry
 from pluma.tools.ui import (
     CLICK_ELEMENT_SPEC,
@@ -149,6 +149,7 @@ def _bind_owned_window_context(monkeypatch: pytest.MonkeyPatch, initial_hwnd: in
             return native_context.get_process_creation_time_ns(pid)
 
     monkeypatch.setattr("pluma.tools.ui.ActiveWindowContext", lambda: OwnedWindowContext())
+    monkeypatch.setattr("pluma.tools.screen_catalog.ActiveWindowContext", lambda: OwnedWindowContext())
     return selected, native_context
 
 
@@ -197,8 +198,12 @@ def test_p12_e01_e02_semantic_inspection_and_submit_use_uia_only(
         undo_stack=[],
     )
     registry = ToolRegistry()
-    registry.register(INSPECT_ACTIVE_WINDOW_SPEC)
-    registry.register(CLICK_ELEMENT_SPEC)
+    # This suite binds a never-activated owned HWND in the test thread. The
+    # harmless fixture-button mutation uses a local test spec; production click
+    # specs require HIGH policy, intent journaling and an owned process worker.
+    # Those boundaries have independent registry/STOP failure tests.
+    registry.register(INSPECT_ACTIVE_WINDOW_SPEC.model_copy(update={"process_isolated": False}))
+    registry.register(CLICK_ELEMENT_SPEC.model_copy(update={"process_isolated": False, "risk_class": RiskClass.LOW, "non_undoable": False, "undo_builder": None}))
     try:
         inspected = registry.execute(
             "inspect_active_window",
@@ -262,8 +267,8 @@ def test_p12_e03_duplicate_uia_labels_are_refused_without_mutation(
         undo_stack=[],
     )
     registry = ToolRegistry()
-    registry.register(INSPECT_ACTIVE_WINDOW_SPEC)
-    registry.register(CLICK_ELEMENT_SPEC)
+    registry.register(INSPECT_ACTIVE_WINDOW_SPEC.model_copy(update={"process_isolated": False}))
+    registry.register(CLICK_ELEMENT_SPEC.model_copy(update={"process_isolated": False, "risk_class": RiskClass.LOW, "non_undoable": False, "undo_builder": None}))
     try:
         inspected = registry.execute(
             "inspect_active_window",
@@ -323,8 +328,8 @@ def test_p12_e04_changed_owned_window_rejects_stale_reference_before_uia(
         undo_stack=[],
     )
     registry = ToolRegistry()
-    registry.register(INSPECT_ACTIVE_WINDOW_SPEC)
-    registry.register(CLICK_ELEMENT_SPEC)
+    registry.register(INSPECT_ACTIVE_WINDOW_SPEC.model_copy(update={"process_isolated": False}))
+    registry.register(CLICK_ELEMENT_SPEC.model_copy(update={"process_isolated": False, "risk_class": RiskClass.LOW, "non_undoable": False, "undo_builder": None}))
     try:
         inspected = registry.execute(
             "inspect_active_window",
@@ -388,7 +393,7 @@ def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
     owned_uia_window,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    hwnd = owned_uia_window["hwnd"]
+    hwnd = owned_uia_window["textless_hwnd"]
     native_context = ActiveWindowContext()
 
     class OwnedWindowContext:
@@ -442,7 +447,7 @@ def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
     registry = ToolRegistry()
     # This case injects OCR behavior in-process to move only the owned fixture;
     # the separate E-10 test exercises the production owned-process boundary.
-    registry.register(CLICK_OCR_TEXT_SPEC.model_copy(update={"process_isolated": False}))
+    registry.register(CLICK_OCR_TEXT_SPEC.model_copy(update={"process_isolated": False, "risk_class": RiskClass.LOW, "non_undoable": False, "undo_builder": None}))
     context = SimpleNamespace(
         task_id="p12-e05-native",
         cancellation_token=CancellationToken(),
@@ -473,7 +478,7 @@ def test_p12_e06_e09_ocr_captures_only_owned_region_in_memory(
     from pluma.adapters.input import InputAdapter
     from pluma.adapters.screen import ScreenAdapter
 
-    hwnd = owned_uia_window["hwnd"]
+    hwnd = owned_uia_window["textless_hwnd"]
     _selected, native_context = _bind_owned_window_context(monkeypatch, hwnd)
     target_rect = native_context.get_window_info(hwnd).rect
     region = {"left": 20, "top": 20, "right": 180, "bottom": 120}
@@ -602,3 +607,47 @@ def test_p12_exact_catalog_inspect_and_invoke_use_uia_first(
     }, context)
     assert invoked.ok and invoked.verified, invoked.factual_message
     assert invoked.adapter_used == "uia"
+
+
+@desktop_thread
+def test_p12_ocr_refuses_existing_native_semantic_target(owned_uia_window, monkeypatch):
+    hwnd = owned_uia_window["hwnd"]
+    _bind_owned_window_context(monkeypatch, hwnd)
+    monkeypatch.setattr(WindowCapture, "capture_window", lambda *a: pytest.fail("UIA target must not be captured for OCR"))
+    result = execute_click_ocr_text({"text": "Submit", "hwnd": hwnd})
+    assert not result.ok and result.error_code == "UIA_TARGET_AVAILABLE"
+
+
+@desktop_thread
+def test_p12_native_text_value_and_private_undo(owned_uia_window, monkeypatch):
+    import pluma.tools.screen_catalog as catalog
+    from pluma.tools.ui import TYPE_INTO_ELEMENT_SPEC, execute_type_into_element
+    hwnd = owned_uia_window["hwnd"]
+    _bind_owned_window_context(monkeypatch, hwnd)
+    context = SimpleNamespace(task_id="p12-text-native", snapshot_registry=SnapshotRegistry(),
+        cancellation_token=CancellationToken(), undo_stack=[])
+    inspected = catalog.execute_inspect_window_controls({"hwnd": hwnd, "max_controls": 50}, context)
+    assert inspected.ok and inspected.verified, inspected.factual_message
+    snapshot = ScreenSnapshot.model_validate(inspected.data["raw_snapshot"])
+    context.snapshot_registry.register(snapshot)
+    edits = [item for item in snapshot.controls if item.control_type == "Edit"]
+    assert len(edits) == 1
+    args = {"snapshot_id": snapshot.snapshot_id, "target_ref": f"{snapshot.snapshot_id}::{edits[0].element_id}",
+            "text": "fixture after {literal}"}
+    _, _, _, target_error = catalog._target(args, context, "type_into_element")
+    assert target_error is None, target_error
+    _, live = catalog._find_live_text_control(snapshot, edits[0], "type_into_element")
+    assert live.text_value == "fixture before"
+    record, captured = catalog.seal_screen_text_capture(TYPE_INTO_ELEMENT_SPEC.undo_builder(args, context))
+    assert captured == {"before_value": "fixture before"}
+    assert "fixture before" not in repr(record)
+    private = {"record": record, **captured, "after_value": args["text"],
+        "created_monotonic": time.monotonic(), "undo_ref": record["undo_ref"]}
+    context.execution_binding = {"screen_text_private": private}
+    context.undo_stack.append({"action": "pending_mutation", "tool": "type_into_element", "pre_state": record})
+    result = execute_type_into_element(args, context)
+    assert result.ok and result.verified, result.factual_message
+    assert UiaAdapter().find_control(hwnd, auto_id=edits[0].uia_automation_id, control_type="Edit").text_value == args["text"]
+    restored = catalog.restore_screen_control_text({**record, "screen_text_private": private})
+    assert restored.ok, restored.error
+    assert UiaAdapter().find_control(hwnd, auto_id=edits[0].uia_automation_id, control_type="Edit").text_value == "fixture before"

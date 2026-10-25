@@ -1028,6 +1028,54 @@ class ToolRegistry:
                 step_index = max(step_index, task_context.next_action_index)
                 task_context.next_action_index = step_index + 1
 
+        # Parent UI Grounding for action workers
+        grounded_ui_target = None
+        if tool_name in ("click_element", "type_into_element") and task_context:
+            snapshot_id = validated_args.get("snapshot_id")
+            target_ref = validated_args.get("target_ref")
+            if snapshot_id and target_ref:
+                snapshot_registry = getattr(task_context, "snapshot_registry", None)
+                if snapshot_registry:
+                    try:
+                        snapshot = snapshot_registry.resolve(snapshot_id)
+                        element_id = target_ref.split("::")[-1]
+                        element = snapshot_registry.resolve_element(snapshot_id, element_id)
+                        label_key = element.label.strip().casefold()
+                        same_source_matches = [
+                            candidate
+                            for candidate in (*snapshot.controls, *snapshot.ocr_words)
+                            if candidate.source == element.source
+                            and candidate.label.strip().casefold() == label_key
+                        ]
+                        if label_key and len(same_source_matches) > 1:
+                            return ToolResult.failure(
+                                tool_name,
+                                (
+                                    f"Parent UI grounding refused ambiguous label {element.label!r}: "
+                                    f"{len(same_source_matches)} {element.source.value} elements match. "
+                                    "Use a unique target or ask for clarification."
+                                ),
+                                error_code="UI_AMBIGUOUS_TARGET",
+                            )
+                        grounded_ui_target = {
+                            "snapshot_hwnd": snapshot.hwnd,
+                            "snapshot_pid": snapshot.pid,
+                            "snapshot_creation_time_ns": snapshot.process_creation_time_ns,
+                            "snapshot_dpi_scale": snapshot.dpi_scale,
+                            "snapshot_rect_left": snapshot.window_rect.left if snapshot.window_rect else 0,
+                            "snapshot_rect_top": snapshot.window_rect.top if snapshot.window_rect else 0,
+                            "snapshot_rect_right": snapshot.window_rect.right if snapshot.window_rect else 0,
+                            "snapshot_rect_bottom": snapshot.window_rect.bottom if snapshot.window_rect else 0,
+                            "auto_id": element.uia_automation_id,
+                            "name": element.label,
+                            "control_type": element.control_type,
+                        }
+                    except Exception as e:
+                        # Fail early in parent
+                        return ToolResult.failure(tool_name, f"Parent UI Grounding failed: {e}")
+                else:
+                    return ToolResult.failure(tool_name, "Parent UI Grounding rejected: no snapshot registry on task_context.")
+
         # Policy work is admitted and retained on the same capsule. A late
         # approval after STOP/deadline is ignored; it cannot dispatch an action.
         active_policy = policy_engine or self._policy_engine
@@ -1188,7 +1236,7 @@ class ToolRegistry:
                     return _record_no_execution(ledger, task_context, step_index, tool_name,
                         validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
                             'Private clipboard undo could not be retained. No write was executed.', 'CLIPBOARD_UNDO_UNAVAILABLE'))
-            if tool_name in ('set_control_text', 'type_text'):
+            if tool_name in ('set_control_text', 'type_text', 'type_into_element'):
                 try:
                     from copy import deepcopy
                     from pluma.tools.screen_catalog import (
@@ -1207,6 +1255,8 @@ class ToolRegistry:
                             'undo_ref': pre_undo_data['undo_ref'],
                             'before_value': captured['before_value'],
                             'after_value': (validated_args['screen_input'] if tool_name == 'set_control_text'
+                                else ((captured['before_value'] if not validated_args.get('clear_existing', True) else '')
+                                      + validated_args['text']) if tool_name == 'type_into_element'
                                 else validated_args['expected_control_text']),
                             'created_monotonic': time.monotonic(),
                         }
@@ -1297,54 +1347,6 @@ class ToolRegistry:
             if k.startswith("PLUMA_")
         }
         
-        # Parent UI Grounding for action workers
-        grounded_ui_target = None
-        if tool_name in ("click_element", "type_into_element") and task_context:
-            snapshot_id = validated_args.get("snapshot_id")
-            target_ref = validated_args.get("target_ref")
-            if snapshot_id and target_ref:
-                snapshot_registry = getattr(task_context, "snapshot_registry", None)
-                if snapshot_registry:
-                    try:
-                        snapshot = snapshot_registry.resolve(snapshot_id)
-                        element_id = target_ref.split("::")[-1]
-                        element = snapshot_registry.resolve_element(snapshot_id, element_id)
-                        label_key = element.label.strip().casefold()
-                        same_source_matches = [
-                            candidate
-                            for candidate in (*snapshot.controls, *snapshot.ocr_words)
-                            if candidate.source == element.source
-                            and candidate.label.strip().casefold() == label_key
-                        ]
-                        if label_key and len(same_source_matches) > 1:
-                            return ToolResult.failure(
-                                tool_name,
-                                (
-                                    f"Parent UI grounding refused ambiguous label {element.label!r}: "
-                                    f"{len(same_source_matches)} {element.source.value} elements match. "
-                                    "Use a unique target or ask for clarification."
-                                ),
-                                error_code="UI_AMBIGUOUS_TARGET",
-                            )
-                        grounded_ui_target = {
-                            "snapshot_hwnd": snapshot.hwnd,
-                            "snapshot_pid": snapshot.pid,
-                            "snapshot_creation_time_ns": snapshot.process_creation_time_ns,
-                            "snapshot_dpi_scale": snapshot.dpi_scale,
-                            "snapshot_rect_left": snapshot.window_rect.left if snapshot.window_rect else 0,
-                            "snapshot_rect_top": snapshot.window_rect.top if snapshot.window_rect else 0,
-                            "snapshot_rect_right": snapshot.window_rect.right if snapshot.window_rect else 0,
-                            "snapshot_rect_bottom": snapshot.window_rect.bottom if snapshot.window_rect else 0,
-                            "auto_id": element.uia_automation_id,
-                            "name": element.label,
-                            "control_type": element.control_type,
-                        }
-                    except Exception as e:
-                        # Fail early in parent
-                        return ToolResult.failure(tool_name, f"Parent UI Grounding failed: {e}")
-                else:
-                    return ToolResult.failure(tool_name, "Parent UI Grounding rejected: no snapshot registry on task_context.")
-
         # Process-isolated screen tools receive only the resolved, short-lived
         # metadata for the requested snapshot. They do not inherit the parent's
         # in-memory registry, and a missing/expired reference must fail closed.

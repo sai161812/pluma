@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _PADDLEOCR_DETECTION_MODEL = "PP-OCRv6_small_det"
 _PADDLEOCR_RECOGNITION_MODEL = "PP-OCRv6_small_rec"
 _ONNX_CPU_PROVIDERS = ["CPUExecutionProvider"]
+ACTION_OCR_MIN_CONFIDENCE = 0.9
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +176,9 @@ class _PaddleOcrBackend:
             rgb_image = source.convert("RGB")
             try:
                 image_width, image_height = rgb_image.size
-                img_array = np.array(rgb_image)
+                # PaddleX's ndarray reader expects OpenCV BGR. Preserve color
+                # channels correctly for colored labels and antialiased text.
+                img_array = np.array(rgb_image)[:, :, ::-1].copy()
             finally:
                 rgb_image.close()
 

@@ -13,6 +13,7 @@ import os
 BUTTON_ID = 4101
 SECOND_BUTTON_ID = 4103
 STATUS_ID = 4102
+EDIT_ID = 4104
 WM_COMMAND = 0x0111
 WM_CLOSE = 0x0010
 WM_DESTROY = 0x0002
@@ -79,6 +80,11 @@ def main() -> None:
                     0, "BUTTON", "Submit", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                     24, 76, 150, 36, hwnd, w.HMENU(SECOND_BUTTON_ID), instance, None,
                 )
+            if not duplicate_labels:
+                edit = user.CreateWindowExW(0, "EDIT", "fixture before", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                    90, 120, 250, 28, hwnd, w.HMENU(EDIT_ID), instance, None)
+                if not edit:
+                    return -1
             status = user.CreateWindowExW(
                 0, "STATIC", "Ready", WS_CHILD | WS_VISIBLE | SS_LEFT,
                 24, 132 if duplicate_labels else 82, 220, 28, hwnd, w.HMENU(STATUS_ID), instance, None,

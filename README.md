@@ -65,10 +65,9 @@ That keeps model inference out of the deterministic FAST path and avoids loading
 
 The current SCREEN and DEEP routes do not use perception in exactly the same way.
 
-- **SCREEN:** captures a UI Automation snapshot first with OCR disabled, then passes that context to the planner. If the resulting plan uses `click_ocr_text`, OCR is loaded on demand for that tool call.
-- **DEEP:** captures both UIA controls and OCR text before planning by calling the snapshot builder with `include_ocr=True`.
+- **SCREEN and DEEP:** obtain a UIA snapshot through the registered, owned inspection tool and register it to the task before planning. Failed or denied inspection stops the route. OCR remains cold until a later target-scoped tool needs it.
 - **Semantic UI actions:** `click_element` and `type_into_element` require a snapshot ID and grounded target reference. Before acting, they re-check window identity, PID/process identity, DPI, and geometry.
-- **OCR actions:** `click_ocr_text` captures only the target window or region, runs OCR through its lifecycle manager, rejects missing or ambiguous matches, revalidates the target immediately before clicking, and performs a post-action visual verification.
+- **OCR actions:** semantic UIA targets take priority even when OCR was explicitly requested. OCR input requires one exact label match with at least 0.90 confidence, a current observation and unchanged target identity/geometry/DPI, followed by transition readback. The planner cannot lower that confidence floor. Uncertain targets are refused.
 
 The OCR lifecycle starts cold, loads only when OCR is actually invoked, and schedules an unload after 10 seconds of inactivity. Screen-capture bytes are used in memory and are not persisted as screenshots by these paths; the OCR click tool explicitly clears its capture buffer after recognition.
 

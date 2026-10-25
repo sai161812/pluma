@@ -212,46 +212,36 @@ class ScreenAdapter:
             raise AdapterError(f"Window has non-positive dimensions: {width}x{height}")
 
         hdc_screen = self._user32.GetDC(0)
-        hdc_mem = self._gdi32.CreateCompatibleDC(hdc_screen)
-        hbm = self._gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
-        hbm_old = self._gdi32.SelectObject(hdc_mem, hbm)
-
+        if not hdc_screen:
+            raise AdapterError("Windows did not provide a capture device context.", "CAPTURE_FAILED")
+        hdc_mem = hbm = hbm_old = None
         try:
-            # Try PrintWindow first for hardware-accelerated / layered windows
-            pw_ok = bool(
-                self._user32.PrintWindow(
-                    wintypes.HWND(hwnd),
-                    hdc_mem,
-                    PW_RENDERFULLCONTENT,
-                )
-            )
-
-            # Fallback to BitBlt if PrintWindow is not supported / failed
-            if not pw_ok:
+            hdc_mem = self._gdi32.CreateCompatibleDC(hdc_screen)
+            if not hdc_mem:
+                raise AdapterError("Windows could not allocate a capture context.", "CAPTURE_FAILED")
+            hbm = self._gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
+            if not hbm:
+                raise AdapterError("Windows could not allocate a capture bitmap.", "CAPTURE_FAILED")
+            hbm_old = self._gdi32.SelectObject(hdc_mem, hbm)
+            if not hbm_old or hbm_old == ctypes.c_void_p(-1).value:
+                raise AdapterError("Windows could not select the capture bitmap.", "CAPTURE_FAILED")
+            if not self._user32.PrintWindow(wintypes.HWND(hwnd), hdc_mem, PW_RENDERFULLCONTENT):
                 hdc_win = self._user32.GetWindowDC(wintypes.HWND(hwnd))
-                if hdc_win:
-                    try:
-                        self._gdi32.BitBlt(
-                            hdc_mem,
-                            0,
-                            0,
-                            width,
-                            height,
-                            hdc_win,
-                            0,
-                            0,
-                            SRCCOPY,
-                        )
-                    finally:
-                        self._user32.ReleaseDC(wintypes.HWND(hwnd), hdc_win)
-
-            bmp_bytes = self._hbitmap_to_bmp_bytes(hdc_mem, hbm, width, height)
-            return bmp_bytes
-
+                if not hdc_win:
+                    raise AdapterError("The target window could not be captured.", "CAPTURE_FAILED")
+                try:
+                    if not self._gdi32.BitBlt(hdc_mem, 0, 0, width, height, hdc_win, 0, 0, SRCCOPY):
+                        raise AdapterError("Windows rejected target-window pixel capture.", "CAPTURE_FAILED")
+                finally:
+                    self._user32.ReleaseDC(wintypes.HWND(hwnd), hdc_win)
+            return self._hbitmap_to_bmp_bytes(hdc_mem, hbm, width, height)
         finally:
-            self._gdi32.SelectObject(hdc_mem, hbm_old)
-            self._gdi32.DeleteObject(hbm)
-            self._gdi32.DeleteDC(hdc_mem)
+            if hbm_old and hdc_mem and hbm_old != ctypes.c_void_p(-1).value:
+                self._gdi32.SelectObject(hdc_mem, hbm_old)
+            if hbm:
+                self._gdi32.DeleteObject(hbm)
+            if hdc_mem:
+                self._gdi32.DeleteDC(hdc_mem)
             self._user32.ReleaseDC(0, hdc_screen)
 
     def capture_to_temp_file(
@@ -306,8 +296,8 @@ class ScreenAdapter:
             ctypes.byref(bmi),
             DIB_RGB_COLORS,
         )
-        if lines == 0:
-            return self._create_blank_bmp_bytes(width, height)
+        if lines != height:
+            raise AdapterError("Windows did not return all captured bitmap rows.", "CAPTURE_FAILED")
 
         file_header_size = 14
         info_header_size = 40

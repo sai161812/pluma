@@ -359,6 +359,9 @@ class TestOcrFreshnessAndVerification:
         assert v_res2.ok is True
 
     def test_click_ocr_unchanged_postcondition_yields_unverified_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from types import SimpleNamespace
+        monkeypatch.setattr("pluma.tools.ui.UiaSnapshotBuilder", lambda **kwargs:
+            SimpleNamespace(capture=lambda **kwargs: SimpleNamespace(controls=[])))
         from pluma.tools.ui import execute_click_ocr_text
         from pluma.perception.element_refs import BoundingBox, ScreenSnapshot
         from pluma.perception.ocr_adapter import OcrWord
@@ -366,6 +369,8 @@ class TestOcrFreshnessAndVerification:
 
         class DummyActiveWindow:
             is_valid = True
+            window_title = "Fixture"
+            class_name = "FixtureWindow"
             hwnd = 12345
             pid = 999
             rect = BoundingBox(left=0, top=0, right=1000, bottom=1000)
@@ -382,7 +387,7 @@ class TestOcrFreshnessAndVerification:
                 return b"fake_image_bytes"
 
         class DummyOcrResult:
-            def find_words(self, text, min_confidence):
+            def find_words(self, text, min_confidence, exact_match=False):
                 return [OcrWord(text=text, confidence=0.99, bounds=BoundingBox(left=10, top=10, right=50, bottom=20))]
 
         class DummyOcrManager:

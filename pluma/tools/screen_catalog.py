@@ -14,11 +14,12 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from pydantic import BaseModel, Field, model_validator
 
-from pluma.adapters.base import ElementNotFoundError, ElementUnavailableError, WindowNotFoundError
+from pluma.adapters.base import AccessDeniedError, ElementNotFoundError, ElementUnavailableError, WindowNotFoundError
 from pluma.adapters.uia import UiaAdapter
 from pluma.core.cancellation import TaskCancelledError
 from pluma.perception.context import ActiveWindowContext, ActiveWindowInfo
 from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement, ScreenSnapshot
+from pluma.perception.ocr_adapter import ACTION_OCR_MIN_CONFIDENCE
 from pluma.perception.snapshot_registry import SnapshotNotFoundError, SnapshotRegistry
 from pluma.perception.element_refs import StaleSnapshotError
 from pluma.perception.uia_snapshot import UiaSnapshotBuilder
@@ -166,7 +167,7 @@ class TypeTextArgs(ScreenTargetArgs, _ExpectedInputPostcondition):
 class ClickWindowRelativeArgs(ScreenTargetArgs):
     x: int = Field(ge=0)
     y: int = Field(ge=0)
-    min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    min_confidence: float = Field(default=ACTION_OCR_MIN_CONFIDENCE, ge=ACTION_OCR_MIN_CONFIDENCE, le=1.0)
 
 
 def _failure(tool: str, message: str, code: str) -> ToolResult:
@@ -186,8 +187,8 @@ def _snapshot(snapshot_id: str, task_context: Any, tool: str) -> ScreenSnapshot:
     return registry.resolve(snapshot_id)
 
 
-def _check_window(snapshot: ScreenSnapshot, task_context: Any, *, foreground: bool = True) -> ActiveWindowInfo:
-    context = ActiveWindowContext()
+def _check_window(snapshot: ScreenSnapshot, task_context: Any, *, foreground: bool = True, context=None) -> ActiveWindowInfo:
+    context = context or ActiveWindowContext()
     current = context.get_active_window() if foreground else context.get_window_info(snapshot.hwnd or 0)
     if not current.is_valid or not current.hwnd:
         raise ValueError("The snapshot target window is no longer available.")
@@ -204,13 +205,13 @@ def _check_window(snapshot: ScreenSnapshot, task_context: Any, *, foreground: bo
         raise ValueError("The current window class differs from the snapshot.")
     if snapshot.window_rect != current.rect:
         raise ValueError("The target window moved or resized after the snapshot.")
-    if abs(snapshot.dpi_scale - current.dpi_scale) > 0.01:
+    if abs(snapshot.dpi_scale - current.dpi_scale) > 1e-6:
         raise ValueError("The target window DPI differs from the snapshot.")
     return current
 
 
 def _target(args: Dict[str, Any], task_context: Any, tool: str,
-            sources: Optional[Sequence[ElementSource]] = None):
+            sources: Optional[Sequence[ElementSource]] = None, *, window_context=None):
     try:
         snapshot = _snapshot(args["snapshot_id"], task_context, tool)
         prefix, separator, element_id = args["target_ref"].partition("::")
@@ -226,7 +227,7 @@ def _target(args: Dict[str, Any], task_context: Any, tool: str,
                  and candidate.label.strip().casefold() == element.label.strip().casefold()]
         if len(peers) != 1:
             raise ValueError(f"Screen target label is ambiguous ({len(peers)} matching elements).")
-        current = _check_window(snapshot, task_context)
+        current = _check_window(snapshot, task_context, context=window_context)
         _cancel(task_context)
         return snapshot, element, current, None
     except TaskCancelledError:
@@ -366,6 +367,8 @@ def execute_inspect_window_controls(args: Dict[str, Any], task_context: Any = No
             "control_count": len(snapshot.controls), "raw_snapshot": snapshot.model_dump(mode="json"),
         }, f"Inspected {len(snapshot.controls)} semantic controls in the target window.", verified=True,
            verify_detail=VerifyResult(ok=True, method="uia", detail="UIA controls and target process identity were read back."))
+    except AccessDeniedError as exc:
+        return _failure(tool, str(exc), "ACCESS_DENIED")
     except Exception:
         if getattr(task_context, "cancellation_token", None) is not None and task_context.cancellation_token.is_cancelled:
             raise TaskCancelledError("Task cancelled during UIA inspection.")
@@ -408,7 +411,7 @@ def _read_ocr(args: Dict[str, Any], task_context: Any, *, find: bool) -> ToolRes
         if (updated.hwnd != snap.hwnd or updated.pid != snap.pid
                 or updated.process_creation_time_ns != snap.process_creation_time_ns):
             return _failure(tool, "Target process identity changed during OCR observation.", "WINDOW_MISMATCH")
-        if updated.window_rect != snap.window_rect or abs(updated.dpi_scale - snap.dpi_scale) > 0.01:
+        if updated.window_rect != snap.window_rect or abs(updated.dpi_scale - snap.dpi_scale) > 1e-6:
             return _failure(tool, "Target geometry or DPI changed during OCR observation.", "WINDOW_MOVED")
         if find:
             matches = ocr.find_words(args["visible_text_query"],
@@ -520,7 +523,7 @@ def _control(snapshot: ScreenSnapshot, element: ScreenElement, tool: str):
     if not (element.uia_automation_id or element.label):
         raise ValueError("The semantic element has no stable UIA identity.")
     return {"hwnd": snapshot.hwnd, "auto_id": element.uia_automation_id,
-        "name": element.label or None, "control_type": element.control_type}
+        "name": None if element.uia_automation_id else element.label or None, "control_type": element.control_type}
 
 
 def execute_read_control_text(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -557,6 +560,9 @@ def execute_find_control_wait(args: Dict[str, Any], task_context: Any = None) ->
         while time.monotonic() < deadline:
             _cancel(task_context)
             latest = UiaSnapshotBuilder().capture(hwnd=snap.hwnd, ttl_seconds=_SNAPSHOT_TTL_S)
+            if (latest.hwnd, latest.pid, latest.process_creation_time_ns) != (
+                    snap.hwnd, snap.pid, snap.process_creation_time_ns):
+                return _failure(tool, "The requested window/process changed during the wait.", "WINDOW_MISMATCH")
             _check_window(latest, task_context)
             criteria = {key: args.get(key) for key in ("label", "automation_id", "control_type") if args.get(key)}
             found = []
@@ -602,6 +608,9 @@ def _invoke_uia(args: Dict[str, Any], task_context: Any, tool: str, *, expected_
         if before.is_enabled is expected_enabled:
             return _failure(tool, "Invocation refused because the expected state is already present.", "UI_NO_EXPECTED_TRANSITION")
         _cancel(task_context)
+        _, _, _, error = _target(args, task_context, tool, [ElementSource.UIA])
+        if error:
+            return error
         adapter.invoke_control(**selector, timeout_s=2.0)
         _cancel(task_context)
         after = adapter.find_control(**selector, timeout_s=2.0)
@@ -614,6 +623,8 @@ def _invoke_uia(args: Dict[str, Any], task_context: Any, tool: str, *, expected_
             "Invoked the uniquely identified UI Automation control." if ok else
             "UI Automation invocation returned, but the expected enabled-state transition was not observed.",
             verified=ok, verify_detail=proof)
+    except AccessDeniedError as exc:
+        return _failure(tool, str(exc), "ACCESS_DENIED")
     except (ElementNotFoundError, ElementUnavailableError, WindowNotFoundError) as exc:
         return _failure(tool, f"UIA invocation failed: {exc}", "CONTROL_INVOKE_FAILED")
     except Exception:
@@ -724,10 +735,10 @@ def verify_screen_control_text(undo_data: Dict[str, Any], private: Dict[str, Any
                 or info.window_title != record["window_title"]
                 or info.class_name != record["window_class"]
                 or info.rect.model_dump() != record["window_rect"]
-                or abs(info.dpi_scale - float(record["dpi_scale"])) > 0.01):
+                or abs(info.dpi_scale - float(record["dpi_scale"])) > 1e-6):
             return False
         selector = {"hwnd": info.hwnd, "auto_id": record.get("auto_id"),
-            "name": record.get("name"), "control_type": record.get("control_type")}
+            "name": None if record.get("auto_id") else record.get("name"), "control_type": record.get("control_type")}
         value = UiaAdapter().find_control(**selector, timeout_s=2.0)
         if not value.is_visible or value.is_password is not False:
             return False
@@ -757,7 +768,7 @@ def restore_screen_control_text(undo_data: Dict[str, Any]):
         info = ActiveWindowContext().get_window_info(int(record["hwnd"]))
         adapter = UiaAdapter()
         selector = {"hwnd": info.hwnd, "auto_id": record.get("auto_id"),
-                    "name": record.get("name"), "control_type": record.get("control_type")}
+                    "name": None if record.get("auto_id") else record.get("name"), "control_type": record.get("control_type")}
         adapter.set_control_text(**selector, text=private["before_value"], clear_existing=True, timeout_s=2.0)
         if not verify_screen_control_text(undo_data, private, restored=True):
             raise ValueError("Restored control text did not read back exactly.")
@@ -766,9 +777,10 @@ def restore_screen_control_text(undo_data: Dict[str, Any]):
         return RollbackStepResult(False, "screen_control_text", "Screen-control text changed or could not be safely restored.", error="ROLLBACK_CONFLICT")
 
 
-def execute_set_control_text(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    tool = "set_control_text"
-    snap, element, _, error = _target(args, task_context, tool, [ElementSource.UIA])
+def execute_set_control_text(args: Dict[str, Any], task_context: Any = None, *,
+                             tool_name: str = "set_control_text", window_context=None) -> ToolResult:
+    tool = tool_name
+    snap, element, _, error = _target(args, task_context, tool, [ElementSource.UIA], window_context=window_context)
     if error:
         return error
     try:
@@ -782,6 +794,9 @@ def execute_set_control_text(args: Dict[str, Any], task_context: Any = None) -> 
         if before.text_value == args["screen_input"]:
             return _failure(tool, "Requested text is already present; no state change was made.", "NO_STATE_CHANGE")
         _cancel(task_context)
+        _, _, _, error = _target(args, task_context, tool, [ElementSource.UIA], window_context=window_context)
+        if error:
+            return error
         UiaAdapter().set_control_text(**selector, text=args["screen_input"], timeout_s=2.0, clear_existing=True)
         _cancel(task_context)
         after = UiaAdapter().find_control(**selector, timeout_s=2.0)
@@ -790,22 +805,28 @@ def execute_set_control_text(args: Dict[str, Any], task_context: Any = None) -> 
         return ToolResult.success(tool, {"snapshot_id": snap.snapshot_id, "target_ref": args["target_ref"],
             "text_length": len(args["screen_input"])}, "Set and read back text in the target UIA control." if ok
             else "Text was dispatched, but the requested value was not read back.", verified=ok, verify_detail=proof)
+    except AccessDeniedError as exc:
+        return _failure(tool, str(exc), "ACCESS_DENIED")
     except Exception:
         if getattr(task_context, "cancellation_token", None) is not None and task_context.cancellation_token.is_cancelled:
             raise TaskCancelledError("Task cancelled during UIA text update.")
         return _failure(tool, "UIA text update failed or its readback could not be verified.", "CONTROL_TEXT_SET_FAILED")
 
 
+def _matches_input_postcondition(args: Dict[str, Any], current: Any) -> bool:
+    checks = []
+    if args.get("expected_control_text") is not None:
+        checks.append(current.text_value == args["expected_control_text"])
+    if args.get("expected_enabled") is not None:
+        checks.append(current.is_enabled is args["expected_enabled"])
+    return bool(checks) and all(checks)
+
+
 def _postcondition(args: Dict[str, Any], snap: ScreenSnapshot, element: ScreenElement, tool: str) -> VerifyResult:
     selector = _control(snap, element, tool)
     try:
         current = UiaAdapter().find_control(**selector, timeout_s=2.0)
-        checks = []
-        if args.get("expected_control_text") is not None:
-            checks.append(current.text_value == args["expected_control_text"])
-        if args.get("expected_enabled") is not None:
-            checks.append(current.is_enabled is args["expected_enabled"])
-        ok = bool(checks) and all(checks)
+        ok = _matches_input_postcondition(args, current)
         return VerifyResult(ok=ok, method="uia", detail="The requested UIA postcondition was read back." if ok
             else "The UIA control did not match the requested postcondition.")
     except Exception:
@@ -818,6 +839,8 @@ def _input_action(args: Dict[str, Any], task_context: Any, tool: str) -> ToolRes
         return error
     try:
         selector, current = _find_live_control(snap, element, tool)
+        if _matches_input_postcondition(args, current):
+            return _failure(tool, "The expected input state is already present; no transition could be verified.", "UI_NO_EXPECTED_TRANSITION")
         if tool == "type_text":
             selector, current = _find_live_text_control(snap, element, tool)
             private = (getattr(task_context, "execution_binding", None) or {}).get("screen_text_private")
@@ -827,7 +850,13 @@ def _input_action(args: Dict[str, Any], task_context: Any, tool: str) -> ToolRes
                     or private.get("before_value") != current.text_value):
                 return _failure(tool, "Screen text pre-state could not be matched to the live control.", "UNDO_PRESTATE_MISMATCH")
         adapter = UiaAdapter()
+        _, _, _, error = _target(args, task_context, tool, [ElementSource.UIA])
+        if error:
+            return error
         adapter.focus_control(**selector, timeout_s=2.0)
+        _, _, _, error = _target(args, task_context, tool, [ElementSource.UIA])
+        if error:
+            return error
         _cancel(task_context)
         from pluma.adapters.input import InputAdapter
         input_adapter = InputAdapter()
@@ -848,6 +877,8 @@ def _input_action(args: Dict[str, Any], task_context: Any, tool: str) -> ToolRes
             f"Sent the requested {tool.replace('_', ' ')} input to the grounded UIA control." if proof.ok
             else "Input was sent, but the requested UIA postcondition was not observed.",
             verified=proof.ok, verify_detail=proof)
+    except AccessDeniedError as exc:
+        return _failure(tool, str(exc), "ACCESS_DENIED")
     except Exception:
         if getattr(task_context, "cancellation_token", None) is not None and task_context.cancellation_token.is_cancelled:
             raise TaskCancelledError("Task cancelled during stable input.")
@@ -875,6 +906,9 @@ def execute_click_window_relative(args: Dict[str, Any], task_context: Any = None
             and element.bounds.top <= args["y"] < element.bounds.bottom):
         return _failure(tool, "Window-relative coordinates must fall inside the grounded OCR target bounds.", "COORDINATES_OUT_OF_BOUNDS")
     try:
+        semantic = UiaSnapshotBuilder().capture(hwnd=info.hwnd)
+        if any(item.label.strip().casefold() == element.label.strip().casefold() for item in semantic.controls):
+            return _failure(tool, "The target label is exposed by UI Automation; use its semantic control reference.", "UIA_TARGET_AVAILABLE")
         from pluma.adapters.input import InputAdapter
         _cancel(task_context)
         # Re-run OCR against the exact target window immediately before input.
@@ -884,7 +918,11 @@ def execute_click_window_relative(args: Dict[str, Any], task_context: Any = None
         current = get_default_ocr_lifecycle_manager().run_ocr(
             image, cancellation_token=getattr(task_context, "cancellation_token", None))
         image = None
-        matches = [word for word in current.find_words(element.label, min_confidence=args["min_confidence"], exact_match=True)
+        all_matches = current.find_words(element.label,
+            min_confidence=max(ACTION_OCR_MIN_CONFIDENCE, args.get("min_confidence", ACTION_OCR_MIN_CONFIDENCE)), exact_match=True)
+        if len(all_matches) > 1:
+            return _failure(tool, "OCR found duplicate target labels; refusing a guessed coordinate.", "OCR_AMBIGUOUS")
+        matches = [word for word in all_matches
                    if _bounds_overlap(element.bounds, word.bounds) >= 0.5]
         if len(matches) != 1:
             return _failure(tool, "OCR target is absent, ambiguous or moved since its snapshot.", "OCR_TARGET_STALE")
@@ -918,6 +956,8 @@ def execute_click_window_relative(args: Dict[str, Any], task_context: Any = None
             "Clicked the fresh OCR-grounded window-relative target." if proof.ok
             else "Click was dispatched, but the expected OCR target transition was not observed.",
             verified=proof.ok, verify_detail=proof)
+    except AccessDeniedError as exc:
+        return _failure(tool, str(exc), "ACCESS_DENIED")
     except Exception:
         if getattr(task_context, "cancellation_token", None) is not None and task_context.cancellation_token.is_cancelled:
             raise TaskCancelledError("Task cancelled during window-relative input.")

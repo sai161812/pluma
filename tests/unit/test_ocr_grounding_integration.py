@@ -26,6 +26,13 @@ from pluma.tools.ui import (
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 
 
+@pytest.fixture(autouse=True)
+def no_semantic_target_for_ocr_failure_fixtures(monkeypatch):
+    """These OCR fixtures intentionally model text unavailable through UIA."""
+    monkeypatch.setattr("pluma.tools.ui.UiaSnapshotBuilder", lambda **kwargs:
+        SimpleNamespace(capture=lambda **kwargs: SimpleNamespace(controls=[])))
+
+
 class _SnapshotProbeArgs(BaseModel):
     snapshot_id: str
 
@@ -93,6 +100,8 @@ def _p12_e10_blocking_ocr_executor(args, task_context):
 
     with (
         patch("pluma.tools.ui.ActiveWindowContext", OwnedContext),
+        patch("pluma.tools.ui.UiaSnapshotBuilder", lambda **kwargs:
+            SimpleNamespace(capture=lambda **kwargs: SimpleNamespace(controls=[]))),
         patch.object(WindowCapture, "capture_window", lambda self, hwnd: b"BM_PRIVATE"),
         patch("pluma.perception.ocr_lifecycle.OcrLifecycleManager.run_ocr", block_during_ocr),
         patch.object(InputAdapter, "mouse_click", record_click),
@@ -348,12 +357,12 @@ def test_execute_click_ocr_text_ambiguous_duplicate_labels(
     mock_capture_window.return_value = b"BM_BYTES"
     mock_run_ocr.return_value = OcrResult(
         words=[
-            OcrWord(text="Delete Item 1", confidence=0.9, bounds=BoundingBox(left=10, top=10, right=50, bottom=30)),
-            OcrWord(text="Delete Item 2", confidence=0.9, bounds=BoundingBox(left=10, top=60, right=50, bottom=80)),
+            OcrWord(text="Delete", confidence=0.9, bounds=BoundingBox(left=10, top=10, right=50, bottom=30)),
+            OcrWord(text="Delete", confidence=0.9, bounds=BoundingBox(left=10, top=60, right=50, bottom=80)),
         ]
     )
 
-    # Search for "Delete" which matches both words -> should reject ambiguity
+    # Both exact labels match; the action must refuse to choose between them.
     result = execute_click_ocr_text({"text": "Delete", "hwnd": 500})
     assert not result.ok
     assert result.error == "OCR_AMBIGUOUS"
@@ -530,9 +539,34 @@ def test_stop_latched_during_ocr_prevents_the_following_click(monkeypatch: pytes
     assert clicks == []
 
 
-def test_stop_terminates_owned_worker_blocked_in_registered_ocr_tool(
+def _p12_blocking_uia_wait_executor(args, task_context):
+    from pluma.tools.screen_catalog import execute_find_control_wait
+    snapshot = task_context.snapshot_registry.resolve(args["snapshot_id"])
+    target = ActiveWindowInfo(hwnd=snapshot.hwnd, is_valid=True, pid=snapshot.pid,
+        process_name=snapshot.active_process, window_title=snapshot.active_window_title,
+        class_name=snapshot.window_class, rect=snapshot.window_rect, dpi_scale=snapshot.dpi_scale)
+    class OwnedContext:
+        def get_active_window(self):
+            return target
+        def get_process_creation_time_ns(self, pid):
+            return snapshot.process_creation_time_ns
+    class BlockedProvider:
+        def capture(self, **kwargs):
+            Path(os.environ["PLUMA_P12_E10_MARKER"]).write_text(str(os.getpid()), encoding="ascii")
+            time.sleep(60)
+            return snapshot
+    with patch("pluma.tools.screen_catalog.ActiveWindowContext", OwnedContext), patch(
+            "pluma.tools.screen_catalog.UiaSnapshotBuilder", BlockedProvider):
+        result = execute_find_control_wait(args, task_context)
+        Path(os.environ["PLUMA_P12_E10_MARKER"]).with_suffix(".click").write_text("late completion")
+        return result
+
+
+@pytest.mark.parametrize("screen_mode", ["ocr", "uia_wait"])
+def test_stop_terminates_owned_worker_blocked_in_registered_screen_tool(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    screen_mode: str,
 ) -> None:
     from pluma.core.task_supervisor import TaskSupervisor
     from pluma.tools.base import AdapterDispatcher, AdapterPriority
@@ -544,18 +578,32 @@ def test_stop_terminates_owned_worker_blocked_in_registered_ocr_tool(
     capsule = supervisor.create_task_capsule(request_id="p12-e10-stop-ocr")
     supervisor.start_task(capsule.task_id)
     registry = ToolRegistry()
+    # The executor has inert capture/input and cannot commit an external effect.
+    # This spec isolates STOP ownership; production policy is tested separately.
     spec = CLICK_OCR_TEXT_SPEC.model_copy(update={
+        "risk_class": RiskClass.LOW, "non_undoable": False, "undo_builder": None,
         "executor": AdapterDispatcher(
             "click_ocr_text",
             {AdapterPriority.OCR_GROUNDED: _p12_e10_blocking_ocr_executor},
         )
     })
+    tool_name = "click_ocr_text"
+    args = {"text": "Submit", "hwnd": 500}
+    if screen_mode == "uia_wait":
+        from pluma.tools.screen_catalog import WAIT_FOR_CONTROL_SPEC
+        from tests.unit.test_screen_control_catalog import _screen_context
+        fixture_context, snapshot, _, _ = _screen_context()
+        capsule.snapshot_registry = fixture_context.snapshot_registry
+        tool_name = "wait_for_control"
+        args = {"snapshot_id": snapshot.snapshot_id, "label": "Submit", "timeout_ms": 2500}
+        spec = WAIT_FOR_CONTROL_SPEC.model_copy(update={"timeout_s": 15.0,
+            "executor": AdapterDispatcher(tool_name, {AdapterPriority.UIA: _p12_blocking_uia_wait_executor})})
     registry.register(spec)
     pool = ThreadPoolExecutor(max_workers=1)
     future = pool.submit(
         registry.execute,
-        "click_ocr_text",
-        {"text": "Submit", "hwnd": 500},
+        tool_name,
+        args,
         capsule,
     )
     worker_pid = None

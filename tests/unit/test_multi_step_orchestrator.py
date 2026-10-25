@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import json
 from unittest.mock import MagicMock
 import pytest
 
@@ -21,6 +22,18 @@ from pluma.rollback.engine import RollbackEngine
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.tools.registry import ToolRegistry, get_default_tool_registry
 from pluma.verify.common import verify_noop
+
+
+def _owned_semantic_fixture(args, task_context):
+    from datetime import datetime, timedelta, timezone
+    from pluma.perception.element_refs import ScreenSnapshot, BoundingBox
+    now = datetime.now(timezone.utc)
+    snapshot = ScreenSnapshot(created_at=now, expires_at=now + timedelta(seconds=3),
+        active_process="fixture.exe", active_window_title="Fixture", hwnd=500, pid=1234,
+        process_creation_time_ns=123, window_class="FixtureWindow",
+        window_rect=BoundingBox(left=0, top=0, right=500, bottom=400), dpi_scale=1)
+    return ToolResult.success("inspect_window_controls", {"snapshot_id": snapshot.snapshot_id,
+        "raw_snapshot": snapshot.model_dump(mode="json")}, "Owned semantic fixture observation.", verified=True)
 
 
 def test_multi_step_successful_execution_chain() -> None:
@@ -279,17 +292,18 @@ def test_orchestrator_screen_route_e2e() -> None:
     assert res.final_state in ("SUCCEEDED", "FAILED")  # Fails gracefully if headless without active GUI
 
 
-def test_orchestrator_deep_route_e2e() -> None:
+def test_orchestrator_deep_route_e2e(tmp_path, monkeypatch) -> None:
     """End-to-end test of Orchestrator executing DEEP route request."""
     registry = get_default_tool_registry()
+    # The fixture emits a typed observation from a real owned worker; native
+    # provider correctness is covered by the Win32/WPF acceptance suite.
+    monkeypatch.setattr(registry.lookup("inspect_window_controls"), "executor", _owned_semantic_fixture)
 
     mock_backend = MagicMock()
-    mock_backend.generate.return_value = (
-        '{"route": "DEEP", "mode": "multi_step", "steps": ['
-        '{"tool": "create_folder", "arguments": {"path": "C:\\\\deep_test"}, "purpose": "Setup folder"},'
-        '{"tool": "list_files", "arguments": {"path": "C:\\\\deep_test"}, "purpose": "Verify directory"}'
-        ']}'
-    )
+    destination = str(tmp_path / "deep-fixture")
+    mock_backend.generate.return_value = json.dumps({"route": "DEEP", "mode": "multi_step", "steps": [
+        {"tool": "create_folder", "arguments": {"path": destination}, "purpose": "Setup folder"},
+        {"tool": "list_files", "arguments": {"path": destination}, "purpose": "Verify directory"}]})
 
     llm_manager = LlmLifecycleManager(custom_backend=mock_backend, idle_unload_seconds=1.0)
     supervisor = TaskSupervisor()

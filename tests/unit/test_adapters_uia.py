@@ -119,3 +119,30 @@ def test_uia_invoke_disabled_control() -> None:
         with patch.object(adapter, "_get_app_window", return_value=mock_win):
             with pytest.raises(ElementUnavailableError):
                 adapter.invoke_control(12345, name="DisabledBtn")
+
+
+def test_missing_invoke_pattern_does_not_guess_a_pixel_click():
+    adapter = UiaAdapter()
+    wrapper = MagicMock()
+    wrapper.is_enabled.return_value = True
+    wrapper.iface_invoke.Invoke.side_effect = RuntimeError("Pattern unsupported")
+    window = MagicMock()
+    window.child_window.return_value.wrapper_object.return_value = wrapper
+    with patch.object(adapter._win32, "is_window", return_value=True), patch.object(adapter, "_get_app_window", return_value=window):
+        with pytest.raises(AdapterError):
+            adapter.invoke_control(500, auto_id="field")
+    wrapper.click_input.assert_not_called()
+
+
+def test_native_password_property_and_value_pattern_keep_text_literal():
+    from types import SimpleNamespace
+    adapter = UiaAdapter()
+    wrapper = MagicMock()
+    wrapper.element_info.element.CurrentIsPassword = False
+    wrapper.iface_value.CurrentIsReadOnly = False
+    window = MagicMock()
+    window.child_window.return_value.wrapper_object.return_value = wrapper
+    with patch.object(adapter._win32, "is_window", return_value=True), patch.object(adapter, "_get_app_window", return_value=window):
+        assert adapter.set_control_text(500, "{ENTER}^a", auto_id="field")
+    wrapper.iface_value.SetValue.assert_called_once_with("{ENTER}^a")
+    wrapper.type_keys.assert_not_called()
