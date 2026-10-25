@@ -560,29 +560,42 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                 error_code="NO_ACTIVE_WINDOW",
             )
         target_hwnd = active_info.hwnd
-        window_rect = active_info.rect or BoundingBox(left=0, top=0, right=1920, bottom=1080)
+        target_info = active_info
     else:
         target_hwnd = hwnd
         if active_info.is_valid and active_info.hwnd == target_hwnd:
-            window_rect = active_info.rect or BoundingBox(left=0, top=0, right=1920, bottom=1080)
+            target_info = active_info
         else:
-            try:
-                from pluma.adapters.win32 import Win32Adapter
-                w32 = Win32Adapter()
-                if not w32.is_window(target_hwnd):
-                    return ToolResult(
-                        ok=False, tool="click_ocr_text", data=args,
-                        factual_message=f"Target window HWND {target_hwnd} does not exist.",
-                        verified=False, error="WINDOW_NOT_FOUND", error_code="WINDOW_NOT_FOUND",
-                    )
-                r = w32.get_window_rect(target_hwnd)
-                window_rect = BoundingBox(left=r.left, top=r.top, right=r.right, bottom=r.bottom)
-            except Exception as win_err:
+            target_info = context.get_window_info(target_hwnd)
+            if not target_info.is_valid or target_info.hwnd != target_hwnd:
                 return ToolResult(
                     ok=False, tool="click_ocr_text", data=args,
-                    factual_message=f"Failed to query target window HWND {target_hwnd}: {win_err}",
-                    verified=False, error=str(win_err), error_code="WINDOW_QUERY_FAILED",
+                    factual_message=f"Target window HWND {target_hwnd} does not exist or is inaccessible.",
+                    verified=False, error="WINDOW_NOT_FOUND", error_code="WINDOW_NOT_FOUND",
                 )
+
+    window_rect = target_info.rect
+    if not target_info.is_valid or target_info.hwnd != target_hwnd or window_rect.width <= 0 or window_rect.height <= 0:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"Target window HWND {target_hwnd} has no valid geometry for OCR grounding.",
+            verified=False, error="WINDOW_GEOMETRY_UNAVAILABLE", error_code="WINDOW_GEOMETRY_UNAVAILABLE",
+        )
+    captured_dpi_scale = target_info.dpi_scale
+    captured_pid = target_info.pid
+    if not captured_pid:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"Target window HWND {target_hwnd} has no process identity for OCR grounding.",
+            verified=False, error="PROCESS_IDENTITY_UNAVAILABLE", error_code="PROCESS_IDENTITY_UNAVAILABLE",
+        )
+    captured_creation_time_ns = context.get_process_creation_time_ns(captured_pid)
+    if captured_creation_time_ns is None:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"Process creation time for target HWND {target_hwnd} could not be verified.",
+            verified=False, error="PROCESS_IDENTITY_UNAVAILABLE", error_code="PROCESS_IDENTITY_UNAVAILABLE",
+        )
 
     # 2. Re-check snapshot freshness if snapshot_id provided
     if snapshot_id:
@@ -697,31 +710,55 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     center_x_window_rel = word_bounds.center_x + offset_left
     center_y_window_rel = word_bounds.center_y + offset_top
 
-    # Convert to desktop-absolute coordinates
-    desktop_abs_x = window_rect.left + center_x_window_rel
-    desktop_abs_y = window_rect.top + center_y_window_rel
-
-    # 7. Coordinate bounds validation
-    if (
-        desktop_abs_x < window_rect.left
-        or desktop_abs_x > window_rect.right
-        or desktop_abs_y < window_rect.top
-        or desktop_abs_y > window_rect.bottom
-    ):
-        return ToolResult(
-            ok=False, tool="click_ocr_text", data=args,
-            factual_message=f"Computed click coordinates ({desktop_abs_x}, {desktop_abs_y}) lie outside window bounds.",
-            verified=False, error="COORDINATES_OUT_OF_BOUNDS", error_code="COORDINATES_OUT_OF_BOUNDS",
-        )
-
-    # 7.5. Re-check target identity/freshness IMMEDIATELY before physical click
-    context = ActiveWindowContext()
+    # Refresh target identity/freshness before translating OCR bounds into
+    # desktop coordinates or dispatching coordinate fallback.
     current_active = context.get_active_window()
     if not current_active.is_valid or current_active.hwnd != target_hwnd:
         return ToolResult(
             ok=False, tool="click_ocr_text", data=args,
             factual_message=f"Pre-click safety abort: Active window changed right before click. Expected HWND {target_hwnd}.",
             verified=False, error="WINDOW_CHANGED_BEFORE_CLICK", error_code="WINDOW_CHANGED_BEFORE_CLICK",
+        )
+    if current_active.pid != captured_pid:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message="Pre-click safety abort: target window process changed after OCR capture.",
+            verified=False, error="PROCESS_MISMATCH", error_code="PROCESS_MISMATCH",
+        )
+    current_creation_time_ns = context.get_process_creation_time_ns(current_active.pid)
+    if current_creation_time_ns is None or current_creation_time_ns != captured_creation_time_ns:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message="Pre-click safety abort: target process identity changed after OCR capture.",
+            verified=False, error="PROCESS_IDENTITY_MISMATCH", error_code="PROCESS_IDENTITY_MISMATCH",
+        )
+
+    # OCR coordinates belong to the exact window geometry and DPI used for
+    # capture. Refresh both immediately before coordinate fallback; if either
+    # changed while OCR ran, the old target coordinates are stale and unsafe.
+    current_rect = current_active.rect
+    if not current_rect or current_rect.width <= 0 or current_rect.height <= 0:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message="Pre-click safety abort: current window geometry could not be verified.",
+            verified=False, error="WINDOW_GEOMETRY_UNAVAILABLE", error_code="WINDOW_GEOMETRY_UNAVAILABLE",
+        )
+    if (current_rect.left, current_rect.top, current_rect.right, current_rect.bottom) != (
+        window_rect.left, window_rect.top, window_rect.right, window_rect.bottom
+    ):
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message="Pre-click safety abort: target window moved or resized after OCR capture.",
+            verified=False, error="WINDOW_MOVED", error_code="WINDOW_MOVED",
+        )
+    if captured_dpi_scale and abs(current_active.dpi_scale - captured_dpi_scale) > 0.05:
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=(
+                "Pre-click safety abort: DPI changed after OCR capture "
+                f"({captured_dpi_scale} to {current_active.dpi_scale})."
+            ),
+            verified=False, error="DPI_MISMATCH", error_code="DPI_MISMATCH",
         )
 
     # If snapshot was provided, completely revalidate against it right before the click
@@ -752,6 +789,22 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                     factual_message=f"Pre-click safety abort: Snapshot freshness check failed: {fresh_err}",
                     verified=False, error=str(fresh_err), error_code="STALE_SNAPSHOT",
                 )
+
+    # Use the fresh, verified geometry for coordinate translation.
+    desktop_abs_x = current_rect.left + center_x_window_rel
+    desktop_abs_y = current_rect.top + center_y_window_rel
+
+    if (
+        desktop_abs_x < current_rect.left
+        or desktop_abs_x > current_rect.right
+        or desktop_abs_y < current_rect.top
+        or desktop_abs_y > current_rect.bottom
+    ):
+        return ToolResult(
+            ok=False, tool="click_ocr_text", data=args,
+            factual_message=f"Computed click coordinates ({desktop_abs_x}, {desktop_abs_y}) lie outside window bounds.",
+            verified=False, error="COORDINATES_OUT_OF_BOUNDS", error_code="COORDINATES_OUT_OF_BOUNDS",
+        )
 
     # 8. Click via InputAdapter
     try:

@@ -16,11 +16,12 @@ import psutil
 from pluma.adapters.uia import UiaAdapter
 from pluma.core.cancellation import CancellationToken
 from pluma.perception.context import ActiveWindowContext
-from pluma.perception.element_refs import ElementSource, ScreenSnapshot
+from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenSnapshot
+from pluma.perception.ocr_adapter import OcrResult, OcrWord
 from pluma.perception.snapshot_registry import SnapshotRegistry
 from pluma.tools.base import AdapterPriority
 from pluma.tools.registry import ToolRegistry
-from pluma.tools.ui import CLICK_ELEMENT_SPEC, INSPECT_ACTIVE_WINDOW_SPEC
+from pluma.tools.ui import CLICK_ELEMENT_SPEC, CLICK_OCR_TEXT_SPEC, INSPECT_ACTIVE_WINDOW_SPEC
 
 from tests.fixtures.desktop_thread import desktop_thread
 
@@ -364,5 +365,83 @@ def test_p12_e04_changed_owned_window_rejects_stale_reference_before_uia(
         assert original_submit.is_enabled is True
         assert len(duplicate_buttons) == 2
         assert all(item.is_enabled for item in duplicate_buttons)
+    finally:
+        registry.close()
+
+
+@desktop_thread
+def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
+    owned_uia_window,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hwnd = owned_uia_window["hwnd"]
+    native_context = ActiveWindowContext()
+
+    class OwnedWindowContext:
+        def get_active_window(self):
+            return native_context.get_window_info(hwnd)
+
+        def get_window_info(self, target_hwnd: int):
+            return native_context.get_window_info(target_hwnd)
+
+        def get_process_creation_time_ns(self, pid: int):
+            return native_context.get_process_creation_time_ns(pid)
+
+    monkeypatch.setattr("pluma.tools.ui.ActiveWindowContext", lambda: OwnedWindowContext())
+    initial = native_context.get_window_info(hwnd)
+    assert initial.is_valid and initial.rect.width > 0 and initial.rect.height > 0
+
+    import ctypes as c
+    from ctypes import wintypes as w
+
+    user = c.WinDLL("user32", use_last_error=True)
+    user.SetWindowPos.argtypes = [w.HWND, w.HWND, c.c_int, c.c_int, c.c_int, c.c_int, w.UINT]
+    user.SetWindowPos.restype = w.BOOL
+
+    def move_owned_window_during_ocr(_: object, image_bytes: bytes) -> OcrResult:
+        assert image_bytes == b"BM_BYTES"
+        moved = user.SetWindowPos(
+            w.HWND(hwnd), None,
+            initial.rect.left + 32, initial.rect.top + 20,
+            initial.rect.width, initial.rect.height,
+            0x0004 | 0x0010,  # SWP_NOZORDER | SWP_NOACTIVATE
+        )
+        assert moved, c.WinError(c.get_last_error())
+        return OcrResult(words=[
+            OcrWord(
+                text="Submit",
+                confidence=0.99,
+                bounds=BoundingBox(left=24, top=28, right=174, bottom=64),
+            )
+        ])
+
+    monkeypatch.setattr("pluma.perception.capture.WindowCapture.capture_window", lambda self, target: b"BM_BYTES")
+    monkeypatch.setattr(
+        "pluma.perception.ocr_lifecycle.OcrLifecycleManager.run_ocr",
+        move_owned_window_during_ocr,
+    )
+    clicks: list[tuple[int, int]] = []
+    monkeypatch.setattr("pluma.adapters.input.InputAdapter.mouse_click", lambda self, x, y: clicks.append((x, y)))
+
+    registry = ToolRegistry()
+    registry.register(CLICK_OCR_TEXT_SPEC)
+    context = SimpleNamespace(
+        task_id="p12-e05-native",
+        cancellation_token=CancellationToken(),
+        undo_stack=[],
+    )
+    try:
+        result = registry.execute(
+            "click_ocr_text",
+            {"text": "Submit", "hwnd": hwnd},
+            task_context=context,
+        )
+
+        assert not result.ok
+        assert not result.verified
+        assert result.error_code == "WINDOW_MOVED"
+        assert clicks == []
+        fresh = native_context.get_window_info(hwnd)
+        assert fresh.rect != initial.rect
     finally:
         registry.close()

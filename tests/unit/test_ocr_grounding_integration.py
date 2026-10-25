@@ -40,7 +40,9 @@ def test_execute_click_ocr_text_success(
         window_title="Custom Dashboard",
         rect=BoundingBox(left=100, top=100, right=900, bottom=700),
         is_valid=True,
+        pid=12345,
     )
+    mock_context.get_process_creation_time_ns.return_value = 1_000_000_000
     mock_context_cls.return_value = mock_context
 
     mock_capture_window.return_value = b"BM_BYTES"
@@ -71,6 +73,109 @@ def test_execute_click_ocr_text_success(
     mock_mouse_click.assert_called_once_with(350, 420)
 
 
+@pytest.mark.parametrize(
+    ("changed_info", "current_creation_time_ns", "expected_error"),
+    [
+        (
+            ActiveWindowInfo(
+                hwnd=500,
+                process_name="custom_app.exe",
+                window_title="Custom Dashboard",
+                rect=BoundingBox(left=120, top=100, right=920, bottom=700),
+                dpi_scale=1.0,
+                is_valid=True,
+                pid=12345,
+            ),
+            1_000_000_000,
+            "WINDOW_MOVED",
+        ),
+        (
+            ActiveWindowInfo(
+                hwnd=500,
+                process_name="custom_app.exe",
+                window_title="Custom Dashboard",
+                rect=BoundingBox(left=100, top=100, right=900, bottom=700),
+                dpi_scale=1.5,
+                is_valid=True,
+                pid=12345,
+            ),
+            1_000_000_000,
+            "DPI_MISMATCH",
+        ),
+        (
+            ActiveWindowInfo(
+                hwnd=500,
+                process_name="other_app.exe",
+                window_title="Custom Dashboard",
+                rect=BoundingBox(left=100, top=100, right=900, bottom=700),
+                dpi_scale=1.0,
+                is_valid=True,
+                pid=54321,
+            ),
+            1_000_000_000,
+            "PROCESS_MISMATCH",
+        ),
+        (
+            ActiveWindowInfo(
+                hwnd=500,
+                process_name="custom_app.exe",
+                window_title="Custom Dashboard",
+                rect=BoundingBox(left=100, top=100, right=900, bottom=700),
+                dpi_scale=1.0,
+                is_valid=True,
+                pid=12345,
+            ),
+            2_000_000_000,
+            "PROCESS_IDENTITY_MISMATCH",
+        ),
+    ],
+)
+@patch("pluma.tools.ui.ActiveWindowContext")
+@patch("pluma.perception.capture.WindowCapture.capture_window")
+@patch("pluma.perception.ocr_lifecycle.OcrLifecycleManager.run_ocr")
+@patch("pluma.adapters.input.InputAdapter.mouse_click")
+def test_execute_click_ocr_text_refreshes_geometry_and_dpi_before_coordinate_fallback(
+    mock_mouse_click: MagicMock,
+    mock_run_ocr: MagicMock,
+    mock_capture_window: MagicMock,
+    mock_context_cls: MagicMock,
+    changed_info: ActiveWindowInfo,
+    current_creation_time_ns: int,
+    expected_error: str,
+) -> None:
+    original_info = ActiveWindowInfo(
+        hwnd=500,
+        process_name="custom_app.exe",
+        window_title="Custom Dashboard",
+        rect=BoundingBox(left=100, top=100, right=900, bottom=700),
+        dpi_scale=1.0,
+        is_valid=True,
+        pid=12345,
+    )
+    mock_context = MagicMock()
+    mock_context.get_active_window.side_effect = [original_info, changed_info]
+    mock_context.get_process_creation_time_ns.side_effect = [1_000_000_000, current_creation_time_ns]
+    mock_context_cls.return_value = mock_context
+    mock_capture_window.return_value = b"BM_BYTES"
+    mock_run_ocr.return_value = OcrResult(
+        words=[
+            OcrWord(
+                text="Export Report",
+                confidence=0.96,
+                bounds=BoundingBox(left=200, top=300, right=300, bottom=340),
+            )
+        ]
+    )
+
+    result = execute_click_ocr_text({"text": "Export Report"})
+
+    assert not result.ok
+    assert not result.verified
+    assert result.error_code == expected_error
+    assert mock_context.get_active_window.call_count == 2
+    mock_mouse_click.assert_not_called()
+
+
 @patch("pluma.tools.ui.ActiveWindowContext")
 @patch("pluma.perception.capture.WindowCapture.capture_window")
 @patch("pluma.perception.ocr_lifecycle.OcrLifecycleManager.run_ocr")
@@ -81,8 +186,9 @@ def test_execute_click_ocr_text_no_match(
 ) -> None:
     mock_context = MagicMock()
     mock_context.get_active_window.return_value = ActiveWindowInfo(
-        hwnd=500, is_valid=True, rect=BoundingBox(left=0, top=0, right=800, bottom=600)
+        hwnd=500, is_valid=True, pid=12345, rect=BoundingBox(left=0, top=0, right=800, bottom=600)
     )
+    mock_context.get_process_creation_time_ns.return_value = 1_000_000_000
     mock_context_cls.return_value = mock_context
 
     mock_capture_window.return_value = b"BM_BYTES"
@@ -104,8 +210,9 @@ def test_execute_click_ocr_text_ambiguous_duplicate_labels(
 ) -> None:
     mock_context = MagicMock()
     mock_context.get_active_window.return_value = ActiveWindowInfo(
-        hwnd=500, is_valid=True, rect=BoundingBox(left=0, top=0, right=800, bottom=600)
+        hwnd=500, is_valid=True, pid=12345, rect=BoundingBox(left=0, top=0, right=800, bottom=600)
     )
+    mock_context.get_process_creation_time_ns.return_value = 1_000_000_000
     mock_context_cls.return_value = mock_context
 
     mock_capture_window.return_value = b"BM_BYTES"
@@ -138,7 +245,9 @@ def test_execute_click_ocr_text_with_region_offset(
         hwnd=500,
         rect=BoundingBox(left=100, top=100, right=900, bottom=700),
         is_valid=True,
+        pid=12345,
     )
+    mock_context.get_process_creation_time_ns.return_value = 1_000_000_000
     mock_context_cls.return_value = mock_context
 
     mock_capture_region.return_value = b"BM_BYTES"

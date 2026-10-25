@@ -1,6 +1,15 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P12 bounded slice E-03/E-04 (E63)
+## Current checkpoint: 2026-10-25, P12 bounded slice E-05 (E64)
+
+**E-05 geometry/DPI refresh passes on `p12-preparation`; P12 remains open.** [E64](docs/completion/p12_e05.md) records unit movement/DPI/process-identity checks and registered-tool refusal after an owned native window moves during OCR. The executor reads fresh process identity, geometry and DPI after OCR and before coordinate conversion, refuses stale targets, and does not dispatch input. The DPI drift path is covered deterministically; no system display scaling was changed.
+
+- Focused UI/perception/dispatch regressions passed **91 tests in 18.20s**, and the additional older OCR/perception regression modules passed **14 tests in 4.38s**, zero failures/errors/skips across both runs. Combined native Win32/WPF acceptance passed **5 tests in 5.28s**, zero failures/errors/skips. The native E-05 test moved only its owned fixture window during OCR and asserted no click. Exact commands, environment and source hashes are in E64.
+- E-01/E-02 remain evidenced by [E62](docs/completion/p12_e01_e02.md); E-03/E-04 remain evidenced by [E63](docs/completion/p12_e03_e04.md). E-06 through E-10 and the remaining 16 screen-control catalog names remain P12 work. This checkpoint does not claim full P12 or product completion.
+
+Next safe bounded task, only when instructed: E-06 targeted OCR capture/recognition scope. Keep work on `p12-preparation`; do not merge or start later P12 slices automatically.
+
+## Previous checkpoint: 2026-10-25, P12 bounded slice E-03/E-04 (E63)
 
 **E-03 and E-04 now pass on `p12-preparation`; P12 remains open.** [E63](docs/completion/p12_e03_e04.md) records owned-window results, focused regressions and source hashes. Registry grounding refuses duplicate same-source labels before an action worker starts. The native Win32 fixture exposed two real UIA Submit controls with the same label; the registered click tool refused the target, and independent UIA reads confirmed both controls remained enabled. A second registered-tool case changed the task's active context from one owned HWND to another and rejected the original reference before constructing the UIA action adapter.
 
