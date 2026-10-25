@@ -6,7 +6,7 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-10-19):** the dark native UI and read-only dashboard status connection are implemented. A bounded backend audit reproduced nine open safety/lifecycle findings. Action entry stays disabled while these are repaired; full backend, wiring and release acceptance remain open. Start with [the completion prompts](PLUMA_COMPLETION_PROMPTS.md), [the current audit](PLUMA.UI/PLUMA.UI/docs/backend_wiring_audit.md) and [the live handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-10-26):** P00-P11 is merged into main; P12 semantic screen control and targeted OCR are implemented and audited on `p12-preparation`. [E69](docs/completion/p12_final_audit.md) records the gate and current test results. Text action entry and later integration/release acceptance remain open. P13 has not started; its first bounded planner-subset issue is recorded in [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
@@ -24,7 +24,7 @@ flowchart TD
     C -->|FAST| D[Deterministic plan<br/>LLM remains cold]
     C -->|SMART| P[Wake local LLM planner]
     C -->|SCREEN| E[Capture UIA snapshot]
-    C -->|DEEP| F[Capture UIA + OCR snapshot]
+    C -->|DEEP| F[Inspect registered UIA context]
 
     E --> P
     F --> P
@@ -63,7 +63,7 @@ That keeps model inference out of the deterministic FAST path and avoids loading
 
 ### UIA is the primary screen-grounding path
 
-The current SCREEN and DEEP routes do not use perception in exactly the same way.
+SCREEN and DEEP begin with the same registered semantic observation path.
 
 - **SCREEN and DEEP:** obtain a UIA snapshot through the registered, owned inspection tool and register it to the task before planning. Failed or denied inspection stops the route. OCR remains cold until a later target-scoped tool needs it.
 - **Semantic UI actions:** `click_element` and `type_into_element` require a snapshot ID and grounded target reference. Before acting, they re-check window identity, PID/process identity, DPI, and geometry.

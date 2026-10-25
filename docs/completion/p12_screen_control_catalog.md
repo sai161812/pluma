@@ -97,6 +97,11 @@ regressions passed in the focused suite.
 
 ## P12 acceptance status
 
+[E69](p12_final_audit.md) is the current implementation audit and closure. It
+adds post-focus guards, factual failure handling, policy/undo protections for
+aliases, UIA-first OCR with exact high-confidence matches, and registered routed
+perception. The native fixture suite now also verifies Value readback and undo.
+
 E-01 through E-10 and the exact 16-name screen catalog have passing evidence
 across E62-E68. The production PaddleOCR/ONNX backend is implemented and
 exercised in [E67](p12_ocr_runtime.md); E68 closes the final current-build WPF

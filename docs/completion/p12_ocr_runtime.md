@@ -26,7 +26,9 @@ quality corpus or a multi-scale accuracy/latency benchmark.
   rectangle fallback). Misaligned arrays, invalid confidence or invalid
   coordinates fail instead of becoming an empty/partial success.
 - Image bytes are decoded from `BytesIO`, passed to inference as an in-memory
-  RGB array, and never passed to a result-save API.
+  RGB array at this checkpoint, and never passed to a result-save API.
+  [E69](p12_final_audit.md) subsequently corrects ndarray channel order to BGR
+  and verifies 288/288 exact generated UI-text lines.
 - `pyproject.toml` adds a separately installable, pinned `ocr` extra. The
   default dependency set and `all` extra remain lightweight; `README.md`
   documents the optional install command.
@@ -90,6 +92,9 @@ window-state refusal code). The P12-scoped run above includes that file's
 changed as part of P12.
 
 ## P12 acceptance status
+
+[E69](p12_final_audit.md) is the current implementation audit and closure; it
+repairs the later-discovered guard failures and records the final tests.
 
 E-02 through E-10 have current owned-fixture evidence in E62-E66. E-01 passes
 for Win32 in E66 and for the current-build WPF fixture in [E68](p12_wpf_retest.md).

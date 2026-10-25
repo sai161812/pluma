@@ -1,5 +1,7 @@
 # P12 current-build WPF E-01 retest (E68)
 
+The later [E69 implementation audit](p12_final_audit.md) supersedes this record's overall milestone-closure claim. This record proves the WPF E-01 retest.
+
 ## Outcome
 
 The current-build WPF semantic-inspection acceptance passes. The owned WPF
