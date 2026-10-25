@@ -1,9 +1,13 @@
 # E70 — P13 first bounded packet: file/browser tool subset
 
-Date: 2026-10-26  
-Status: this packet is complete; P13 remains open.  
-Branch: `p12-preparation`  
-Implementation commit: `601fcb500badd87a415ddc322e17407f0cd6897f`  
+Date: 2026-10-26
+
+Status: this packet is complete; P13 remains open.
+
+Branch: `p12-preparation`
+
+Implementation commit: `601fcb500badd87a415ddc322e17407f0cd6897f`
+
 Recovery point before this packet: `5c7c260a12c12849cfa7c44f61694f9d41482004`
 
 ## Scope and prerequisite
