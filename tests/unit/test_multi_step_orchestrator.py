@@ -57,8 +57,8 @@ def test_multi_step_successful_execution_chain() -> None:
         route=RouteMode.SMART,
         mode=PlanMode.MULTI_STEP,
         steps=[
-            ToolCall(tool="step1_tool", arguments={"val": 1}, purpose="Run step 1"),
-            ToolCall(tool="step2_tool", arguments={"val": 2}, purpose="Run step 2"),
+            ToolCall(tool="step1_tool", arguments={"val": 1}, purpose="PLANNER_ONLY narrative one"),
+            ToolCall(tool="step2_tool", arguments={"val": 2}, purpose="PLANNER_ONLY narrative two"),
         ],
     )
 
@@ -70,6 +70,7 @@ def test_multi_step_successful_execution_chain() -> None:
     assert len(step2_called) == 1
     assert "Step 1 complete" in res.factual_summary
     assert "Step 2 complete" in res.factual_summary
+    assert "PLANNER_ONLY" not in res.factual_summary
 
 
 def test_multi_step_stop_latch_aborts_immediately() -> None:

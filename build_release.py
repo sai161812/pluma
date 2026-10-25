@@ -108,10 +108,11 @@ def create_release_zip(wheel_path: Path) -> Path:
         for doc_name in [
             "README.md",
             "pyproject.toml",
-            "PHASE_13_5_COMPLETION_REPORT.md",
-            "PHASE_13_6_COMPLETION_REPORT.md",
-            "PHASE_13_7_COMPLETION_REPORT.md",
-            "FINAL_RELEASE_REPORT.md",
+            "docs/history/README.md",
+            "docs/history/PHASE_13_5_COMPLETION_REPORT.md",
+            "docs/history/PHASE_13_6_COMPLETION_REPORT.md",
+            "docs/history/PHASE_13_7_COMPLETION_REPORT.md",
+            "docs/history/FINAL_RELEASE_REPORT.md",
             "pluma.spec",
         ]:
             doc_path = ROOT_DIR / doc_name

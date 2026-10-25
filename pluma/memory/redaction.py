@@ -26,6 +26,7 @@ _SENSITIVE_KEY_SUBSTRINGS = (
     "auth", "bearer", "credential", "private_key", "privkey",
     "access_key", "session_token", "jwt", "client_secret",
     "clipboard", "audio_path", "raw_audio",
+    "command_output",
 )
 
 
@@ -107,6 +108,8 @@ def sanitise_args_for_ledger(tool_name: str, args: Dict[str, Any]) -> str:
     to the actions table. The tool name is included in the output for context.
     """
     sanitised = redact_dict(args, deep=True)
+    if 'clipboard' in tool_name:
+        sanitised = {key: REDACTED_TOKEN for key in args}
     return json.dumps({"tool": tool_name, "args": sanitised}, ensure_ascii=False)
 
 

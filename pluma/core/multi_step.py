@@ -54,7 +54,11 @@ class MultiStepExecutionResult:
     duration_ms: float = 0.0
     factual_summary: str = ""
     rollback_performed: bool = False
-    rollback_success: bool = True
+    rollback_success: Optional[bool] = None
+    completion_verified: bool = True
+    terminal_persisted: Optional[bool] = None
+    has_residual: bool = False
+    cleanup_evidence: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class MultiStepOrchestrator:
@@ -72,10 +76,14 @@ class MultiStepOrchestrator:
     ) -> None:
         self.registry = registry
         self.supervisor = supervisor
+        binder = getattr(self.registry, "bind_stop_service", None)
+        if callable(binder):
+            binder(self.supervisor.request_stop)
         self.ledger = ledger
         self.rollback_engine = rollback_engine or RollbackEngine(
             ledger=ledger,
         )
+        self.supervisor.bind_execution(ledger, self.rollback_engine)
         self.planner = planner
         self.policy_engine = policy_engine
         self.max_replans = min(max_replans, HARD_CAP_MAX_REPLANS)
@@ -181,14 +189,18 @@ class MultiStepOrchestrator:
                 )
 
                 # 2. Execute Step through ToolRegistry (with policy evaluation)
-                tool_result = self.registry.execute(
-                    tool_name=tool_call.tool,
-                    arguments=tool_call.arguments,
-                    task_context=capsule,
-                    ledger=self.ledger,
-                    step_index=step_idx,
-                    policy_engine=self.policy_engine,
-                )
+                try:
+                    tool_result = self.registry.execute(
+                        tool_name=tool_call.tool,
+                        arguments=tool_call.arguments,
+                        task_context=capsule,
+                        ledger=self.ledger,
+                        step_index=step_idx,
+                        policy_engine=self.policy_engine,
+                    )
+                except TaskCancelledError:
+                    return self._handle_stop(capsule, executed_records, start_time,
+                                             replan_count, "Stopped before executor admission")
                 step_duration_ms = (time.perf_counter() - step_start) * 1000.0
 
                 record = StepExecutionRecord(
@@ -201,6 +213,16 @@ class MultiStepOrchestrator:
                     replan_iteration=replan_count,
                 )
                 executed_records.append(record)
+
+                # An unverified history commit must not retry an already
+                # applied effect. Preserve its journal and end this capsule.
+                with capsule.work_lock:
+                    uncertain_effect = any(item.get("action") == "pending_mutation" for item in capsule.undo_stack)
+                if (tool_result.error_code in ("LEDGER_WRITE_FAILED", "MUTATION_JOURNAL_FAILED")
+                        or (not tool_result.ok and uncertain_effect)
+                        or (tool_call.tool == "run_routine" and (not tool_result.ok or not tool_result.verified))):
+                    return self._handle_failure(capsule, executed_records, start_time,
+                        replan_count, tool_result.error or "Execution history could not be verified.")
 
                 prior_results_for_replan.append({
                     "step_index": step_idx,
@@ -245,17 +267,18 @@ class MultiStepOrchestrator:
                         reason="Stopped by user request",
                     )
                 total_duration_ms = (time.perf_counter() - start_time) * 1000.0
-                self.supervisor.transition(task_id, TaskState.SUCCEEDED)
+                self.supervisor.finalize_task(task_id, TaskState.SUCCEEDED)
                 summary_msgs = [r.result.factual_message for r in executed_records if r.result.factual_message]
                 summary = " ".join(summary_msgs) or "Task completed successfully."
                 return MultiStepExecutionResult(
                     task_id=task_id,
-                    final_state=TaskState.SUCCEEDED,
+                    **self._result_details(capsule),
+                    final_state=capsule.state,
                     steps_executed=executed_records,
                     replan_count=replan_count,
                     error=None,
                     duration_ms=round(total_duration_ms, 1),
-                    factual_summary=summary,
+                    factual_summary=summary if capsule.state == TaskState.SUCCEEDED else capsule.terminal_summary(),
                 )
 
             # 4. Handle Replanning
@@ -315,6 +338,14 @@ class MultiStepOrchestrator:
                 error_msg=overall_error or "Step execution failed",
             )
 
+    @staticmethod
+    def _result_details(capsule: TaskCapsule) -> Dict[str, Any]:
+        details = capsule.outcome_details()
+        return {key: details[key] for key in (
+            "completion_verified", "terminal_persisted", "has_residual", "cleanup_evidence",
+            "rollback_performed", "rollback_success",
+        )}
+
     # ------------------------------------------------------------------
     # Abort / Failure / Stop Handlers
     # ------------------------------------------------------------------
@@ -329,31 +360,29 @@ class MultiStepOrchestrator:
     ) -> MultiStepExecutionResult:
         """Handle STOP triggered during execution: reverse rollback & terminal transition."""
         task_id = capsule.task_id
-        self.supervisor.transition(task_id, TaskState.STOPPING)
-        self.supervisor.transition(task_id, TaskState.ROLLING_BACK)
-
-        rb_success = True
-        try:
-            rb_result = self.rollback_engine.rollback_task(task_id, memory_undo_stack=capsule.undo_stack)
-            rb_success = rb_result.all_ok
-        except Exception as exc:
-            logger.error("Task %s: Rollback failed during stop: %s", task_id, exc)
-            rb_success = False
-
-        final_state = TaskState.STOPPED if rb_success else TaskState.STOPPED_WITH_RESIDUAL
-        self.supervisor.transition(task_id, final_state)
+        from pluma.core.cancellation import StopReason
+        timed_out = capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
+        if timed_out:
+            reason = "Tool execution timed out."
+            self.supervisor.fail_task_with_rollback(task_id)
+        elif capsule.cancellation_token.reason in (None, StopReason.INTERNAL_ERROR):
+            reason = "Owned execution failed."
+            self.supervisor.fail_task_with_rollback(task_id)
+        else:
+            self.supervisor.stop_task(task_id)
+        self.supervisor.finalize_task(task_id, TaskState.STOPPED)
+        final_state = capsule.state
 
         total_duration_ms = (time.perf_counter() - start_time) * 1000.0
         return MultiStepExecutionResult(
             task_id=task_id,
+            **self._result_details(capsule),
             final_state=final_state,
             steps_executed=executed_records,
             replan_count=replan_count,
             error=reason,
             duration_ms=round(total_duration_ms, 1),
-            factual_summary=f"Task stopped by user. Rollback {'completed' if rb_success else 'partial'}.",
-            rollback_performed=True,
-            rollback_success=rb_success,
+            factual_summary=capsule.terminal_summary(),
         )
 
     def _handle_failure(
@@ -366,27 +395,18 @@ class MultiStepOrchestrator:
     ) -> MultiStepExecutionResult:
         """Handle execution failure: reverse rollback of reversible prior steps & transition to FAILED."""
         task_id = capsule.task_id
-        self.supervisor.transition(task_id, TaskState.STOPPING)
-        self.supervisor.transition(task_id, TaskState.ROLLING_BACK)
-
-        rb_success = True
-        try:
-            rb_result = self.rollback_engine.rollback_task(task_id, memory_undo_stack=capsule.undo_stack)
-            rb_success = rb_result.all_ok
-        except Exception as exc:
-            logger.error("Task %s: Rollback failed during error recovery: %s", task_id, exc)
-            rb_success = False
-
-        self.supervisor.transition(task_id, TaskState.FAILED)
+        self.supervisor.fail_task_with_rollback(task_id)
+        details = capsule.outcome_details()
+        rb_success = details["rollback_success"]
         total_duration_ms = (time.perf_counter() - start_time) * 1000.0
         return MultiStepExecutionResult(
             task_id=task_id,
-            final_state=TaskState.FAILED,
+            **self._result_details(capsule),
+            final_state=capsule.state,
             steps_executed=executed_records,
             replan_count=replan_count,
             error=error_msg,
             duration_ms=round(total_duration_ms, 1),
-            factual_summary=f"Task failed: {error_msg}. Rollback {'completed' if rb_success else 'partial'}.",
-            rollback_performed=True,
-            rollback_success=rb_success,
+            factual_summary=(f"Task failed: {error_msg}. Rollback {'completed' if rb_success else 'partial'}."
+                             if capsule.state == TaskState.FAILED else capsule.terminal_summary()),
         )

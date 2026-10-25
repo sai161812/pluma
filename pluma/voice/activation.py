@@ -167,5 +167,7 @@ class VoiceActivation:
             self.trigger_release()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=0.5)
+            if self._thread.is_alive():
+                raise RuntimeError("Voice activation owner remains active.")
             self._thread = None
         logger.info("VoiceActivation stopped.")

@@ -1,242 +1,74 @@
+"""Policy-side allowlist for one-operation Windows elevation."""
+
 from __future__ import annotations
 
-import logging
-import os
-import re
-import subprocess
-import sys
-import time
-
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel
 
 from pluma.tools.base import ToolResult
 
-logger = logging.getLogger(__name__)
-
 DEFAULT_ELEVATION_TIMEOUT_S = 15.0
-
-_SAFE_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9_\-\. ]{1,128}$")
-_SHELL_INJECTION_PATTERN = re.compile(r"[;&|`$<>]")
 
 
 class ElevationOpType(str, Enum):
-    """Allowlisted single-operation privilege elevation operation types."""
-    RESTART_SERVICE = "RESTART_SERVICE"
-    START_SERVICE = "START_SERVICE"
-    STOP_SERVICE = "STOP_SERVICE"
+    """The sole V1 operation currently authorized for one-operation UAC."""
+
     FLUSH_DNS = "FLUSH_DNS"
-    INSTALL_MSI = "INSTALL_MSI"
 
 
 class ElevationOperation(BaseModel):
-    """Typed, allowlisted elevation operation schema (extra='forbid')."""
-    model_config = {"extra": "forbid"}
+    """Closed, argument-free operation contract; planner values cannot reach UAC."""
+
+    model_config = {"extra": "forbid", "frozen": True}
 
     op_type: ElevationOpType
-    service_name: Optional[str] = Field(default=None, description="Alphanumeric Windows service name.")
-    package_path: Optional[str] = Field(default=None, description="Path to MSI package.")
-
-    @field_validator("service_name")
-    @classmethod
-    def validate_service_name(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            clean = v.strip()
-            if not _SAFE_IDENTIFIER_PATTERN.match(clean) or _SHELL_INJECTION_PATTERN.search(clean):
-                raise ValueError(f"Invalid service name: '{v}'. Must be safe alphanumeric identifier.")
-        return v
-
-    @field_validator("package_path")
-    @classmethod
-    def validate_package_path(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            clean = v.strip()
-            if not os.path.isabs(clean):
-                raise ValueError(f"MSI package path must be an absolute path: '{v}'")
-            if not clean.lower().endswith(".msi"):
-                raise ValueError(f"Package path must end with .msi: '{v}'")
-            if not os.path.exists(clean) and os.environ.get("PLUMA_TEST_MODE") != "1":
-                raise ValueError(f"MSI package file not found at '{v}'")
-        return v
 
 
 class ElevationBroker:
-    """Brokers single-operation elevated subprocess execution without elevating the resident core."""
+    """Dispatch one static operation without elevating the resident process."""
 
-    def __init__(self, timeout_s: float = DEFAULT_ELEVATION_TIMEOUT_S) -> None:
+    def __init__(
+        self,
+        timeout_s: float = DEFAULT_ELEVATION_TIMEOUT_S,
+        *,
+        runner: Optional[Callable[..., ToolResult]] = None,
+    ) -> None:
+        if not 0 < timeout_s <= 30:
+            raise ValueError("Elevation timeout must be greater than zero and at most 30 seconds.")
         self.timeout_s = timeout_s
+        self._runner = runner
 
     def execute_operation(
         self,
         operation: ElevationOperation,
+        *,
+        task_id: Optional[str],
+        task_context: Any,
         timeout_s: Optional[float] = None,
-        task_id: Optional[str] = None,
     ) -> ToolResult:
-        """Execute a typed, allowlisted elevated operation."""
-        if operation.op_type == ElevationOpType.RESTART_SERVICE:
-            if not operation.service_name:
-                return ToolResult.failure("elevate", "service_name is required for RESTART_SERVICE.")
-            script = f"Restart-Service -Name '{operation.service_name}' -Force"
-        elif operation.op_type == ElevationOpType.START_SERVICE:
-            if not operation.service_name:
-                return ToolResult.failure("elevate", "service_name is required for START_SERVICE.")
-            script = f"Start-Service -Name '{operation.service_name}'"
-        elif operation.op_type == ElevationOpType.STOP_SERVICE:
-            if not operation.service_name:
-                return ToolResult.failure("elevate", "service_name is required for STOP_SERVICE.")
-            script = f"Stop-Service -Name '{operation.service_name}' -Force"
-        elif operation.op_type == ElevationOpType.FLUSH_DNS:
-            script = "Clear-DnsClientCache"
-        elif operation.op_type == ElevationOpType.INSTALL_MSI:
-            if not operation.package_path:
-                return ToolResult.failure("elevate", "package_path is required for INSTALL_MSI.")
-            script = f"$p = Start-Process msiexec.exe -ArgumentList '/i \"{operation.package_path}\" /qn' -PassThru -Wait; exit $p.ExitCode"
-        else:
-            return ToolResult.failure("elevate", f"Unsupported elevation operation: {operation.op_type}")
+        """Route the typed singleton operation to its native UAC adapter."""
+        if not isinstance(operation, ElevationOperation):
+            return ToolResult.failure("flush_dns_cache", "Elevation operation schema was rejected.", "ELEVATION_SCHEMA_INVALID")
+        if operation.op_type != ElevationOpType.FLUSH_DNS:
+            return ToolResult.failure("flush_dns_cache", "Elevation operation is not allowlisted.", "ELEVATION_OPERATION_DENIED")
+        if not isinstance(task_id, str) or not task_id or task_context is None:
+            return ToolResult.failure("flush_dns_cache", "An owned task is required for elevation.", "ELEVATION_OWNERSHIP_REQUIRED")
 
-        return self._execute_elevated_script(script, timeout_s=timeout_s, task_id=task_id)
-
-    def _execute_elevated_script(
-        self,
-        script: str,
-        timeout_s: Optional[float] = None,
-        task_id: Optional[str] = None,
-    ) -> ToolResult:
-        """Execute a single PowerShell script elevated via UAC ('runas') and wait for completion.
-
-        The resident process remains unelevated. An isolated temporary subprocess is launched,
-        executed to completion, and terminated.
-        """
-
-        effective_timeout = timeout_s or self.timeout_s
-        logger.info(
-            "Task %s: Dispatching isolated elevated operation (timeout: %.1fs)...",
-            task_id or "unknown", effective_timeout,
-        )
-
-        t0 = time.perf_counter()
-
-        if sys.platform != "win32" or os.environ.get("PLUMA_TEST_MODE") == "1":
-            # Emulated mock execution for non-Windows / CI testing
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            return ToolResult(
-                ok=True,
-                tool="elevate",
-                factual_message="Elevated script executed successfully (test mode).",
-                duration_ms=duration_ms,
-                adapter_used="elevation_broker_mock",
-            )
-
-
-
+        runner = self._runner
+        if runner is None:
+            from pluma.adapters.elevation import run_dns_cache_flush
+            runner = run_dns_cache_flush
+        budget = min(self.timeout_s, float(timeout_s)) if timeout_s is not None else self.timeout_s
+        if not 0 < budget <= 30:
+            return ToolResult.failure("flush_dns_cache", "Elevation timeout was invalid.", "ELEVATION_TIMEOUT_INVALID")
         try:
-            import tempfile
-            from pathlib import Path
-            import ctypes
-            from ctypes import wintypes
-
-            class SHELLEXECUTEINFOW(ctypes.Structure):
-                _fields_ = [
-                    ("cbSize", wintypes.DWORD),
-                    ("fMask", wintypes.ULONG),
-                    ("hwnd", wintypes.HWND),
-                    ("lpVerb", wintypes.LPCWSTR),
-                    ("lpFile", wintypes.LPCWSTR),
-                    ("lpParameters", wintypes.LPCWSTR),
-                    ("lpDirectory", wintypes.LPCWSTR),
-                    ("nShow", ctypes.c_int),
-                    ("hInstApp", wintypes.HINSTANCE),
-                    ("lpIDList", ctypes.c_void_p),
-                    ("lpClass", wintypes.LPCWSTR),
-                    ("hkeyClass", wintypes.HKEY),
-                    ("dwHotKey", wintypes.DWORD),
-                    ("DUMMYUNIONNAME", wintypes.HANDLE),
-                    ("hProcess", wintypes.HANDLE)
-                ]
-
-            SEE_MASK_NOCLOSEPROCESS = 0x00000040
-            SEE_MASK_FLAG_NO_UI = 0x00000400
-            SW_HIDE = 0
-
-            shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".ps1", prefix="pluma_elev_")
-            try:
-                with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
-                    f.write(script)
-
-                sei = SHELLEXECUTEINFOW()
-                sei.cbSize = ctypes.sizeof(SHELLEXECUTEINFOW)
-                sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI
-                sei.lpVerb = "runas"
-                sei.lpFile = "powershell.exe"
-                sei.lpParameters = f"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{temp_path}\""
-                sei.nShow = SW_HIDE
-
-                if not shell32.ShellExecuteExW(ctypes.byref(sei)):
-                    err = ctypes.get_last_error()
-                    duration_ms = (time.perf_counter() - t0) * 1000.0
-                    return ToolResult.failure(
-                        tool="elevate",
-                        error=f"ShellExecuteExW failed with error {err}",
-                        duration_ms=duration_ms,
-                        adapter_used="elevation_broker",
-                    )
-
-                hProcess = sei.hProcess
-                if hProcess:
-                    # Wait for process
-                    timeout_ms = int(effective_timeout * 1000)
-                    WAIT_TIMEOUT = 0x00000102
-                    res = kernel32.WaitForSingleObject(hProcess, timeout_ms)
-                    if res == WAIT_TIMEOUT:
-                        kernel32.TerminateProcess(hProcess, 1)
-                        kernel32.CloseHandle(hProcess)
-                        duration_ms = (time.perf_counter() - t0) * 1000.0
-                        return ToolResult.failure(
-                            tool="elevate",
-                            error=f"Elevated operation timed out after {effective_timeout:.1f}s.",
-                            duration_ms=duration_ms,
-                            adapter_used="elevation_broker",
-                        )
-                    
-                    exit_code = wintypes.DWORD()
-                    kernel32.GetExitCodeProcess(hProcess, ctypes.byref(exit_code))
-                    kernel32.CloseHandle(hProcess)
-
-                    duration_ms = (time.perf_counter() - t0) * 1000.0
-                    if exit_code.value != 0:
-                        return ToolResult.failure(
-                            tool="elevate",
-                            error=f"Elevated execution failed with exit code {exit_code.value}",
-                            duration_ms=duration_ms,
-                            adapter_used="elevation_broker",
-                        )
-
-                duration_ms = (time.perf_counter() - t0) * 1000.0
-                return ToolResult(
-                    ok=True,
-                    tool="elevate",
-                    factual_message="Single-operation elevated command executed successfully.",
-                    duration_ms=duration_ms,
-                    adapter_used="elevation_broker",
-                )
-            finally:
-                if os.path.exists(temp_path):
-                    try:
-                        os.unlink(temp_path)
-                    except Exception:
-                        pass
-
-        except Exception as exc:
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            logger.error("Elevation broker failed: %s", exc)
-            return ToolResult.failure(
-                tool="elevate",
-                error=f"Elevation broker error: {exc}",
-                duration_ms=duration_ms,
-                adapter_used="elevation_broker",
-            )
+            result = runner(task_id=task_id, timeout_s=budget, task_context=task_context)
+        except Exception:
+            return ToolResult.failure("flush_dns_cache", "The elevation adapter failed; the effect may be uncertain.",
+                "ELEVATION_ADAPTER_FAILED")
+        if not isinstance(result, ToolResult) or result.tool != "flush_dns_cache":
+            return ToolResult.failure("flush_dns_cache", "The elevation adapter returned an invalid result.",
+                "ELEVATION_RESULT_INVALID")
+        return result

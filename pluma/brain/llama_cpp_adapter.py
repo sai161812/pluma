@@ -224,10 +224,12 @@ class LlamaCppAdapter(PlannerInterface):
         start_t = time.perf_counter()
         try:
             import concurrent.futures
-            from pluma.tools.registry import _GLOBAL_TOOL_EXECUTOR
 
-            future = _GLOBAL_TOOL_EXECUTOR.submit(
+            future = self._registry.submit_owned(
                 active_backend.generate,
+                command_class="planner_inference",
+                task_id=getattr(cancellation_token, "task_id", None),
+                _task_context=getattr(cancellation_token, "_capsule", lambda: None)(),
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 max_tokens=512,

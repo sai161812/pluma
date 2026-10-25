@@ -48,6 +48,44 @@ class RollbackEngine:
         if not self._query and self._ledger and getattr(self._ledger, "_db", None):
             self._query = ActivityQuery(self._ledger._db)
         self._recipes = recipes or RollbackRecipes()
+        self.task_resolver = None
+        self.clipboard_inverse = None
+
+    def _apply(self, task_id, action, state):
+        if action == 'pending_mutation' and state.get('tool') in ('open_url', 'open_file', 'focus_tab'):
+            capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+            pending = dict(state['pre_state'])
+            if 'launch' in pending and capsule is not None:
+                matches = [item for item in capsule.owned_resources
+                    if item.metadata.get('persistent_launch_id') == pending['launch']['launch_id']]
+                if len(matches) == 1:
+                    pending.update(pid=matches[0].metadata['pid'], creation_time=matches[0].metadata['creation_time'])
+            from pluma.rollback.owned import apply_owned
+            return apply_owned(pending['action'], pending, capsule) if capsule is not None else self._recipes.apply(pending['action'], pending)
+        if self.clipboard_inverse is not None and (action == 'clipboard_restore' or
+                action == 'pending_mutation' and state.get('tool') in
+                ('clipboard_set', 'set_clipboard_text', 'clipboard_clear', 'clear_clipboard')):
+            capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+            return self.clipboard_inverse(state if action == 'clipboard_restore' else state['pre_state'], capsule)
+        if action == 'pending_mutation' and state.get('tool') in ('open_app', 'open_terminal'):
+            capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+            pending = state['pre_state']
+            resources = [item for item in capsule.owned_resources if item.ownership.value == 'PLUMA_CREATED'
+                and item.metadata.get('persistent_launch_id') == pending.get('launch_id')
+                and item.metadata.get('command_class') == state['tool']] if capsule is not None else []
+            if len(resources) == 1 and type(resources[0].metadata.get('creation_time')) is int:
+                from pluma.rollback.owned import apply_owned
+                metadata = resources[0].metadata
+                return apply_owned('app_launch', dict(pending, pid=metadata['pid'], creation_time=metadata['creation_time']), capsule)
+        owned_inverse = action in ('safe_delete', 'set_volume', 'mute', 'unmute', 'set_default_audio_device',
+            'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'window_state', 'window_focus', 'app_launch',
+            'browser_tab', 'browser_focus', 'browser_tab_pending') or (
+                action == 'pending_mutation' and state.get('tool') == 'safe_delete')
+        capsule = self.task_resolver(task_id) if self.task_resolver is not None else None
+        if owned_inverse and capsule is not None:
+            from pluma.rollback.owned import apply_owned
+            return apply_owned(action, state, capsule)
+        return self._recipes.apply(action, state)
 
     @property
     def recipes(self) -> RollbackRecipes:
@@ -75,7 +113,10 @@ class RollbackEngine:
             try:
                 db_records = self._query.available_undo_records_for_task(task_id)
             except Exception as e:
-                logger.error("Failed to query available undo records for task %s: %s", task_id, e)
+                logger.error("Failed to query undo records for task %s", task_id)
+                failed += 1
+                step_results.append(RollbackStepResult(ok=False, action="undo_query",
+                    message="Undo records could not be read.", error="UNDO_QUERY_FAILED"))
 
         if db_records:
             # Reverse order is already guaranteed by ORDER BY step_index DESC
@@ -91,7 +132,18 @@ class RollbackEngine:
                 tool_name = rec.get("tool", "")
                 action_name = undo_data.get("action", tool_name)
 
-                step_res = self._recipes.apply(action_name, undo_data)
+                claim_id = None
+                if self._ledger and action_id is not None:
+                    try:
+                        claim_id = self._ledger.claim_undo(action_id, task_id, raw_json)
+                    except Exception:
+                        claim_id = None
+                    if claim_id is None:
+                        failed += 1
+                        step_results.append(RollbackStepResult(ok=False, action=action_name,
+                            message="Undo is already claimed or its state could not be verified.", error="UNDO_CLAIM_UNVERIFIED"))
+                        continue
+                step_res = self._apply(task_id, action_name, undo_data)
 
                 # Atomically record rollback result and consume undo record in one transaction
                 if self._ledger and action_id is not None:
@@ -100,6 +152,7 @@ class RollbackEngine:
                             action_row_id=action_id,
                             ok=step_res.ok,
                             result=step_res.data or {"message": step_res.message, "error": step_res.error},
+                            claim_id=claim_id,
                         )
                     except Exception as e:
                         logger.error("Failed to atomically record rollback for action %s: %s", action_id, e)
@@ -114,6 +167,13 @@ class RollbackEngine:
                 step_results.append(step_res)
                 if step_res.ok:
                     succeeded += 1
+                    # Remove only the exact pre-state whose verified rollback
+                    # and ledger consumption succeeded. Never discard a conflict.
+                    if memory_undo_stack is not None:
+                        for item in list(memory_undo_stack):
+                            if (item == undo_data or (item.get("action") == "pending_mutation"
+                                    and item.get("action_row_id") == action_id)):
+                                memory_undo_stack.remove(item)
                 else:
                     failed += 1
 
@@ -126,7 +186,7 @@ class RollbackEngine:
             for item in list(reversed(memory_undo_stack)):
                 attempted += 1
                 action_name = item.get("action", "")
-                step_res = self._recipes.apply(action_name, item)
+                step_res = self._apply(task_id, action_name, item)
                 step_results.append(step_res)
                 if step_res.ok:
                     succeeded += 1
@@ -142,7 +202,9 @@ class RollbackEngine:
         all_ok = (failed == 0)
         has_residual = (failed > 0)
 
-        if attempted == 0:
+        if attempted == 0 and has_residual:
+            summary = "Rollback records could not be verified. Residual effects are unknown."
+        elif attempted == 0:
             summary = "No reversible actions to rollback."
         elif all_ok:
             summary = f"Rollback: successfully restored {succeeded} action{'s' if succeeded != 1 else ''}."

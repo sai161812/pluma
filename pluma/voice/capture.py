@@ -9,12 +9,21 @@ from __future__ import annotations
 
 import logging
 import threading
+from functools import wraps
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 MAX_RECORDING_SECONDS: float = 30.0
+
+
+def _serialized(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self._operation:
+            return method(self, *args, **kwargs)
+    return run
 
 
 class AudioCapture:
@@ -32,6 +41,8 @@ class AudioCapture:
         self.max_buffer_bytes = int(sample_rate * channels * 2 * max_duration_s)
         self._buffer = bytearray()
         self._lock = threading.Lock()
+        self._operation = threading.RLock()
+        self._generation = 0
         self._stream: Any = None
         self._is_recording = False
 
@@ -41,12 +52,22 @@ class AudioCapture:
         with self._lock:
             return self._is_recording
 
+    @property
+    def capture_closed(self) -> bool:
+        with self._lock:
+            return self._stream is None and not self._is_recording and not self._buffer
+
+    @_serialized
     def start(self) -> None:
         """Start microphone capture stream."""
         with self._lock:
             if self._is_recording:
                 return
+            if self._stream is not None:
+                raise RuntimeError("Previous capture stream remains owned.")
             self._buffer.clear()
+            self._generation += 1
+            generation = self._generation
             self._is_recording = True
 
         try:
@@ -57,7 +78,7 @@ class AudioCapture:
                 if status:
                     logger.debug("Audio capture status: %s", status)
                 with self._lock:
-                    if self._is_recording:
+                    if self._is_recording and generation == self._generation:
                         if len(self._buffer) >= self.max_buffer_bytes:
                             # Reached maximum duration limit — auto-cap buffer
                             return
@@ -79,12 +100,11 @@ class AudioCapture:
             )
             self._stream.start()
             logger.debug("Microphone capture started (%d Hz, mono).", self.sample_rate)
-        except ImportError:
-            logger.warning("sounddevice is not installed. AudioCapture running in buffer-only mode.")
         except Exception as exc:
-            logger.error("Failed to start sounddevice audio stream: %s", exc)
+            logger.warning("Microphone capture could not start.")
             with self._lock:
                 self._is_recording = False
+                self._buffer.clear()
             raise
 
     def feed(self, pcm_chunk: bytes) -> None:
@@ -95,29 +115,40 @@ class AudioCapture:
                 if remaining > 0:
                     self._buffer.extend(pcm_chunk[:remaining])
 
-    def stop_and_get(self, cancellation_token: Optional[Any] = None) -> bytes:
-        """Stop capture stream, return raw PCM bytes, and clear memory buffer."""
+    @_serialized
+    def cancel(self) -> None:
+        """Discard transient audio and retain the stream on failed closure."""
         with self._lock:
             self._is_recording = False
+            self._buffer.clear()
+            stream = self._stream
+        if stream is not None:
+            stream.abort()
+            stream.close()
+            if stream.closed is not True:
+                raise RuntimeError("Capture stream closure is unverified.")
+            with self._lock:
+                if self._stream is stream:
+                    self._stream = None
 
-        if self._stream is not None:
-            try:
-                self._stream.stop()
-                self._stream.close()
-            except Exception as exc:
-                logger.debug("Error closing audio stream: %s", exc)
-            finally:
-                self._stream = None
-
-        if cancellation_token and hasattr(cancellation_token, "is_cancelled") and cancellation_token.is_cancelled:
-            logger.debug("Capture stopped due to cancellation; discarding buffer.")
+    @_serialized
+    def stop_and_get(self, cancellation_token: Optional[Any] = None) -> bytes:
+        """Return transient PCM only after positive stream-close readback."""
+        with self._lock:
+            self._is_recording = False
+            stream = self._stream
+        try:
+            if stream is not None:
+                stream.stop()
+                stream.close()
+                if stream.closed is not True:
+                    raise RuntimeError("Capture stream closure is unverified.")
+                with self._lock:
+                    self._stream = None
+            with self._lock:
+                captured = (b"" if cancellation_token is not None and cancellation_token.is_cancelled
+                            else bytes(self._buffer))
+                return captured
+        finally:
             with self._lock:
                 self._buffer.clear()
-            return b""
-
-        with self._lock:
-            captured = bytes(self._buffer)
-            self._buffer.clear()
-
-        logger.debug("Captured %d bytes of PCM audio.", len(captured))
-        return captured

@@ -40,3 +40,7 @@ PLUMA.UI/**/obj/
 
 # Explicit local preview/audit exports
 /output/
+
+# Rebuilt release bundles and private owner reference notes
+/release/
+/docs/local/

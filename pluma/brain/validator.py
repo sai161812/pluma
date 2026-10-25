@@ -11,10 +11,10 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from pluma.brain.schemas import MAX_PLAN_STEPS_HARD_CAP, Plan, ToolCall
-from pluma.tools.registry import ToolRegistry, UnknownToolError
+from pluma.tools.registry import ToolArgumentError, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -75,25 +75,15 @@ class PlanValidator:
                     f"Step {idx + 1}: Tool '{tool_name}' is not in permitted_tool_specs for this planning call."
                 )
 
-            tool_spec = target_registry.lookup(tool_name)
-            schema = tool_spec.args_schema
-
-            # Validate arguments against Pydantic schema
-            if isinstance(schema, type) and issubclass(schema, BaseModel):
-                try:
-                    schema.model_validate(step.arguments)
-                except ValidationError as val_err:
-                    raise PlanValidationError(
-                        f"Step {idx + 1} ({tool_name}): Argument schema validation failed: {val_err}"
-                    ) from val_err
-            elif isinstance(schema, dict):
-                # Dict schema fallback check if required keys present
-                required_keys = schema.get("required", [])
-                for req in required_keys:
-                    if req not in step.arguments:
-                        raise PlanValidationError(
-                            f"Step {idx + 1} ({tool_name}): Missing required argument '{req}'."
-                        )
+            # Use the execution boundary's complete registered schema contract.
+            # Never replace JSON Schema with a required-key-only fallback, or
+            # include Pydantic input values in a planner-facing failure.
+            try:
+                target_registry.validate_call(tool_name, step.arguments)
+            except ToolArgumentError:
+                raise PlanValidationError(
+                    f"Step {idx + 1} ({tool_name}): Argument schema validation failed."
+                ) from None
 
         return plan
 

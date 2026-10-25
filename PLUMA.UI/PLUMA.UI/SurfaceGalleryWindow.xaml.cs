@@ -93,7 +93,8 @@ namespace PLUMA.UI
             FrameworkElement preview;
             switch (id)
             {
-                case 1: preview = new DashboardPage(); break;
+                case 1:
+                    var dashboard = new DashboardPage(); dashboard.ShowPreviewData(); preview = dashboard; break;
                 case 2: preview = new SettingsPage(); break;
                 case 3: preview = new HistoryPage(); break;
                 case 4: preview = new TaskRunningPopup(); break;

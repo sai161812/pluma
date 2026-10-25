@@ -23,6 +23,7 @@ if sys.platform == "win32":
 
     # Constants
     JobObjectExtendedLimitInformation = 9
+    JobObjectBasicAccountingInformation = 1
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
     PROCESS_ALL_ACCESS = 0x1FFFFF
 
@@ -34,6 +35,14 @@ if sys.platform == "win32":
             ("ReadTransferCount", ctypes.c_ulonglong),
             ("WriteTransferCount", ctypes.c_ulonglong),
             ("OtherTransferCount", ctypes.c_ulonglong),
+        ]
+
+    class JOBOBJECT_BASIC_ACCOUNTING_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("TotalUserTime", ctypes.c_longlong), ("TotalKernelTime", ctypes.c_longlong),
+            ("ThisPeriodTotalUserTime", ctypes.c_longlong), ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
+            ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+            ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD),
         ]
 
     class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
@@ -76,16 +85,43 @@ if sys.platform == "win32":
     kernel32.TerminateJobObject.restype = wintypes.BOOL
     kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
 
+    kernel32.QueryInformationJobObject.restype = wintypes.BOOL
+    kernel32.QueryInformationJobObject.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD, wintypes.LPVOID,
+    ]
+
     kernel32.OpenProcess.restype = wintypes.HANDLE
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
 
     kernel32.CloseHandle.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.GetProcessTimes.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+    ]
+
 
 class JobObjectError(Exception):
     """Raised when a Job Object operation fails."""
     pass
+
+
+def owned_process_creation_time(process: Any) -> int:
+    """Read identity through a Windows multiprocessing Process's owned handle.
+
+    A PID lookup could identify a replacement after an early startup crash.
+    Windows multiprocessing's sentinel is the original process handle.
+    """
+    if sys.platform != "win32":
+        raise JobObjectError("Owned worker identity requires Windows.")
+    creation, exited, kernel, user = (wintypes.FILETIME() for _ in range(4))
+    if not kernel32.GetProcessTimes(process.sentinel, ctypes.byref(creation),
+                                   ctypes.byref(exited), ctypes.byref(kernel), ctypes.byref(user)):
+        raise JobObjectError("Owned worker creation identity could not be read.")
+    return (creation.dwHighDateTime << 32) | creation.dwLowDateTime
 
 
 class WindowsJobObject:
@@ -125,6 +161,26 @@ class WindowsJobObject:
                 self.close()
                 raise JobObjectError(f"SetInformationJobObject failed with error {err}")
 
+    def allow_persistence(self) -> None:
+        """Clear kill-on-close only after the owner verified intentional promotion."""
+        if sys.platform != 'win32' or self._handle is None:
+            raise JobObjectError('A live native Job is required for promotion.')
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        if not kernel32.QueryInformationJobObject(self._handle, JobObjectExtendedLimitInformation,
+                ctypes.byref(info), ctypes.sizeof(info), None):
+            raise JobObjectError('Job promotion pre-state is unavailable.')
+        desired = info.BasicLimitInformation.LimitFlags & ~JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        info.BasicLimitInformation.LimitFlags = desired
+        if not kernel32.SetInformationJobObject(self._handle, JobObjectExtendedLimitInformation,
+                ctypes.byref(info), ctypes.sizeof(info)):
+            raise JobObjectError('Job promotion was refused.')
+        readback = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        if (not kernel32.QueryInformationJobObject(self._handle, JobObjectExtendedLimitInformation,
+                ctypes.byref(readback), ctypes.sizeof(readback), None)
+                or readback.BasicLimitInformation.LimitFlags != desired):
+            raise JobObjectError('Job promotion did not read back.')
+        self._kill_on_close = False
+
     def assign_process(self, pid_or_popen: int | subprocess.Popen) -> None:
         """Assign a process to this Job Object.
 
@@ -132,6 +188,13 @@ class WindowsJobObject:
             pid_or_popen: The process ID or a subprocess.Popen instance.
         """
         if self._handle is None:
+            return
+
+        if hasattr(pid_or_popen, "sentinel"):
+            # multiprocessing retains the original handle even if its PID exits
+            # or is reused. Never reopen that PID for worker containment.
+            if not kernel32.AssignProcessToJobObject(self._handle, pid_or_popen.sentinel):
+                raise JobObjectError("Owned-handle Job Object assignment failed.")
             return
 
         if hasattr(pid_or_popen, "pid"):
@@ -145,14 +208,22 @@ class WindowsJobObject:
             raise JobObjectError(f"OpenProcess failed for PID {pid} with error {err}")
 
         try:
-            result = kernel32.AssignProcessToJobObject(self._handle, h_process)
-            if not result:
-                err = ctypes.get_last_error()
-                raise JobObjectError(
-                    f"AssignProcessToJobObject failed for PID {pid} with error {err}"
-                )
+            self.assign_handle(h_process, process_id=pid)
         finally:
             kernel32.CloseHandle(h_process)
+
+    def assign_handle(self, process_handle: Any, *, process_id: Optional[int] = None) -> None:
+        """Assign through an already-owned exact process handle.
+
+        This avoids reopening a newly created process by PID when its creator
+        already has a native handle, as in the one-operation elevation broker.
+        """
+        if self._handle is None:
+            return
+        if not kernel32.AssignProcessToJobObject(self._handle, process_handle):
+            err = ctypes.get_last_error()
+            suffix = f" for PID {process_id}" if process_id is not None else ""
+            raise JobObjectError(f"AssignProcessToJobObject failed{suffix} with error {err}")
 
     def terminate(self, exit_code: int = 1) -> None:
         """Terminate all processes in the job object immediately."""
@@ -162,7 +233,22 @@ class WindowsJobObject:
         result = kernel32.TerminateJobObject(self._handle, exit_code)
         if not result:
             err = ctypes.get_last_error()
-            logger.debug("TerminateJobObject returned false (error %s)", err)
+            raise JobObjectError(f"TerminateJobObject failed with error {err}")
+
+    def active_process_count(self) -> int:
+        """Positive live-kernel readback, including descendants after root exit."""
+        if self._handle is None:
+            raise JobObjectError("Closed job cannot establish process absence.")
+        info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
+        if not kernel32.QueryInformationJobObject(
+            self._handle, JobObjectBasicAccountingInformation, ctypes.byref(info), ctypes.sizeof(info), None,
+        ):
+            raise JobObjectError("Job process readback failed.")
+        return int(info.ActiveProcesses)
+
+    @property
+    def is_closed(self) -> bool:
+        return self._handle is None
 
     def close(self) -> None:
         """Close the Job Object handle.
@@ -171,7 +257,8 @@ class WindowsJobObject:
         processes that are still running.
         """
         if self._handle is not None:
-            kernel32.CloseHandle(self._handle)
+            if not kernel32.CloseHandle(self._handle):
+                raise JobObjectError("Job handle closure failed.")
             self._handle = None
 
     def __enter__(self) -> "WindowsJobObject":

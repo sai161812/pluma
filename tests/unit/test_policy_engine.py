@@ -164,16 +164,29 @@ def test_policy_engine_integrated_in_registry_execution() -> None:
 
 
 def test_elevation_broker_execution() -> None:
-    """Verify that ElevationBroker runs isolated typed operations."""
+    """Verify typed elevation dispatch without opening the native UAC path."""
     from pluma.policy.elevation_broker import ElevationOpType, ElevationOperation
-    broker = ElevationBroker(timeout_s=5.0)
+    observed = {}
+
+    def inert_runner(**kwargs):
+        observed.update(kwargs)
+        return ToolResult.success("flush_dns_cache",
+            data={"operation": "FLUSH_DNS", "exit_code": 0, "process_exit_observed": True,
+                "cache_entry_count": 0, "cache_readback_observed": True},
+            factual_message="Inert test runner result.", adapter_used="one_operation_uac")
+
+    task_context = object()
+    broker = ElevationBroker(timeout_s=5.0, runner=inert_runner)
 
     res = broker.execute_operation(
         operation=ElevationOperation(op_type=ElevationOpType.FLUSH_DNS),
         task_id="task-elev-test",
+        task_context=task_context,
+        timeout_s=5.0,
     )
 
     assert isinstance(res, ToolResult)
-    assert res.tool == "elevate"
-    assert res.adapter_used in ("elevation_broker", "elevation_broker_mock")
+    assert res.tool == "flush_dns_cache"
+    assert res.ok and res.adapter_used == "one_operation_uac"
+    assert observed == {"task_id": "task-elev-test", "timeout_s": 5.0, "task_context": task_context}
 

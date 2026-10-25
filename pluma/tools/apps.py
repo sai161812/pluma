@@ -1,8 +1,8 @@
 """pluma.tools.apps — Application lifecycle and management tools.
 
 Spec §11, §12, §14: Application tools as registered ToolSpecs.
-Processes spawned by open_app are assigned to the Task's Windows Job Object
-and tracked in the OwnershipRegistry.
+Applications launch from an owned parent service into a separately owned Job,
+so successful task cleanup can preserve the explicitly opened instance.
 
 Boundary: No heavy automation libraries imported at module level.
 """
@@ -17,6 +17,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from pluma.core.task_supervisor import ResourceOwnership
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
+from pluma.tools.app_observations import ListAppWindowsArgs, execute_list, execute_status, verify_list, verify_status
+from pluma.tools.processes import ProcessTargetArgs
+from pluma.tools.app_lifecycle import CloseAppArgs, capture_close
+from pluma.tools import app_launch as launch
+from pluma.tools.app_launch import OpenAppArgs
+from pluma.tools import window_focus as focus
+from pluma.tools.window_focus import FocusAppArgs
+from functools import partial
 from pluma.verify.common import (
     verify_noop,
     verify_process_closed,
@@ -25,518 +33,54 @@ from pluma.verify.common import (
 )
 
 
-_FORBIDDEN_EXECUTABLES = frozenset({
-    # Shells and interpreters
-    "cmd", "cmd.exe",
-    "powershell", "powershell.exe",
-    "pwsh", "pwsh.exe",
-    "bash", "bash.exe",
-    "sh", "sh.exe",
-    "wscript", "wscript.exe",
-    "cscript", "cscript.exe",
-    "python", "python.exe",
-    "pythonw", "pythonw.exe",
-    "mshta", "mshta.exe",
-    "rundll32", "rundll32.exe",
-    "regsvr32", "regsvr32.exe",
-    "certutil", "certutil.exe",
-    "bitsadmin", "bitsadmin.exe",
-    # Registry and scheduled task manipulation
-    "reg", "reg.exe",
-    "schtasks", "schtasks.exe",
-    "at", "at.exe",
-    # Service control and network configuration
-    "sc", "sc.exe",
-    "net", "net.exe",
-    "net1", "net1.exe",
-    "netsh", "netsh.exe",
-    # Process and ACL manipulation
-    "taskkill", "taskkill.exe",
-    "icacls", "icacls.exe",
-    "takeown", "takeown.exe",
-    "cacls", "cacls.exe",
-    # WMI - arbitrary system queries/exec
-    "wmic", "wmic.exe",
-    # Download utilities used in LOLBins
-    "curl", "curl.exe",
-    "wget", "wget.exe",
-    "ftp", "ftp.exe",
-    # Additional dangerous utilities
-    "forfiles", "forfiles.exe",
-    "msiexec", "msiexec.exe",
-    "regasm", "regasm.exe",
-    "regsvcs", "regsvcs.exe",
-    "installutil", "installutil.exe",
-    "cmstp", "cmstp.exe",
-    "msbuild", "msbuild.exe",
-    "xwizard", "xwizard.exe",
-})
-
-# Controlled allowlist of named application aliases.
-# Only these aliases are explicitly blessed. Non-alias names are still permitted
-# (shutil.which resolves them), but a WARNING is emitted so operators can audit.
-_ALLOWED_APP_ALIASES: Dict[str, str] = {
-    # Productivity and utilities
-    "notepad": "notepad.exe",
-    "calculator": "calc.exe",
-    "calc": "calc.exe",
-    "paint": "mspaint.exe",
-    "mspaint": "mspaint.exe",
-    "wordpad": "wordpad.exe",
-    "explorer": "explorer.exe",
-    "snippingtool": "SnippingTool.exe",
-    "charmap": "charmap.exe",
-    "taskmgr": "taskmgr.exe",
-    # Media
-    "wmplayer": "wmplayer.exe",
-    # Browsers
-    "msedge": "msedge.exe",
-    "chrome": "chrome.exe",
-    "firefox": "firefox.exe",
-    # Office (not scripted)
-    "winword": "winword.exe",
-    "excel": "excel.exe",
-    "powerpnt": "powerpnt.exe",
-}
-
-_SHELL_METACHAR_PATTERN = re.compile(r"[&|;><`$\n\r]")
-_DANGEROUS_ARG_PATTERNS = [
-    re.compile(r"(?i)^-(encodedcommand|enc|e|command|c|exec)$"),
-    re.compile(r"(?i)^/[ck]$"),
-]
-
-
-# ---------------------------------------------------------------------------
-# Argument Schemas
-# ---------------------------------------------------------------------------
-
-class OpenAppArgs(BaseModel):
-    """Arguments for open_app."""
-    model_config = {"extra": "forbid"}
-
-    app_name: str = Field(min_length=1, description="Application name or executable path (e.g. 'notepad', 'calc').")
-    arguments: List[str] = Field(default_factory=list, description="Command line arguments.")
-    working_dir: Optional[str] = Field(default=None, description="Working directory for the process.")
-
-    @field_validator("app_name")
-    @classmethod
-    def validate_app_name(cls, v: str) -> str:
-        clean = v.strip().lower()
-        base = clean.split("/")[-1].split("\\")[-1]
-        if base in _FORBIDDEN_EXECUTABLES or clean in _FORBIDDEN_EXECUTABLES:
-            raise ValueError(f"Execution of shell/interpreter '{v}' is forbidden through open_app.")
-        if _SHELL_METACHAR_PATTERN.search(v):
-            raise ValueError(f"Shell metacharacters are forbidden in app_name: '{v}'")
-        return v
-
-    @field_validator("arguments")
-    @classmethod
-    def validate_arguments(cls, args: List[str]) -> List[str]:
-        for a in args:
-            if _SHELL_METACHAR_PATTERN.search(a):
-                raise ValueError(f"Shell metacharacters are forbidden in argument: '{a}'")
-            for pat in _DANGEROUS_ARG_PATTERNS:
-                if pat.search(a.strip()):
-                    raise ValueError(f"Dangerous shell argument '{a}' is forbidden in open_app.")
-        return args
-
-
-class CloseAppArgs(BaseModel):
-    """Arguments for close_app."""
-    model_config = {"extra": "forbid"}
-
-    app_name: str = Field(min_length=1, description="Application executable name or window title to close.")
-    force: bool = Field(default=False, description="Force terminate process tree (requires explicit request).")
-
-
-class FocusAppArgs(BaseModel):
-    """Arguments for focus_app."""
-    model_config = {"extra": "forbid"}
-
-    app_name: str = Field(min_length=1, description="Application executable or window title to bring to foreground.")
-
-
-class ListAppsArgs(BaseModel):
+class ListAppsArgs(ListAppWindowsArgs):
     """Arguments for list_apps."""
-    model_config = {"extra": "forbid"}
-
-    filter: Optional[str] = Field(default=None, description="Optional substring to filter application names.")
 
 
-class AppStatusArgs(BaseModel):
+class AppStatusArgs(ProcessTargetArgs):
     """Arguments for app_status."""
-    model_config = {"extra": "forbid"}
-
-    app_name: str = Field(min_length=1, description="Application name or PID to inspect.")
 
 
 # ---------------------------------------------------------------------------
 # Executors
 # ---------------------------------------------------------------------------
 
-def _get_process_creation_time_ns(pid: int) -> Optional[int]:
-    """Return process creation time as a 64-bit integer (100ns intervals from epoch).
-
-    Returns None if the process cannot be queried (not our process, already exited, etc.).
-    This is used to verify process identity before termination: a recycled PID with a
-    different creation time proves it is not our process.
-    """
-    if sys.platform != "win32":
-        return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not h:
-            return None
-        try:
-            class FILETIME(ctypes.Structure):
-                _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
-
-            create_time = FILETIME()
-            exit_time = FILETIME()
-            kernel_time = FILETIME()
-            user_time = FILETIME()
-            ok = kernel32.GetProcessTimes(
-                h, ctypes.byref(create_time), ctypes.byref(exit_time),
-                ctypes.byref(kernel_time), ctypes.byref(user_time)
-            )
-            if not ok:
-                return None
-            return (create_time.dwHighDateTime << 32) | create_time.dwLowDateTime
-        finally:
-            kernel32.CloseHandle(h)
-    except Exception:
-        return None
+def execute_open_app(args, task_context=None):
+    return launch.execute(args, task_context)
 
 
-def execute_open_app(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    import os
-    import shutil
-    import subprocess
-    import time
-
-    app = args["app_name"]
-    cmd_args = args.get("arguments", [])
-    work_dir = args.get("working_dir")
-
-    # Safety check against shell escapes
-    clean = app.strip().lower()
-    base = clean.split("/")[-1].split("\\")[-1]
-    if base in _FORBIDDEN_EXECUTABLES or clean in _FORBIDDEN_EXECUTABLES:
-        return ToolResult.failure("open_app", f"Execution of interpreter/shell '{app}' is forbidden through open_app.")
-
-    if _SHELL_METACHAR_PATTERN.search(app):
-        return ToolResult.failure("open_app", f"Shell metacharacters are forbidden in app_name: '{app}'")
-
-    for a in cmd_args:
-        if _SHELL_METACHAR_PATTERN.search(a):
-            return ToolResult.failure("open_app", f"Shell metacharacters are forbidden in argument: '{a}'")
-        for pat in _DANGEROUS_ARG_PATTERNS:
-            if pat.search(a.strip()):
-                return ToolResult.failure("open_app", f"Dangerous shell argument '{a}' is forbidden in open_app.")
-
-    try:
-        import logging as _logging
-        _app_logger = _logging.getLogger(__name__)
-
-        # Check cancellation before starting
-        if task_context and hasattr(task_context, "cancellation_token"):
-            if task_context.cancellation_token.is_cancelled:
-                return ToolResult.failure("open_app", "Task cancelled before application could launch.", error_code="TASK_CANCELLED")
-
-        # Resolve strictly through controlled allowlist map only
-        clean_app = app.strip().lower()
-        base_name = clean_app.split("/")[-1].split("\\")[-1]
-
-        # Check against forbidden executables first
-        if clean_app in _FORBIDDEN_EXECUTABLES or base_name in _FORBIDDEN_EXECUTABLES:
-            return ToolResult.failure(
-                "open_app",
-                f"Application '{app}' is forbidden.",
-                error_code="FORBIDDEN_EXECUTABLE",
-            )
-
-        stem = base_name.removesuffix(".exe")
-        if clean_app in _ALLOWED_APP_ALIASES:
-            resolved_target = _ALLOWED_APP_ALIASES[clean_app]
-            exe = shutil.which(resolved_target) or resolved_target
-        elif base_name in _ALLOWED_APP_ALIASES:
-            resolved_target = _ALLOWED_APP_ALIASES[base_name]
-            exe = shutil.which(resolved_target) or resolved_target
-        elif stem in _ALLOWED_APP_ALIASES:
-            resolved_target = _ALLOWED_APP_ALIASES[stem]
-            exe = shutil.which(resolved_target) or resolved_target
-        else:
-            # Delete arbitrary path / unknown executable fallback — fail closed
-            return ToolResult.failure(
-                "open_app",
-                f"Application '{app}' is not in the approved application allowlist. Arbitrary executable execution is rejected.",
-                error_code="APP_NOT_ALLOWLISTED",
-            )
-
-        if os.environ.get("PLUMA_TEST_MODE") == "1":
-            # In automated test mode, use a silent background process for ALL applications
-            # to prevent intrusive desktop popup windows while preserving full subprocess
-            # and JobObject lifecycle.
-            full_cmd = [sys.executable, "-c", "import time; time.sleep(15)"]
-        else:
-            full_cmd = [exe] + cmd_args
-
-        proc = subprocess.Popen(
-            full_cmd,
-            cwd=work_dir,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
-            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-
-        pid = proc.pid
-        # Record 64-bit creation timestamp for identity verification before later termination
-        creation_time_ns = _get_process_creation_time_ns(pid)
+def execute_close_app(args, task_context=None):
+    from pluma.tools.app_lifecycle import execute_close
+    return execute_close(args, task_context)
 
 
-        # Register process ownership on TaskCapsule with full identity metadata
-        if task_context and hasattr(task_context, "register_owned_resource"):
-            try:
-                task_context.register_owned_resource(
-                    resource_type="subprocess",
-                    ownership=ResourceOwnership.PLUMA_CREATED,
-                    external_id=str(pid),
-                    metadata={
-                        "app_name": app,
-                        "command": full_cmd,
-                        "pid": pid,
-                        "creation_time_ns": creation_time_ns,
-                    },
-                )
-            except Exception:
-                pass
-
-        # Register in global or task ownership registry if available
-        if task_context and hasattr(task_context, "task_id"):
-            reg = getattr(task_context, "ownership_registry", None) or getattr(task_context, "_registry", None)
-            if reg and hasattr(reg, "register_subprocess"):
-                try:
-                    reg.register_subprocess(
-                        task_id=task_context.task_id,
-                        pid=pid,
-                        ownership=ResourceOwnership.PLUMA_CREATED,
-                        command_class="open_app",
-                    )
-                except Exception:
-                    pass
-
-        # Postcondition verification
-        v_res = verify_process_running(pid)
-
-        return ToolResult(
-            ok=v_res.ok,
-            tool="open_app",
-            data={
-                "app_name": app, "pid": pid, "command": full_cmd,
-                "creation_time_ns": creation_time_ns,
-            },
-            factual_message=f"Opened '{app}' (PID {pid}).",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("open_app", f"Failed to open '{app}': {e}")
-
-
-def execute_close_app(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    import os
-    import subprocess
-    import time
-    import sys
-    
-    app = str(args["app_name"])
-    force = args.get("force", False)
-    
-    # Check if target is a PID
-    if app.isdigit():
-        pid = int(app)
-        if sys.platform == "win32":
-            cmd = ["taskkill", "/F" if force else "", "/PID", str(pid)]
-            cmd = [c for c in cmd if c]
-            res = subprocess.run(cmd, capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        else:
-            cmd = ["kill", "-9" if force else "-15", str(pid)]
-            cmd = [c for c in cmd if c]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-    else:
-        stem = app.lower().removesuffix(".exe")
-        if stem in ("calc", "calculator"):
-            target_names = ["CalculatorApp.exe", "Calculator.exe", "calc.exe"]
-        elif stem in _ALLOWED_APP_ALIASES:
-            target_names = [_ALLOWED_APP_ALIASES[stem]]
-        else:
-            name = app if app.lower().endswith(".exe") else f"{app}.exe"
-            target_names = [name]
-
-        if sys.platform == "win32":
-            res = None
-            for t_name in target_names:
-                cmd = ["taskkill", "/F" if force else "", "/IM", t_name]
-                cmd = [c for c in cmd if c]
-                res = subprocess.run(cmd, capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        else:
-            cmd = ["pkill", "-9" if force else "-15", app]
-            cmd = [c for c in cmd if c]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            
-    try:
-        time.sleep(0.3)
-        v_res = verify_process_closed(app)
-        
-        if not v_res.ok and res is not None and res.returncode != 0:
-            return ToolResult.failure("close_app", f"Failed to close '{app}': {res.stderr.strip() or 'Process not found.'}")
-            
-        return ToolResult(
-            ok=v_res.ok,
-            tool="close_app",
-            data={"app_name": app, "force": force},
-            factual_message=f"Closed '{app}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("close_app", f"Failed to close '{app}': {e}")
-
-
-def execute_focus_app(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    app = args["app_name"]
-    
-    if sys.platform != "win32":
-        return ToolResult(
-            ok=True,
-            tool="focus_app",
-            data={"app_name": app},
-            factual_message=f"Focused '{app}' (stub on non-Windows).",
-            verified=True,
-        )
-        
-    import ctypes
-    from ctypes import wintypes
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    
-    target_hwnd = None
-    target_title = None
-    
-    def enum_cb(hwnd: int, lparam: Any) -> bool:
-        nonlocal target_hwnd, target_title
-        if not user32.IsWindowVisible(hwnd):
-            return True
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length > 0:
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            title = buf.value
-            if app.lower() in title.lower():
-                target_hwnd = hwnd
-                target_title = title
-                return False  # Stop enumeration
-        return True
-
-    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
-    
-    if not target_hwnd:
-        return ToolResult.failure("focus_app", f"No visible window found matching '{app}'.")
-        
-    # Bring window to foreground
-    user32.ShowWindow(target_hwnd, 9)  # SW_RESTORE
-    user32.SetForegroundWindow(target_hwnd)
-    
-    v_res = verify_window_focused(target_hwnd)
-    return ToolResult(
-        ok=v_res.ok,
-        tool="focus_app",
-        data={"app_name": app, "hwnd": target_hwnd, "title": target_title},
-        factual_message=f"Focused window '{target_title or app}'.",
-        verified=v_res.ok,
-        verify_detail=v_res,
-    )
+def execute_focus_app(args, task_context=None):
+    return focus.execute(args, task_context, tool='focus_app')
 
 
 def execute_list_apps(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    filter_q = args.get("filter")
-    apps: List[Dict[str, Any]] = []
-    
-    if sys.platform == "win32":
-        import subprocess
-        try:
-            out = subprocess.check_output(
-                ["tasklist", "/FO", "CSV", "/NH"],
-                text=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            import csv
-            import io
-            reader = csv.reader(io.StringIO(out))
-            seen = set()
-            for row in reader:
-                if len(row) >= 2:
-                    name, pid_str = row[0], row[1]
-                    if filter_q and filter_q.lower() not in name.lower():
-                        continue
-                    if name not in seen:
-                        seen.add(name)
-                        apps.append({"name": name, "pid": int(pid_str) if pid_str.isdigit() else 0})
-        except Exception as e:
-            return ToolResult.failure("list_apps", f"Failed to list apps: {e}")
-    else:
-        apps.append({"name": "dummy_app", "pid": 1001})
-        
-    count = len(apps)
-    return ToolResult(
-        ok=True,
-        tool="list_apps",
-        data={"count": count, "apps": apps},
-        factual_message=f"Found {count} running application{'s' if count != 1 else ''}.",
-        verified=True,
-    )
+    return execute_list(args, task_context, apps=True)
 
 
 def execute_app_status(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    app = args["app_name"]
-    v_res = verify_process_running(app)
-    
-    return ToolResult(
-        ok=True,
-        tool="app_status",
-        data={"app_name": app, "running": v_res.ok},
-        factual_message=f"Application '{app}' is {'running' if v_res.ok else 'not running'}.",
-        verified=True,
-    )
+    return execute_status(args, task_context)
 
 
 # ---------------------------------------------------------------------------
 # Verifiers
 # ---------------------------------------------------------------------------
 
-def verify_open_app(result: ToolResult) -> VerifyResult:
-    if not result.ok or "pid" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Open app reported failure.")
-    return verify_process_running(result.data["pid"])
+def verify_open_app(result):
+    return launch.verify(result)
 
 
-def verify_close_app(result: ToolResult) -> VerifyResult:
-    if not result.ok or "app_name" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Close app reported failure.")
-    return verify_process_closed(result.data["app_name"])
+def verify_close_app(result):
+    from pluma.tools.app_lifecycle import verify_close
+    return verify_close(result)
 
 
-def verify_focus_app(result: ToolResult) -> VerifyResult:
-    if not result.ok or "hwnd" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Focus app reported failure.")
-    return verify_window_focused(result.data["hwnd"])
+def verify_focus_app(result):
+    return focus.verify(result)
 
 
 # ---------------------------------------------------------------------------
@@ -546,13 +90,14 @@ def verify_focus_app(result: ToolResult) -> VerifyResult:
 APP_TOOL_SPECS: List[ToolSpec] = [
     ToolSpec(
         name="open_app",
-        description="Launch an application by executable name or path.",
+        description="Launch an application through a closed native alias with owned process/window readback.",
         args_schema=OpenAppArgs,
         risk_class=RiskClass.LOW,
         timeout_s=10.0,
         executor=execute_open_app,
         verifier=verify_open_app,
-        undo_builder=None,
+        undo_builder=launch.capture,
+        execution_scope="task_service",
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
         creates_resources=True,
@@ -565,7 +110,9 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         timeout_s=10.0,
         executor=execute_close_app,
         verifier=verify_close_app,
-        undo_builder=None,
+        undo_builder=capture_close,
+        non_undoable=True,
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),
@@ -577,7 +124,8 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         timeout_s=5.0,
         executor=execute_focus_app,
         verifier=verify_focus_app,
-        undo_builder=None,
+        undo_builder=partial(focus.capture, tool="focus_app"),
+        process_isolated=True,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
     ),
@@ -587,8 +135,9 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         args_schema=ListAppsArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_list_apps,
-        verifier=verify_noop,
+        verifier=verify_list,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,
@@ -599,8 +148,9 @@ APP_TOOL_SPECS: List[ToolSpec] = [
         args_schema=AppStatusArgs,
         risk_class=RiskClass.READ,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_app_status,
-        verifier=verify_noop,
+        verifier=verify_status,
         undo_builder=None,
         adapter_priority=[AdapterPriority.NATIVE_API],
         cancellable=True,

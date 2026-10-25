@@ -37,6 +37,8 @@ from pluma.tools.registry import ToolRegistry, register_default_tools
 from pluma.ui.confirmations import ConfirmationContract
 from pluma.voice.pipeline import VoicePipeline
 
+_CLOSE_INIT_LOCK = threading.Lock()
+
 __version__ = "0.1.0"
 logger = logging.getLogger("pluma")
 
@@ -65,13 +67,17 @@ class PlumaApplicationRuntime:
             ownership_registry=self.ownership_registry,
             rollback_engine=self.rollback_engine,
         )
+        self.rollback_engine.task_resolver = self.supervisor.get_task
         self.policy_rules = PolicyRules()
         self.policy_engine = PolicyEngine(
             rules=self.policy_rules,
             confirmation_contract=confirmation_contract,
+            command_catalog_path=str(paths.roaming_root / 'commands.json'),
         )
-        self.tool_registry = ToolRegistry(policy_engine=self.policy_engine)
+        self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop)
         register_default_tools(self.tool_registry)
+        self.rollback_engine.clipboard_inverse = self.tool_registry.restore_clipboard
+        self.tool_registry.clipboard_task_resolver = self.supervisor.get_task
 
         self.router = Router()
 
@@ -116,24 +122,64 @@ class PlumaApplicationRuntime:
             ownership_registry=self.ownership_registry,
         )
 
-    def close(self) -> None:
-        """Close resident core and database connection cleanly."""
-        try:
-            self.resident_core.stop()
-        except Exception:
-            pass
-        try:
-            self.llm_lifecycle.shutdown()
-        except Exception:
-            pass
-        try:
-            self.voice_lifecycle.shutdown()
-        except Exception:
-            pass
-        try:
-            self.db.close()
-        except Exception:
-            pass
+    def close(self, timeout_s: float = 5.0):
+        """Bounded, resumable shutdown. Unknown drain keeps storage owned/open."""
+        from pluma.core.shutdown import ShutdownSession
+        with _CLOSE_INIT_LOCK:
+            if not hasattr(self, "_shutdown_session"):
+                self._shutdown_session = ShutdownSession()
+        # Latch every task before any external shutdown operation/wait.
+        self.supervisor.begin_shutdown()
+        self.resident_core.begin_shutdown()
+        self.tool_registry.begin_shutdown()
+        for lifecycle in (self.llm_lifecycle, self.voice_lifecycle):
+            if hasattr(lifecycle, "begin_shutdown"):
+                lifecycle.begin_shutdown()
+        stages = [
+            ("capture", self.resident_core.cancel_capture),
+            ("tasks", self.supervisor.drain_shutdown_tasks),
+            ("handlers", self._drain_handlers),
+            ("registry", self.tool_registry.close),
+            ("outcomes", self.supervisor.finalize_shutdown),
+            ("planner", lambda: self._close_model(self.llm_lifecycle)),
+            ("voice", lambda: self._close_model(self.voice_lifecycle)),
+            ("storage", self._close_storage),
+        ]
+        self.shutdown_result = self._shutdown_session.run(stages, timeout_s)
+        return self.shutdown_result
+
+    def _drain_handlers(self):
+        self.resident_core.stop()
+        if not self.supervisor.execution_gate.wait_idle(1.0):
+            raise RuntimeError("Execution handlers remain active.")
+
+    def _close_model(self, lifecycle):
+        if not hasattr(self, "_shutdown_timers"):
+            self._shutdown_timers = set()
+        for name in ("_idle_timer", "_unload_timer"):
+            timer = getattr(lifecycle, name, None)
+            if isinstance(timer, threading.Thread):
+                self._shutdown_timers.add(timer)
+        timers = getattr(lifecycle, "_timers", set())
+        if isinstance(timers, set):
+            self._shutdown_timers.update(timers.copy())
+        for timer in self._shutdown_timers.copy():
+            timer.cancel()
+        lifecycle.shutdown()
+        for timer in list(self._shutdown_timers):
+            if isinstance(timer, threading.Thread):
+                timer.join(timeout=1.0)
+                if timer.is_alive():
+                    raise RuntimeError("Model lifecycle timer remains active.")
+                self._shutdown_timers.remove(timer)
+        adapter = getattr(lifecycle, "adapter", None)
+        if adapter is not None and adapter.is_loaded is not False:
+            raise RuntimeError("Model unload remains unverified.")
+
+    def _close_storage(self):
+        self.db.close()
+        if self.db.is_open is not False:
+            raise RuntimeError("Storage closure remains unverified.")
 
 
 def setup_logging(logs_dir: Path, debug: bool = False) -> None:
@@ -258,7 +304,13 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
         logger.info("Keyboard interrupt received.")
     finally:
         logger.info("Stopping Resident Core and releasing resources...")
-        runtime.close()
+        report = runtime.close()
+        while not report.complete:
+            # Remain the resident owner while drain is unverified. Never drop
+            # live handlers/storage merely because the host loop was stopped.
+            logger.warning("Shutdown pending: stage=%s code=%s", report.stage, report.code)
+            time.sleep(0.2)
+            report = runtime.close()
         logger.info("PLUMA shutdown cleanly.")
         shutdown_logging()
 

@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
@@ -24,6 +25,8 @@ namespace PLUMA.UI
     public sealed partial class MainWindow : Window
     {
         private PopupStackHost? _popups;
+        private readonly CoreIpcClient _coreStatus = new();
+        private readonly CancellationTokenSource _healthLifetime = new();
         private bool _closed;
         public PopupStackHost Popups
         {
@@ -45,8 +48,18 @@ namespace PLUMA.UI
             SetTitleBar(AppTitleBar);
 
             // Navigate to the default page (Dashboard)
+            NavigateDashboard();
+            Closed += async (_, _) =>
+            {
+                _closed = true; _healthLifetime.Cancel(); _popups?.Dispose();
+                await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
+            };
+        }
+
+        private void NavigateDashboard()
+        {
             ContentFrame.Navigate(typeof(DashboardPage));
-            Closed += (_, _) => { _closed = true; _popups?.Dispose(); };
+            if (ContentFrame.Content is DashboardPage dashboard) dashboard.AttachCoreClient(_coreStatus, _healthLifetime.Token);
         }
 
         private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
@@ -62,7 +75,7 @@ namespace PLUMA.UI
                 switch (tag)
                 {
                     case "dashboard":
-                        ContentFrame.Navigate(typeof(DashboardPage));
+                        NavigateDashboard();
                         break;
                     case "history":
                         ContentFrame.Navigate(typeof(HistoryPage));

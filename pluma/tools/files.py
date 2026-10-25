@@ -9,9 +9,9 @@ Boundary: No OS libs imported at module level.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import (
@@ -36,19 +36,81 @@ class ListFilesArgs(BaseModel):
 
 class FindFileArgs(BaseModel):
     """Arguments for find_file."""
-    model_config = {"extra": "forbid"}
-    directory: str = Field(default=".", description="Root directory to search within.")
+    model_config = {"extra": "forbid", "strict": True}
+    directory: str = Field(min_length=1, max_length=32767, description="Explicit absolute search root.")
     pattern: str = Field(min_length=1, max_length=128, description="Glob search pattern (e.g. '*.txt').")
-    max_depth: int = Field(default=5, ge=1, le=10, description="Maximum directory search depth.")
+    max_depth: int = Field(default=5, ge=0, le=10, description="Directory descent depth; zero searches only the root.")
     max_results: int = Field(default=50, ge=1, le=200, description="Maximum number of matches to return.")
+    max_scan_entries: int = Field(default=4096, ge=1, le=4096)
+    kind: Literal['any', 'file', 'directory'] = 'any'
+    created_after_ns: int | None = Field(default=None, ge=0)
+    created_before_ns: int | None = Field(default=None, ge=0)
+    modified_after_ns: int | None = Field(default=None, ge=0)
+    modified_before_ns: int | None = Field(default=None, ge=0)
+
+    @field_validator('directory')
+    @classmethod
+    def explicit_root(cls, value):
+        return FileInfoArgs.explicit_filesystem_path(value)
+
+    @field_validator('pattern')
+    @classmethod
+    def basename_pattern(cls, value):
+        if any(char in value for char in '\\/:\0'):
+            raise ValueError('Search pattern must match a basename, not a path or stream.')
+        return value
+
+    @model_validator(mode='after')
+    def coherent_times(self):
+        for field in ('created', 'modified'):
+            after, before = getattr(self, field + '_after_ns'), getattr(self, field + '_before_ns')
+            if after is not None and before is not None and after >= before:
+                raise ValueError('Search time interval must be nonempty, with an inclusive lower and exclusive upper bound.')
+        return self
+
+
+class FileInfoArgs(BaseModel):
+    """One literal, fully qualified Windows filesystem path; no search/expansion."""
+    model_config = {"extra": "forbid", "strict": True}
+    path: str = Field(min_length=1, max_length=32767)
+
+    @field_validator("path")
+    @classmethod
+    def explicit_filesystem_path(cls, value: str) -> str:
+        from pathlib import PureWindowsPath
+        path = PureWindowsPath(value)
+        if (not path.is_absolute() or not value.strip() or "\0" in value
+                or str(path).startswith(("\\\\.\\", "\\\\?\\"))
+                or any(char in value for char in '*?"<>|')
+                or any(part in (".", "..") or part.endswith((".", " "))
+                       or ":" in part for part in path.parts[1:])
+                or any(PureWindowsPath(part).is_reserved() for part in path.parts[1:])):
+            raise ValueError("An explicit absolute filesystem path without patterns or device syntax is required.")
+        return value
+
+
+class FileInfoData(BaseModel):
+    """Native metadata only; directory size is not a recursive content total."""
+    model_config = {"extra": "forbid", "strict": True, "frozen": True}
+    path: str
+    kind: Literal["file", "directory"]
+    size_bytes: Optional[int] = Field(ge=0)
+    modified_ns: int
+    device: int = Field(ge=0)
+    file_id: int = Field(gt=0)
 
 
 class MoveFileArgs(BaseModel):
     """Arguments for move_file."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
     source: str = Field(min_length=1, description="Source file or folder path.")
     destination: str = Field(min_length=1, description="Destination directory or target file path.")
     overwrite: bool = Field(default=False, description="Whether to overwrite existing destination.")
+
+    @field_validator("source", "destination")
+    @classmethod
+    def explicit_path(cls, value):
+        return FileInfoArgs.explicit_filesystem_path(value)
 
 
 _WINDOWS_RESERVED_NAMES = frozenset({
@@ -60,9 +122,14 @@ _WINDOWS_RESERVED_NAMES = frozenset({
 
 class RenameFileArgs(BaseModel):
     """Arguments for rename_file."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
     path: str = Field(min_length=1, description="Target file or folder to rename.")
     new_name: str = Field(min_length=1, max_length=255, description="New filename (basename only).")
+
+    @field_validator("path")
+    @classmethod
+    def explicit_path(cls, value):
+        return FileInfoArgs.explicit_filesystem_path(value)
 
     @field_validator("new_name")
     @classmethod
@@ -70,6 +137,8 @@ class RenameFileArgs(BaseModel):
         clean = v.strip()
         if not clean:
             raise ValueError("new_name cannot be empty or whitespace.")
+        if clean != v or v.endswith('.') or any(char in v for char in '*?"<>|:'):
+            raise ValueError("new_name must be a literal Windows basename.")
         if "\0" in clean:
             raise ValueError("new_name cannot contain null bytes.")
         if any(sep in clean for sep in ("/", "\\", "..")):
@@ -83,10 +152,24 @@ class RenameFileArgs(BaseModel):
         return clean
 
 
-class CreateFolderArgs(BaseModel):
+class CopyFileArgs(MoveFileArgs):
+    """A new exact destination; replacing existing data is not permitted."""
+    overwrite: Literal[False] = False
+
+    @field_validator('overwrite', mode='before')
+    @classmethod
+    def exact_no_overwrite(cls, value):
+        if value is not False:
+            raise ValueError('Copy supports only boolean false for overwrite.')
+        return value
+
+
+class ListFolderArgs(FileInfoArgs):
+    max_entries: int = Field(default=100, ge=1, le=200)
+
+
+class CreateFolderArgs(FileInfoArgs):
     """Arguments for create_folder."""
-    model_config = {"extra": "forbid"}
-    path: str = Field(min_length=1, description="Directory path to create.")
     exist_ok: bool = Field(default=True, description="Do not raise if directory already exists.")
 
 
@@ -94,61 +177,95 @@ class CreateFolderArgs(BaseModel):
 # Undo Builders
 # ---------------------------------------------------------------------------
 
-def undo_builder_move_file(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Capture pre-state before moving a file."""
-    import os
+def undo_builder_move_file(args: Dict[str, Any]) -> Dict[str, Any]:
     from pathlib import Path
-
-    src = str(Path(args["source"]).resolve())
-    dst_input = Path(args["destination"])
-
-    if dst_input.is_dir() or args["destination"].endswith(("/", "\\")):
-        dst = str((dst_input / Path(src).name).resolve())
-    else:
-        dst = str(dst_input.resolve())
-
-    backup_path = args.get("preserved_destination_backup")
-
-    return {
-        "action": "move_file",
-        "source": src,
-        "destination": dst,
-        "destination_existed": os.path.exists(dst),
-        "preserved_destination_backup": backup_path,
-    }
+    from pluma.adapters.file_identity import capture
+    source = FileInfoArgs.model_validate({"path": args["source"]}).path
+    destination = FileInfoArgs.model_validate({"path": args["destination"]}).path
+    if args.get("overwrite", False):
+        raise ValueError("Overwrite requires a separately verified backup operation.")
+    if Path(destination).is_dir():
+        destination = str(Path(destination) / Path(source).name)
+    from pluma.memory.redaction import redact_string
+    if redact_string(source) != source or redact_string(destination) != destination:
+        raise ValueError("Private path pre-state cannot be safely journaled.")
+    state = capture(source, destination)
+    if state['source_parent']['volume'] != state['destination_parent']['volume']:
+        from pluma.adapters.cross_volume_move import capture as capture_cross_volume
+        return capture_cross_volume(str(Path(source)), str(Path(destination)))
+    return {"action": "move_file", "source": str(Path(source)), "destination": str(Path(destination)),
+            "guard_version": 1, **state}
 
 
-def undo_builder_rename_file(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Capture pre-state before renaming a file."""
-    import os
+def undo_builder_rename_file(args: Dict[str, Any]) -> Dict[str, Any]:
     from pathlib import Path
-    
-    target = str(Path(args["path"]).resolve())
-    if not os.path.exists(target):
-        return None
-        
-    parent = Path(target).parent
-    new_target = str((parent / args["new_name"]).resolve())
-    
-    return {
-        "action": "rename_file",
-        "original_path": target,
-        "new_path": new_target,
-    }
+    from pluma.adapters.file_identity import capture
+    source = FileInfoArgs.model_validate({"path": args["path"]}).path
+    name = RenameFileArgs.model_validate(args).new_name
+    destination = str(Path(source).with_name(name))
+    from pluma.memory.redaction import redact_string
+    if redact_string(source) != source or redact_string(destination) != destination:
+        raise ValueError("Private path pre-state cannot be safely journaled.")
+    return {"action": "rename_file", "original_path": str(Path(source)), "new_path": destination,
+            "guard_version": 1, **capture(source, destination)}
 
 
 def undo_builder_create_folder(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Capture pre-state before creating a directory."""
-    import os
-    from pathlib import Path
-    
-    target = str(Path(args["path"]).resolve())
-    existed = os.path.exists(target)
-    return {
-        "action": "create_folder",
-        "path": target,
-        "existed_before": existed,
-    }
+    from pluma.adapters.file_operations import capture_folder
+    values = CreateFolderArgs.model_validate(args)
+    _public_path(values.path)
+    return capture_folder(values.path, values.exist_ok)
+
+
+def _public_path(path):
+    from pluma.memory.redaction import redact_string
+    if redact_string(path) != path:
+        raise ValueError("Private path pre-state cannot be safely journaled.")
+
+
+def undo_builder_copy_file(args):
+    from pluma.adapters.file_operations import capture_copy
+    values = CopyFileArgs.model_validate(args)
+    _public_path(values.source)
+    _public_path(values.destination)
+    return capture_copy(values.source, values.destination)
+
+
+def undo_builder_safe_delete(args):
+    from pluma.adapters.recycle_bin import capture
+    values = FileInfoArgs.model_validate(args)
+    _public_path(values.path)
+    return capture(values.path)
+
+
+def execute_safe_delete(args, task_context=None):
+    from pluma.adapters.recycle_bin import recycle
+    try:
+        state = _captured_state('safe_delete', args, task_context, undo_builder_safe_delete)
+        state = recycle(state, getattr(task_context, 'cancellation_token', None))
+        _public_path(state['recycled_path'])
+        result = ToolResult.success('safe_delete', data={'path': state['path']},
+            factual_message='Moved one filesystem target to Windows Recycle Bin.', verified=False,
+            adapter_used='native_shell_recycle').model_copy(update={
+                'undo_record': state, 'private_context': {'recycle_receipt': state}})
+        proof = verify_safe_delete(result)
+        return result.model_copy(update={'verified': proof.ok, 'verify_detail': proof})
+    except Exception:
+        return ToolResult.failure('safe_delete',
+            'Recycle operation refused or unverified. Captured intent retained; no permanent-delete fallback.',
+            'RECYCLE_UNVERIFIED')
+
+
+def verify_safe_delete(result):
+    from pluma.adapters.recycle_bin import verify
+    try:
+        state = result.private_context['recycle_receipt']
+        valid = (result.ok and state['action'] == 'safe_delete' and state['guard_version'] == 1
+            and result.undo_record == state and result.data == {'path': state['path']} and verify(state))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method='native_recycle_identity_and_stream_digest',
+        detail='Exact recycled item verified.' if valid else 'Recycle postcondition was not verified.')
 
 
 # ---------------------------------------------------------------------------
@@ -230,208 +347,274 @@ def execute_list_files(args: Dict[str, Any], task_context: Any = None) -> ToolRe
 
 
 def execute_find_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    import fnmatch
-    import os
-    from pathlib import Path
-    
-    root_dir = Path(args.get("directory", ".")).resolve()
-    if not root_dir.exists() or not root_dir.is_dir():
-        return ToolResult.failure("find_file", f"Search root '{root_dir}' does not exist or is not a directory.")
-        
-    pattern = args["pattern"]
-    max_depth = args.get("max_depth", 5)
-    max_results = args.get("max_results", 50)
-    
-    matches: List[Dict[str, Any]] = []
-    root_depth = len(root_dir.parts)
-    
+    from pluma.adapters.file_search import search
+    from pluma.core.cancellation import TaskCancelledError
     try:
-        for current_root, dirs, files in os.walk(root_dir):
-            if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-                return ToolResult.failure("find_file", "Search cancelled by task token.", error_code="TASK_CANCELLED")
+        values = FindFileArgs.model_validate(args).model_dump()
+        data, proof = search(values, getattr(task_context, 'cancellation_token', None))
+        result = ToolResult.success('find_file', data=data, verified=False,
+            factual_message=f"Returned {data['count']} file search candidates; bounded search " +
+                ('stopped at a limit.' if data['limited'] else 'completed within the requested depth.'),
+            adapter_used='native_handle').model_copy(update={'private_context': {'search_observation': proof}})
+        checked = verify_find_file(result)
+        return result.model_copy(update={'verified': checked.ok, 'verify_detail': checked})
+    except TaskCancelledError:
+        return ToolResult.failure('find_file', 'File search was stopped.', 'TASK_CANCELLED')
+    except Exception:
+        return ToolResult.failure('find_file', 'File search could not be verified; root, access, reparse or changed-target conflict.',
+                                  'FILE_SEARCH_UNVERIFIED')
 
-            current_path = Path(current_root)
-            depth = len(current_path.parts) - root_depth
-            if depth >= max_depth:
-                dirs.clear()  # Do not recurse further
-                
-            for name in files + dirs:
-                if fnmatch.fnmatch(name, pattern):
-                    full_p = current_path / name
-                    is_d = full_p.is_dir()
-                    matches.append({
-                        "name": name,
-                        "path": str(full_p.resolve()),
-                        "is_dir": is_d,
-                    })
-                    if len(matches) >= max_results:
-                        break
-            if len(matches) >= max_results:
-                break
-                
-        count = len(matches)
-        return ToolResult(
-            ok=True,
-            tool="find_file",
-            data={"pattern": pattern, "count": count, "matches": matches},
-            factual_message=f"Found {count} match{'es' if count != 1 else ''} for '{pattern}'.",
-            verified=True,
-        )
-    except Exception as e:
-        return ToolResult.failure("find_file", str(e))
+
+def _execute_guarded_move(tool, args, task_context):
+    from pluma.adapters.file_identity import move
+    from pathlib import Path
+    try:
+        capture = undo_builder_move_file if tool == "move_file" else undo_builder_rename_file
+        if task_context is not None and getattr(task_context, "undo_stack", None):
+            state = next(item["pre_state"] for item in reversed(task_context.undo_stack)
+                if item.get("action") == "pending_mutation" and item.get("tool") == tool)
+        else:
+            state = capture(args)
+        source = state.get("source", state.get("original_path"))
+        destination = state.get("destination", state.get("new_path"))
+        if state.get("action") != tool or state.get("guard_version") != 1:
+            raise ValueError("File mutation does not match its journal.")
+        if tool == "move_file":
+            supplied_source, supplied_destination = Path(args["source"]), Path(args["destination"])
+            if args.get("overwrite", False) or Path(source) != supplied_source or Path(destination) not in (
+                    supplied_destination, supplied_destination / supplied_source.name):
+                raise ValueError("File mutation does not match its arguments.")
+        elif Path(source) != Path(args["path"]) or Path(destination) != Path(args["path"]).with_name(args["new_name"]):
+            raise ValueError("Rename does not match its arguments.")
+        if state.get('cross_volume') is True:
+            from pluma.adapters.cross_volume_move import apply
+            state = apply(state, getattr(task_context, 'cancellation_token', None))
+        else:
+            move(source, destination, state["identity"], getattr(task_context, "cancellation_token", None),
+                 parents=(state["source_parent"], state["destination_parent"]))
+        data = {"source": source, "destination": destination} if tool == "move_file" else {
+            "original_path": source, "new_path": destination}
+        result = ToolResult.success(tool, data=data, verified=True,
+            factual_message="Moved one filesystem target." if tool == "move_file" else "Renamed one filesystem target.",
+            adapter_used="native_handle", undo_record=state if state.get('cross_volume') else None).model_copy(
+                update={"private_context": {"file_move": state}})
+        proof = verify_move_file(result) if tool == "move_file" else verify_rename_file(result)
+        return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
+    except Exception:
+        return ToolResult.failure(tool, "Filesystem move was refused or could not be verified. Pre-state retained.", "FILE_MOVE_UNVERIFIED")
 
 
 def execute_move_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-        return ToolResult.failure("move_file", "Task cancelled before move could execute.", error_code="TASK_CANCELLED")
-
-    import os
-    import shutil
-    import uuid
-    from pathlib import Path
-
-    src = Path(args["source"]).resolve()
-    dst = Path(args["destination"]).resolve()
-    overwrite = args.get("overwrite", False)
-
-    if not src.exists():
-        return ToolResult.failure("move_file", f"Source '{src}' does not exist.")
-
-    if dst.is_dir():
-        final_dst = dst / src.name
-    else:
-        final_dst = dst
-
-    if final_dst.exists() and not overwrite and final_dst != src:
-        return ToolResult.failure("move_file", f"Destination '{final_dst}' already exists and overwrite=False.")
-
-    backup_path_str = None
-    if final_dst.exists() and overwrite and final_dst != src:
-        try:
-            from pluma.config.paths import get_paths
-            backup_dir = get_paths().cache_dir / "rollback"
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            backup_file = backup_dir / f"bak_{uuid.uuid4().hex}_{final_dst.name}"
-            shutil.copy2(str(final_dst), str(backup_file))
-            backup_path_str = str(backup_file)
-            args["preserved_destination_backup"] = backup_path_str
-        except Exception as e:
-            return ToolResult.failure(
-                "move_file",
-                f"Failed to create safety rollback backup for destination '{final_dst}': {e}",
-                error_code="BACKUP_FAILED",
-            )
-
-    try:
-        final_dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(final_dst))
-
-        # Postcondition verification
-        v_res = verify_file_moved(src, final_dst)
-        return ToolResult(
-            ok=v_res.ok,
-            tool="move_file",
-            data={
-                "source": str(src),
-                "destination": str(final_dst),
-                "destination_existed": backup_path_str is not None,
-                "preserved_destination_backup": backup_path_str,
-            },
-            factual_message=f"Moved '{src.name}' to '{final_dst}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("move_file", str(e))
+    return _execute_guarded_move("move_file", args, task_context)
 
 
 def execute_rename_file(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-        return ToolResult.failure("rename_file", "Task cancelled before rename could execute.", error_code="TASK_CANCELLED")
+    return _execute_guarded_move("rename_file", args, task_context)
 
-    import os
+
+def _captured_state(tool, args, context, builder):
+    if context is not None and getattr(context, "undo_stack", None):
+        state = next(item["pre_state"] for item in reversed(context.undo_stack)
+            if item.get("action") == "pending_mutation" and item.get("tool") == tool)
+    else:
+        state = builder(args)
+    if state.get("action") != tool or state.get("guard_version") != 1:
+        raise ValueError("File mutation does not match its journal.")
     from pathlib import Path
+    keys = ("source", "destination") if tool == "copy_file" else ("path",)
+    if any(Path(state[key]) != Path(args[key]) for key in keys):
+        raise ValueError("File mutation does not match its arguments.")
+    if tool == "create_folder" and state['exist_ok'] != args.get('exist_ok', True):
+        raise ValueError("Folder mutation does not match its arguments.")
+    return state
 
-    target = Path(args["path"]).resolve()
-    new_name = args["new_name"]
 
-    if any(sep in new_name for sep in ("/", "\\", "..")) or Path(new_name).name != new_name:
-        return ToolResult.failure("rename_file", f"Path traversal characters forbidden in new_name: '{new_name}'")
-
-    if not target.exists():
-        return ToolResult.failure("rename_file", f"Target '{target}' does not exist.")
-
-    new_path = target.parent / new_name
-    if new_path.exists() and new_path != target:
-        return ToolResult.failure("rename_file", f"Destination '{new_path}' already exists.")
-
+def _execute_created_target(tool, args, context):
+    from pluma.adapters import file_operations as native
     try:
-        target.rename(new_path)
-        v_res = verify_file_renamed(target, new_path)
-        return ToolResult(
-            ok=v_res.ok,
-            tool="rename_file",
-            data={"original_path": str(target), "new_path": str(new_path)},
-            factual_message=f"Renamed '{target.name}' to '{new_name}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("rename_file", str(e))
+        builder = undo_builder_copy_file if tool == "copy_file" else undo_builder_create_folder
+        state = _captured_state(tool, args, context, builder)
+        operation = native.copy_file if tool == "copy_file" else native.create_folder
+        state = operation(state, getattr(context, "cancellation_token", None))
+        data = {key: state[key] for key in (("source", "destination") if tool == "copy_file" else ("path",))}
+        result = ToolResult.success(tool, data=data, verified=False,
+            factual_message="Copied one file." if tool == "copy_file" else
+                "Existing folder verified." if state['existed_before'] else "Created folder path.",
+            adapter_used="native_handle", undo_record=state).model_copy(
+                update={"private_context": {"created_target": state}})
+        proof = _verify_created_target(result)
+        return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
+    except Exception:
+        return ToolResult.failure(tool, "Filesystem operation was refused or could not be verified. Pre-state retained.",
+            "FILE_CREATE_UNVERIFIED")
+
+
+def execute_copy_file(args, task_context=None):
+    return _execute_created_target("copy_file", args, task_context)
 
 
 def execute_create_folder(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
-    if task_context and hasattr(task_context, "cancellation_token") and task_context.cancellation_token.is_cancelled:
-        return ToolResult.failure("create_folder", "Task cancelled before folder could be created.", error_code="TASK_CANCELLED")
+    return _execute_created_target("create_folder", args, task_context)
 
-    from pathlib import Path
-    
-    target = Path(args["path"]).resolve()
-    exist_ok = args.get("exist_ok", True)
-    
+
+def execute_list_folder(args, task_context=None):
+    from pluma.adapters.file_operations import list_folder
     try:
-        target.mkdir(parents=True, exist_ok=exist_ok)
-        v_res = verify_dir_created(target)
-        return ToolResult(
-            ok=v_res.ok,
-            tool="create_folder",
-            data={"path": str(target)},
-            factual_message=f"Created folder '{target}'.",
-            verified=v_res.ok,
-            verify_detail=v_res,
-        )
-    except Exception as e:
-        return ToolResult.failure("create_folder", str(e))
+        values = ListFolderArgs.model_validate(args)
+        data, proof = list_folder(values.path, values.max_entries, getattr(task_context, "cancellation_token", None))
+        result = ToolResult.success("list_folder", data=data, verified=False,
+            factual_message="Read bounded folder entries.", adapter_used="native_handle").model_copy(
+                update={"private_context": {"folder_observation": proof}})
+        verification = verify_list_folder(result)
+        return result.model_copy(update={"verified": verification.ok, "verify_detail": verification})
+    except Exception:
+        return ToolResult.failure("list_folder", "Folder entries could not be verified.", "FOLDER_READ_UNVERIFIED")
 
 
 # ---------------------------------------------------------------------------
 # Verifiers
 # ---------------------------------------------------------------------------
 
+def _read_file_info(path: str, task_context: Any = None) -> Dict[str, Any]:
+    """Read metadata with native lstat, refusing reparse targets/ancestors."""
+    import stat
+    from pathlib import Path
+    target = Path(path)
+    token = getattr(task_context, "cancellation_token", None)
+    info = None
+    for component in (*reversed(target.parents), target):
+        if token is not None:
+            token.raise_if_cancelled()
+        current = component.lstat()
+        if stat.S_ISLNK(current.st_mode) or getattr(current, "st_file_attributes", 0) & 0x400:
+            raise ValueError("Reparse filesystem target is unsupported.")
+        if component == target:
+            info = current
+    if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+        raise ValueError("Filesystem target type is unsupported.")
+    if token is not None:
+        token.raise_if_cancelled()
+    return FileInfoData(path=str(target), kind="directory" if stat.S_ISDIR(info.st_mode) else "file",
+        size_bytes=None if stat.S_ISDIR(info.st_mode) else info.st_size,
+        modified_ns=info.st_mtime_ns, device=info.st_dev, file_id=info.st_ino).model_dump()
+
+
+def execute_file_info(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    """Return two matching native metadata observations, never file contents."""
+    try:
+        path = FileInfoArgs.model_validate(args).path
+        first = _read_file_info(path, task_context)
+        if _read_file_info(path, task_context) != first:
+            return ToolResult.failure("file_info", "File metadata changed during inspection.",
+                                      error_code="FILE_INFO_CHANGED")
+        return ToolResult.success("file_info", data=first, factual_message="File metadata read.",
+                                  verified=True, adapter_used="native_api")
+    except PermissionError:
+        return ToolResult.failure("file_info", "File metadata access was denied.", error_code="FILE_INFO_ACCESS_DENIED")
+    except FileNotFoundError:
+        return ToolResult.failure("file_info", "The filesystem target was not found.", error_code="FILE_INFO_NOT_FOUND")
+    except (ValueError, ValidationError):
+        return ToolResult.failure("file_info", "The filesystem target is unsupported or ambiguous.",
+                                  error_code="FILE_INFO_UNSUPPORTED")
+    except OSError:
+        return ToolResult.failure("file_info", "File metadata could not be read.", error_code="FILE_INFO_READ_FAILED")
+
+
+def verify_file_info(result: ToolResult) -> VerifyResult:
+    """Native reads occur in the owned worker; never repeat filesystem I/O here."""
+    try:
+        metadata = FileInfoData.model_validate(result.data)
+        FileInfoArgs(path=metadata.path)
+        consistent = ((metadata.kind == "file" and metadata.size_bytes is not None)
+                      or (metadata.kind == "directory" and metadata.size_bytes is None))
+        ok = result.ok and result.verified and result.adapter_used == "native_api" and consistent
+    except (ValueError, ValidationError):
+        ok = False
+    return VerifyResult(ok=ok, method="native_api", detail="Native metadata readback verified." if ok
+                        else "Native metadata readback was not verified.")
+
+
 def verify_list_files(result: ToolResult) -> VerifyResult:
     return verify_noop(result)
 
 
 def verify_find_file(result: ToolResult) -> VerifyResult:
-    return verify_noop(result)
+    from pluma.adapters.file_search import verify
+    try:
+        args = FindFileArgs.model_validate({key: result.data[key] for key in FindFileArgs.model_fields}).model_dump()
+        valid = (result.ok and result.adapter_used == 'native_handle'
+                 and type(result.data['count']) is int and type(result.data['scanned_entries']) is int
+                 and type(result.data['limited']) is bool and type(result.data['unambiguous']) is bool
+                 and verify(result.data, result.private_context['search_observation'], args))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=bool(valid), method='native_candidate_and_directory_readback', detail=(
+        'Bounded candidate identities and directory readback verified.' if valid else 'File search was not verified.'))
+
+
+def _verify_guarded_move(result: ToolResult) -> VerifyResult:
+    from pluma.adapters.file_identity import verify_move
+    try:
+        state = result.private_context["file_move"]
+        source = state.get("source", state.get("original_path"))
+        destination = state.get("destination", state.get("new_path"))
+        data = {"source": source, "destination": destination} if result.tool == "move_file" else {
+            "original_path": source, "new_path": destination}
+        if state.get('cross_volume') is True:
+            from pluma.adapters.cross_volume_move import verify
+            observed = result.undo_record == state and verify(state)
+        else:
+            observed = verify_move(source, destination, state["identity"])
+        valid = result.ok and state['action'] == result.tool and result.data == data and observed
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method="native_identity_and_digest",
+        detail="Source absence and destination identity/content verified." if valid else "Filesystem move was not verified.")
 
 
 def verify_move_file(result: ToolResult) -> VerifyResult:
-    if not result.ok or "source" not in result.data or "destination" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Move operation reported failure.")
-    return verify_file_moved(result.data["source"], result.data["destination"])
+    return _verify_guarded_move(result)
 
 
 def verify_rename_file(result: ToolResult) -> VerifyResult:
-    if not result.ok or "original_path" not in result.data or "new_path" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Rename operation reported failure.")
-    return verify_file_renamed(result.data["original_path"], result.data["new_path"])
+    return _verify_guarded_move(result)
 
 
-def verify_create_folder(result: ToolResult) -> VerifyResult:
-    if not result.ok or "path" not in result.data:
-        return VerifyResult(ok=False, method="api", detail="Create folder reported failure.")
-    return verify_dir_created(result.data["path"])
+def _verify_created_target(result):
+    from pluma.adapters import file_operations as native
+    try:
+        state = result.private_context['created_target']
+        keys = ("source", "destination") if result.tool == 'copy_file' else ("path",)
+        valid = (result.ok and state['action'] == result.tool and state['guard_version'] == 1
+            and result.undo_record == state and result.data == {key: state[key] for key in keys}
+            and (native.verify_copy(state) if result.tool == 'copy_file' else native.verify_created_folder(state)))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method="native_identity_and_digest",
+        detail="Created target readback verified." if valid else "Created target was not verified.")
+
+
+def verify_create_folder(result):
+    return _verify_created_target(result)
+
+
+def verify_copy_file(result):
+    return _verify_created_target(result)
+
+
+def verify_list_folder(result):
+    from pluma.adapters.file_operations import verify_folder
+    try:
+        data = result.data
+        ListFolderArgs(path=data['path'], max_entries=data['max_entries'])
+        valid = (result.ok and type(data['has_more']) is bool and data['count'] == len(data['entries'])
+            and 0 <= data['count'] <= data['max_entries']
+            and (not data['has_more'] or data['count'] == data['max_entries'])
+            and verify_folder(data, result.private_context['folder_observation']))
+    except Exception:
+        valid = False
+    return VerifyResult(ok=valid, method="native_metadata",
+        detail="Bounded folder readback verified." if valid else "Folder entries were not verified.")
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +622,30 @@ def verify_create_folder(result: ToolResult) -> VerifyResult:
 # ---------------------------------------------------------------------------
 
 FILE_TOOL_SPECS: List[ToolSpec] = [
+    ToolSpec(name='safe_delete', description='Recycle one bounded local file or folder on a fixed NTFS volume; never permanently delete.',
+        args_schema=FileInfoArgs, risk_class=RiskClass.HIGH, timeout_s=15.0, process_isolated=True,
+        executor=execute_safe_delete, verifier=verify_safe_delete, undo_builder=undo_builder_safe_delete,
+        adapter_priority=[AdapterPriority.NATIVE_API]),
+    ToolSpec(name="list_folder", description="Read bounded immediate folder entries without following reparse targets.",
+        args_schema=ListFolderArgs, risk_class=RiskClass.READ, timeout_s=5.0, process_isolated=True,
+        executor=execute_list_folder, verifier=verify_list_folder, adapter_priority=[AdapterPriority.NATIVE_API]),
+    ToolSpec(name="copy_file", description="Copy one regular file to an exact new destination without overwriting.",
+        args_schema=CopyFileArgs, risk_class=RiskClass.MEDIUM, timeout_s=15.0, process_isolated=True,
+        executor=execute_copy_file, verifier=verify_copy_file, undo_builder=undo_builder_copy_file,
+        adapter_priority=[AdapterPriority.NATIVE_API], creates_resources=True),
+    ToolSpec(
+        name="file_info",
+        description="Read metadata for one explicit file or directory without reading its contents.",
+        args_schema=FileInfoArgs,
+        risk_class=RiskClass.READ,
+        timeout_s=5.0,
+        process_isolated=True,
+        executor=execute_file_info,
+        verifier=verify_file_info,
+        undo_builder=None,
+        adapter_priority=[AdapterPriority.NATIVE_API],
+        cancellable=True,
+    ),
     ToolSpec(
         name="list_files",
         description="List files and directories within a folder with metadata.",
@@ -457,6 +664,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=FindFileArgs,
         risk_class=RiskClass.READ,
         timeout_s=10.0,
+        process_isolated=True,
         executor=execute_find_file,
         verifier=verify_find_file,
         undo_builder=None,
@@ -469,6 +677,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=MoveFileArgs,
         risk_class=RiskClass.MEDIUM,
         timeout_s=15.0,
+        process_isolated=True,
         executor=execute_move_file,
         verifier=verify_move_file,
         undo_builder=undo_builder_move_file,
@@ -481,6 +690,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=RenameFileArgs,
         risk_class=RiskClass.MEDIUM,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_rename_file,
         verifier=verify_rename_file,
         undo_builder=undo_builder_rename_file,
@@ -493,6 +703,7 @@ FILE_TOOL_SPECS: List[ToolSpec] = [
         args_schema=CreateFolderArgs,
         risk_class=RiskClass.LOW,
         timeout_s=5.0,
+        process_isolated=True,
         executor=execute_create_folder,
         verifier=verify_create_folder,
         undo_builder=undo_builder_create_folder,

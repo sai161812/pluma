@@ -17,7 +17,7 @@ from pluma.adapters.base import ControlInfo, ElementNotFoundError, ElementUnavai
 from pluma.adapters.uia import UiaAdapter
 from pluma.perception.context import ActiveWindowContext
 from pluma.perception.uia_snapshot import UiaSnapshotBuilder
-from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
+from pluma.tools.base import AdapterDispatcher, AdapterPriority, AdapterUnavailable, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import verify_noop
 from pluma.verify.screen import ScreenVerifier
 
@@ -62,6 +62,24 @@ class TypeIntoElementArgs(BaseModel):
 # ---------------------------------------------------------------------------
 # Executors
 # ---------------------------------------------------------------------------
+
+def inspect_active_window_native(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
+    """Use native context alone when semantic controls were not requested."""
+    if args.get("include_controls", True):
+        raise AdapterUnavailable("Semantic controls require UIA.")
+    context = ActiveWindowContext()
+    active = context.get_active_window()
+    if not active.is_valid or not active.hwnd:
+        return ToolResult.failure("inspect_active_window", "No active foreground window found.", "NO_ACTIVE_WINDOW")
+    observed = context.get_active_window()
+    if not observed.is_valid or (observed.hwnd, observed.pid) != (active.hwnd, active.pid):
+        return ToolResult.failure("inspect_active_window", "Active window changed during inspection.", "WINDOW_MISMATCH")
+    return ToolResult.success("inspect_active_window", data={
+        "hwnd": active.hwnd, "process_name": active.process_name,
+        "window_title": active.window_title, "control_count": 0,
+        "controls": [], "snapshot_id": None, "raw_snapshot": None,
+    }, factual_message="Read the active window context without inspecting controls.")
+
 
 def execute_inspect_active_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     """Inspect the active foreground window and return its semantic controls.
@@ -396,9 +414,12 @@ INSPECT_ACTIVE_WINDOW_SPEC = ToolSpec(
     args_schema=InspectActiveWindowArgs,
     risk_class=RiskClass.READ,
     timeout_s=5.0,
-    executor=execute_inspect_active_window,
+    executor=AdapterDispatcher("inspect_active_window", {
+        AdapterPriority.NATIVE_API: inspect_active_window_native,
+        AdapterPriority.UIA: execute_inspect_active_window,
+    }),
     verifier=verify_noop,
-    adapter_priority=[AdapterPriority.UIA, AdapterPriority.NATIVE_API],
+    adapter_priority=[AdapterPriority.NATIVE_API, AdapterPriority.UIA],
     cancellable=True,
 )
 
@@ -408,9 +429,9 @@ CLICK_ELEMENT_SPEC = ToolSpec(
     args_schema=ClickElementArgs,
     risk_class=RiskClass.LOW,
     timeout_s=5.0,
-    executor=execute_click_element,
+    executor=AdapterDispatcher("click_element", {AdapterPriority.UIA: execute_click_element}),
     verifier=verify_noop,
-    adapter_priority=[AdapterPriority.UIA, AdapterPriority.KEYBOARD, AdapterPriority.RAW_COORDINATE],
+    adapter_priority=[AdapterPriority.UIA],
     cancellable=True,
 )
 
@@ -420,9 +441,9 @@ TYPE_INTO_ELEMENT_SPEC = ToolSpec(
     args_schema=TypeIntoElementArgs,
     risk_class=RiskClass.LOW,
     timeout_s=5.0,
-    executor=execute_type_into_element,
+    executor=AdapterDispatcher("type_into_element", {AdapterPriority.UIA: execute_type_into_element}),
     verifier=verify_noop,
-    adapter_priority=[AdapterPriority.UIA, AdapterPriority.KEYBOARD],
+    adapter_priority=[AdapterPriority.UIA],
     cancellable=True,
 )
 
@@ -784,9 +805,9 @@ CLICK_OCR_TEXT_SPEC = ToolSpec(
     args_schema=ClickOcrTextArgs,
     risk_class=RiskClass.LOW,
     timeout_s=10.0,
-    executor=execute_click_ocr_text,
+    executor=AdapterDispatcher("click_ocr_text", {AdapterPriority.OCR_GROUNDED: execute_click_ocr_text}),
     verifier=verify_click_ocr_text,
-    adapter_priority=[AdapterPriority.OCR_GROUNDED, AdapterPriority.RAW_COORDINATE],
+    adapter_priority=[AdapterPriority.OCR_GROUNDED],
     cancellable=True,
 )
 

@@ -26,6 +26,7 @@ from pluma.core.router import Router
 from pluma.core.task_supervisor import TaskCapsule, TaskState, TaskSupervisor, ResourceOwnership
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.tools.registry import ToolRegistry, register_default_tools
+from tests.fixtures.policy import owned_fixture_policy
 
 
 class NoopArgs(BaseModel):
@@ -51,7 +52,7 @@ class TestTaskOwnedWorkerContainment:
     def test_task_capsule_owns_worker_and_stop_task_kills_only_target_worker(self) -> None:
         from pluma.verify.common import verify_noop
 
-        registry = ToolRegistry()
+        registry = ToolRegistry(policy_engine=owned_fixture_policy('worker_noop'))
         register_default_tools(registry)
 
         spec = ToolSpec(
@@ -114,7 +115,7 @@ class TestTaskOwnedWorkerContainment:
         from pluma.verify.common import verify_noop
         import threading
         
-        registry = ToolRegistry()
+        registry = ToolRegistry(policy_engine=owned_fixture_policy('worker_noop', 'blocking_tool'))
         register_default_tools(registry)
 
         spec_noop = ToolSpec(

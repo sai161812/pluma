@@ -91,6 +91,9 @@ try {
     Invoke-Dotnet 'popup-layout' @('run', '--project', 'PLUMA.UI/PopupStack.Tests/PopupStack.Tests.csproj', '--verbosity', 'quiet')
     Invoke-Dotnet 'surface-contracts' @('run', '--project', 'PLUMA.UI/SurfaceContracts.Tests/SurfaceContracts.Tests.csproj', '--verbosity', 'quiet')
     Invoke-Dotnet 'audio-visualizer' @('run', '--project', 'PLUMA.UI/AudioVisualizer.Tests/AudioVisualizer.Tests.csproj', '--verbosity', 'quiet')
+    Invoke-Dotnet 'core-ipc' @('run', '--project', 'PLUMA.UI/CoreIpc.Tests/CoreIpc.Tests.csproj', '--verbosity', 'quiet', '-p:UseSharedCompilation=false')
+    $ipc = Assert-Report (Join-Path $runDirectory 'core-ipc.out.log') '(?m)^\d+ IPC checks passed\.'
+    $summary.ipcResult = ($ipc -split '\r?\n' | Where-Object { $_ -match '^\d+ IPC checks passed\.' }) -join ''
     & (Join-Path $PSScriptRoot 'check-surface-copy.ps1')
     $previewDirectory = Join-Path $repositoryRoot 'output/ui-verification-build'
     $outDirectory = $previewDirectory.Replace('\', '/') + '/'

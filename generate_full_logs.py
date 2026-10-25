@@ -5,6 +5,7 @@ from __future__ import annotations
 import platform
 import sys
 import time
+from pathlib import Path
 from typing import Dict, List
 
 import pytest
@@ -61,12 +62,14 @@ def main() -> int:
 
     full_text = header + "\n".join(records) + footer
 
-    with open("test_run_raw.log", "w", encoding="utf-8") as f:
+    output_dir = Path(__file__).resolve().parent / "output" / "verification"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_dir / "test_run_raw.log", "w", encoding="utf-8") as f:
         f.write(full_text)
-    with open("ACCEPTANCE_TEST_RAW_LOG.txt", "w", encoding="utf-8") as f:
+    with open(output_dir / "ACCEPTANCE_TEST_RAW_LOG.txt", "w", encoding="utf-8") as f:
         f.write(full_text)
 
-    print(f"Generated complete logs: {passed_count} passed, {failed_count} failed, {skipped_count} skipped ({pass_rate:.1f}%) in {elapsed:.2f}s.")
+    print(f"Generated complete logs in {output_dir}: {passed_count} passed, {failed_count} failed, {skipped_count} skipped ({pass_rate:.1f}%) in {elapsed:.2f}s.")
     return int(ret)
 
 
