@@ -16,6 +16,7 @@ Architecture constraints:
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, List, Optional, Protocol
@@ -24,6 +25,10 @@ from pluma.core.cancellation import CancellationToken, TaskCancelledError
 from pluma.perception.element_refs import BoundingBox
 
 logger = logging.getLogger(__name__)
+
+_PADDLEOCR_DETECTION_MODEL = "PP-OCRv6_small_det"
+_PADDLEOCR_RECOGNITION_MODEL = "PP-OCRv6_small_rec"
+_ONNX_CPU_PROVIDERS = ["CPUExecutionProvider"]
 
 
 # ---------------------------------------------------------------------------
@@ -105,20 +110,49 @@ class _PaddleOcrBackend:
     def load(self) -> None:
         """Load the PaddleOCR model. Called explicitly by OcrLifecycleManager."""
         try:
+            import onnxruntime as ort  # type: ignore[import-not-found]
+
+            if "CPUExecutionProvider" not in ort.get_available_providers():
+                raise RuntimeError("ONNX Runtime CPU provider is unavailable.")
+
             from paddleocr import PaddleOCR  # type: ignore[import-not-found]
-            # Use lightweight det/rec models; lang='en' for lowest model size
+
+            # Keep the OCR engine explicit, local and CPU-only. These small
+            # PP-OCRv6 models are selected for rendered screen text; no
+            # document-orientation or unwarping models are needed for a window
+            # crop. Runtime imports and model loading remain on-demand.
             self._ocr = PaddleOCR(
-                use_angle_cls=False,
-                lang="en",
-                show_log=False,
-                use_gpu=False,
+                text_detection_model_name=_PADDLEOCR_DETECTION_MODEL,
+                text_recognition_model_name=_PADDLEOCR_RECOGNITION_MODEL,
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                device="cpu",
+                engine="onnxruntime",
+                engine_config={
+                    "onnxruntime": {
+                        "device_type": "cpu",
+                        "providers": list(_ONNX_CPU_PROVIDERS),
+                        "intra_op_num_threads": 2,
+                        "inter_op_num_threads": 1,
+                        "execution_mode": "sequential",
+                    }
+                },
             )
-            logger.info("PaddleOCR engine loaded.")
-        except ImportError:
+            logger.info(
+                "PaddleOCR loaded with %s/%s through ONNX Runtime CPU.",
+                _PADDLEOCR_DETECTION_MODEL,
+                _PADDLEOCR_RECOGNITION_MODEL,
+            )
+        except ImportError as exc:
             logger.error(
-                "paddleocr is not installed. Install it with: pip install paddleocr"
+                "PaddleOCR/ONNX Runtime is not installed. "
+                "Install the optional runtime with: pip install 'pluma[ocr]'"
             )
-            raise
+            raise ImportError(
+                "PaddleOCR/ONNX Runtime is required for OCR. "
+                "Install the optional runtime with: pip install 'pluma[ocr]'"
+            ) from exc
 
     def unload(self) -> None:
         """Release the PaddleOCR model from memory."""
@@ -134,40 +168,107 @@ class _PaddleOcrBackend:
         import numpy as np  # type: ignore[import-not-found]
         from PIL import Image  # type: ignore[import-not-found]
 
-        # Convert BMP bytes to numpy array for PaddleOCR
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        img_array = np.array(img)
+        # Decode only the in-memory target crop. PaddleOCR's result-saving APIs
+        # are intentionally not called, so neither the input nor a rendering
+        # of the result is written to disk.
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            rgb_image = source.convert("RGB")
+            try:
+                image_width, image_height = rgb_image.size
+                img_array = np.array(rgb_image)
+            finally:
+                rgb_image.close()
 
-        results = self._ocr.ocr(img_array, cls=False)
+        results = self._ocr.predict(img_array)
         words: List[OcrWord] = []
 
-        if results is None or not results or results[0] is None:
+        if results is None:
             return words
 
-        for line in results[0]:
-            if not line:
-                continue
-            # PaddleOCR returns: [[x1,y1],[x2,y2],[x3,y3],[x4,y4]], (text, conf)
-            polygon, (text, conf) = line
-            if not text or conf < 0.0:
-                continue
+        if not isinstance(results, (list, tuple)):
+            results = [results]
 
-            # Compute axis-aligned bounding box from polygon points
-            xs = [int(pt[0]) for pt in polygon]
-            ys = [int(pt[1]) for pt in polygon]
-            word = OcrWord(
-                text=text,
-                confidence=float(conf),
-                bounds=BoundingBox(
-                    left=min(xs),
-                    top=min(ys),
-                    right=max(xs),
-                    bottom=max(ys),
-                ),
-            )
-            words.append(word)
+        for result in results:
+            result_json = getattr(result, "json", None)
+            if callable(result_json):
+                result_json = result_json()
+            if not isinstance(result_json, dict):
+                raise ValueError("PaddleOCR returned an unsupported result object.")
+
+            payload = result_json.get("res", result_json)
+            if not isinstance(payload, dict):
+                raise ValueError("PaddleOCR returned an invalid result payload.")
+
+            texts = self._as_list(payload.get("rec_texts"))
+            scores = self._as_list(payload.get("rec_scores"))
+            polygons = self._as_list(payload.get("rec_polys"))
+            boxes = self._as_list(payload.get("rec_boxes"))
+            if not polygons and boxes:
+                polygons = boxes
+
+            if not texts and not scores and not polygons:
+                continue
+            if not (len(texts) == len(scores) == len(polygons)):
+                raise ValueError("PaddleOCR result text, score and bounds counts differ.")
+
+            for text, score, coordinates in zip(texts, scores, polygons):
+                text = str(text).strip()
+                confidence = float(score)
+                if not text:
+                    continue
+                if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+                    raise ValueError("PaddleOCR returned an invalid confidence score.")
+
+                coordinates = self._as_list(coordinates)
+                if len(coordinates) == 4 and all(
+                    not isinstance(value, (list, tuple)) and not hasattr(value, "__len__")
+                    for value in coordinates
+                ):
+                    xs = [float(coordinates[0]), float(coordinates[2])]
+                    ys = [float(coordinates[1]), float(coordinates[3])]
+                else:
+                    points = [self._as_list(point) for point in coordinates]
+                    if len(points) < 3 or any(len(point) < 2 for point in points):
+                        raise ValueError("PaddleOCR returned invalid text bounds.")
+                    xs = [float(point[0]) for point in points]
+                    ys = [float(point[1]) for point in points]
+
+                if not all(math.isfinite(value) for value in xs + ys):
+                    raise ValueError("PaddleOCR returned non-finite text bounds.")
+                left, top = math.floor(min(xs)), math.floor(min(ys))
+                right, bottom = math.ceil(max(xs)), math.ceil(max(ys))
+                if right <= left or bottom <= top:
+                    continue
+                if left < 0 or top < 0 or right > image_width or bottom > image_height:
+                    raise ValueError("PaddleOCR returned text bounds outside the input image.")
+
+                words.append(OcrWord(
+                    text=text,
+                    confidence=confidence,
+                    bounds=BoundingBox(
+                        left=left,
+                        top=top,
+                        right=right,
+                        bottom=bottom,
+                    ),
+                ))
 
         return words
+
+    @staticmethod
+    def _as_list(value: Any) -> list[Any]:
+        """Convert PaddleOCR/NumPy result arrays into ordinary Python lists."""
+        if value is None:
+            return []
+        tolist = getattr(value, "tolist", None)
+        if callable(tolist):
+            value = tolist()
+        if isinstance(value, (str, bytes)):
+            raise ValueError("PaddleOCR returned an invalid sequence field.")
+        try:
+            return list(value)
+        except TypeError as exc:
+            raise ValueError("PaddleOCR returned an invalid sequence field.") from exc
 
 
 # ---------------------------------------------------------------------------

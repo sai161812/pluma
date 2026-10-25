@@ -183,13 +183,23 @@ python -m venv .venv
 pip install -e ".[windows,media,dev]"
 ```
 
+Install the optional PaddleOCR/ONNX Runtime path when OCR is needed:
+
+```powershell
+pip install -e ".[ocr]"
+```
+
+The OCR model files download to the local PaddleX cache on first use. Image
+captures remain in memory; model files and OCR runtimes are not bundled in the
+repository.
+
 Start the resident process:
 
 ```powershell
 pluma --debug
 ```
 
-The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR. Their model files/runtime packages are not vendored in this repository and must be installed and configured separately before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions.
+The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR through ONNX Runtime when the OCR extra is installed. Their model files/runtime packages are not vendored in this repository and must be installed before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions.
 
 For packaged installation, the release bundle contains the wheel, `pluma.exe`, installer scripts, configuration, and SHA-256 manifest:
 
