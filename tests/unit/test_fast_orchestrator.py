@@ -326,11 +326,6 @@ class TestZeroMLFastRoute:
     def test_no_ml_loaded(self, entry: Dict[str, Any]) -> None:
         text = entry["command"]
         mode = entry.get("input_mode", "text")
-        no_llm = entry.get("no_llm", False)
-
-        if not no_llm:
-            pytest.skip("Entry does not require no_llm guarantee.")
-
         req = _req(text, mode)
         self.orch.execute(req)
         _assert_no_ml_loaded()

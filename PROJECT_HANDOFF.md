@@ -1,6 +1,18 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P11 acceptance retry (E59)
+## Current checkpoint: 2026-10-25, P00-P11 merge preparation (E60)
+
+**P00-P11 implementation is complete with the owner-approved deferral of live focus and physical audio acceptance to final validation.** Those effects remain unverified, not permanently waived or reported as passing. P12 has not started. [E60](docs/completion/p11_merge_readiness.md) records the fresh checks and merge plan.
+
+The owner explicitly directed that the remaining focus/audio checks be done last, and requested completion through P11 and preparation for merge. This accepts those concrete limitations under AGENTS.md, without removing capabilities or authorizing P12 or a merge. All 57 P11 non-screen catalog names are registered with bounded execution and verifier metadata. The 16 screen-control catalog names remain P12 work.
+
+Fresh P01-P10 prerequisites passed **435 tests, zero skipped**, including all 15 original BA regressions and actual owned Windows STOP/descendant/rollback/shutdown, recovery and credential checks. C#/Python IPC passed **39 checks**. Clipboard regression passed **283 tests**, preserving the personal clipboard with zero owned processes left. The **115-test FAST orchestration suite** now runs without skips; all FAST corpus entries execute the no-ML assertion. Final P11 catalog regression: **1,274 passed**; final routing/contracts: **319 passed**. Both have zero failures/errors/skips. E60 records exact commands, source hashes and durations.
+
+The merge simulation against `origin/main` is clean. Existing draft PRs form a stack: [PR 1](https://github.com/sai161812/pluma/pull/1), integration to main; [PR 2](https://github.com/sai161812/pluma/pull/2), wiring to integration. Both are open and mergeable, with successful Windows UI workflow runs on their reviewed heads. Windows Application Control blocked three local UI test executables; those local attempts are not passes. No UI source changed in this checkpoint.
+
+Next safe step: review E60 and the merge order. Do not merge, enable action entry or start P12 automatically. Final focus/audio acceptance remains visible in the matrix.
+
+## Previous checkpoint: 2026-10-25, P11 acceptance retry (E59)
 
 **P11 acceptance is progressing; P12 has not started.** [E59](docs/completion/p11_acceptance_retry.md) supersedes E58's current clipboard, foreground-read and UAC blockers with fresh native evidence.
 
