@@ -238,6 +238,43 @@ def test_orchestrator_log_and_history_redact_spoken_clipboard_payload(
     assert stored["original_transcript"] == "[REDACTED CLIPBOARD COMMAND]"
 
 
+def test_orchestrator_redacts_full_clipboard_command_before_log_preview(
+    orchestrator: Orchestrator, query: ActivityQuery, monkeypatch, caplog,
+) -> None:
+    payload = "long-preview-private-fixture-7c21@example.test"
+    filler = "ordinary context " * 12
+    utterance = f"Please use {payload} as the value. {filler}The clipboard is the target."
+    assert utterance.index("clipboard") >= 120
+    request = PlumaRequest(
+        input_mode=InputMode.VOICE,
+        text=utterance,
+        original_transcript=utterance,
+    )
+    plan = Plan(
+        task_id=request.request_id,
+        route=RouteMode.FAST,
+        mode=PlanMode.DIRECT,
+        steps=[ToolCall(tool="mute", arguments={}, purpose="Run an isolated privacy fixture.")],
+    )
+    monkeypatch.setattr(
+        orchestrator._router,
+        "route",
+        lambda _request: RouteResult(route=RouteMode.FAST, reason="isolated fixture", plan=plan),
+    )
+
+    with caplog.at_level("INFO", logger="pluma.core.orchestrator"):
+        result = orchestrator.execute(request)
+
+    assert result.final_state == "SUCCEEDED"
+    assert payload not in caplog.text
+    stored = query.task_by_id(result.task_id)
+    assert stored is not None
+    assert payload not in stored["command_text"]
+    assert payload not in stored["original_transcript"]
+    assert stored["command_text"] == "[REDACTED CLIPBOARD COMMAND]"
+    assert stored["original_transcript"] == "[REDACTED CLIPBOARD COMMAND]"
+
+
 def test_complex_voice_command_selects_smart_planner_and_registered_read_tool(
     db_conn: DbConnection, ledger: ActivityLedger, tmp_path
 ) -> None:

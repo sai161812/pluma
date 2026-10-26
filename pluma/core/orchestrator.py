@@ -157,7 +157,7 @@ class Orchestrator:
         logger.info(
             "task=%s request=%s mode=%s text=%r",
             task_id, request.request_id, request.input_mode.value,
-            redact_command_text(request.text[:120]),
+            redact_command_text(request.text)[:120],
         )
 
         capsule.history_expected = True

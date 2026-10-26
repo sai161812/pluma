@@ -1,39 +1,33 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P14 targeted gap closure E76
+## Current checkpoint: 2026-10-26, P14 targeted fixes E77; C-02 remains open
 
-**E76 closes the six reported P14 implementation/evidence findings.** It fixes
-extensionless/arbitrary-suffix material-target detection, prevents average STT
-confidence from masking a weak segment, redacts spoken clipboard/paste content
-from INFO logs and task/original-transcript history, adds measured timing to the
-physical C-02 harness, tests production hotkey polling with a mocked Win32 API,
-and runs native Whisper followed by native Qwen planning under the same task
-capsule. See [E76](docs/completion/p14_gap_repairs.md) for source changes,
-commands, report identities and exact results. The affected regression suite
-passed **179/179** with zero failures, errors, skips or xfails.
+**E77 closes three P14 gaps and strengthens the C-02 timing gate, but P14 is
+not complete.** Full-command redaction now precedes the 120-character log
+preview; low-confidence `open README` and `read LICENSE` now return
+transcript-free clarification while known app launch such as `open notepad`
+remains routable. Native C-05 now passes generated-speech Whisper to native
+Qwen multi-step `list_folder`/`file_info` planning over an owned fixture, with
+voice/text parity, pre-dispatch path containment, SQLite readback and worker
+absence. See [E77](docs/completion/p14_e77_gap_closure.md) for exact commands,
+model identities and reports.
 
-- Recovery point before E76: `80417f8175aa1d109752b44b49cce83f49ae7356` on
-  `p12-preparation`; no branch switch, reset or merge was used.
-- Actual Whisper material-target acceptance on the updated code returned
-  `0.625466` (< `0.65`), produced a transcript-free clarification, admitted no
-  task/tool, verified worker cleanup and returned the model to COLD.
-- Physical C-02 passed 3/3 on the AMD microphone array and Realtek speaker.
-  Against a 4,500 ms expected boundary and explicit 750 ms tolerance, errors
-  were 456.8, 399.7 and 629.7 ms; stream inactivity, stable buffer and closure
-  were also read back. This uses generated speech, not human speech.
-- The combined Whisper-to-Qwen SMART run used generated speech and a fixed
-  read-only `os_version` diagnostic. It verified same-capsule execution,
-  voice/text route and tool parity, ledger readback and worker absence. It does
-  not establish complex human-speech multi-step file planning. The physical
-  microphone test still invokes the production PTT callback; physical keypress
-  injection remains untested. The polling loop now has mocked Win32 unit
-  coverage. P19 visible clarification remains outside this packet.
-- C-10 remains optional. No P15 work has started.
+- Recovery point before E77: `a675d1eea3f334bbe2c5972e32fe35437b43010d` on
+  `p12-preparation`; no branch switch, reset, merge or force push was used.
+- Focused regressions passed **27/27**; affected voice/ownership/ledger regressions
+  passed **182/182**, with zero failures, errors, skips or xfails.
+- C-02 uses separate -100 ms early and +750 ms late bounds. Unit timing tests
+  reject a stop 100 ms before fixture speech ends. Fresh physical trials did not
+  pass consistently: default MME at gain 0.2 observed no boundary in 3/3; gain
+  0.8 passed 1/3; DirectSound passed 0/3 with early and late outcomes. WASAPI
+  could not open the microphone at 16 kHz. Full reports/logs are in ignored
+  `output/p14-native/voice-boundary-e77*`. Prior E76 physical readings do not
+  supersede these fresh failures.
+- P14 remains incomplete pending a stable physical C-02 three-trial result.
+  C-10 is optional. No P15 work has started.
 
-Next safe step: independent review of E76 and the remaining P14 limitation list;
-do not start P15 automatically. See [E75](docs/completion/p14_voice_acceptance.md)
-for the earlier backend acceptance evidence and its corrected historical
-polling/timing claims.
+Next safe step: diagnose the physical microphone/playback timing path and rerun
+C-02 without widening the timing bounds. Do not advance to P15 automatically.
 
 ## Previous checkpoint: 2026-10-26, P14 bounded native STT packet E74
 

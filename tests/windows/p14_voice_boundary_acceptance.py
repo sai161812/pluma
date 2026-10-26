@@ -22,7 +22,8 @@ import sounddevice as sd
 from pluma.voice.capture import AudioCapture
 from pluma.voice.vad import EnergyVAD
 
-BOUNDARY_TIMING_TOLERANCE_MS = 750
+BOUNDARY_EARLY_TOLERANCE_MS = 100
+BOUNDARY_LATE_TOLERANCE_MS = 750
 
 
 def _read_fixture(path: Path, gain: float) -> tuple[np.ndarray, int, str]:
@@ -58,6 +59,11 @@ def _speech_profile(pcm_bytes: bytes, vad: EnergyVAD) -> dict:
 def _boundary_error_ms(captured_duration_ms: float, pre_playback_ms: float,
                        expected_from_playback_ms: float) -> float:
     return captured_duration_ms - pre_playback_ms - expected_from_playback_ms
+
+
+def _boundary_timing_matches(error_ms: float) -> bool:
+    """Allow modest device delay, while rejecting premature speech capture."""
+    return -BOUNDARY_EARLY_TOLERANCE_MS <= error_ms <= BOUNDARY_LATE_TOLERANCE_MS
 
 
 def _output_device(name_part: str, host_api: int) -> tuple[int, str]:
@@ -125,7 +131,8 @@ def run_acceptance(
         "repetitions": repetitions,
         "configured_vad_silence_ms": 600,
         **profile,
-        "boundary_tolerance_ms": BOUNDARY_TIMING_TOLERANCE_MS,
+        "boundary_early_tolerance_ms": BOUNDARY_EARLY_TOLERANCE_MS,
+        "boundary_late_tolerance_ms": BOUNDARY_LATE_TOLERANCE_MS,
         "silence_wait_s": silence_wait_s,
         "raw_audio_saved": False,
         "transcript_saved": False,
@@ -158,7 +165,7 @@ def run_acceptance(
             boundary_error_ms = _boundary_error_ms(
                 captured_duration_ms, pre_playback_ms, expected_from_playback_ms
             )
-            boundary_timing_matches = abs(boundary_error_ms) <= BOUNDARY_TIMING_TOLERANCE_MS
+            boundary_timing_matches = _boundary_timing_matches(boundary_error_ms)
             result.update({
                 "boundary_observed": boundary,
                 "captured_duration_ms": round(captured_duration_ms, 1),

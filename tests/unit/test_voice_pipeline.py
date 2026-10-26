@@ -40,6 +40,8 @@ def test_is_material_target_detection() -> None:
     assert is_material_target("volume 20")
     assert is_material_target("set volume to fifty percent")
     assert not is_material_target("open notepad")
+    assert is_material_target("open README")
+    assert is_material_target("read LICENSE")
     assert not is_material_target("show activity")
 
 
@@ -122,6 +124,8 @@ def test_voice_pipeline_low_confidence_with_material_target_returns_none(caplog)
     "move budget.md",
     "move startup.ps1",
     "move README",
+    "open README",
+    "read LICENSE",
 ])
 def test_low_confidence_file_target_emits_transcript_free_clarification(text, caplog) -> None:
     mock_lifecycle = MagicMock(spec=VoiceLifecycleManager)

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from pluma.core.request import InputMode, PlumaRequest
+from pluma.core.router import is_known_app_alias
 from pluma.memory.redaction import redact_command_text
 from pluma.voice.lifecycle import VoiceLifecycleManager
 from pluma.voice.vad import EnergyVAD
@@ -50,6 +51,10 @@ _FILE_TARGET_PATTERN = re.compile(
     r"script|database|report|filename|path)\b",
     re.IGNORECASE,
 )
+_OPEN_READ_TARGET_PATTERN = re.compile(
+    r"\b(?P<verb>open|read|view)\s+(?:the\s+)?(?P<target>[\w ._-]+?)\s*$",
+    re.IGNORECASE,
+)
 _NUMBER_PATTERN = re.compile(
     r"\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
     r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
@@ -60,6 +65,14 @@ _NUMBER_PATTERN = re.compile(
 
 def is_material_target(text: str) -> bool:
     """Check if command contains material targets (filenames, numbers, destructive actions)."""
+    open_read_target = _OPEN_READ_TARGET_PATTERN.search(text)
+    if open_read_target:
+        verb = open_read_target.group("verb").casefold()
+        target = open_read_target.group("target").strip().rstrip(".!?").strip()
+        # Preserve deterministic launches for known application names. Other
+        # extensionless open/read/view targets may be files and need clarification.
+        if verb != "open" or not is_known_app_alias(target):
+            return True
     if (_DESTRUCTIVE_PATTERN.search(text)
             or _FILE_EXT_PATTERN.search(text)
             or _FILE_PATH_PATTERN.search(text)

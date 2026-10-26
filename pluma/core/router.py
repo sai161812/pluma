@@ -142,6 +142,11 @@ def _normalise_app_name(raw: str) -> str:
     return _APP_ALIASES.get(raw.lower().strip(), raw.strip())
 
 
+def is_known_app_alias(raw: str) -> bool:
+    """Return whether *raw* is an explicitly recognized application alias."""
+    return raw.lower().strip() in _APP_ALIASES
+
+
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------

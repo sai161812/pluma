@@ -1,12 +1,12 @@
-# E76 — P14 targeted defect and evidence closure
+# E76 - Historical P14 targeted defect and evidence closure
 
-See [E76](p14_gap_repairs.md) for the six source/verification findings closed
-after this E75 checkpoint. E76 adds arbitrary extensionless file-target
-clarification, conservative per-segment confidence, spoken clipboard redaction,
-measured C-02 stop timing, production hotkey-loop unit coverage, and a bounded
-native Whisper-to-Qwen same-capsule run. E76 also corrects the historical C-01
-polling and C-02 timing claims below. Complex native STT-to-multi-step file
-planning from human speech and P19 visible clarification remain unverified.
+See [E77](p14_e77_gap_closure.md) for the latest P14 fixes and C-02 device
+results. E76, recorded in [p14_gap_repairs.md](p14_gap_repairs.md), added
+arbitrary extensionless file-target clarification, conservative per-segment
+confidence, spoken clipboard redaction, measured C-02 timing, production
+hotkey polling-loop unit coverage, and a bounded native Whisper-to-Qwen run.
+E77 verifies complex native multi-step file planning from generated speech.
+The fresh physical C-02 timing gate did not pass; P14 remains incomplete.
 
 # E75 — P14 backend voice acceptance
 

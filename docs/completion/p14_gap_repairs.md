@@ -1,9 +1,9 @@
-# E76 — P14 targeted defect and evidence closure
+# E76 - Historical P14 targeted defect and evidence closure
 
-**Status:** The six findings reviewed on 2026-10-26 are closed to the scope
-described here. P14 is not declared complete by this packet: P19 still owns the
-visible voice clarification surface, and complex native STT-to-multi-step file
-planning from human speech remains unverified.
+**Status:** Superseded by [E77](p14_e77_gap_closure.md). This checkpoint
+records the six findings and evidence as they stood at E76. E77 closes the
+long-preview redaction, extensionless read clarification, and native complex-
+file planner gaps, while recording that fresh physical C-02 trials did not pass.
 
 ## Findings and repairs
 
