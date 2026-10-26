@@ -1,5 +1,9 @@
 # Overall P00-P11 completion audit
 
+Current overall revalidation: [E73 P01–P13 audit](p01_p13_overall_audit.md).
+It supersedes current-status wording in the dated checkpoints below; their
+historical counts and the owner's physical-test deferrals remain traceable.
+
 Merged checkpoint: [E61](p11_main_merge.md), 2026-10-25. PRs 1 and 2 are merged into main; the resulting P11 main tree matches tested head `34a8471`. Post-merge verification and the prepared first P12 task are recorded there. E60's specific final-device deferral remains in effect. P12 has not started.
 
 ## Current verdict: 2026-10-25 (E60)

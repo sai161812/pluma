@@ -1,5 +1,10 @@
 # E72 — P13 planner and runtime acceptance
 
+**Subsequent revalidation:** [E73](p01_p13_overall_audit.md) found and repaired
+retired-task admission/fence and application-log privacy gaps not established by
+E72's focused selection. E73 is the current overall verdict. The E72 results,
+source identity and measurements below are retained as historical evidence.
+
 **P13's assigned planner and lifecycle acceptance is complete on
 `p12-preparation`.** This
 checkpoint closes the previously open A-04/A-05/A-06, B-02/B-06/B-07 and

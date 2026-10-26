@@ -1,6 +1,45 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P13 planner/runtime acceptance E72
+## Current checkpoint: 2026-10-26, P01–P13 overall audit E73
+
+**The P01–P13 audit passes after three source repairs; P14 is eligible but has
+not started.** The owner's deferred physical checks remain deferred and are not
+counted as passes. [E73](docs/completion/p01_p13_overall_audit.md) records the
+feature/milestone reconciliation, reproductions, exact selections, limitations
+and P14 starting packet.
+
+- Source checkpoint: `a9f77da9a6263ab6c019e7ca17795e54d8444ae3` on
+  `p12-preparation`, pushed. Recovery point:
+  `ce25d711adba0ab4c9bbc13b03c47f0da7d38093`.
+- Fixed retired successful capsules admitting thread tools, loss of the native
+  admission fence during retirement, and unredacted planner-purpose logging.
+  Existing native tests now verify original PID/creation identity after handle
+  closure. The process-close fixture acknowledges actual WM_CLOSE dispatch
+  before the STOP/irreversible-residual check; assertions were preserved.
+- Fresh local checks: **443 prerequisites, 1,282 catalog, 329 routing/contracts,
+  233 P12, 10 native Win32/WPF and 16 additional P13 passes**, all zero failed/
+  error/skipped. All 15 original BA regressions ran with `--runxfail`.
+- Fresh-logon clipboard: **294 passed**, both exits zero, no owned process left
+  and personal clipboard sequence unchanged. Actual ONNX OCR: **288/288 exact
+  lines**, valid bounds, minimum confidence 0.9386066198; dependency check passes.
+  Actual llama.cpp STOP/timeout/crash, multi-step/replan, invented-tool rejection,
+  privacy and cold cleanup/ledger acceptance pass on the repaired source.
+- Local C# execution was blocked by Application Control; the existing
+  [Windows CI workflow](https://github.com/sai161812/pluma/actions/runs/40289004034)
+  passed on the exact source checkpoint, including **39 Python/C# IPC checks**.
+  No security policy was bypassed. E72's 50-cycle/ten-minute idle reports remain
+  historical measurements, not fresh results in this audit.
+- All 73 required catalog names are registered among 85 ToolSpecs. Stale
+  registry/adapter-defect matrix wording is corrected using current source and
+  tests. Full release, broad quality/performance, physical focus/audio and other
+  documented later gates remain visible; no deleted or deferred test was restored.
+
+Next safe packet, when instructed: P14 C-08/B-04, real task-owned whisper.cpp
+STT cancellation/unload and effective model/runtime configuration using fixture
+audio and worker/ledger readback. Continue with microphone/VAD, confidence and
+voice/text parity within P14. Do not begin P14 automatically.
+
+## Previous checkpoint: 2026-10-26, P13 planner/runtime acceptance E72
 
 **P13's assigned planner/lifecycle acceptance is complete and ready for
 independent Sol review. P14 has not started.** E72 completes the task-owned native
