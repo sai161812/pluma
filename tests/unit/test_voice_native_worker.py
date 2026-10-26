@@ -122,8 +122,8 @@ def test_native_stt_is_dispatched_to_matching_capsule_and_confidence_is_real(
     model_path = tmp_path / "fixture.ggml"
     model_path.write_bytes(b"fixture model path only")
     _fake_whisper_modules(monkeypatch, [
-        SimpleNamespace(text="delete private.txt", probability=0.9, t0=0, t1=8),
-        SimpleNamespace(text="", t0=8, t1=9),  # missing probability must not imply 1.0
+        SimpleNamespace(text="Please move the file", probability=0.99, t0=0, t1=8),
+        SimpleNamespace(text="budget.md to archive", probability=0.40, t0=8, t1=9),
     ])
     capsule = _Capsule()
     token = _Token(capsule)
@@ -140,11 +140,32 @@ def test_native_stt_is_dispatched_to_matching_capsule_and_confidence_is_real(
     assert controller.request.tool_name == "voice_stt"
     assert controller.request.task_id == capsule.task_id
     assert controller.execution_token is token
-    assert result.text == "delete private.txt"
-    assert abs(result.confidence - 0.45) < 1e-9
+    assert result.text == "Please move the file budget.md to archive"
+    assert abs(result.confidence - 0.40) < 1e-9
     assert result.is_low_confidence
     assert controller.request.validated_args["audio"] == b"\0" * 1600
     assert not adapter.is_loaded
+
+
+def test_native_stt_ignores_empty_segments_when_using_weakest_confidence(
+    tmp_path, monkeypatch,
+):
+    model_path = tmp_path / "fixture.ggml"
+    model_path.write_bytes(b"fixture model path only")
+    _fake_whisper_modules(monkeypatch, [
+        SimpleNamespace(text="Show activity", probability=0.9, t0=0, t1=8),
+        SimpleNamespace(text="", t0=8, t1=9),
+    ])
+    capsule = _Capsule()
+    token = _Token(capsule)
+    adapter = WhisperSttAdapter(registry=_Registry(_Controller()))
+    adapter.load(str(model_path))
+
+    result = adapter.transcribe(b"\0" * 1600, cancellation_token=token)
+
+    assert result.text == "Show activity"
+    assert result.confidence == 0.9
+    assert not result.is_low_confidence
 
 
 def test_native_stt_refuses_missing_capsule_before_worker_admission(tmp_path):

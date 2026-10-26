@@ -236,7 +236,8 @@ def _native_stt_executor(arguments: Dict[str, Any], task_context: Any):
             if not math.isfinite(probability):
                 probability = 0.0
             probability = min(1.0, max(0.0, probability))
-            probabilities.append(probability)
+            if segment_text.strip():
+                probabilities.append(probability)
             segments_out.append({
                 "text": segment_text,
                 "t0": getattr(segment, "t0", 0),
@@ -262,7 +263,10 @@ def _native_stt_executor(arguments: Dict[str, Any], task_context: Any):
         return ToolResult.failure("voice_stt", "Local speech transcription failed.",
                                   error_code="STT_NATIVE_FAILED")
 
-    confidence = sum(probabilities) / len(probabilities) if probabilities else 0.0
+    # A weak segment can contain the target that determines what the command
+    # will act on. The mean can hide that risk behind unrelated strong speech,
+    # so expose the weakest nonempty segment as the conservative request score.
+    confidence = min(probabilities) if probabilities else 0.0
     return ToolResult.success(
         "voice_stt",
         data={

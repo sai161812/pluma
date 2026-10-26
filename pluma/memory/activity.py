@@ -24,7 +24,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pluma.memory.db import DbConnection
-from pluma.memory.redaction import redact_sensitive_data, redact_string, sanitise_args_for_ledger
+from pluma.memory.redaction import (
+    redact_command_text,
+    redact_sensitive_data,
+    redact_string,
+    sanitise_args_for_ledger,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +135,8 @@ class ActivityLedger:
 
     def insert_task(self, record: TaskRecord) -> None:
         """Insert a new task row. Called when the TaskCapsule is created."""
-        redacted_cmd = redact_string(record.command_text) if record.command_text else record.command_text
-        redacted_transcript = (redact_string(record.original_transcript)
+        redacted_cmd = redact_command_text(record.command_text) if record.command_text else record.command_text
+        redacted_transcript = (redact_command_text(record.original_transcript)
                                if record.original_transcript else None)
         self._db.execute_write(
             """

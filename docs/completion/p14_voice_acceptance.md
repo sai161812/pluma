@@ -1,8 +1,20 @@
+# E76 — P14 targeted defect and evidence closure
+
+See [E76](p14_gap_repairs.md) for the six source/verification findings closed
+after this E75 checkpoint. E76 adds arbitrary extensionless file-target
+clarification, conservative per-segment confidence, spoken clipboard redaction,
+measured C-02 stop timing, production hotkey-loop unit coverage, and a bounded
+native Whisper-to-Qwen same-capsule run. E76 also corrects the historical C-01
+polling and C-02 timing claims below. Complex native STT-to-multi-step file
+planning from human speech and P19 visible clarification remain unverified.
+
 # E75 — P14 backend voice acceptance
 
-**Status:** P14 backend acceptance is complete. E75 closes the required C-01
-through C-09 voice gates with physical device, fixture, and native-model
-evidence. C-10 remains optional. P15 has not started.
+**Status as of E75:** This checkpoint recorded C-01 through C-09 backend voice
+evidence and called the backend acceptance complete. E76 supersedes six
+implementation/evidence findings and narrows the remaining limitations; see
+[E76](p14_gap_repairs.md) before relying on that historical status. C-10
+remains optional. P15 has not started.
 
 ## Gap and implementation
 
@@ -77,14 +89,15 @@ models, generated/recorded audio and reports are under ignored `output/`.
 
 The fixture VAD tests feed speech/silence frames into the real capture callback
 and prove the configured boundary stops the stream and excludes later frames.
-The repeatable physical C-02 check played the generated Microsoft Zira speech
-fixture through the Realtek speaker at 20% sample gain and captured it using
-the default physical AMD microphone array. Three consecutive trials observed
-the 600 ms configured VAD boundary, found the physical stream inactive, saw no
-buffer growth after the boundary, and read back stream closure on release. A
-two-second post-playback wait allows the microphone's noise processing to
-settle. This is physical-device evidence with generated speech, not human
-speech-quality evidence; no microphone audio or transcript was saved. The PCM
+The E75 physical C-02 check played the generated Microsoft Zira speech fixture
+through the Realtek speaker at 20% sample gain and captured it using the default
+physical AMD microphone array. Three consecutive trials observed VAD completion,
+an inactive stream, no buffer growth after completion, and release closure.
+E75 did not calculate expected-versus-measured stop timing; E76 adds that
+measurement and its explicit tolerance. A two-second post-playback wait allows
+the microphone's noise processing to settle. This is physical-device evidence
+with generated speech, not human speech-quality evidence; no microphone audio or
+transcript was saved. The PCM
 fixture is 152,480 bytes with SHA-256
 `4585b896e2cf254702064678093efe7b6e470df1240a904f92101f872b2717ea`; the
 three physical captures held 165,120, 158,400 and 180,480 bytes respectively
@@ -108,8 +121,8 @@ separate and labeled above.
 
 ## Disposition
 
-- **C-01:** Physical input opens only after the activated production callback and closes on release. The OS hotkey polling loop itself is covered by unit tests; this device harness invokes the same trigger callback rather than synthesizing a keyboard press.
-- **C-02:** Incremental VAD and callback boundary pass fixture tests and three repeated physical generated-speech trials. The physical stream stopped at the configured 600 ms trailing-silence boundary and closed on release. Human speech quality is not measured here.
+- **C-01:** Physical input opens only after the activated production callback and closes on release. At E75, the OS hotkey polling loop was not covered; the device harness invoked the trigger callback rather than synthesizing a keyboard press. E76 adds a production-loop unit test against a mocked Win32 polling API; it does not synthesize a physical keypress.
+- **C-02:** Incremental VAD and callback boundary pass fixture tests and three repeated physical generated-speech trials. E75 observed completion/cleanup but did not measure timing against the expected speech boundary. E76 adds that timing check and reports the tolerance and measurements. Human speech quality is not measured here.
 - **C-03/C-04:** Shared voice/text fast-route behavior and tool parity pass with side-effect-free registered fixtures.
 - **C-05:** Actual local planner passes a two-step voice-originated fixture request and its typed equivalent.
 - **C-06:** Actual local STT crosses the material-target confidence threshold, emits a transcript-free clarification outcome, and admits no command/tool. Resident callback delivery is fixture-tested. User-visible clarification is left for the P19 overlay.

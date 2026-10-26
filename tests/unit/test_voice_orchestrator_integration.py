@@ -11,6 +11,7 @@ import pytest
 from pluma.brain.schemas import Plan, PlanMode, RouteMode, ToolCall
 from pluma.core.orchestrator import Orchestrator
 from pluma.core.request import InputMode, PlumaRequest
+from pluma.core.router import RouteResult
 from pluma.core.task_supervisor import TaskSupervisor
 from pluma.memory.activity import ActivityLedger, ActivityQuery
 from pluma.memory.db import DbConnection
@@ -202,6 +203,39 @@ def test_voice_open_notepad_matches_typed_tool_path(orchestrator: Orchestrator) 
     assert voice_result.steps[0].result.verified and text_result.steps[0].result.verified
     assert orchestrator.fixture_state["open_app"] == "notepad"
     assert planner.calls == 0
+
+
+def test_orchestrator_log_and_history_redact_spoken_clipboard_payload(
+    orchestrator: Orchestrator, query: ActivityQuery, monkeypatch, caplog,
+) -> None:
+    payload = "clipboard-private-fixture-91a2@example.test"
+    utterance = f"Paste {payload} into the open field"
+    request = PlumaRequest(
+        input_mode=InputMode.VOICE,
+        text=utterance,
+        original_transcript=utterance,
+    )
+    plan = Plan(
+        task_id=request.request_id,
+        route=RouteMode.FAST,
+        mode=PlanMode.DIRECT,
+        steps=[ToolCall(tool="mute", arguments={}, purpose="Run an isolated privacy fixture.")],
+    )
+    monkeypatch.setattr(
+        orchestrator._router,
+        "route",
+        lambda _request: RouteResult(route=RouteMode.FAST, reason="isolated fixture", plan=plan),
+    )
+
+    with caplog.at_level("INFO", logger="pluma.core.orchestrator"):
+        result = orchestrator.execute(request)
+
+    assert result.final_state == "SUCCEEDED"
+    assert payload not in caplog.text
+    stored = query.task_by_id(result.task_id)
+    assert stored is not None
+    assert stored["command_text"] == "[REDACTED CLIPBOARD COMMAND]"
+    assert stored["original_transcript"] == "[REDACTED CLIPBOARD COMMAND]"
 
 
 def test_complex_voice_command_selects_smart_planner_and_registered_read_tool(

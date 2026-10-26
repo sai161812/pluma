@@ -43,6 +43,18 @@ def test_is_material_target_detection() -> None:
     assert not is_material_target("show activity")
 
 
+@pytest.mark.parametrize("text", [
+    "move budget.md",
+    "move startup.ps1",
+    "move archive.unlistedext",
+    "move README",
+    "rename startup to startup-backup",
+    "copy quarterly-notes to archive",
+])
+def test_uncertain_file_target_does_not_depend_on_extension_whitelist(text: str) -> None:
+    assert is_material_target(text)
+
+
 def test_voice_pipeline_produces_pluma_request() -> None:
     mock_lifecycle = MagicMock(spec=VoiceLifecycleManager)
     mock_lifecycle.transcribe.return_value = TranscriptResult(
@@ -104,3 +116,47 @@ def test_voice_pipeline_low_confidence_with_material_target_returns_none(caplog)
     assert request.confidence == 0.45
     assert "important_report.pdf" not in caplog.text
     assert "refusing to create a request" in caplog.text
+
+
+@pytest.mark.parametrize("text", [
+    "move budget.md",
+    "move startup.ps1",
+    "move README",
+])
+def test_low_confidence_file_target_emits_transcript_free_clarification(text, caplog) -> None:
+    mock_lifecycle = MagicMock(spec=VoiceLifecycleManager)
+    mock_lifecycle.transcribe.return_value = TranscriptResult(
+        text=text, confidence=0.10, is_low_confidence=True,
+    )
+    pipeline = VoicePipeline(lifecycle_manager=mock_lifecycle, vad=EnergyVAD(energy_threshold=100.0))
+
+    result = pipeline.process_audio(_make_pcm_tone(duration_ms=400))
+
+    assert isinstance(result, VoiceClarificationRequired)
+    assert result.confidence == 0.10
+    assert text not in caplog.text
+
+
+@pytest.mark.parametrize("utterance_template", [
+    "Set clipboard to {payload}",
+    "Paste {payload} into the open field",
+])
+def test_spoken_clipboard_payload_is_redacted_from_info_log_but_request_remains_routable(
+    caplog, utterance_template: str,
+) -> None:
+    mock_lifecycle = MagicMock(spec=VoiceLifecycleManager)
+    payload = "clipboard-private-fixture-91a2@example.test"
+    utterance = utterance_template.format(payload=payload)
+    mock_lifecycle.transcribe.return_value = TranscriptResult(
+        text=utterance, confidence=0.98, is_low_confidence=False,
+    )
+    pipeline = VoicePipeline(lifecycle_manager=mock_lifecycle, vad=EnergyVAD(energy_threshold=100.0))
+
+    with caplog.at_level("INFO", logger="pluma.voice.pipeline"):
+        request = pipeline.process_audio(_make_pcm_tone(duration_ms=400))
+
+    assert isinstance(request, PlumaRequest)
+    assert request.text == utterance
+    assert request.original_transcript == utterance
+    assert payload not in caplog.text
+    assert "[REDACTED CLIPBOARD COMMAND]" in caplog.text

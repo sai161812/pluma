@@ -85,6 +85,35 @@ def test_task_context_is_redacted_on_insert_and_update(memory_db):
     assert "[REDACTED]" in updated["active_window"]
 
 
+@pytest.mark.parametrize("utterance_template", [
+    "Set clipboard to {payload}",
+    "Paste {payload} into the open field",
+])
+def test_spoken_clipboard_content_is_removed_from_command_and_original_transcript(
+    memory_db, utterance_template,
+):
+    ledger = ActivityLedger(memory_db)
+    query = ActivityQuery(memory_db)
+    payload = "clipboard-private-fixture-91a2@example.test"
+    utterance = utterance_template.format(payload=payload)
+
+    ledger.insert_task(TaskRecord(
+        task_id="voice-clipboard-redaction-" + ("paste" if utterance_template.startswith("Paste") else "set"),
+        request_id="voice-clipboard-redaction-request",
+        input_mode="voice",
+        command_text=utterance,
+        original_transcript=utterance,
+    ))
+
+    stored = query.task_by_id(
+        "voice-clipboard-redaction-" + ("paste" if utterance_template.startswith("Paste") else "set")
+    )
+    assert stored is not None
+    assert payload not in json.dumps(stored)
+    assert stored["command_text"] == "[REDACTED CLIPBOARD COMMAND]"
+    assert stored["original_transcript"] == "[REDACTED CLIPBOARD COMMAND]"
+
+
 def test_action_records_and_redaction(memory_db):
     ledger = ActivityLedger(memory_db)
     query = ActivityQuery(memory_db)
