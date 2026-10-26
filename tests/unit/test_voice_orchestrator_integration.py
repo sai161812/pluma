@@ -205,11 +205,18 @@ def test_voice_open_notepad_matches_typed_tool_path(orchestrator: Orchestrator) 
     assert planner.calls == 0
 
 
+@pytest.mark.parametrize("utterance_template", [
+    "Paste {payload} into the open field",
+    "Start pasting {payload} into the open field",
+    "Set clip board to {payload}",
+    "Set pasteboard to {payload}",
+])
 def test_orchestrator_log_and_history_redact_spoken_clipboard_payload(
     orchestrator: Orchestrator, query: ActivityQuery, monkeypatch, caplog,
+    utterance_template: str,
 ) -> None:
-    payload = "clipboard-private-fixture-91a2@example.test"
-    utterance = f"Paste {payload} into the open field"
+    payload = "private-utterance-fixture-91a2@example.test"
+    utterance = utterance_template.format(payload=payload)
     request = PlumaRequest(
         input_mode=InputMode.VOICE,
         text=utterance,

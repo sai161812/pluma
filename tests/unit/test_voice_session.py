@@ -419,16 +419,23 @@ def test_global_stop_latches_other_tasks_before_blocked_voice_close(voice, monke
     assert streams[0].closed
 
 
-def test_real_pipeline_low_confidence_target_never_dispatches(voice):
+@pytest.mark.parametrize('uncertain_text', [
+    'delete private.txt', 'open "README"', 'read "LICENSE"',
+    'read LICENSE, then summarize it', 'set volume to half',
+    'make it a quarter as loud',
+])
+def test_real_pipeline_low_confidence_target_never_dispatches(voice, uncertain_text):
     import math
     import struct
     from pluma.voice.pipeline import VoicePipeline
     from pluma.voice.stt_adapter import TranscriptResult
     runtime, core, streams = voice
     tokens = []
+    clarification_events = []
+    core.on_voice_clarification_callback = clarification_events.append
     def transcribe(audio, sample_rate, cancellation_token):
         tokens.append(cancellation_token)
-        return TranscriptResult(text='delete private.txt', confidence=.2, is_low_confidence=True)
+        return TranscriptResult(text=uncertain_text, confidence=.2, is_low_confidence=True)
     core.voice_pipeline = VoicePipeline(lifecycle_manager=SimpleNamespace(transcribe=transcribe))
     core._on_voice_press()
     cap = core._current_voice_capsule
@@ -437,7 +444,9 @@ def test_real_pipeline_low_confidence_target_never_dispatches(voice):
     core._on_voice_release()
     assert tokens == [cap.cancellation_token]
     assert cap.state == TaskState.STOPPED and not cap.steps
+    assert clarification_events == [VoiceClarificationRequired(confidence=.2)]
     assert ActivityQuery(runtime.db).task_by_id(cap.task_id) is None
+    assert ActivityQuery(runtime.db).actions_for_task(cap.task_id) == []
     assert core.audio_capture.capture_closed
     journal(runtime, cap)
 

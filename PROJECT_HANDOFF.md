@@ -1,31 +1,37 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P14 backend complete E78
+## Current checkpoint: 2026-10-26, P14 clarification/privacy closure E79
 
-**The mandatory P14 backend voice gate is complete.** E78 records three
-successful physical C-02 trials using the built-in AMD microphone and Realtek
-speaker. All three captured VAD-active fixture speech, observed the boundary,
-kept the capture buffer stable, stopped the stream and closed it after release.
-Playback-relative timing errors were 429.7 ms, 429.8 ms and 429.8 ms within the
-unchanged -100 ms early/+750 ms late bounds. Captured audio ended at exactly the
-configured 600 ms tail after detected speech in all three trials. Earlier
-headset trials captured no speech and remain documented as failed diagnostic
-runs. See
-[E78](docs/completion/p14_e78_c02_device_followup.md) for the command, report
-and results.
+**Mandatory P14 backend acceptance C-01 through C-09 is complete after the two
+post-E78 findings were reproduced and repaired.** Unresolved low-confidence
+speech now requires clarification; only complete recognized app launches and
+explicit commands with no material target are exempt. Quoted filenames,
+additional clauses and spoken amounts cannot bypass the gate. Spoken `pasting`,
+`clip board` and `pasteboard` values are redacted from INFO logs and stored
+command/original-transcript fields. Privacy sentinels no longer contain a
+trigger word that could mask a broken verb match. See
+[E79](docs/completion/p14_e79_clarification_privacy.md) for exact commands,
+tested source hashes, reproduction and evidence.
 
-- Recovery point before E78: `894fdbc` (`Close remaining P14 voice gaps`) on
+- Recovery point: `299324e87ca95e620acc56e350fe0908c8ce9436` on
   `p12-preparation`; no branch switch, reset, merge or force push was used.
-- Focused regressions passed **29/29**; affected voice/ownership/ledger regressions
-  passed **184/184**, with zero failures, errors, skips or xfails.
-- E77 verifies full-command clipboard redaction, low-confidence extensionless
-  `open`/`read` clarification, and actual generated-speech Whisper-to-Qwen
-  complex-file planning with voice/text parity, owned-path checks, ledger
-  readback, task ownership and worker absence.
-- C-10 is optional. P14 is complete; P15 has not started.
+- Before repair, new regressions reproduced **24 failures / 88 passes**.
+  Final focused checks passed **113/113**; affected voice, STOP/ownership,
+  lifecycle, ledger, redaction and routing regressions passed **425/425**.
+  Zero final failures, errors, skips or xfails; counts overlap.
+- Fresh actual whisper.cpp C-06 acceptance passed at confidence 0.625466 below
+  0.65: transcript-free clarification, no command task/tool admission, COLD
+  state and cleanup readback. It used generated fixture audio, not a microphone.
+- E77 retains actual Whisper-to-Qwen complex-file voice/text parity, same
+  capsule, owned paths, file/ledger readback and worker absence. E78 retains
+  three physical C-02 passes on the AMD microphone/Realtek speaker route,
+  exactly 600 ms captured silence after speech, and verified stream closure.
+  Capture/native worker code is unchanged; those checks were not repeated.
+- C-10 is optional. P19 visible voice/clarification UI and broader quality and
+  release gates remain later work. P15 has not started.
 
-Next safe step: P15's first bounded UI/core contract task. Do not advance
-automatically.
+Ready for independent Sol review; approval is not assumed. Next safe milestone
+is P15's first bounded UI/core contract task. Do not advance automatically.
 
 ## Previous checkpoint: 2026-10-26, P14 bounded native STT packet E74
 

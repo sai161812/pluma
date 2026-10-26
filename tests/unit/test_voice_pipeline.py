@@ -9,10 +9,12 @@ import pytest
 
 from pluma.core.cancellation import CancellationToken
 from pluma.core.request import InputMode, PlumaRequest
+from pluma.core.router import Router, RouteMode
 from pluma.voice.lifecycle import VoiceLifecycleManager
 from pluma.voice.pipeline import (
     VoiceClarificationRequired,
     VoicePipeline,
+    _TARGET_FREE_COMMANDS,
     is_material_target,
     normalize_transcript,
 )
@@ -126,6 +128,17 @@ def test_voice_pipeline_low_confidence_with_material_target_returns_none(caplog)
     "move README",
     "open README",
     "read LICENSE",
+    'open "README"',
+    "open 'README'",
+    'read "LICENSE"',
+    'view “LICENSE”',
+    "read LICENSE, then summarize it",
+    "open notepad, then read LICENSE",
+    "launch README",
+    "show LICENSE",
+    "set volume to half",
+    "make it a quarter as loud",
+    "resize it a little",
 ])
 def test_low_confidence_file_target_emits_transcript_free_clarification(text, caplog) -> None:
     mock_lifecycle = MagicMock(spec=VoiceLifecycleManager)
@@ -141,15 +154,61 @@ def test_low_confidence_file_target_emits_transcript_free_clarification(text, ca
     assert text not in caplog.text
 
 
+@pytest.mark.parametrize("text", [
+    "open notepad", "launch calculator", "start windows terminal",
+    "open notepad++", "show activity", "mute", "volume status", "stop",
+])
+def test_low_confidence_complete_nonmaterial_command_remains_routable(text) -> None:
+    lifecycle = MagicMock(spec=VoiceLifecycleManager)
+    lifecycle.transcribe.return_value = TranscriptResult(
+        text=text, confidence=0.10, is_low_confidence=True,
+    )
+
+    result = VoicePipeline(lifecycle_manager=lifecycle).process_audio(_make_pcm_tone())
+
+    assert isinstance(result, PlumaRequest)
+    assert result.text == result.original_transcript == text
+
+
+def test_uncertain_target_free_exceptions_resolve_to_argument_free_tools() -> None:
+    router = Router()
+    permitted_tools = {
+        "stop_current", "mute", "unmute", "get_volume_status", "show_activity",
+        "get_system_status", "battery_status", "list_apps", "list_windows",
+    }
+    for command in _TARGET_FREE_COMMANDS:
+        route = router.route(command)
+        assert route.route == RouteMode.FAST, command
+        assert route.plan is not None and len(route.plan.steps) == 1, command
+        assert route.plan.steps[0].tool in permitted_tools, command
+        assert route.plan.steps[0].arguments == {}, command
+
+
+def test_high_confidence_quoted_file_request_retains_exact_target() -> None:
+    text = 'read "LICENSE", then summarize it'
+    lifecycle = MagicMock(spec=VoiceLifecycleManager)
+    lifecycle.transcribe.return_value = TranscriptResult(text=text, confidence=0.98)
+
+    result = VoicePipeline(lifecycle_manager=lifecycle).process_audio(_make_pcm_tone())
+
+    assert isinstance(result, PlumaRequest)
+    assert result.text == result.original_transcript == text
+
+
 @pytest.mark.parametrize("utterance_template", [
     "Set clipboard to {payload}",
     "Paste {payload} into the open field",
+    "Start pasting {payload} into the open field",
+    "Pasted {payload} into the open field",
+    "Pastes {payload} into the open field",
+    "Set clip board to {payload}",
+    "Set pasteboard to {payload}",
 ])
 def test_spoken_clipboard_payload_is_redacted_from_info_log_but_request_remains_routable(
     caplog, utterance_template: str,
 ) -> None:
     mock_lifecycle = MagicMock(spec=VoiceLifecycleManager)
-    payload = "clipboard-private-fixture-91a2@example.test"
+    payload = "private-utterance-fixture-91a2@example.test"
     utterance = utterance_template.format(payload=payload)
     mock_lifecycle.transcribe.return_value = TranscriptResult(
         text=utterance, confidence=0.98, is_low_confidence=False,

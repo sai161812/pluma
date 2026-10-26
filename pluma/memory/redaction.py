@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Union
 REDACTED_TOKEN = "[REDACTED]"
 
 _CLIPBOARD_COMMAND_PATTERN = re.compile(
-    r"\bclipboard\b|\bpaste(?:d|s|ing)?\b", re.IGNORECASE
+    r"\b(?:clip\s*board|pasteboard|paste[ds]?|pasting)\b", re.IGNORECASE
 )
 
 _SENSITIVE_KEY_SUBSTRINGS = (

@@ -33,58 +33,37 @@ class VoiceClarificationRequired:
     confidence: float
     code: str = "LOW_CONFIDENCE_MATERIAL_TARGET"
 
-# Patterns for detecting material targets (destructive verbs, files, numbers)
-_DESTRUCTIVE_PATTERN = re.compile(
-    r"\b(delete|remove|format|erase|drop|kill|terminate|overwrite|destroy|wipe)\b",
-    re.IGNORECASE,
-)
-_FILE_EXT_PATTERN = re.compile(r"\b[\w.-]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}\b")
-_FILE_PATH_PATTERN = re.compile(
-    r"(?:\b[A-Za-z]:[\\/]|\\\\[^\\\s]+\\|(?:^|\s)\.\.?[\\/])"
-)
-_FILE_MUTATION_PATTERN = re.compile(
-    r"\b(move|copy|rename|duplicate|transfer|restore|archive|extract|save|write|create)\b",
-    re.IGNORECASE,
-)
-_FILE_TARGET_PATTERN = re.compile(
-    r"\b(file|folder|directory|document|spreadsheet|workbook|photo|image|video|"
-    r"script|database|report|filename|path)\b",
-    re.IGNORECASE,
-)
-_OPEN_READ_TARGET_PATTERN = re.compile(
-    r"\b(?P<verb>open|read|view)\s+(?:the\s+)?(?P<target>[\w ._-]+?)\s*$",
-    re.IGNORECASE,
-)
-_NUMBER_PATTERN = re.compile(
-    r"\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
-    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|percent)\b",
-    re.IGNORECASE,
+# Only complete commands with no material target, and recognized application
+# launches, may bypass clarification when STT is uncertain. Unknown speech can
+# contain a filename or amount even without a familiar noun, suffix or numeral.
+_TARGET_FREE_COMMANDS = frozenset({
+    "stop", "stop current", "stop current task", "cancel task", "abort",
+    "mute", "mute audio", "mute sound", "unmute", "unmute audio", "unmute sound",
+    "get volume status", "check volume", "sound status", "volume status",
+    "show activity", "show history", "activity", "recent activity",
+    "recent actions", "activity history",
+    "get system status", "system status", "cpu memory status", "system health", "status",
+    "battery status", "check battery", "battery", "power status",
+    "list apps", "list applications", "running applications", "running apps",
+    "list windows", "show open windows", "open windows list",
+})
+_KNOWN_APP_LAUNCH_PATTERN = re.compile(
+    r"(?:open|launch|start)\s+(?P<app>.+)", re.IGNORECASE,
 )
 
 
 def is_material_target(text: str) -> bool:
-    """Check if command contains material targets (filenames, numbers, destructive actions)."""
-    open_read_target = _OPEN_READ_TARGET_PATTERN.search(text)
-    if open_read_target:
-        verb = open_read_target.group("verb").casefold()
-        target = open_read_target.group("target").strip().rstrip(".!?").strip()
-        # Preserve deterministic launches for known application names. Other
-        # extensionless open/read/view targets may be files and need clarification.
-        if verb != "open" or not is_known_app_alias(target):
-            return True
-    if (_DESTRUCTIVE_PATTERN.search(text)
-            or _FILE_EXT_PATTERN.search(text)
-            or _FILE_PATH_PATTERN.search(text)
-            # File mutations with an extensionless target still require the
-            # same conservative clarification as targets with known suffixes.
-            # App launching (for example, "open notepad") is excluded here.
-            or _FILE_MUTATION_PATTERN.search(text)
-            or _FILE_TARGET_PATTERN.search(text)):
-        return True
-    if _NUMBER_PATTERN.search(text):
-        return True
-    return False
+    """Treat unresolved uncertain speech as potentially containing a material target.
+
+    Whole-command matching prevents quotes, extra clauses, unusual filenames or
+    spoken fractions from bypassing clarification. This does not parse or alter
+    the target for execution; high-confidence requests retain their normal path.
+    """
+    normalized = normalize_transcript(text).casefold()
+    if normalized in _TARGET_FREE_COMMANDS:
+        return False
+    launch = _KNOWN_APP_LAUNCH_PATTERN.fullmatch(normalized)
+    return not (launch and is_known_app_alias(launch.group("app")))
 
 
 def normalize_transcript(text: str) -> str:

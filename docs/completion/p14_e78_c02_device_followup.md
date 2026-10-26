@@ -1,5 +1,9 @@
 # E78 - P14 C-02 physical-device follow-up
 
+Current completion disposition: [E79](p14_e79_clarification_privacy.md) repairs
+the later clarification/privacy findings. The physical C-02 results below
+remain valid; E78 alone did not establish those additional invariants.
+
 **Status:** The false-pass timing defect is fixed and unit-tested. The
 acceptance harness records the selected input and captured speech-frame timing
 without persisting raw microphone audio. A pass now requires captured VAD-active
