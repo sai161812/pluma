@@ -8,8 +8,11 @@ from pluma.voice.vad import EnergyVAD
 from tests.windows.p14_voice_boundary_acceptance import (
     BOUNDARY_EARLY_TOLERANCE_MS,
     BOUNDARY_LATE_TOLERANCE_MS,
+    _captured_boundary_error_ms,
+    _captured_boundary_timing_matches,
     _boundary_error_ms,
     _boundary_timing_matches,
+    _captured_speech_profile,
     _speech_profile,
 )
 
@@ -26,6 +29,44 @@ def test_boundary_profile_finds_last_speech_and_internal_quiet_gap() -> None:
     assert profile["speech_active_end_ms"] == 540
     assert profile["longest_internal_silence_ms"] == 60
     assert profile["tail_silence_ms"] == 750
+
+
+def test_captured_boundary_profile_reports_only_timing_and_energy_classification() -> None:
+    vad = EnergyVAD()
+    speech = struct.pack("<480h", *([4000] * 480))
+    silence = b"\0" * vad.bytes_per_frame
+
+    profile = _captured_speech_profile(speech * 12 + silence * 20, vad)
+    empty_profile = _captured_speech_profile(silence * 10, vad)
+
+    assert profile["speech_active_frame_count"] == 12
+    assert profile["speech_active_end_ms"] == 360
+    assert profile["tail_silence_ms"] == 600
+    assert empty_profile["speech_active_frame_count"] == 0
+    assert empty_profile["speech_active_start_ms"] is None
+    assert empty_profile["tail_silence_ms"] is None
+
+
+def test_captured_boundary_requires_speech_and_configured_silence() -> None:
+    speech_profile = {"speech_active_frame_count": 12, "speech_active_end_ms": 360}
+    no_speech_profile = {"speech_active_frame_count": 0, "speech_active_end_ms": None}
+
+    exact_error = _captured_boundary_error_ms(960, speech_profile, 600)
+    one_frame_late_error = _captured_boundary_error_ms(990, speech_profile, 600)
+    early_error = _captured_boundary_error_ms(930, speech_profile, 600)
+    late_error = _captured_boundary_error_ms(1020, speech_profile, 600)
+    no_speech_error = _captured_boundary_error_ms(600, no_speech_profile, 600)
+
+    assert exact_error == 0
+    assert one_frame_late_error == 30
+    assert early_error == -30
+    assert late_error == 60
+    assert no_speech_error is None
+    assert _captured_boundary_timing_matches(exact_error, 30)
+    assert _captured_boundary_timing_matches(one_frame_late_error, 30)
+    assert not _captured_boundary_timing_matches(early_error, 30)
+    assert not _captured_boundary_timing_matches(late_error, 30)
+    assert not _captured_boundary_timing_matches(no_speech_error, 30)
 
 
 def test_boundary_timing_rejects_stop_before_speech_end_and_bounds_device_delay() -> None:

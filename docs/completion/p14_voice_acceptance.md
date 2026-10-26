@@ -1,12 +1,13 @@
 # E76 - Historical P14 targeted defect and evidence closure
 
-See [E77](p14_e77_gap_closure.md) for the latest P14 fixes and C-02 device
-results. E76, recorded in [p14_gap_repairs.md](p14_gap_repairs.md), added
-arbitrary extensionless file-target clarification, conservative per-segment
-confidence, spoken clipboard redaction, measured C-02 timing, production
-hotkey polling-loop unit coverage, and a bounded native Whisper-to-Qwen run.
-E77 verifies complex native multi-step file planning from generated speech.
-The fresh physical C-02 timing gate did not pass; P14 remains incomplete.
+See [E78](p14_e78_c02_device_followup.md) for the current physical C-02
+device result and [E77](p14_e77_gap_closure.md) for the latest code fixes.
+E76, recorded in [p14_gap_repairs.md](p14_gap_repairs.md), added arbitrary
+extensionless target clarification, conservative per-segment confidence,
+spoken clipboard redaction, measured C-02 timing and production hotkey-loop
+coverage. E77 verifies native multi-step file planning from generated speech.
+E78 records a passing three-trial physical C-02 run and closes the mandatory
+P14 backend gate. P15 has not started.
 
 # E75 — P14 backend voice acceptance
 

@@ -1,33 +1,31 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P14 targeted fixes E77; C-02 remains open
+## Current checkpoint: 2026-10-26, P14 backend complete E78
 
-**E77 closes three P14 gaps and strengthens the C-02 timing gate, but P14 is
-not complete.** Full-command redaction now precedes the 120-character log
-preview; low-confidence `open README` and `read LICENSE` now return
-transcript-free clarification while known app launch such as `open notepad`
-remains routable. Native C-05 now passes generated-speech Whisper to native
-Qwen multi-step `list_folder`/`file_info` planning over an owned fixture, with
-voice/text parity, pre-dispatch path containment, SQLite readback and worker
-absence. See [E77](docs/completion/p14_e77_gap_closure.md) for exact commands,
-model identities and reports.
+**The mandatory P14 backend voice gate is complete.** E78 records three
+successful physical C-02 trials using the built-in AMD microphone and Realtek
+speaker. All three captured VAD-active fixture speech, observed the boundary,
+kept the capture buffer stable, stopped the stream and closed it after release.
+Playback-relative timing errors were 429.7 ms, 429.8 ms and 429.8 ms within the
+unchanged -100 ms early/+750 ms late bounds. Captured audio ended at exactly the
+configured 600 ms tail after detected speech in all three trials. Earlier
+headset trials captured no speech and remain documented as failed diagnostic
+runs. See
+[E78](docs/completion/p14_e78_c02_device_followup.md) for the command, report
+and results.
 
-- Recovery point before E77: `a675d1eea3f334bbe2c5972e32fe35437b43010d` on
+- Recovery point before E78: `894fdbc` (`Close remaining P14 voice gaps`) on
   `p12-preparation`; no branch switch, reset, merge or force push was used.
-- Focused regressions passed **27/27**; affected voice/ownership/ledger regressions
-  passed **182/182**, with zero failures, errors, skips or xfails.
-- C-02 uses separate -100 ms early and +750 ms late bounds. Unit timing tests
-  reject a stop 100 ms before fixture speech ends. Fresh physical trials did not
-  pass consistently: default MME at gain 0.2 observed no boundary in 3/3; gain
-  0.8 passed 1/3; DirectSound passed 0/3 with early and late outcomes. WASAPI
-  could not open the microphone at 16 kHz. Full reports/logs are in ignored
-  `output/p14-native/voice-boundary-e77*`. Prior E76 physical readings do not
-  supersede these fresh failures.
-- P14 remains incomplete pending a stable physical C-02 three-trial result.
-  C-10 is optional. No P15 work has started.
+- Focused regressions passed **29/29**; affected voice/ownership/ledger regressions
+  passed **184/184**, with zero failures, errors, skips or xfails.
+- E77 verifies full-command clipboard redaction, low-confidence extensionless
+  `open`/`read` clarification, and actual generated-speech Whisper-to-Qwen
+  complex-file planning with voice/text parity, owned-path checks, ledger
+  readback, task ownership and worker absence.
+- C-10 is optional. P14 is complete; P15 has not started.
 
-Next safe step: diagnose the physical microphone/playback timing path and rerun
-C-02 without widening the timing bounds. Do not advance to P15 automatically.
+Next safe step: P15's first bounded UI/core contract task. Do not advance
+automatically.
 
 ## Previous checkpoint: 2026-10-26, P14 bounded native STT packet E74
 

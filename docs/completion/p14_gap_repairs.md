@@ -1,9 +1,10 @@
 # E76 - Historical P14 targeted defect and evidence closure
 
-**Status:** Superseded by [E77](p14_e77_gap_closure.md). This checkpoint
-records the six findings and evidence as they stood at E76. E77 closes the
-long-preview redaction, extensionless read clarification, and native complex-
-file planner gaps, while recording that fresh physical C-02 trials did not pass.
+**Status:** Superseded by [E78](p14_e78_c02_device_followup.md). This
+checkpoint records the six findings and evidence as they stood at E76. E77
+closed the long-preview redaction, extensionless read clarification, and
+native complex-file planner gaps; E78 records the passing physical C-02 run and
+closes the last mandatory P14 backend gate.
 
 ## Findings and repairs
 

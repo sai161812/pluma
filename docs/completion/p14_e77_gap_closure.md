@@ -1,10 +1,11 @@
 # E77 — P14 remaining voice-path fixes
 
-**Status:** Clipboard preview redaction, extensionless read clarification, and
-native complex-file Whisper→Qwen acceptance are verified. The C-02 timing
-acceptance now rejects premature stops, but fresh physical trials failed or
-varied on the available microphone/output path. P14 remains incomplete until
-the physical boundary gate passes; no later milestone has started.
+**Status:** Superseded by [E78](p14_e78_c02_device_followup.md), which adds
+input-specific C-02 diagnostics and records the passing physical boundary run.
+E77 verifies clipboard preview redaction, extensionless read clarification,
+and native complex-file Whisper→Qwen acceptance. The C-02 timing acceptance
+rejects premature stops. P14's mandatory backend gate is complete; P15 has not
+started.
 
 ## Findings and repairs
 

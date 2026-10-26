@@ -56,6 +56,37 @@ def _speech_profile(pcm_bytes: bytes, vad: EnergyVAD) -> dict:
     }
 
 
+def _captured_speech_profile(pcm_bytes: bytes, vad: EnergyVAD) -> dict:
+    """Record boundary diagnostics only; captured PCM remains transient."""
+    frames = vad.split_frames(pcm_bytes)
+    active = [index for index, frame in enumerate(frames) if vad.is_speech_present(frame)]
+    gaps = [right - left - 1 for left, right in zip(active, active[1:])]
+    frame_ms = vad.frame_duration_ms
+    return {
+        "speech_active_frame_count": len(active),
+        "speech_active_start_ms": active[0] * frame_ms if active else None,
+        "speech_active_end_ms": (active[-1] + 1) * frame_ms if active else None,
+        "longest_internal_silence_ms": max(gaps, default=0) * frame_ms,
+        "tail_silence_ms": max(0, len(frames) - active[-1] - 1) * frame_ms if active else None,
+    }
+
+
+def _captured_boundary_error_ms(
+    captured_duration_ms: float, speech_profile: dict, trailing_silence_ms: int
+) -> float | None:
+    speech_end_ms = speech_profile.get("speech_active_end_ms")
+    if speech_profile.get("speech_active_frame_count", 0) <= 0 or speech_end_ms is None:
+        return None
+    return captured_duration_ms - speech_end_ms - trailing_silence_ms
+
+
+def _captured_boundary_timing_matches(
+    error_ms: float | None, frame_duration_ms: int
+) -> bool:
+    """Require captured speech plus its configured silence, with one frame slack."""
+    return error_ms is not None and 0 <= error_ms <= frame_duration_ms
+
+
 def _boundary_error_ms(captured_duration_ms: float, pre_playback_ms: float,
                        expected_from_playback_ms: float) -> float:
     return captured_duration_ms - pre_playback_ms - expected_from_playback_ms
@@ -88,6 +119,7 @@ def run_acceptance(
     repetitions: int = 3,
     gain: float = 0.20,
     silence_wait_s: float = 2.0,
+    input_device_index: int | None = None,
 ) -> dict:
     if sys.platform != "win32":
         raise RuntimeError("Physical microphone acceptance requires Windows.")
@@ -105,10 +137,16 @@ def run_acceptance(
         raise ValueError("Speech fixture has an internal silence long enough to stop VAD early.")
     if profile["tail_silence_ms"] < vad.trailing_silence_ms:
         raise ValueError("Speech fixture needs at least one trailing VAD silence interval.")
-    input_index = sd.default.device[0]
+    input_index = (sd.default.device[0] if input_device_index is None
+                   else input_device_index)
     if input_index is None or input_index < 0:
         raise RuntimeError("Windows has no default physical microphone input.")
-    input_info = sd.query_devices(input_index)
+    devices = sd.query_devices()
+    if input_index >= len(devices):
+        raise ValueError("Selected physical microphone index is unavailable.")
+    input_info = devices[input_index]
+    if input_info["max_input_channels"] < 1:
+        raise ValueError("Selected device has no physical microphone input channel.")
     input_name = input_info["name"]
     host_apis = sd.query_hostapis()
     input_host_api_name = host_apis[input_info["hostapi"]]["name"]
@@ -126,6 +164,7 @@ def run_acceptance(
         "sample_is_explicit_fixture": True,
         "playback_gain": gain,
         "input_device": input_name,
+        "input_device_index": input_index,
         "host_api": input_host_api_name,
         "output_device": output_name,
         "repetitions": repetitions,
@@ -138,58 +177,75 @@ def run_acceptance(
         "transcript_saved": False,
         "trials": [],
     }
-    for trial in range(1, repetitions + 1):
-        capture = AudioCapture(vad=vad)
-        result = {"trial": trial}
-        try:
-            capture.start()
-            capture_started_at = time.perf_counter()
-            time.sleep(0.2)
-            playback_started_at = time.perf_counter()
-            sd.play(samples, samplerate=sample_rate, device=output_index, blocking=True)
-            time.sleep(silence_wait_s)
-            stream = capture._stream
-            boundary = capture.utterance_complete
-            stream_inactive = stream is not None and stream.active is False
-            with capture._lock:
-                bytes_at_boundary = len(capture._buffer)
-            time.sleep(0.4)
-            with capture._lock:
-                buffer_stable = bytes_at_boundary == len(capture._buffer)
-            audio = capture.stop_and_get()
-            captured_duration_ms = len(audio) / (16000 * 1 * 2) * 1000.0
-            pre_playback_ms = (playback_started_at - capture_started_at) * 1000.0
-            expected_from_playback_ms = (
-                profile["speech_active_end_ms"] + vad.trailing_silence_ms
-            )
-            boundary_error_ms = _boundary_error_ms(
-                captured_duration_ms, pre_playback_ms, expected_from_playback_ms
-            )
-            boundary_timing_matches = _boundary_timing_matches(boundary_error_ms)
-            result.update({
-                "boundary_observed": boundary,
-                "captured_duration_ms": round(captured_duration_ms, 1),
-                "pre_playback_ms": round(pre_playback_ms, 1),
-                "expected_boundary_after_playback_ms": expected_from_playback_ms,
-                "boundary_timing_error_ms": round(boundary_error_ms, 1),
-                "boundary_timing_matches": boundary_timing_matches,
-                "physical_stream_inactive_at_boundary": stream_inactive,
-                "buffer_stable_after_boundary": buffer_stable,
-                "captured_bytes": len(audio),
-                "stream_closed_after_release": capture.capture_closed,
-            })
-            result["passed"] = all((
-                boundary,
-                boundary_timing_matches,
-                stream_inactive,
-                buffer_stable,
-                capture.capture_closed,
-                len(audio) > 0,
-            ))
-        finally:
-            if not capture.capture_closed:
-                capture.cancel()
-        report["trials"].append(result)
+    previous_default_devices = sd.default.device
+    sd.default.device = (input_index, output_index)
+    try:
+        for trial in range(1, repetitions + 1):
+            capture = AudioCapture(vad=vad)
+            result = {"trial": trial}
+            try:
+                capture.start()
+                capture_started_at = time.perf_counter()
+                time.sleep(0.2)
+                playback_started_at = time.perf_counter()
+                sd.play(samples, samplerate=sample_rate, device=output_index, blocking=True)
+                time.sleep(silence_wait_s)
+                stream = capture._stream
+                boundary = capture.utterance_complete
+                stream_inactive = stream is not None and stream.active is False
+                with capture._lock:
+                    bytes_at_boundary = len(capture._buffer)
+                time.sleep(0.4)
+                with capture._lock:
+                    buffer_stable = bytes_at_boundary == len(capture._buffer)
+                audio = capture.stop_and_get()
+                captured_duration_ms = len(audio) / (16000 * 1 * 2) * 1000.0
+                pre_playback_ms = (playback_started_at - capture_started_at) * 1000.0
+                expected_from_playback_ms = (
+                    profile["speech_active_end_ms"] + vad.trailing_silence_ms
+                )
+                boundary_error_ms = _boundary_error_ms(
+                    captured_duration_ms, pre_playback_ms, expected_from_playback_ms
+                )
+                boundary_timing_matches = _boundary_timing_matches(boundary_error_ms)
+                captured_speech_profile = _captured_speech_profile(audio, vad)
+                captured_boundary_error_ms = _captured_boundary_error_ms(
+                    captured_duration_ms, captured_speech_profile,
+                    vad.trailing_silence_ms,
+                )
+                captured_boundary_timing_matches = _captured_boundary_timing_matches(
+                    captured_boundary_error_ms, vad.frame_duration_ms,
+                )
+                result.update({
+                    "boundary_observed": boundary,
+                    "captured_duration_ms": round(captured_duration_ms, 1),
+                    "pre_playback_ms": round(pre_playback_ms, 1),
+                    "expected_boundary_after_playback_ms": expected_from_playback_ms,
+                    "boundary_timing_error_ms": round(boundary_error_ms, 1),
+                    "boundary_timing_matches": boundary_timing_matches,
+                    "physical_stream_inactive_at_boundary": stream_inactive,
+                    "buffer_stable_after_boundary": buffer_stable,
+                    "captured_bytes": len(audio),
+                    "captured_audio_speech_profile": captured_speech_profile,
+                    "captured_boundary_error_ms": captured_boundary_error_ms,
+                    "captured_boundary_timing_matches": captured_boundary_timing_matches,
+                    "stream_closed_after_release": capture.capture_closed,
+                })
+                result["passed"] = all((
+                    boundary,
+                    boundary_timing_matches,
+                    captured_boundary_timing_matches,
+                    stream_inactive,
+                    buffer_stable,
+                    capture.capture_closed,
+                    len(audio) > 0,
+                ))
+            finally:
+                if not capture.capture_closed:
+                    capture.cancel()
+            report["trials"].append(result)
+    finally:
+        sd.default.device = previous_default_devices
 
     report["status"] = (
         "passed" if all(trial.get("passed", False) for trial in report["trials"])
@@ -202,6 +258,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sample", required=True, type=Path)
     parser.add_argument("--output-device", required=True)
+    parser.add_argument(
+        "--input-device-index", type=int,
+        help="Physical microphone device index; defaults to the current Windows input.",
+    )
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--gain", type=float, default=0.20)
     parser.add_argument("--silence-wait", type=float, default=2.0)
@@ -211,7 +271,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     report = run_acceptance(
-        args.sample, args.output_device, args.repetitions, args.gain, args.silence_wait
+        args.sample, args.output_device, args.repetitions, args.gain,
+        args.silence_wait, input_device_index=args.input_device_index,
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
