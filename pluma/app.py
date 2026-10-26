@@ -105,12 +105,19 @@ class PlumaApplicationRuntime:
             rollback_engine=self.rollback_engine,
         )
 
-        stt_model_name = get(self.config, "voice", "model_name", default="base.en.pt")
-        stt_model_path = get(self.config, "voice", "model_path", default=str(paths.models_dir / stt_model_name))
-        stt_idle = float(get(self.config, "voice", "idle_unload_seconds", default=30.0))
+        stt_model_name = get(self.config, "voice", "model_name", default="ggml-base.en.bin")
+        stt_model_path = get(
+            self.config,
+            "voice",
+            "model_path",
+            default=str(paths.whisper_models_dir / stt_model_name),
+        )
+        stt_idle = float(get(self.config, "runtime", "stt_idle_unload_seconds", default=20.0))
 
         from pluma.voice.lifecycle import VoiceLifecycleManager
+        from pluma.voice.stt_adapter import WhisperSttAdapter
         self.voice_lifecycle = VoiceLifecycleManager(
+            adapter=WhisperSttAdapter(registry=self.tool_registry),
             model_path=stt_model_path,
             idle_unload_seconds=stt_idle,
         )

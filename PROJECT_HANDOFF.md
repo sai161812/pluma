@@ -1,6 +1,38 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P01–P13 overall audit E73
+## Current checkpoint: 2026-10-26, P14 bounded native STT packet E74
+
+**This packet closes the task-owned native STT cancellation/unload and
+configuration wiring work for C-08/B-04. P14 remains in progress.** The P14
+worker runs local whisper.cpp only in its matching `TaskCapsule`, observes the
+shared STOP latch through the binding's abort callback, falls back to owned
+process termination, and requires cleanup readback. Each call releases its
+native model reference before returning; production STT therefore returns
+directly to COLD instead of keeping a warm model. The app now reads the locked
+`runtime.stt_idle_unload_seconds` setting and defaults to a local GGML model
+under `models/whisper`. C-09 transient audio evidence is also recorded. See
+[E74](docs/completion/p14_stt_worker.md) for exact files, commands, hashes,
+native report and limitations.
+
+- Recovery point before P14: `7e371bf730f4092daa87c0be8408071175cde259` on
+  `p12-preparation`; no branch switch, merge or reset was used.
+- Focused voice/application/worker checks passed **60/60**. The affected
+  ownership, cancellation, voice, shutdown, cleanup and ledger regression set
+  passed **246/246**, zero skips/xfails. Actual Windows `pywhispercpp 1.5.1`
+  acceptance recognized the recorded sample at confidence `0.7721`, verified
+  model release and COLD state, then stopped a CPU-active native STT worker and
+  read back worker absence and terminal cleanup in SQLite.
+- The recorded public test sample and `ggml-base.en.bin` model live only under
+  ignored `output/p14-native/`. The native run opened no microphone and touched
+  no personal recording, clipboard, window or power state. Physical C-01/C-02,
+  C-03/C-07 and material-clarification C-06 evidence remain open; CORE-STT is
+  still UNVERIFIED overall. No P15 work has started.
+
+Next safe P14 packet: C-01/C-02 user-activated microphone and speech-boundary
+verification, with fixture and device evidence kept distinct. Do not begin P15
+automatically.
+
+## Previous checkpoint: 2026-10-26, P01–P13 overall audit E73
 
 **The P01–P13 audit passes after three source repairs; P14 is eligible but has
 not started.** The owner's deferred physical checks remain deferred and are not

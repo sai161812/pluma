@@ -403,3 +403,28 @@ def test_real_pipeline_low_confidence_target_never_dispatches(voice):
     assert ActivityQuery(runtime.db).task_by_id(cap.task_id) is None
     assert core.audio_capture.capture_closed
     journal(runtime, cap)
+
+
+def test_voice_stt_timeout_is_failed_and_read_back_in_ledger(voice):
+    import math
+    import struct
+    from pluma.core.cancellation import StopReason
+
+    runtime, core, _streams = voice
+
+    def timeout(_audio, cancellation_token):
+        cancellation_token.cancel(StopReason.TASK_TIMEOUT)
+        raise TimeoutError("private timeout details")
+
+    core.voice_pipeline = SimpleNamespace(process_audio=timeout)
+    core._on_voice_press()
+    capsule = core._current_voice_capsule
+    tone = struct.pack("<6400h", *[int(8000 * math.sin(index)) for index in range(6400)])
+    core.audio_capture.feed(tone)
+    core._on_voice_release()
+
+    assert capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
+    assert capsule.state == TaskState.FAILED
+    report = journal(runtime, capsule)
+    assert report["pre_execution_outcome"]["final_state"] == "FAILED"
+    assert report["pre_execution_outcome"]["stop_reason"] == StopReason.TASK_TIMEOUT.value

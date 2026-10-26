@@ -38,6 +38,10 @@ media = [
     "numpy>=1.26.0",
     "pillow>=10.2.0",
 ]
+stt = [
+    "numpy>=1.26.0,<3",
+    "pywhispercpp>=1.5.1,<2",
+]
 ocr = [
     "paddleocr==3.7.0",
     "onnxruntime==1.31.0",
@@ -52,7 +56,7 @@ dev = [
     "build>=1.2.0",
 ]
 all = [
-    "pluma[windows,media,dev]",
+    "pluma[windows,media,stt,dev]",
 ]
 
 [project.scripts]

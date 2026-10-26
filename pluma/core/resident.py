@@ -12,6 +12,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from pluma.config.loader import get, load_config
+from pluma.core.cancellation import StopReason
 from pluma.core.ipc import IpcServer
 from pluma.core.ownership import OwnershipRegistry
 from pluma.core.request import InputMode, PlumaRequest
@@ -174,7 +175,10 @@ class ResidentCore:
             dispatched = True
             self.orchestrator.execute(request, capsule=capsule)
         except Exception:
-            failed = not capsule.cancellation_token.is_cancelled
+            # The task worker records its deadline by latching TASK_TIMEOUT;
+            # retain that factual failure through voice-capsule finalization.
+            failed = (not capsule.cancellation_token.is_cancelled
+                     or capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT)
             logger.warning("Voice request did not complete.")
         finally:
             raw_audio = None

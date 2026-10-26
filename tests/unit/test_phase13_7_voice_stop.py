@@ -11,11 +11,19 @@ from pluma.core.task_supervisor import TaskState
 class MockAudioCapture:
     def __init__(self):
         self.started = False
+        self.recording = False
+        self.capture_closed = True
     def start(self):
         self.started = True
+        self.recording = True
+        self.capture_closed = False
     def stop_and_get(self):
         self.started = False
+        self.recording = False
+        self.capture_closed = True
         return b"\x00" * 32000  # 1 second of silent audio
+    def cancel(self):
+        self.stop_and_get()
 
 class MockVoicePipeline:
     def process_audio(self, raw_audio, cancellation_token: Optional[CancellationToken] = None):
@@ -41,6 +49,7 @@ def test_stop_during_voice_capture():
     resident.supervisor.stop_task(capsule.task_id)
     assert capsule.cancellation_token.is_cancelled is True
     assert capsule.state == TaskState.STOPPED
+    assert resident.audio_capture.capture_closed is True
     
     # 3. User releases hotkey
     resident._on_voice_release()
@@ -68,5 +77,8 @@ def test_stop_during_stt():
     resident._on_voice_release()
     
     assert capsule.cancellation_token.is_cancelled is True
-    assert capsule.state == TaskState.STOPPED
+    assert capsule.state == TaskState.STOPPED_WITH_RESIDUAL
+    assert capsule.terminal_ready.is_set()
+    assert capsule.voice_session is None
+    assert resident.audio_capture.capture_closed is True
 

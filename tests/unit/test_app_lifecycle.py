@@ -74,3 +74,43 @@ def test_runtime_wires_configured_planner_limits_and_model_lifecycle() -> None:
             )
         finally:
             runtime.close()
+
+
+def test_runtime_wires_lazy_whisper_model_and_locked_stt_unload_setting() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        paths = PlumaPaths(
+            local_app_data=str(Path(temp_dir) / "LocalPluma"),
+            roaming_app_data=str(Path(temp_dir) / "RoamingPluma"),
+        )
+        config = load_config()
+        config["voice"]["model_name"] = "fixture-whisper.ggml"
+        config["runtime"]["stt_idle_unload_seconds"] = 9
+        runtime = PlumaApplicationRuntime(paths=paths, config=config)
+        try:
+            assert runtime.voice_lifecycle.model_path == str(
+                paths.whisper_models_dir / "fixture-whisper.ggml"
+            )
+            assert runtime.voice_lifecycle.idle_unload_seconds == 9
+            assert runtime.voice_lifecycle.adapter._registry is runtime.tool_registry
+            assert runtime.voice_lifecycle.state == "COLD"
+            assert not runtime.voice_lifecycle.adapter.is_loaded
+        finally:
+            runtime.close()
+
+
+def test_runtime_honors_explicit_whisper_model_path() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        paths = PlumaPaths(
+            local_app_data=str(Path(temp_dir) / "LocalPluma"),
+            roaming_app_data=str(Path(temp_dir) / "RoamingPluma"),
+        )
+        model_path = str(Path(temp_dir) / "custom-whisper.ggml")
+        config = load_config()
+        config["voice"]["model_path"] = model_path
+        runtime = PlumaApplicationRuntime(paths=paths, config=config)
+        try:
+            assert runtime.voice_lifecycle.model_path == model_path
+            assert runtime.voice_lifecycle.state == "COLD"
+            assert not runtime.voice_lifecycle.adapter.is_loaded
+        finally:
+            runtime.close()

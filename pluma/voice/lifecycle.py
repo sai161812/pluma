@@ -90,7 +90,9 @@ class VoiceLifecycleManager:
         try:
             self.adapter.load(self.model_path, cancellation_token=cancellation_token)
             with self._lock:
-                self._state = "WARM"
+                # A task-owned adapter may only validate/cache its model path
+                # here; do not claim native weights are warm before inference.
+                self._state = "WARM" if self.adapter.is_loaded else "COLD"
         except Exception:
             with self._lock:
                 self._state = "COLD"
