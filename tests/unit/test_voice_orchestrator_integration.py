@@ -282,6 +282,27 @@ def test_orchestrator_redacts_full_clipboard_command_before_log_preview(
     assert stored["original_transcript"] == "[REDACTED CLIPBOARD COMMAND]"
 
 
+@pytest.mark.parametrize("command", [
+    "paste {payload} into the clipboard",
+    "Please use {payload}. " + "ordinary context " * 12 + "The clipboard is the target.",
+    "look at the screen and enter {payload} from the clipboard",
+    "type {payload} into the clipboard",
+    "volume paste {payload} from the clipboard",
+])
+def test_real_router_reasons_do_not_reintroduce_clipboard_payload(orchestrator, query, caplog, command):
+    payload = 'private-real-router-fixture-7c21@example.test'
+    utterance = command.format(payload=payload)
+    with caplog.at_level('INFO', logger='pluma.core.orchestrator'):
+        result = orchestrator.execute(PlumaRequest(
+            input_mode=InputMode.VOICE, text=utterance, original_transcript=utterance))
+    assert result.steps == []  # no planner configured; no desktop tools
+    assert payload not in caplog.text
+    assert payload not in result.route_reason
+    stored = query.task_by_id(result.task_id)
+    assert stored['command_text'] == '[REDACTED CLIPBOARD COMMAND]'
+    assert stored['original_transcript'] == '[REDACTED CLIPBOARD COMMAND]'
+
+
 def test_complex_voice_command_selects_smart_planner_and_registered_read_tool(
     db_conn: DbConnection, ledger: ActivityLedger, tmp_path
 ) -> None:

@@ -35,6 +35,24 @@ def test_normalize_transcript_behavior() -> None:
     assert normalize_transcript("volume 50") == "volume 50"
 
 
+@pytest.mark.parametrize('text', [
+    r'rename D:\owned\source.txt to notes!',
+    r'find report? in D:\owned',
+    r'open D:\owned\report!',
+    'read "two  spaces.txt"',
+])
+def test_material_transcript_keeps_literal_target_characters(text):
+    lifecycle = MagicMock(spec=VoiceLifecycleManager)
+    lifecycle.transcribe.return_value = TranscriptResult(text=text, confidence=.98)
+    result = VoicePipeline(lifecycle_manager=lifecycle).process_audio(_make_pcm_tone())
+    assert isinstance(result, PlumaRequest)
+    assert result.text == result.original_transcript == text
+    if text.startswith('rename '):
+        typed = Router().route(text).plan.steps[0].arguments
+        spoken = Router().route(result).plan.steps[0].arguments
+        assert spoken == typed and spoken['new_name'] == 'notes!'
+
+
 def test_is_material_target_detection() -> None:
     assert is_material_target("delete old_file.txt")
     assert is_material_target("remove database")

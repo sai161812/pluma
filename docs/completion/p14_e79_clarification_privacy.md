@@ -1,5 +1,10 @@
 # E79 - P14 clarification and spoken clipboard privacy closure
 
+Current completion disposition: [E80](p14_e80_audit_closure.md) supersedes the
+blanket closure below after the later DPI, screen-context privacy, material
+punctuation, FAST/schema and crash-test findings were reproduced and repaired.
+E79's test counts remain historical evidence for its bounded packet.
+
 **Status (2026-10-26):** The two findings discovered after E78 are repaired and
 verified. Mandatory backend acceptance C-01 through C-09 is complete; C-10 is
 optional. P15 has not started. This checkpoint supersedes E78's completion

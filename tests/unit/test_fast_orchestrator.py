@@ -145,6 +145,17 @@ def _req(text: str, mode: str = "text") -> PlumaRequest:
 # ---------------------------------------------------------------------------
 
 class TestOrchestratorFastRoute:
+    @pytest.mark.parametrize("command", ["find *.txt", "create folder reports", "open malicious.exe"])
+    def test_unresolved_target_never_reaches_executor_or_policy(self, orchestrator, monkeypatch, command):
+        def forbidden(*args, **kwargs):
+            pytest.fail("Unresolved command reached tool execution.")
+        monkeypatch.setattr(orchestrator._registry, "execute", forbidden)
+        result = orchestrator.execute(_req(command))
+        assert result.route == RouteMode.FAST
+        assert result.final_state == "FAILED" and result.steps == []
+        assert result.error == result.factual_summary
+        assert "explicit file location" in result.error
+
     def test_mute_fast_route_succeeds(self, orchestrator: Orchestrator) -> None:
         result = orchestrator.execute(_req("mute"))
         assert result.route == RouteMode.FAST

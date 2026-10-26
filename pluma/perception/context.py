@@ -8,6 +8,7 @@ Zero ML or pywinauto imported at module level.
 from __future__ import annotations
 
 import ctypes
+from ctypes import wintypes
 import logging
 from dataclasses import dataclass
 from typing import Optional
@@ -38,18 +39,18 @@ class ActiveWindowContext:
         self._win32 = win32_adapter or Win32Adapter()
 
     def get_dpi_scale(self, hwnd: int) -> float:
-        """Get the DPI scaling factor for a window (default 1.0 for 96 DPI)."""
+        """Read the current DPI or refuse an unverifiable window observation."""
         if not hwnd or not self._win32.is_window(hwnd):
-            return 1.0
+            raise ValueError("Window DPI is unavailable.")
         try:
             user32 = ctypes.windll.user32
             if hasattr(user32, "GetDpiForWindow"):
-                dpi = user32.GetDpiForWindow(ctypes.wintypes.HWND(hwnd))
+                dpi = user32.GetDpiForWindow(wintypes.HWND(hwnd))
                 if dpi > 0:
-                    return round(float(dpi) / 96.0, 2)
+                    return float(dpi) / 96.0
         except Exception as exc:
             logger.debug("Failed to get DPI for window %d: %s", hwnd, exc)
-        return 1.0
+        raise ValueError("Window DPI could not be verified.")
 
     def get_process_name(self, pid: int) -> str:
         """Resolve process executable name from PID."""

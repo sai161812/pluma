@@ -19,10 +19,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from pluma.brain.schemas import Plan, PlanMode, RouteMode, ToolCall
 from pluma.core.request import PlumaRequest
+
+if TYPE_CHECKING:
+    from pluma.tools.registry import ToolRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -86,13 +89,15 @@ class RouteResult:
     Attributes:
         route:      The resolved route mode (FAST / SCREEN / SMART / DEEP).
         reason:     Short factual explanation for the ledger.
-        plan:       Fully resolved Plan for FAST commands; None for other routes.
+        plan:       Validated FAST Plan; None for a refusal or a deferred route.
         confidence: Float 0.0–1.0 indicating match quality.
+        error:      Factual deterministic refusal; never a replacement target.
     """
     route: RouteMode
     reason: str
     plan: Optional[Plan] = None
     confidence: float = 1.0
+    error: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +164,8 @@ class Router:
     No model, no screen scan, no subprocess is started in this class.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, registry: Optional[ToolRegistry] = None) -> None:
+        self._registry = registry
         # Pre-compile patterns in priority order for FAST classification.
         self._fast_rules: List[Tuple[re.Pattern[str], str]] = [
             # --- STOP / UNDO (highest priority) ---
@@ -194,6 +200,7 @@ class Router:
 
             # --- Files & Folders (Deterministic exact paths/globs) ---
             (re.compile(r"^\s*(?:list\s+files(?:\s+in\s+current\s+directory)?|list\s+directory(?:\s+contents)?)\s*$", re.I), "_fast_list_files"),
+            (re.compile(r"^\s*(?:find(?:\s+file)?|search\s+file|locate\s+file)\s+([^\s]+)\s+in\s+([^\s]+)\s*$", re.I), "_fast_find_file_root"),
             (re.compile(r"^\s*(?:find\s+file|search\s+file|locate\s+file)\s+([^\s]+)\s*$", re.I), "_fast_find_file"),
             (re.compile(r"^\s*find\s+([\w\.\*\?_-]+)\s*$", re.I), "_fast_find_file"),
             (re.compile(r"^\s*(?:create\s+folder|make\s+folder|mkdir)\s+([^\s]+)\s*$", re.I), "_fast_create_folder"),
@@ -255,7 +262,7 @@ class Router:
             if pat.search(text):
                 return RouteResult(
                     route=RouteMode.DEEP,
-                    reason=f"Command requires combined visual perception and multi-step reasoning: '{text[:80]}'",
+                    reason="Command requires combined visual perception and multi-step reasoning.",
                     confidence=0.85,
                 )
 
@@ -264,7 +271,7 @@ class Router:
             if pat.search(text):
                 return RouteResult(
                     route=RouteMode.SMART,
-                    reason=f"Command requires contextual multi-step interpretation; routing to local planner: '{text[:80]}'",
+                    reason="Command requires contextual multi-step interpretation; routing to local planner.",
                     confidence=0.75,
                 )
 
@@ -273,27 +280,51 @@ class Router:
             m = pattern.match(text)
             if m:
                 handler = getattr(self, handler_name)
-                return handler(request, m)
+                return self._validate_fast_result(handler(request, m))
 
         # 4. Screen route indicators
         for pat in self._screen_patterns:
             if pat.search(text):
                 return RouteResult(
                     route=RouteMode.SCREEN,
-                    reason=f"Command contains UI-interaction term; requires UIA/OCR: '{text[:80]}'",
+                    reason="Command contains UI-interaction term; requires UIA/OCR.",
                     confidence=0.85,
                 )
 
         # 5. Default: SMART
         return RouteResult(
             route=RouteMode.SMART,
-            reason=f"No deterministic match found; routing to local planner: '{text[:80]}'",
+            reason="No deterministic match found; routing to local planner.",
             confidence=0.5,
         )
 
     # ------------------------------------------------------------------
     # FAST plan builders
     # ------------------------------------------------------------------
+
+    def _validate_fast_result(self, result: RouteResult) -> RouteResult:
+        """Never hand an unsupported deterministic call to policy or planning.
+
+        Tool admission validates again. Here unresolved roots/identities and
+        unsupported apps are refused without guessing a replacement target.
+        Registry construction is lazy and starts no adapters or model workers.
+        """
+        if result.plan is None:
+            return result
+        from pluma.tools.registry import ToolArgumentError, UnknownToolError
+        if self._registry is None:
+            from pluma.tools.registry import get_default_tool_registry
+            self._registry = get_default_tool_registry()
+        try:
+            for call in result.plan.steps:
+                self._registry.validate_call(call.tool, call.arguments)
+        except (ToolArgumentError, UnknownToolError):
+            return RouteResult(
+                route=RouteMode.FAST,
+                reason="Deterministic command refused before execution.",
+                error="The command needs a supported application or an explicit file location or window target.",
+            )
+        return result
 
     def _make_fast_plan(self, task_id: str, tool: str, arguments: dict, purpose: str) -> Plan:
         return Plan(
@@ -327,7 +358,7 @@ class Router:
         return RouteResult(route=RouteMode.FAST, reason="Exact match: 'get_volume_status'", plan=plan)
 
     def _fast_volume(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
-        raw_level = m.group(1).strip()
+        raw_level = m.group(1).strip().rstrip(".!?")
         level = _parse_number(raw_level.split())
         if level is None:
             return RouteResult(
@@ -447,6 +478,14 @@ class Router:
         pattern = m.group(1).strip()
         plan = self._make_fast_plan(req.request_id, "find_file", {"pattern": pattern, "directory": "."}, f"Find file '{pattern}'.")
         return RouteResult(route=RouteMode.FAST, reason=f"Matched 'find_file' for '{pattern}'", plan=plan)
+
+    def _fast_find_file_root(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
+        plan = self._make_fast_plan(
+            req.request_id, "find_file",
+            {"pattern": m.group(1), "directory": m.group(2)},
+            "Find files in the explicitly requested directory.",
+        )
+        return RouteResult(route=RouteMode.FAST, reason="Explicit file search root.", plan=plan)
 
     def _fast_create_folder(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         folder_name = m.group(1).strip()

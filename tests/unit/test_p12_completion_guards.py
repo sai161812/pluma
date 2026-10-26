@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import sys
+import ctypes
 
 import pytest
 
@@ -9,6 +10,35 @@ import pluma.tools.screen_catalog as screen
 from pluma.adapters.base import ControlInfo, Rect
 from pluma.perception.context import ActiveWindowInfo
 from tests.unit.test_screen_control_catalog import _screen_context
+
+
+@pytest.mark.parametrize('failure', ['zero', 'error', 'missing'])
+def test_unavailable_native_dpi_refuses_shared_target_guard(monkeypatch, failure):
+    from unittest.mock import MagicMock
+    from pluma.adapters.base import WindowInfo, WindowState
+    from pluma.adapters.win32 import Win32Adapter
+    from pluma.perception.context import ActiveWindowContext
+    ctx, snap, element, _ = _screen_context()
+    native = MagicMock(spec=Win32Adapter)
+    native.is_window.return_value = True
+    native.get_foreground_window.return_value = WindowInfo(hwnd=snap.hwnd,
+        pid=snap.pid, title=snap.active_window_title, class_name=snap.window_class,
+        rect=Rect(snap.window_rect.left, snap.window_rect.top,
+                  snap.window_rect.right, snap.window_rect.bottom),
+        is_visible=True, is_enabled=True, state=WindowState.NORMAL)
+    context = ActiveWindowContext(win32_adapter=native)
+    monkeypatch.setattr(context, 'get_process_name', lambda _pid: snap.active_process)
+    monkeypatch.setattr(context, 'get_process_creation_time_ns', lambda _pid: snap.process_creation_time_ns)
+    def unavailable(_hwnd):
+        if failure == 'error':
+            raise OSError('Injected DPI failure')
+        return 0
+    user = SimpleNamespace() if failure == 'missing' else SimpleNamespace(GetDpiForWindow=unavailable)
+    monkeypatch.setattr(ctypes, 'windll', SimpleNamespace(user32=user))
+    _, _, _, error = screen._target({'snapshot_id': snap.snapshot_id,
+        'target_ref': f'{snap.snapshot_id}::{element.element_id}'}, ctx,
+        'invoke_control', window_context=context)
+    assert error is not None and not error.ok and not error.verified
 
 
 def _control(enabled=True):

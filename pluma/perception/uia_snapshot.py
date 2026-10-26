@@ -92,6 +92,8 @@ class UiaSnapshotBuilder:
                     control_type = getattr(w.element_info, "control_type", "") or ""
                     class_name = getattr(w.element_info, "class_name", "") or ""
                     is_enabled = bool(w.is_enabled())
+                    from pluma.adapters.uia import UiaAdapter
+                    is_password = UiaAdapter._is_password_control(w)
 
                     label = name or auto_id or control_type or ""
                     inv_cap = _map_invocation_capability(control_type)
@@ -113,6 +115,7 @@ class UiaSnapshotBuilder:
                         metadata={
                             "class_name": class_name,
                             "is_enabled": is_enabled,
+                            "is_password": is_password,
                             "handle": getattr(w.element_info, "handle", None),
                         },
                     )

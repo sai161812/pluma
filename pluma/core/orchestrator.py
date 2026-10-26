@@ -126,7 +126,7 @@ class Orchestrator:
             binder(self._supervisor.request_stop)
         self._ledger = ledger
         self._supervisor.bind_execution(ledger, rollback_engine)
-        self._router = router or Router()
+        self._router = router or Router(registry=self._registry)
         self._llm_manager = llm_manager
         self._rollback_engine = rollback_engine
         self._multi_step = multi_step_orchestrator or MultiStepOrchestrator(
@@ -191,6 +191,10 @@ class Orchestrator:
 
         # 3. Classify route
         route_result: RouteResult = self._router.route(request)
+        if redact_command_text(request.text) == "[REDACTED CLIPBOARD COMMAND]":
+            route_result.reason = "Clipboard-related command routed; private text omitted."
+        else:
+            route_result.reason = redact_command_text(route_result.reason)
         logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason)
 
         if self._ledger:
@@ -260,7 +264,8 @@ class Orchestrator:
                 route=RouteMode.FAST,
                 route_reason=route_result.reason,
                 final_state="FAILED",
-                error="FAST route produced no plan steps.",
+                error=route_result.error or "FAST route produced no plan steps.",
+                factual_summary=route_result.error or "FAST route produced no plan steps.",
                 duration_ms=duration_ms,
             )
 

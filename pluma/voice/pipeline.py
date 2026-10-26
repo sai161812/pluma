@@ -59,21 +59,30 @@ def is_material_target(text: str) -> bool:
     spoken fractions from bypassing clarification. This does not parse or alter
     the target for execution; high-confidence requests retain their normal path.
     """
-    normalized = normalize_transcript(text).casefold()
+    return not _known_nonmaterial_command(normalize_transcript(text))
+
+
+def _known_nonmaterial_command(text: str) -> bool:
+    normalized = text.casefold()
     if normalized in _TARGET_FREE_COMMANDS:
-        return False
+        return True
     launch = _KNOWN_APP_LAUNCH_PATTERN.fullmatch(normalized)
-    return not (launch and is_known_app_alias(launch.group("app")))
+    return bool(launch and is_known_app_alias(launch.group("app")))
 
 
 def normalize_transcript(text: str) -> str:
     """Normalize raw STT transcript minimally for downstream router processing."""
-    # Collapse multiple spaces
-    normalized = re.sub(r"\s+", " ", text.strip())
-    # Strip trailing sentence punctuation if it's a short command (e.g. "open notepad." -> "open notepad")
-    if normalized.endswith((".", "!", "?")) and len(normalized.split()) <= 10:
-        normalized = normalized[:-1].strip()
-    return normalized
+    literal = text.strip()
+    collapsed = re.sub(r"\s+", " ", literal)
+    if _known_nonmaterial_command(collapsed):
+        return collapsed
+    if collapsed.endswith((".", "!", "?")):
+        candidate = collapsed[:-1].strip()
+        if _known_nonmaterial_command(candidate):
+            return candidate
+    # Punctuation and repeated spaces can be part of a literal path, filename
+    # or glob. Do not change a material target while tidying STT text.
+    return literal
 
 
 class VoicePipeline:

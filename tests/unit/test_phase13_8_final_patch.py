@@ -475,9 +475,16 @@ class TestGoldenCorpusRouterAndArgumentAlignment:
             assert res.route == expected_route, f"{cid} ({cmd}): expected route {expected_route}, got {res.route}"
 
             if expected_route == RouteMode.FAST:
+                if c.get("expected_execution_status") == "FAILED":
+                    assert res.plan is None and res.error
+                    assert c["expected_tools"] == []
+                    continue
                 assert res.plan is not None
                 assert len(res.plan.steps) >= 1
                 assert res.plan.steps[0].tool in c["expected_tools"]
+                from pluma.tools.registry import get_default_tool_registry
+                for call in res.plan.steps:
+                    get_default_tool_registry().validate_call(call.tool, call.arguments)
                 if c.get("normalized_args") is not None:
                     assert res.plan.steps[0].arguments == c["normalized_args"], (
                         f"{cid} ({cmd}): expected args {c['normalized_args']}, got {res.plan.steps[0].arguments}"

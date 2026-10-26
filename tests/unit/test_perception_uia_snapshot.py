@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 import pytest
 
@@ -10,6 +11,22 @@ from pluma.adapters.base import WindowNotFoundError
 from pluma.perception.context import ActiveWindowContext, ActiveWindowInfo
 from pluma.perception.element_refs import BoundingBox, ElementSource, ScreenElement, ScreenSnapshot
 from pluma.perception.uia_snapshot import UiaSnapshotBuilder
+
+
+def test_native_snapshot_propagates_password_classification(monkeypatch):
+    wrapper = SimpleNamespace(is_visible=lambda: True, is_enabled=lambda: True,
+        rectangle=lambda: SimpleNamespace(left=0, top=0, right=40, bottom=20,
+            width=lambda: 40, height=lambda: 20),
+        element_info=SimpleNamespace(name='Private control', automation_id='secret',
+            control_type='Edit', class_name='Edit', handle=500,
+            element=SimpleNamespace(CurrentIsPassword=True)))
+    window = SimpleNamespace(descendants=lambda: [wrapper])
+    app = SimpleNamespace(window=lambda **_kwargs: window)
+    monkeypatch.setitem(sys.modules, 'pywinauto', SimpleNamespace(
+        Application=lambda **_kwargs: SimpleNamespace(connect=lambda **_kwargs: app)))
+    elements = UiaSnapshotBuilder()._extract_controls_via_pywinauto(500,
+        BoundingBox(left=0, top=0, right=100, bottom=100))
+    assert len(elements) == 1 and elements[0].metadata['is_password'] is True
 
 
 def test_pywinauto_not_imported_at_module_level() -> None:

@@ -245,7 +245,7 @@ commands:
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-019
-  command: start cmd
+  command: start charmap
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -254,7 +254,7 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    app_name: cmd
+    app_name: charmap
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
@@ -285,7 +285,7 @@ commands:
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-022
-  command: open explorer
+  command: open task manager
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -294,12 +294,12 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    app_name: explorer
+    app_name: taskmgr
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-023
-  command: start edge
+  command: start paint
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -308,7 +308,7 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    app_name: msedge
+    app_name: mspaint
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
@@ -513,28 +513,30 @@ commands:
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-039
-  command: focus window
+  command: focus notepad
   input_mode: text
   expected_route: FAST
   expected_tools:
-  - focus_window
+  - focus_app
   expected_risk: LOW
   no_llm: true
   no_ocr: true
-  normalized_args: {}
+  normalized_args:
+    app_name: notepad
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-040
-  command: switch window
+  command: focus calc
   input_mode: text
   expected_route: FAST
   expected_tools:
-  - focus_window
+  - focus_app
   expected_risk: LOW
   no_llm: true
   no_ocr: true
-  normalized_args: {}
+  normalized_args:
+    app_name: calc
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
@@ -1022,7 +1024,7 @@ commands:
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-078
-  command: find file test.txt
+  command: find file test.txt in C:\PLUMA_Corpus
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1032,12 +1034,12 @@ commands:
   no_ocr: true
   normalized_args:
     pattern: test.txt
-    directory: .
+    directory: C:\PLUMA_Corpus
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-079
-  command: find *.py
+  command: find *.py in C:\PLUMA_Corpus
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1047,12 +1049,12 @@ commands:
   no_ocr: true
   normalized_args:
     pattern: '*.py'
-    directory: .
+    directory: C:\PLUMA_Corpus
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-080
-  command: create folder test_dir
+  command: create folder C:\PLUMA_Corpus\test_dir
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1061,12 +1063,12 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    path: test_dir
+    path: C:\PLUMA_Corpus\test_dir
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-081
-  command: create folder my_docs
+  command: create folder C:\PLUMA_Corpus\my_docs
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1075,12 +1077,12 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    path: my_docs
+    path: C:\PLUMA_Corpus\my_docs
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-082
-  command: move file a.txt to b.txt
+  command: move file C:\PLUMA_Corpus\a.txt to C:\PLUMA_Corpus\b.txt
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1089,13 +1091,13 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    source: a.txt
-    destination: b.txt
+    source: C:\PLUMA_Corpus\a.txt
+    destination: C:\PLUMA_Corpus\b.txt
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-083
-  command: rename file old.txt to new.txt
+  command: rename file C:\PLUMA_Corpus\old.txt to new.txt
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1104,7 +1106,7 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    path: old.txt
+    path: C:\PLUMA_Corpus\old.txt
     new_name: new.txt
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
@@ -1124,7 +1126,7 @@ commands:
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-085
-  command: search file report.docx
+  command: search file report.docx in C:\PLUMA_Corpus
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1134,12 +1136,12 @@ commands:
   no_ocr: true
   normalized_args:
     pattern: report.docx
-    directory: .
+    directory: C:\PLUMA_Corpus
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-086
-  command: make folder archive
+  command: make folder C:\PLUMA_Corpus\archive
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1148,12 +1150,12 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    path: archive
+    path: C:\PLUMA_Corpus\archive
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-087
-  command: locate file config.yaml
+  command: locate file config.yaml in C:\PLUMA_Corpus
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1163,12 +1165,12 @@ commands:
   no_ocr: true
   normalized_args:
     pattern: config.yaml
-    directory: .
+    directory: C:\PLUMA_Corpus
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-088
-  command: move a to b
+  command: move C:\PLUMA_Corpus\a to C:\PLUMA_Corpus\b
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1177,13 +1179,13 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    source: a
-    destination: b
+    source: C:\PLUMA_Corpus\a
+    destination: C:\PLUMA_Corpus\b
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-089
-  command: rename sample.log to sample.txt
+  command: rename C:\PLUMA_Corpus\sample.log to sample.txt
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1192,13 +1194,13 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    path: sample.log
+    path: C:\PLUMA_Corpus\sample.log
     new_name: sample.txt
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-090
-  command: mkdir output
+  command: mkdir C:\PLUMA_Corpus\output
   input_mode: text
   expected_route: FAST
   expected_tools:
@@ -1207,7 +1209,7 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args:
-    path: output
+    path: C:\PLUMA_Corpus\output
   expected_policy_decision: ALLOW
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
@@ -1783,13 +1785,11 @@ commands:
   command: open malicious.exe
   input_mode: text
   expected_route: FAST
-  expected_tools:
-  - open_app
+  expected_tools: []
   expected_risk: LOW
   no_llm: false
   no_ocr: false
-  normalized_args:
-    app_name: malicious.exe
+  normalized_args: {}
   expected_policy_decision: DENY
   expected_execution_status: FAILED
   expected_postcondition_present: false
@@ -1809,13 +1809,11 @@ commands:
   command: open cmd as admin
   input_mode: text
   expected_route: FAST
-  expected_tools:
-  - open_app
+  expected_tools: []
   expected_risk: LOW
   no_llm: false
   no_ocr: false
-  normalized_args:
-    app_name: cmd as admin
+  normalized_args: {}
   expected_policy_decision: DENY
   expected_execution_status: FAILED
   expected_postcondition_present: false
@@ -1883,13 +1881,11 @@ commands:
   command: open powershell as admin
   input_mode: text
   expected_route: FAST
-  expected_tools:
-  - open_app
+  expected_tools: []
   expected_risk: LOW
   no_llm: false
   no_ocr: false
-  normalized_args:
-    app_name: powershell as admin
+  normalized_args: {}
   expected_policy_decision: DENY
   expected_execution_status: FAILED
   expected_postcondition_present: false

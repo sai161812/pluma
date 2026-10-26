@@ -1,6 +1,43 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P14 clarification/privacy closure E79
+## Current checkpoint: 2026-10-27, P00-P14 audit closure E80
+
+**The identified audit findings A1-A6 are repaired and the assigned P00-P14
+backend gates are closed with the existing recorded owner-approved physical
+limits. P15 is eligible for its first bounded contract packet and has not
+started.** [E80](docs/completion/p14_e80_audit_closure.md) records the repairs,
+reproductions, exact commands, source identities and limits.
+
+- Unknown DPI now refuses grounding. Password/unclassified editable controls
+  are excluded and retained UIA/OCR text is redacted before model prompts.
+  Voice material punctuation/internal whitespace remain literal.
+- FAST plans use the actual registry contract. Unsupported aliases and missing
+  targets refuse without guessing; all seventeen original invalid positive
+  examples remain explicit refusal regressions alongside corrected supported
+  corpus cases. The crash fixture verifies original PID/creation absence and
+  retains STOP/admission/cleanup assertions. Stale matrix claims are corrected.
+- Three additional real-router clipboard-reason leaks were reproduced and
+  repaired; no injected route masks this privacy check.
+- Current checks: **500 prerequisites, 1,236 safely selected catalog, 352
+  routing/contracts, 244 P12, 10 owned native Win32/WPF, 25 P13 and 351 P14
+  passes**, plus three clean crash repeats. Counts overlap; zero final
+  failures/errors/skips/xfails. Explicit catalog exclusions are not passes.
+- Fresh actual Whisper material clarification and generated-speech Whisper to
+  Qwen complex-file voice/text acceptance pass: same voice capsule, owned file
+  and ledger readback, worker absence and COLD cleanup. E78 physical timing and
+  unchanged E72/E73/E74 native ownership/lifecycle evidence are retained within
+  their documented scope. No new microphone, personal clipboard/profile,
+  disruptive power or UAC operation was performed.
+- Recovery point: `7ebd282adbe24c92b8d57d052ba27c01aeaf5481` on
+  `p12-preparation`. No reset, branch switch, merge or force push was used.
+
+Ready for independent Sol review; approval is not assumed. Native UI wiring,
+owner-deferred physical outcomes, full corpus/quality/performance and release
+acceptance keep their later milestone owners. Next safe packet, when instructed:
+P15 versioned request/acknowledgement/terminal-readback contracts after current
+IPC/event inspection. Do not advance automatically.
+
+## Previous checkpoint: 2026-10-26, P14 clarification/privacy closure E79
 
 **Mandatory P14 backend acceptance C-01 through C-09 is complete after the two
 post-E78 findings were reproduced and repaired.** Unresolved low-confidence

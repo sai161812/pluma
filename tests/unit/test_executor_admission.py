@@ -556,9 +556,10 @@ def test_spawn_crash_does_not_strand_stop_latch(task, tmp_path):
                 time.sleep(0.005)
             assert (tmp_path / "prepared").exists()
             proc = capsule.worker_controller._proc
+            identity = dict(capsule.worker_controller.worker_identity)
             proc.kill()  # only this test's registered task worker
-            proc.join(3)
-            assert not proc.is_alive()
+            from pluma.core.ownership import subprocess_absent
+            assert subprocess_absent(identity['pid'], identity['creation_time'], wait_s=3)
             stopping = callers.submit(capsule.cancellation_token.cancel)
             assert stopping.result(3)
             assert capsule.stop_latch_set
@@ -569,3 +570,6 @@ def test_spawn_crash_does_not_strand_stop_latch(task, tmp_path):
         result = executing.result(10)
     assert not result.ok and not result.verified
     assert not (tmp_path / "executed").exists()
+    registry.close()
+    assert capsule.worker_controller.verify_cleanup()
+    assert proc._closed
