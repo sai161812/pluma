@@ -183,10 +183,10 @@ class MultiStepOrchestrator:
 
                 step_start = time.perf_counter()
                 logger.info(
-                    "Task %s [Step %d/%d (Lifetime %d/%d)]: Executing '%s' (purpose: %s)",
+                    "Task %s [Step %d/%d (Lifetime %d/%d)]: Executing '%s'",
                     task_id, idx + 1, len(current_plan.steps),
                     step_idx, MAX_LIFETIME_STEPS,
-                    tool_call.tool, tool_call.purpose,
+                    tool_call.tool,
                 )
 
                 # 2. Execute Step through ToolRegistry (with policy evaluation)

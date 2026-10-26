@@ -10,6 +10,7 @@ import pytest
 from pluma.adapters import power_actions as native
 from pluma.brain.schemas import Plan, RouteMode, ToolCall
 from pluma.core.request import InputMode, PlumaRequest
+from pluma.core.ownership import subprocess_absent
 from pluma.core.router import RouteResult
 from pluma.memory.activity import ActivityQuery
 from pluma.policy.rules import PolicyRules
@@ -277,6 +278,7 @@ def test_blocked_system_worker_is_owned_and_keeps_nonundoable_uncertainty(runtim
         job_object=cap.job_object, cancellation_token=cap.cancellation_token)
     assert status == 'ok'
     proc = controller._proc
+    identity = dict(controller.worker_identity)
     with ThreadPoolExecutor(1) as pool:
         future = pool.submit(runtime.tool_registry.execute, tool, {}, cap, runtime.ledger)
         try:
@@ -286,5 +288,7 @@ def test_blocked_system_worker_is_owned_and_keeps_nonundoable_uncertainty(runtim
         finally:
             if not future.done(): runtime.supervisor.stop_task(cap.task_id, grace_s=0)
     assert not result.ok and not result.verified
-    assert not proc.is_alive() and controller.verify_cleanup() and not (tmp_path / 'late').exists()
+    assert proc._closed and controller._proc is None
+    assert subprocess_absent(identity['pid'], identity['creation_time']) is True
+    assert controller.verify_cleanup() and not (tmp_path / 'late').exists()
     assert cap.undo_stack[-1]['non_undoable'] and cap.undo_stack[-1]['effect_state'] == 'unknown'

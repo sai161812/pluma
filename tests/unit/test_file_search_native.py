@@ -11,6 +11,7 @@ from pluma.adapters import file_search
 from pluma.brain.schemas import Plan, RouteMode, ToolCall
 from pluma.brain.tool_subset import ToolSubsetSelector
 from pluma.core.cancellation import CancellationToken, StopReason
+from pluma.core.ownership import subprocess_absent
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult
 from pluma.memory.activity import ActivityQuery
@@ -175,6 +176,7 @@ def test_blocked_search_worker_is_owned_and_bounded(runtime, monkeypatch, tmp_pa
         job_object=cap.job_object, cancellation_token=cap.cancellation_token)
     assert status == 'ok'
     proc = controller._proc
+    identity = dict(controller.worker_identity)
     with ThreadPoolExecutor(1) as pool:
         running = pool.submit(runtime.tool_registry.execute, 'find_file', {
             'directory': str(tmp_path), 'pattern': '*'}, cap, runtime.ledger)
@@ -187,5 +189,7 @@ def test_blocked_search_worker_is_owned_and_bounded(runtime, monkeypatch, tmp_pa
             if not running.done():
                 runtime.supervisor.stop_task(cap.task_id, grace_s=0)
     assert not result.ok and result.error_code == ('TASK_CANCELLED' if stop else 'TOOL_TIMEOUT')
-    assert not proc.is_alive() and controller.verify_cleanup() is True
+    assert proc._closed and controller._proc is None
+    assert subprocess_absent(identity['pid'], identity['creation_time']) is True
+    assert controller.verify_cleanup() is True
     assert not cap.undo_stack and not (tmp_path / 'late').exists()

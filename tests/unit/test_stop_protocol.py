@@ -313,7 +313,8 @@ def test_uncommitted_terminal_event_is_pending(runtime):
     cap = task(runtime)
     stop(runtime, cap)
     assert runtime.supervisor.join_stop_operations(3)
-    cap.terminal_ready.clear()  # injected interruption before terminal publication
+    # Inject an unpublished terminal signal without mutating the retired signal.
+    cap.terminal_ready = threading.Event()
     try:
         reply = stop(runtime, cap)
         assert reply.stopped_count == 0 and reply.tasks[0].outcome == StopOutcome.PENDING

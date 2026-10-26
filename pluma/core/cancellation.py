@@ -247,11 +247,12 @@ class CancellationToken:
         so its synchronization state must no longer own native handles.
         """
         with self._lock:
+            # Disposal seals native admission without inventing a STOP reason.
+            cancelled = self.is_cancelled
             gate = self._process_admission
             if gate is not None:
                 gate.close()
                 self._process_admission = None
-            cancelled = self._event.is_set()
             self._event = _FrozenEvent(cancelled)
             self._lock = _NoopLock()
             self._retired = True
@@ -275,6 +276,8 @@ class CancellationToken:
         Call this at the start of each tool step and at yield points inside
         long-running operations.
         """
+        if self._retired:
+            raise TaskCancelledError("Completed tasks cannot admit new work.", reason=self._reason)
         if self.is_cancelled:
             raise TaskCancelledError(message, reason=self._reason)
 

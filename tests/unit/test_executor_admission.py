@@ -323,6 +323,28 @@ def test_terminal_token_releases_admission_handle_and_preserves_stop_state():
         token.process_admission()
 
 
+def test_retired_successful_task_cannot_admit_a_thread_executor(task):
+    from pluma.core.task_supervisor import TaskState
+
+    capsule, registry = task
+    entered = []
+
+    def execute(_args, _context):
+        entered.append(True)
+        return ToolResult.success("admission_probe", factual_message="Read fixture.")
+
+    registry.register(spec(execute))
+    capsule.state = TaskState.SUCCEEDED
+    capsule.terminal_ready.set()
+    assert capsule.release_terminal_sync_handles()
+    assert not capsule.cancellation_token.is_cancelled
+
+    with pytest.raises(TaskCancelledError):
+        registry.execute("admission_probe", {}, capsule)
+    assert entered == []
+    assert capsule.owned_work == {}
+
+
 def test_stop_while_waiting_for_controller_prevents_worker_start(task, monkeypatch):
     capsule, registry = task
     controller = runner.TaskWorkerController(capsule.task_id)

@@ -153,10 +153,14 @@ def test_native_worker_events_are_latched_before_first_grace(supervisor, monkeyp
     observed = []
 
     def grace(seconds):
-        observed.append(tuple(gate.is_cancelled() for gate in gates))
-        for gate in gates:
-            with pytest.raises(TaskCancelledError):
-                gate.admit_executor()
+        observed.append(tuple(cap.cancellation_token.is_cancelled for cap in capsules))
+        for cap, gate in zip(capsules, gates):
+            if gate.is_closed:
+                assert cap.terminal_ready.is_set() and cap.cancellation_token.is_cancelled
+            else:
+                assert gate.is_cancelled()
+                with pytest.raises(TaskCancelledError):
+                    gate.admit_executor()
 
     monkeypatch.setattr(module, "time", SimpleNamespace(sleep=grace))
     supervisor.stop_all_active_tasks()

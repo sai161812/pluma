@@ -262,7 +262,9 @@ def test_orchestrator_smart_route_e2e() -> None:
     assert res.steps[1].tool == "list_files"
 
 
-def test_planner_reasoning_marker_is_not_written_to_activity_ledger(tmp_path) -> None:
+def test_planner_reasoning_marker_is_not_written_to_activity_ledger(tmp_path, caplog) -> None:
+    import logging
+    caplog.set_level(logging.INFO, logger="pluma.core.multi_step")
     db = DbConnection(str(tmp_path / "planner-history.sqlite"))
     db.open()
     ledger = ActivityLedger(db=db)
@@ -299,6 +301,7 @@ def test_planner_reasoning_marker_is_not_written_to_activity_ledger(tmp_path) ->
         rows = ActivityQuery(db).actions_for_task(result.task_id)
         persisted = json.dumps({"actions": rows, "task": ActivityQuery(db).task_by_id(result.task_id)})
         assert hidden_marker not in persisted
+        assert hidden_marker not in caplog.text
     finally:
         db.close()
 
