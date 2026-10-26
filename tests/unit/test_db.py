@@ -24,6 +24,8 @@ class TestMigrations:
             assert required.issubset(table_names), (
                 f"Missing tables: {required - table_names}"
             )
+            task_columns = {row[1] for row in db.execute_read("PRAGMA table_info(tasks)")}
+            assert "original_transcript" in task_columns
 
     def test_migrations_are_idempotent(self) -> None:
         """Running migrations twice on the same DB must not error."""

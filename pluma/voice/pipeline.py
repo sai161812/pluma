@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from pluma.core.request import InputMode, PlumaRequest
@@ -17,6 +18,19 @@ from pluma.voice.lifecycle import VoiceLifecycleManager
 from pluma.voice.vad import EnergyVAD
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class VoiceClarificationRequired:
+    """Backend outcome for material speech that is too uncertain to execute.
+
+    The transcript and guessed target are deliberately omitted. A later UI can
+    present a clarification request without persisting or replaying sensitive
+    speech.
+    """
+
+    confidence: float
+    code: str = "LOW_CONFIDENCE_MATERIAL_TARGET"
 
 # Patterns for detecting material targets (destructive verbs, files, numbers)
 _DESTRUCTIVE_PATTERN = re.compile(
@@ -72,7 +86,7 @@ class VoicePipeline:
         raw_audio: bytes,
         sample_rate: int = 16000,
         cancellation_token: Optional[Any] = None,
-    ) -> Optional[PlumaRequest]:
+    ) -> Optional[PlumaRequest | VoiceClarificationRequired]:
         """Process raw PCM audio bytes and return a PlumaRequest if valid."""
         if cancellation_token and hasattr(cancellation_token, "is_cancelled") and cancellation_token.is_cancelled:
             logger.debug("Voice processing aborted: cancellation token set.")
@@ -112,12 +126,10 @@ class VoicePipeline:
         # 5. Low-confidence safety check for material targets
         if stt_result.is_low_confidence and is_material_target(normalized_text):
             logger.warning(
-                "Low-confidence STT transcript (%0.2f) detected on material target: '%s'. "
-                "Rejecting guess and requiring user clarification.",
+                "Low-confidence STT detected on a material target (%0.2f); refusing to create a request.",
                 stt_result.confidence,
-                redact_string(normalized_text),
             )
-            return None
+            return VoiceClarificationRequired(confidence=stt_result.confidence)
 
         # 6. Synthesize PlumaRequest with InputMode.VOICE and preserved original transcript
         request = PlumaRequest(

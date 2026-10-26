@@ -1,6 +1,43 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-26, P14 bounded native STT packet E74
+## Current checkpoint: 2026-10-26, P14 backend voice acceptance E75
+
+**P14 backend voice acceptance is complete.** E75 adds incremental VAD capture,
+physical microphone activation/STOP checks, three repeated physical C-02
+speech-boundary passes, FAST voice/text parity, native Qwen complex-planning
+parity, real Whisper material-target clarification, and original-transcript
+ledger readback. The focused voice/cancellation/privacy regression set passes
+161 tests, and all required C-01 through C-09 gates have evidence. C-10 remains
+optional. CORE-STT backend acceptance is implemented; visible clarification
+presentation remains P19. P15 has not started. See
+[E75](docs/completion/p14_voice_acceptance.md) for exact commands, model
+identities, limitations and changed files.
+
+- Recovery point before E75: `bac13bffe169766d37538f9bc8be3c99e7cac3e0` on
+  `p12-preparation`; no branch switch, merge or reset was used.
+- Focused voice, VAD, request/parity, STOP, lifecycle, worker, migration and
+  ledger checks passed **161/161**, zero failures/errors/skips/xfails. The
+  physical default microphone opened only after the activation callback and
+  closed on release; physical capture STOP closed the stream and admitted no
+  processing. Actual whisper.cpp verified transcription at confidence
+  `0.7721014766`, COLD unload, native worker STOP/absence and cleanup readback.
+- Actual whisper.cpp also returned `0.625466` confidence for a generated
+  material-target fixture (threshold `0.65`); the backend emitted the typed
+  clarification outcome, attached no transcript, and admitted no command task
+  or tool. Actual Qwen3-4B llama.cpp planned the same two-step read-only
+  fixture path for voice-originated and typed inputs, with task/worker/ledger
+  readback.
+- Fixture VAD tests prove the configured speech boundary stops the callback.
+  Three repeated generated-speech acoustic trials on the physical AMD array and
+  Realtek speaker verified the configured boundary, inactive stream, stable
+  buffer and closure on release. The device harness manually invokes the
+  production PTT trigger callback, not a synthesized keyboard press. No human
+  speech was captured. C-10 remains optional. No P15 work has started.
+
+Next safe milestone: P15 UI/core request and event contracts, only when
+explicitly instructed. Do not start it automatically.
+
+## Previous checkpoint: 2026-10-26, P14 bounded native STT packet E74
 
 **This packet closes the task-owned native STT cancellation/unload and
 configuration wiring work for C-08/B-04. P14 remains in progress.** The P14

@@ -44,6 +44,7 @@ class TaskRecord:
     request_id: str
     input_mode: str               # 'text' or 'voice'
     command_text: str
+    original_transcript: Optional[str] = None
     created_at: str = field(default_factory=_now_iso)
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -130,17 +131,19 @@ class ActivityLedger:
     def insert_task(self, record: TaskRecord) -> None:
         """Insert a new task row. Called when the TaskCapsule is created."""
         redacted_cmd = redact_string(record.command_text) if record.command_text else record.command_text
+        redacted_transcript = (redact_string(record.original_transcript)
+                               if record.original_transcript else None)
         self._db.execute_write(
             """
             INSERT OR REPLACE INTO tasks
-              (task_id, request_id, input_mode, command_text,
+              (task_id, request_id, input_mode, command_text, original_transcript,
                created_at, started_at, completed_at, final_state,
                route, active_process, active_window, stop_reason, error_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.task_id, record.request_id, record.input_mode.lower(),
-                redacted_cmd, record.created_at, record.started_at,
+                redacted_cmd, redacted_transcript, record.created_at, record.started_at,
                 record.completed_at, record.final_state, record.route,
                 redact_string(record.active_process) if record.active_process else record.active_process,
                 redact_string(record.active_window) if record.active_window else record.active_window,

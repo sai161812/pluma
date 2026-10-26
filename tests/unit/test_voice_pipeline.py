@@ -10,7 +10,12 @@ import pytest
 from pluma.core.cancellation import CancellationToken
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.voice.lifecycle import VoiceLifecycleManager
-from pluma.voice.pipeline import VoicePipeline, is_material_target, normalize_transcript
+from pluma.voice.pipeline import (
+    VoiceClarificationRequired,
+    VoicePipeline,
+    is_material_target,
+    normalize_transcript,
+)
 from pluma.voice.stt_adapter import TranscriptResult
 from pluma.voice.vad import EnergyVAD
 
@@ -80,7 +85,7 @@ def test_voice_pipeline_cancelled_token_returns_none() -> None:
     assert not mock_lifecycle.transcribe.called
 
 
-def test_voice_pipeline_low_confidence_with_material_target_returns_none() -> None:
+def test_voice_pipeline_low_confidence_with_material_target_returns_none(caplog) -> None:
     mock_lifecycle = MagicMock(spec=VoiceLifecycleManager)
     # Low confidence on destructive/filename command
     mock_lifecycle.transcribe.return_value = TranscriptResult(
@@ -93,5 +98,9 @@ def test_voice_pipeline_low_confidence_with_material_target_returns_none() -> No
     raw_audio = _make_pcm_tone(duration_ms=400)
 
     request = pipeline.process_audio(raw_audio)
-    # Must refuse to guess and return None
-    assert request is None
+    # Must emit a transcript-free clarification outcome and keep the target out of logs.
+    assert isinstance(request, VoiceClarificationRequired)
+    assert request.code == "LOW_CONFIDENCE_MATERIAL_TARGET"
+    assert request.confidence == 0.45
+    assert "important_report.pdf" not in caplog.text
+    assert "refusing to create a request" in caplog.text

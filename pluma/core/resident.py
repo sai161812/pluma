@@ -12,7 +12,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from pluma.config.loader import get, load_config
-from pluma.core.cancellation import StopReason
+from pluma.core.cancellation import StopReason, TaskCancelledError
 from pluma.core.ipc import IpcServer
 from pluma.core.ownership import OwnershipRegistry
 from pluma.core.request import InputMode, PlumaRequest
@@ -40,6 +40,7 @@ class ResidentCore:
         config: Optional[Dict[str, Any]] = None,
         voice_pipeline: Optional[VoicePipeline] = None,
         on_request_callback: Optional[Callable[[Any], Any]] = None,
+        on_voice_clarification_callback: Optional[Callable[[Any], Any]] = None,
         supervisor: Optional[TaskSupervisor] = None,
         orchestrator: Optional[Any] = None,
         ledger: Optional[Any] = None,
@@ -52,6 +53,7 @@ class ResidentCore:
         self.supervisor = supervisor or TaskSupervisor(ownership_registry=self.registry, ledger=self.ledger)
         self.orchestrator = orchestrator
         self.on_request_callback = on_request_callback or (self.orchestrator.execute if self.orchestrator else None)
+        self.on_voice_clarification_callback = on_voice_clarification_callback
         self.ipc = IpcServer(command_handler=self.handle_ipc_command, address=ipc_address, require_auth=True)
 
 
@@ -70,7 +72,8 @@ class ResidentCore:
         if self.voice_enabled:
             from pluma.voice.activation import VoiceActivation
             from pluma.voice.capture import AudioCapture
-            self.audio_capture: Optional[AudioCapture] = AudioCapture()
+            vad = getattr(self.voice_pipeline, "vad", None)
+            self.audio_capture: Optional[AudioCapture] = AudioCapture(vad=vad)
             self.voice_activation: Optional[VoiceActivation] = VoiceActivation(
                 on_press=self._on_voice_press,
                 on_release=self._on_voice_release,
@@ -167,13 +170,25 @@ class ResidentCore:
                 raw_audio, cancellation_token=capsule.cancellation_token)
             raw_audio = None  # raw audio is never included in logs/history
             capsule.cancellation_token.raise_if_cancelled()
+            from pluma.voice.pipeline import VoiceClarificationRequired
+            if isinstance(request, VoiceClarificationRequired):
+                callback = self.on_voice_clarification_callback
+                if callback is not None:
+                    callback(request)
+                else:
+                    logger.info("Voice clarification is required; no request was admitted.")
+                return
             if request is None:
-                return  # silence/low-confidence clarification, no guessed action
+                return  # silence or invalid speech; no guessed action
             if self.orchestrator is None:
                 raise RuntimeError("Voice execution owner is unavailable.")
             capsule.request_id = str(request.request_id)
             dispatched = True
             self.orchestrator.execute(request, capsule=capsule)
+        except TaskCancelledError:
+            failed = capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
+            if failed:
+                logger.warning("Voice request exceeded its deadline.")
         except Exception:
             # The task worker records its deadline by latching TASK_TIMEOUT;
             # retain that factual failure through voice-capsule finalization.

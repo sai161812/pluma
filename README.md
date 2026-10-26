@@ -198,7 +198,7 @@ Start the resident process:
 pluma --debug
 ```
 
-The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR through ONNX Runtime when the OCR extra is installed. Their model files/runtime packages are not vendored in this repository and must be installed before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions. Install the voice runtime with `python -m pip install -e ".[stt]"`, then place a whisper.cpp GGML model at `%LOCALAPPDATA%\Pluma\models\whisper\ggml-base.en.bin` or set `voice.model_path` to its local path. PLUMA does not download model files automatically.
+The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR through ONNX Runtime when the OCR extra is installed. Their model files/runtime packages are not vendored in this repository and must be installed before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions. Install voice capture and STT support with `python -m pip install -e ".[media,stt]"`, then place a whisper.cpp GGML model at `%LOCALAPPDATA%\Pluma\models\whisper\ggml-base.en.bin` or set `voice.model_path` to its local path. PLUMA does not download model files automatically.
 
 For packaged installation, the release bundle contains the wheel, `pluma.exe`, installer scripts, configuration, and SHA-256 manifest:
 

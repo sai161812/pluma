@@ -168,6 +168,7 @@ class Orchestrator:
                     request_id=request.request_id,
                     input_mode=request.input_mode.value,
                     command_text=request.text,
+                    original_transcript=request.original_transcript,
                     active_process=request.active_process,
                     active_window=request.active_window_title,
                 ))

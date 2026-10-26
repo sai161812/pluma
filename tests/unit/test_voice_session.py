@@ -15,6 +15,7 @@ from pluma.core.task_supervisor import TaskState
 from pluma.memory.activity import ActivityQuery
 from pluma.tools.base import ToolResult
 from pluma.voice.capture import AudioCapture
+from pluma.voice.pipeline import VoiceClarificationRequired
 from tests.unit.test_runtime_shutdown import runtime, registered
 
 
@@ -52,7 +53,7 @@ def voice(runtime, monkeypatch):
         return stream
     monkeypatch.setitem(sys.modules, 'sounddevice', SimpleNamespace(RawInputStream=create))
     core = runtime.resident_core
-    core.audio_capture = AudioCapture()
+    core.audio_capture = AudioCapture(vad=getattr(core.voice_pipeline, 'vad', None))
     core.voice_pipeline = SimpleNamespace(process_audio=lambda *a, **kw: None)
     yield runtime, core, streams
     for stream in streams:
@@ -67,7 +68,7 @@ def journal(runtime, cap):
     return data
 
 
-def test_stop_closes_and_discards_before_key_release(voice):
+def test_stop_closes_and_discards_before_key_release(voice, caplog):
     runtime, core, streams = voice
     stt_calls = []
     core.voice_pipeline.process_audio = lambda *a, **kw: stt_calls.append(True)
@@ -85,6 +86,41 @@ def test_stop_closes_and_discards_before_key_release(voice):
     core._on_voice_release()
     assert core._voice_session is None and not runtime.supervisor.get_active_tasks()
     assert stt_calls == []
+    assert "Voice request did not complete." not in caplog.text
+
+
+def test_microphone_opens_only_after_push_to_talk_activation(voice):
+    runtime, core, streams = voice
+    assert core.audio_capture.capture_closed
+    assert streams == []
+
+    core._on_voice_press()
+
+    assert len(streams) == 1
+    assert core.audio_capture.is_recording
+    capsule = core._current_voice_capsule
+    runtime.supervisor.stop_task(capsule.task_id, grace_s=0)
+    assert streams[0].closed
+    assert core.audio_capture.capture_closed
+
+
+def test_material_target_clarification_reaches_callback_without_dispatch(voice):
+    runtime, core, _streams = voice
+    clarification_events = []
+    core.on_voice_clarification_callback = clarification_events.append
+    core.voice_pipeline.process_audio = lambda *_args, **_kwargs: VoiceClarificationRequired(
+        confidence=0.42
+    )
+
+    core._on_voice_press()
+    core.audio_capture.feed(b"\x01\x00" * 4000)
+    capsule = core._current_voice_capsule
+    core._on_voice_release()
+
+    assert clarification_events == [VoiceClarificationRequired(confidence=0.42)]
+    assert capsule.state == TaskState.STOPPED
+    assert ActivityQuery(runtime.db).task_by_id(capsule.task_id) is None
+    assert ActivityQuery(runtime.db).actions_for_task(capsule.task_id) == []
 
 
 @pytest.mark.parametrize('path', ['empty', 'silence', 'denied', 'failed', 'missing_pipeline', 'missing_capture', 'missing_executor'])
@@ -268,6 +304,7 @@ def test_voice_and_text_use_real_registered_executor_and_same_capsule(voice):
     assert cap.state == TaskState.SUCCEEDED and cap.voice_session is None
     row = ActivityQuery(runtime.db).task_by_id(cap.task_id)
     assert row['input_mode'] == 'voice' and row['final_state'] == 'SUCCEEDED'
+    assert row['original_transcript'] == 'Fixture.'
     assert row['request_id'] == cap.request_id and row['command_text'] == 'fixture'
     result = runtime.orchestrator.execute(PlumaRequest(input_mode=InputMode.TEXT, text='fixture'))
     assert result.success and calls == ['verified', 'verified']

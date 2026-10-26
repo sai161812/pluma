@@ -34,17 +34,22 @@ class AudioCapture:
         sample_rate: int = 16000,
         channels: int = 1,
         max_duration_s: float = MAX_RECORDING_SECONDS,
+        vad: Optional[Any] = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.channels = channels
         self.max_duration_s = max_duration_s
         self.max_buffer_bytes = int(sample_rate * channels * 2 * max_duration_s)
         self._buffer = bytearray()
+        self._vad_pending = bytearray()
         self._lock = threading.Lock()
         self._operation = threading.RLock()
         self._generation = 0
         self._stream: Any = None
         self._is_recording = False
+        self._utterance_complete = threading.Event()
+        detector_factory = getattr(vad, "streaming_detector", None)
+        self._boundary_detector = detector_factory() if callable(detector_factory) else None
 
     @property
     def is_recording(self) -> bool:
@@ -55,7 +60,42 @@ class AudioCapture:
     @property
     def capture_closed(self) -> bool:
         with self._lock:
-            return self._stream is None and not self._is_recording and not self._buffer
+            return (self._stream is None and not self._is_recording
+                    and not self._buffer and not self._vad_pending)
+
+    @property
+    def utterance_complete(self) -> bool:
+        """Whether the stream stopped at its configured VAD silence boundary."""
+        return self._utterance_complete.is_set()
+
+    def _append_audio_locked(self, chunk: bytes) -> bool:
+        """Append bounded audio; return true when the stream must stop now."""
+        if not self._is_recording or not chunk:
+            return False
+        detector = self._boundary_detector
+        if detector is None:
+            remaining = self.max_buffer_bytes - len(self._buffer)
+            if remaining > 0:
+                self._buffer.extend(chunk[:remaining])
+            return False
+
+        self._vad_pending.extend(chunk)
+        frame_bytes = detector.bytes_per_frame
+        if frame_bytes <= 0:
+            raise RuntimeError("VAD frame size is invalid.")
+        while len(self._vad_pending) >= frame_bytes:
+            frame = bytes(self._vad_pending[:frame_bytes])
+            del self._vad_pending[:frame_bytes]
+            if len(self._buffer) + frame_bytes > self.max_buffer_bytes:
+                self._is_recording = False
+                return True
+            self._buffer.extend(frame)
+            if detector.consume_frame(frame):
+                self._is_recording = False
+                self._utterance_complete.set()
+                self._vad_pending.clear()
+                return True
+        return False
 
     @_serialized
     def start(self) -> None:
@@ -66,6 +106,10 @@ class AudioCapture:
             if self._stream is not None:
                 raise RuntimeError("Previous capture stream remains owned.")
             self._buffer.clear()
+            self._vad_pending.clear()
+            self._utterance_complete.clear()
+            if self._boundary_detector is not None:
+                self._boundary_detector.reset()
             self._generation += 1
             generation = self._generation
             self._is_recording = True
@@ -77,20 +121,21 @@ class AudioCapture:
             def _callback(indata: Any, frames: int, time_info: Any, status: Any) -> None:
                 if status:
                     logger.debug("Audio capture status: %s", status)
+                chunk = (
+                    indata
+                    if isinstance(indata, bytes)
+                    else indata.tobytes()
+                    if hasattr(indata, "tobytes")
+                    else bytes(indata)
+                )
+                reached_boundary = False
                 with self._lock:
                     if self._is_recording and generation == self._generation:
-                        if len(self._buffer) >= self.max_buffer_bytes:
-                            # Reached maximum duration limit — auto-cap buffer
-                            return
-                        chunk = (
-                            indata
-                            if isinstance(indata, bytes)
-                            else indata.tobytes()
-                            if hasattr(indata, "tobytes")
-                            else bytes(indata)
-                        )
-                        remaining = self.max_buffer_bytes - len(self._buffer)
-                        self._buffer.extend(chunk[:remaining])
+                        reached_boundary = self._append_audio_locked(chunk)
+                if reached_boundary:
+                    callback_stop = getattr(sd, "CallbackStop", None)
+                    if callback_stop is not None:
+                        raise callback_stop
 
             self._stream = sd.RawInputStream(
                 samplerate=self.sample_rate,
@@ -105,15 +150,13 @@ class AudioCapture:
             with self._lock:
                 self._is_recording = False
                 self._buffer.clear()
+                self._vad_pending.clear()
             raise
 
     def feed(self, pcm_chunk: bytes) -> None:
         """Feed external PCM chunk into the capture buffer (used for testing or programmatic feed)."""
         with self._lock:
-            if self._is_recording:
-                remaining = self.max_buffer_bytes - len(self._buffer)
-                if remaining > 0:
-                    self._buffer.extend(pcm_chunk[:remaining])
+            self._append_audio_locked(pcm_chunk)
 
     @_serialized
     def cancel(self) -> None:
@@ -121,6 +164,8 @@ class AudioCapture:
         with self._lock:
             self._is_recording = False
             self._buffer.clear()
+            self._vad_pending.clear()
+            self._utterance_complete.clear()
             stream = self._stream
         if stream is not None:
             stream.abort()
@@ -146,9 +191,15 @@ class AudioCapture:
                 with self._lock:
                     self._stream = None
             with self._lock:
+                if (self._boundary_detector is not None and self._vad_pending
+                        and not self._utterance_complete.is_set()):
+                    remaining = self.max_buffer_bytes - len(self._buffer)
+                    self._buffer.extend(self._vad_pending[:remaining])
+                self._vad_pending.clear()
                 captured = (b"" if cancellation_token is not None and cancellation_token.is_cancelled
                             else bytes(self._buffer))
                 return captured
         finally:
             with self._lock:
                 self._buffer.clear()
+                self._vad_pending.clear()

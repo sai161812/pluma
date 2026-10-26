@@ -67,6 +67,7 @@ def test_task_context_is_redacted_on_insert_and_update(memory_db):
         request_id="req-context-redact",
         input_mode="text",
         command_text="List files in Downloads",
+        original_transcript=f"List files in Downloads; token={secret}",
         active_window=f"Settings api_key={secret}",
     ))
 
@@ -74,6 +75,8 @@ def test_task_context_is_redacted_on_insert_and_update(memory_db):
     assert inserted is not None
     assert secret not in json.dumps(inserted)
     assert "[REDACTED]" in inserted["active_window"]
+    assert secret not in inserted["original_transcript"]
+    assert "[REDACTED]" in inserted["original_transcript"]
 
     ledger.update_task(task_id, active_window=f"Browser token={secret}")
     updated = query.task_by_id(task_id)
