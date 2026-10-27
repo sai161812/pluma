@@ -52,8 +52,11 @@ undo or any tool call.
 The existing host can refuse a new card at its capacity. This packet does not
 claim guaranteed toast delivery or add an unbounded queue; the bounded feed
 retains its factual entry. Multi-surface burst arbitration remains P18 work.
-Task-scoped history also retains P15's 100-action cap; unavailable/oversized
-readback leaves the batch uncommitted and explicitly marks the connection stale.
+E88 replaces scoped full-history correlation with a one-action typed activity
+page, removing the old 100-action dependency while keeping the legacy history
+API's cap intact. Unavailable or invalid evidence still leaves the batch
+uncommitted and explicitly marks the connection stale. Cleanup summary bounds
+are 65,536 characters/512 persisted entries and fail closed when exceeded.
 
 Dashboard subscribes while loaded and restores the shell-owned buffer on return.
 An observable collection is updated incrementally without forced scrolling or
@@ -70,7 +73,9 @@ event or dismissal never proves worker termination. Full event-driven desktop
 host/backend acceptance across all surfaces remains part of P18, with physical
 Windows/owner appearance acceptance still assigned to P25.
 
-The next safe packet is typed action/state/cleanup evidence and its projection
-contracts, then the affected remaining surfaces. Do not start P19 or merge.
+E88 implements typed saved-state/action/cleanup readback and deterministic
+projection contracts. The next safe packet binds those facts to the affected
+remaining surfaces, adding missing live-start/step or termination evidence
+before displaying such claims. Do not start P19 or merge.
 See [E87](../../../docs/completion/p18_event_feed.md) for exact source, tests,
 native-versus-fixture boundaries and recovery.

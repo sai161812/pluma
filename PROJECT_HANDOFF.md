@@ -1,6 +1,48 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P18 factual event feed packet E87
+## Current checkpoint: 2026-10-27, P18 activity evidence packet E88
+
+**P18 is in progress.** This packet implements typed paginated task/action/
+cleanup readback and deterministic projection contracts. The production task
+feed now uses a minimal activity page for correlation, removing its dependency
+on the legacy 100-action full-history cap. [E88](docs/completion/p18_activity_evidence.md)
+records scope, commands, evidence, limitations and recovery.
+
+- Source: `65d458b8152c068e93d6419210dc7ae3bf8cfba1`, pushed on
+  `p12-preparation`. Recovery: `337a09f15818098113a5a077984da5a74d8ef47b`.
+- Fresh pre-edit **112 Python / 154 authenticated IPC** checks pass. Final
+  affected Python **239 passed in 24.58s**, including raw audit, STOP, lifecycle,
+  cleanup and rollback; final focused **15 passed in 0.54s**. No skips/xfails.
+- Final native console suite **171 checks** passes, including strict parser/
+  projection checks and four new actual authenticated activity queries with
+  independent WAL comparison. Three builds have zero warnings/errors.
+- Pages contain only saved task/route, bounded action/policy/undo flags and
+  validated cleanup summary. No commands, arguments, result/error bodies,
+  inverse recipes or process/resource identities are exposed. Policy/STOP and
+  executor/rollback behavior are unchanged. No visual/XAML changes occurred.
+- The 105-action regression preserves the old history refusal and reads every
+  action through the new pages without duplicates or cross-task rows. The
+  feed's test client rejects scoped legacy history access.
+- A recorded action does not establish live execution; cleanup completion does
+  not establish worker termination. Missing/contradictory/oversized proof fails
+  closed. Cleanup summary bounds are 65,536 characters / 512 entries.
+- [Exact-source Windows workflow 40527808375](https://github.com/sai161812/pluma/actions/runs/40527808375)
+  passes **171 IPC / 105 actual native UI / 663 popup / 195 formatting**, plus
+  layout/surface/audio/copy gates and zero-warning builds. No local Application
+  Control bypass or personal desktop/device/power mutation was attempted.
+
+This bounded packet passes its gate and is ready for independent Sol review;
+independent approval is not assumed. Overall P18 remains incomplete.
+
+Next safe packet: bind the validated action/rollback/policy/task/route facts to
+remaining existing P18 surfaces. Establish missing live-start/step/argument
+facts before displaying them, and verified owned-termination proof before
+surface 21. Remaining perception surfaces, broader notices/current/recent
+panels, capacity arbitration and full multi-surface desktop/backend acceptance
+are still open. P19 has not started. P25 physical/owner and later release gates
+remain separate. Independent Sol approval is not assumed. Do not advance/merge.
+
+## Previous checkpoint: 2026-10-27, P18 factual event feed packet E87
 
 **P18 is in progress.** This first bounded packet implements a shell-owned
 committed-event consumer, the bounded dashboard live feed and task-terminal

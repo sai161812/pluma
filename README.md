@@ -6,7 +6,7 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-10-27):** P00-P17 covered implementation gates are recorded complete within their documented scope. Dashboard typed command submission, independent priority STOP and native material approval are connected. [E86](docs/completion/p17_command_submission.md) records fresh Python/IPC/native UI evidence and recovery; earlier owner-approved physical limits and later full scenario/performance/security/release gates remain open. [P18 packet 1](docs/completion/p18_event_feed.md) implements the bounded task feed and terminal notice bridge; remaining event-surface wiring is in progress. See [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-10-27):** P00-P17 covered implementation gates are recorded complete within their documented scope. Dashboard typed command submission, independent priority STOP and native material approval are connected. [E86](docs/completion/p17_command_submission.md) records fresh Python/IPC/native UI evidence and recovery; earlier owner-approved physical limits and later full scenario/performance/security/release gates remain open. [P18 packets](docs/completion/p18_activity_evidence.md) implement the bounded task feed, terminal notice bridge and typed paginated activity evidence; remaining event-surface wiring is in progress. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 

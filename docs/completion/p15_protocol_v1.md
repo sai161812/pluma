@@ -35,6 +35,7 @@ explicitly queries while the shell is open and disposes its lifetime on close.
 | `stop` | optional `task_id` (otherwise global); optional `submission_request_id` only for global STOP | `stop_ack`: existing evidence-bearing `pluma.stop.v1` receipt |
 | `settings_query` | none | `settings_snapshot`: allowlisted effective configuration |
 | `history_query` | optional `task_id`, `limit` (1–100, default 25) | `history_reply`: recent tasks or one task with ordered actions; over-limit task history is refused |
+| `activity_query` | required `task_id`, `after_action_id` (nonnegative Int64, default 0), `limit` (1–100, default 25) | `activity_page`: scoped saved state/route, minimal action/undo facts, continuation and optional validated cleanup summary |
 | `confirmation_query` | `client_id` | `confirmation_list`: client identity and its pending material operations |
 | `confirmation_decision` | `client_id`, `task_id`, `confirmation_id`, `binding`, boolean `approved` | `confirmation_ack`: accepted decision or concrete refusal; approval is nullable on refusal |
 | `confirmation_disconnect` | `client_id` | `confirmation_disconnected`: count of pending calls denied during disconnect/pruning |
@@ -56,6 +57,24 @@ terminal replay checks permit safe reclamation. Settings advertise
 adapter refuses submission when it is absent/false. Existing clients may omit
 the optional field. A fence cannot be combined with task-scoped STOP. See
 [P17 E86](p17_command_submission.md) for admission-race and native UI evidence.
+
+## P18 activity evidence extension
+
+`activity_query` reads task/action/cleanup facts from one bounded SQLite SELECT.
+It omits commands, transcripts, arguments, result/error bodies, inverse recipes
+and resource/process identities. A page carries exact task/request correlation,
+at most the requested number of actions in increasing action-ID order, the last
+returned ID (or unchanged request cursor when empty), and `has_more` from one
+extra row. This is row enumeration, not the journal change cursor. Pages are
+individual snapshots: re-read on action/rollback changes; do not assume one
+immutable snapshot across multiple calls.
+
+Verification, recorded issues, explicit policy denial, undo availability and
+rollback attempt/result are distinct flags. A saved state does not establish
+live execution, and an issue can be pending mutation evidence. Optional cleanup
+summary is recomputed from latest validated persisted checks; no report is null,
+not proof of complete cleanup. Contradictory/corrupt/oversized reports refuse.
+No worker-terminated claim is exposed. See [E88](p18_activity_evidence.md).
 
 ## Material confirmation lifetime
 

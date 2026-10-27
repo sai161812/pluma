@@ -1,5 +1,10 @@
 # E87 — P18 packet 1: factual event feed and terminal notices
 
+Follow-up: [E88](p18_activity_evidence.md) adds typed paginated activity evidence
+and removes the feed's 100-action correlation dependency. Its remaining popup
+bindings and full P18 gate remain open. Historical next-step statements below
+describe this earlier packet.
+
 Date: 2026-10-27 (Asia/Calcutta). Branch: `p12-preparation`.
 Source: `83417432f150f26b6e1189d8ed0cfa7e768d02c6`.
 Recovery: `48b959b1ca35ba5f37d961d634cd67f6a29d353f` (completed P17).

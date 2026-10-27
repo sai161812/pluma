@@ -15,9 +15,9 @@ uncertain-write replay are blocked. Terminal persistence, verification and
 residual facts govern the displayed outcome. P16 native material approval
 remains connected. P15 query/event contracts remain authoritative.
 
-Latest P18 packet native checks: **154 authenticated IPC**, **105 native UI**,
+Latest P18 packet native checks: **171 authenticated IPC/protocol**, **105 native UI**,
 **663 popup** and **195 formatting**, plus layout/surface/audio/copy gates and
-zero-warning builds. [E87](../../../docs/completion/p18_event_feed.md) records
+zero-warning builds. [E88](../../../docs/completion/p18_activity_evidence.md) records
 exact source/build identity, fixture boundaries and recovery. P17 remains
 recorded in [E86](../../../docs/completion/p17_command_submission.md). See the
 [command wiring contract](wiring_command_submission.md).

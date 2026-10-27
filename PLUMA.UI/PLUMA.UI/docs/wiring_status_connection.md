@@ -1,6 +1,15 @@
 # Wiring step 1: authenticated read-only core status
 
-## Current transport note (P18 packet 1 E87)
+## Current transport note (P18 packet 2 E88)
+
+[E88](../../../docs/completion/p18_activity_evidence.md) adds strict typed
+activity pagination and minimal saved action/undo/cleanup facts. The task feed
+uses this readback for correlation instead of complete scoped history, so the
+old history cap no longer blocks it. Local IPC/protocol checks pass 171 cases;
+exact-source Windows regression passes 105 native UI, 663 popup and 195 formatting checks plus layout/surface/audio/copy gates. No additional popup binding or
+worker-termination claim is implemented by this packet.
+
+## Previous transport note (P18 packet 1 E87)
 
 P18 now has a shell-owned bounded event consumer for the dashboard task feed
 and evidence-backed terminal notices. Cursor commits follow complete readback;
