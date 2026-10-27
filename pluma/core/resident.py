@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import json
 import sys
 import threading
 from collections import OrderedDict
@@ -15,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from pluma.config.loader import get, load_config
 from pluma.core.cancellation import StopReason, TaskCancelledError
-from pluma.core.ipc import IpcServer
+from pluma.core.ipc import MAX_IPC_MESSAGE_SIZE, IpcServer
 from pluma.core.ownership import OwnershipRegistry
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.task_supervisor import TaskSupervisor
@@ -48,8 +49,12 @@ class ResidentCore:
         ledger: Optional[Any] = None,
         ownership_registry: Optional[OwnershipRegistry] = None,
         ipc_address: Optional[str] = None,
+        effective_model_path: Optional[str] = None,
+        effective_stt_model_path: Optional[str] = None,
     ) -> None:
         self.config = config or load_config()
+        self.effective_model_path = effective_model_path
+        self.effective_stt_model_path = effective_stt_model_path
         self.registry = ownership_registry or OwnershipRegistry()
         self.ledger = ledger
         self.supervisor = supervisor or TaskSupervisor(ownership_registry=self.registry, ledger=self.ledger)
@@ -305,7 +310,8 @@ class ResidentCore:
     def _handle_versioned_ipc(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
-            StopRequestV1, SubmitTextV1, TerminalReadbackRequestV1, parse_versioned_request,
+            HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
+            TerminalReadbackRequestV1, parse_versioned_request,
         )
         try:
             request = parse_versioned_request(payload)
@@ -327,6 +333,10 @@ class ResidentCore:
             return self._terminal_readback_v1(request)
         if isinstance(request, StopRequestV1):
             return self._stop_v1(request)
+        if isinstance(request, SettingsQueryV1):
+            return self._settings_query_v1(request)
+        if isinstance(request, HistoryQueryV1):
+            return self._history_query_v1(request)
         return ProtocolErrorV1(error_code="UNKNOWN_MESSAGE_TYPE",
             message="The message type is not supported.").model_dump(mode="json")
 
@@ -534,6 +544,128 @@ class ResidentCore:
             "request_id": request.request_id,
             **receipt,
         }
+
+    def _settings_query_v1(self, request):
+        from pluma.core.ipc_contracts import SettingsSnapshotV1
+        config = getattr(self, "config", None)
+        if not isinstance(config, dict):
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "SETTINGS_UNAVAILABLE",
+                    "message": "Current settings are unavailable."}
+        values = {
+            "request_id": request.request_id,
+            "text_hotkey": get(config, "agent", "text_hotkey"),
+            "stop_hotkey": get(config, "agent", "stop_hotkey"),
+            "voice_hotkey": get(config, "agent", "voice_hotkey", default="ctrl+alt+v"),
+            "max_plan_steps": get(config, "agent", "max_plan_steps"),
+            "default_tool_timeout_seconds": get(config, "agent", "default_tool_timeout_seconds"),
+            "model_idle_unload_seconds": get(config, "runtime", "model_idle_unload_seconds"),
+            "stt_idle_unload_seconds": get(config, "runtime", "stt_idle_unload_seconds"),
+            "ocr_idle_unload_seconds": get(config, "runtime", "ocr_idle_unload_seconds"),
+            "allow_short_warm_grace": get(config, "runtime", "allow_short_warm_grace"),
+            "voice_required": get(config, "voice", "required"),
+            "activation_default": get(config, "voice", "activation_default"),
+            "wake_phrase_enabled": get(config, "voice", "wake_phrase_enabled"),
+            "save_audio": get(config, "voice", "save_audio"),
+            "persist_screenshots": get(config, "perception", "persist_screenshots"),
+            "ocr_enabled": get(config, "perception", "ocr_enabled"),
+            "uia_first": get(config, "perception", "uia_first"),
+            "model_runtime": get(config, "brain", "runtime"),
+            "model_profile": get(config, "brain", "model_profile"),
+            "planner_model_path": (getattr(self, "effective_model_path", None) or
+                                   get(config, "brain", "model_path")),
+            "stt_model_path": (getattr(self, "effective_stt_model_path", None) or
+                               get(config, "voice", "model_path")),
+            "confirm_high_risk": get(config, "policy", "confirm_high_risk"),
+            "redact_sensitive_logs": get(config, "policy", "redact_sensitive_logs"),
+            "activity_view_enabled": get(config, "memory", "activity_view_enabled"),
+        }
+        try:
+            return SettingsSnapshotV1(**values).model_dump(mode="json")
+        except Exception:
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "SETTINGS_UNAVAILABLE",
+                    "message": "Current settings do not match the supported settings view."}
+
+    def _history_query_v1(self, request):
+        from pluma.core.ipc_contracts import ActionHistoryV1, HistoryReplyV1, TaskSummaryV1
+        from pluma.memory.activity import ActivityQuery
+        from pluma.memory.redaction import redact_command_text, redact_sensitive_data
+
+        if self.ledger is None or not hasattr(self.ledger, "_db"):
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "HISTORY_UNAVAILABLE",
+                    "message": "Activity history is unavailable."}
+        query = ActivityQuery(self.ledger._db)
+
+        def task_summary(row):
+            return TaskSummaryV1(
+                task_id=row["task_id"], request_id=row["request_id"],
+                input_mode=row["input_mode"],
+                command_text=redact_command_text(row.get("command_text") or ""),
+                created_at=row["created_at"], started_at=row.get("started_at"),
+                completed_at=row.get("completed_at"), final_state=row.get("final_state"),
+                route=row.get("route"), stop_reason=row.get("stop_reason"),
+                error_code=row.get("error_code"),
+            )
+
+        def decoded_object(value):
+            if value is None:
+                return None
+            parsed = json.loads(value)
+            if not isinstance(parsed, dict):
+                raise ValueError("History JSON is not an object.")
+            return redact_sensitive_data(parsed)
+
+        try:
+            if request.task_id is None:
+                tasks = [task_summary(row) for row in query.recent_tasks(limit=request.limit)]
+                actions = []
+            else:
+                row = query.task_by_id(request.task_id)
+                if row is None:
+                    return {"protocol_version": 1, "message_type": "protocol_error",
+                            "error_code": "TASK_NOT_FOUND",
+                            "message": "No saved task matches this task ID."}
+                action_rows = query.actions_for_task(request.task_id)
+                if len(action_rows) > request.limit:
+                    return {"protocol_version": 1, "message_type": "protocol_error",
+                            "error_code": "HISTORY_TOO_LARGE",
+                            "message": "Task history exceeds the requested safe result limit."}
+                tasks = [task_summary(row)]
+                actions = []
+                for action in action_rows:
+                    undo = query.undo_status_for_action(int(action["id"]))
+                    actions.append(ActionHistoryV1(
+                        action_id=int(action["id"]), step_index=int(action["step_index"]),
+                        tool=action["tool"], adapter=action.get("adapter"),
+                        risk=action["risk"], approval_state=action.get("approval_state"),
+                        started_at=action["started_at"], ended_at=action.get("ended_at"),
+                        duration_ms=action.get("duration_ms"),
+                        arguments=decoded_object(action.get("args_json_sanitized")) or {},
+                        result=decoded_object(action.get("result_json")),
+                        verified=bool(action["verified"]),
+                        verification=decoded_object(action.get("verification_json")),
+                        error=decoded_object(action.get("error_json")),
+                        undo_available=bool(undo and undo["available"]),
+                        rollback_attempted=bool(undo and undo["rollback_attempted"]),
+                        rollback_ok=(bool(undo["rollback_ok"]) if undo and undo["rollback_ok"] is not None else None),
+                        rollback_result=decoded_object(undo.get("rollback_result_json")) if undo else None,
+                    ))
+            reply = HistoryReplyV1(
+                request_id=request.request_id, task_id=request.task_id,
+                tasks=tasks, actions=actions,
+            ).model_dump(mode="json")
+            if len(json.dumps(reply, separators=(",", ":")).encode("utf-8")) > MAX_IPC_MESSAGE_SIZE:
+                return {"protocol_version": 1, "message_type": "protocol_error",
+                        "error_code": "HISTORY_TOO_LARGE",
+                        "message": "Activity history exceeds the safe message size."}
+            return reply
+        except Exception:
+            logger.warning("Activity history query could not be read safely.")
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "HISTORY_UNAVAILABLE",
+                    "message": "Activity history could not be read safely."}
 
     def _run_crash_recovery(self) -> None:
         """Scan for unfinished tasks from previous run and clean up.

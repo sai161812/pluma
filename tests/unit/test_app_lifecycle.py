@@ -72,6 +72,13 @@ def test_runtime_wires_configured_planner_limits_and_model_lifecycle() -> None:
             assert runtime.llm_lifecycle.adapter.model_path == str(
                 paths.llm_models_dir / "planner-fixture.gguf"
             )
+            settings = runtime.resident_core.handle_ipc_command({
+                "protocol_version": 1,
+                "message_type": "settings_query",
+                "request_id": "9eb00b7f-69f5-4bc1-b6ef-360de5234bc1",
+            })
+            assert settings["planner_model_path"] == str(paths.llm_models_dir / "planner-fixture.gguf")
+            assert settings["stt_model_path"] == str(paths.whisper_models_dir / "ggml-base.en.bin")
         finally:
             runtime.close()
 

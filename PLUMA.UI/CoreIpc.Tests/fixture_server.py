@@ -23,9 +23,19 @@ def status(request):
 
 db = None
 release_status = threading.Event()
+event_lock = threading.Lock()
+
+
+def report_event(value):
+    with event_lock:
+        sys.stdout.write(value + "\n")
+        sys.stdout.flush()
+
+
 if mode == "versioned":
     from pluma.core.resident import ResidentCore
     from pluma.core.task_supervisor import TaskState, TaskSupervisor
+    from pluma.config.loader import load_config
     from pluma.memory.activity import ActivityLedger
     from pluma.memory.db import DbConnection
 
@@ -38,7 +48,7 @@ if mode == "versioned":
         def execute(self, request, capsule):
             supervisor.start_task(capsule.task_id)
             if request.text == "fixture:hold":
-                print("TASK_ENTERED", flush=True)
+                report_event("TASK_ENTERED")
                 if not capsule.cancellation_token.wait_for_cancel(8):
                     raise TimeoutError("Owned fixture wait expired.")
                 capsule.cancellation_token.raise_if_cancelled()
@@ -54,11 +64,14 @@ if mode == "versioned":
     core.ledger = ledger
     core.supervisor = supervisor
     core.orchestrator = FixtureOrchestrator()
+    core.config = load_config(Path(sys.argv[2]) / "no-user-settings.json")
+    core.config["brain"]["model_path"] = r"C:\fixture\planner.gguf"
+    core.config["voice"]["model_path"] = r"C:\fixture\whisper.ggml"
 
     def handler(request):
         if request == {"command": "status"}:
             if saturate_status:
-                print("STATUS_ENTERED", flush=True)
+                report_event("STATUS_ENTERED")
                 release_status.wait(8)
             return status(request)
         if request.get("message_type") == "stop":
@@ -81,7 +94,17 @@ try:
         if line.strip() == "stop":
             break
 finally:
-    server.stop(timeout_s=4.0)
+    # Release any test-only blocking handler before asking the production IPC
+    # server to drain its owned client threads.
+    release_status.set()
+    try:
+        server.stop(timeout_s=4.0)
+    except Exception:
+        with server._clients_lock:
+            remaining = [(thread.name, thread.is_alive(), type(conn).__name__)
+                         for thread, conn in server._clients.items()]
+        print(f"IPC_FIXTURE_REMAINING_OWNERS {remaining!r}", flush=True)
+        raise
     if db is not None:
         supervisor.stop_all_active_tasks()
         for thread in list(getattr(core, "_submission_threads", {}).values()):

@@ -130,6 +130,8 @@ class PlumaApplicationRuntime:
             orchestrator=self.orchestrator,
             ledger=self.ledger,
             ownership_registry=self.ownership_registry,
+            effective_model_path=model_path,
+            effective_stt_model_path=stt_model_path,
         )
 
     def close(self, timeout_s: float = 5.0):

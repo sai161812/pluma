@@ -188,6 +188,17 @@ namespace PLUMA.UI
             VersionedCallAsync(new CoreRequestProtocol.StopRequest(requestId, taskId).ToMessage(), requestId,
                 true, true, bytes => CoreRequestProtocol.StopAck.Parse(bytes), value => value.RequestId, cancellationToken);
 
+        internal Task<CoreRequestResult<CoreRequestProtocol.SettingsSnapshot>> GetSettingsAsync(
+            string requestId, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.SettingsQueryRequest(requestId).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.SettingsSnapshot.Parse(bytes), value => value.RequestId, cancellationToken);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> GetHistoryAsync(
+            string requestId, string? taskId, int limit, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.HistoryQueryRequest(requestId, taskId, limit).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.HistoryReply.Parse(bytes), value => value.RequestId, cancellationToken,
+                value => value.TaskId == taskId);
+
         private async Task<CoreRequestResult<T>> VersionedCallAsync<T>(byte[] request, string requestId,
             bool priority, bool mutation, Func<byte[], T> parse, Func<T, string> correlation,
             CancellationToken caller, Func<T, bool>? additionalCorrelation = null) where T : class

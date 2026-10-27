@@ -93,6 +93,17 @@ internal static class Program
             Check(stopJson.RootElement.GetProperty("message_type").GetString() == "stop" &&
                 stopJson.RootElement.GetProperty("task_id").GetString() == taskId,
                 "C# encodes STOP as an independent correlated request");
+        using (var settingsJson = JsonDocument.Parse(new CoreRequestProtocol.SettingsQueryRequest(requestId).ToMessage()))
+            Check(settingsJson.RootElement.GetProperty("message_type").GetString() == "settings_query" &&
+                settingsJson.RootElement.GetProperty("request_id").GetString() == requestId,
+                "C# encodes a versioned read-only settings query");
+        using (var historyJson = JsonDocument.Parse(new CoreRequestProtocol.HistoryQueryRequest(requestId, taskId, 100).ToMessage()))
+            Check(historyJson.RootElement.GetProperty("message_type").GetString() == "history_query" &&
+                historyJson.RootElement.GetProperty("task_id").GetString() == taskId &&
+                historyJson.RootElement.GetProperty("limit").GetInt32() == 100,
+                "C# encodes a correlated, bounded task-history query");
+        try { _ = new CoreRequestProtocol.HistoryQueryRequest(requestId, taskId, 101).ToMessage(); throw new Exception("Oversized history query accepted."); }
+        catch (ArgumentOutOfRangeException) { Check(true, "C# refuses history queries beyond the shared result bound"); }
         try { _ = new CoreRequestProtocol.SubmitText(requestId, new string('x', 4097)).ToMessage(); throw new Exception("Oversized submit accepted."); }
         catch (ArgumentException) { Check(true, "C# refuses text beyond the shared protocol bound"); }
         try { CoreRequestProtocol.SubmissionAck.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":1,\"message_type\":\"submission_ack\",\"request_id\":\"{requestId}\",\"accepted\":true,\"task_id\":null,\"error_code\":null,\"message\":\"bad\"}}")); throw new Exception("Inconsistent ack accepted."); }
@@ -224,6 +235,19 @@ internal static class Program
             Check(readback is { IsSuccess: true, Response.Terminal: true, Response.CompletionVerified: true,
                 Response.TerminalPersisted: true, Response.FinalState: "SUCCEEDED" },
                 "authenticated C# readback observes Python task terminal and ledger verification");
+            CoreRequestResult<CoreRequestProtocol.SettingsSnapshot> settings =
+                await client.GetSettingsAsync(Guid.NewGuid().ToString("D"), default);
+            Check(settings.IsSuccess && settings.Response is { MaxPlanSteps: > 0, VoiceRequired: true,
+                PlannerModelPath: @"C:\fixture\planner.gguf", SttModelPath: @"C:\fixture\whisper.ggml" },
+                "authenticated C# settings query returns the allowlisted Python configuration snapshot");
+            CoreRequestResult<CoreRequestProtocol.HistoryReply> history =
+                await client.GetHistoryAsync(Guid.NewGuid().ToString("D"), null, 10, default);
+            Check(history.IsSuccess && history.Response!.Tasks.Any(task => task.TaskId == submitted.Response!.TaskId),
+                "authenticated C# recent-history query reads the submitted task from the Activity Ledger");
+            CoreRequestResult<CoreRequestProtocol.HistoryReply> taskHistory =
+                await client.GetHistoryAsync(Guid.NewGuid().ToString("D"), submitted.Response!.TaskId, 100, default);
+            Check(taskHistory.IsSuccess && taskHistory.Response!.TaskId == submitted.Response.TaskId,
+                "authenticated C# task-history query preserves task correlation");
 
             string holdRequestId = Guid.NewGuid().ToString("D");
             CoreRequestResult<CoreRequestProtocol.SubmissionAck> held =
@@ -347,7 +371,7 @@ internal static class Program
         private PythonServer(string name, Process process)
         {
             Name = name; _process = process; _created = process.StartTime.ToUniversalTime();
-            _executable = Path.GetFileName(process.StartInfo.FileName); _errors = process.StandardError.ReadToEndAsync();
+            _executable = Path.GetFileNameWithoutExtension(process.StartInfo.FileName); _errors = process.StandardError.ReadToEndAsync();
             Console.WriteLine($"OWNED fixture {name}; PID {process.Id}; created {_created:O}; command class Python IPC fixture");
         }
         internal static async Task<PythonServer> StartAsync(string name, string mode = "status", bool saturate = false)
@@ -377,13 +401,15 @@ internal static class Program
                 if (!_process.HasExited)
                 {
                     await _process.StandardInput.WriteLineAsync("stop"); await _process.StandardInput.FlushAsync();
-                    try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+                    // The fixture's IpcServer.stop owns a four-second shutdown
+                    // budget; let that cleanup finish before considering a kill.
+                    try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(6)); }
                     catch (TimeoutException)
                     {
                         using Process current = Process.GetProcessById(_process.Id);
                         string? image = current.MainModule?.FileName;
                         if (current.StartTime.ToUniversalTime() != _created ||
-                            (image is not null && !string.Equals(Path.GetFileName(image), _executable, StringComparison.OrdinalIgnoreCase)))
+                            image is null || !string.Equals(Path.GetFileNameWithoutExtension(image), _executable, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("Owned fixture identity changed; cleanup refused.");
                         _process.Kill(true); await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
                     }

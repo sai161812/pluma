@@ -501,7 +501,7 @@ class ActivityQuery:
     def recent_tasks(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Return the most recent *limit* task rows, newest first."""
         rows = self._db.execute_read(
-            "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?",
+            "SELECT * FROM tasks ORDER BY created_at DESC, task_id DESC LIMIT ?",
             (limit,),
         )
         return [dict(r) for r in rows]
@@ -519,7 +519,7 @@ class ActivityQuery:
     def task_by_request_id(self, request_id: str) -> Optional[Dict[str, Any]]:
         """Return the newest task row for a request ID, for IPC replay refusal."""
         row = self._db.execute_read_one(
-            "SELECT * FROM tasks WHERE request_id = ? ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM tasks WHERE request_id = ? ORDER BY created_at DESC, task_id DESC LIMIT 1",
             (request_id,),
         )
         return dict(row) if row else None
@@ -530,7 +530,7 @@ class ActivityQuery:
     def actions_for_task(self, task_id: str) -> List[Dict[str, Any]]:
         """Return all action rows for *task_id*, ordered by step_index."""
         rows = self._db.execute_read(
-            "SELECT * FROM actions WHERE task_id = ? ORDER BY step_index",
+            "SELECT * FROM actions WHERE task_id = ? ORDER BY step_index, id",
             (task_id,),
         )
         return [dict(r) for r in rows]
@@ -542,6 +542,15 @@ class ActivityQuery:
         """Return the undo record for an action row, or None."""
         row = self._db.execute_read_one(
             "SELECT * FROM undo_records WHERE action_id = ?", (action_row_id,)
+        )
+        return dict(row) if row else None
+
+    def undo_status_for_action(self, action_row_id: int) -> Optional[Dict[str, Any]]:
+        """Return rollback status without exposing the saved undo recipe."""
+        row = self._db.execute_read_one(
+            "SELECT available, rollback_attempted, rollback_ok, rollback_result_json "
+            "FROM undo_records WHERE action_id = ?",
+            (action_row_id,),
         )
         return dict(row) if row else None
 
