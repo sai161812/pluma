@@ -1,9 +1,10 @@
 # Wiring step 1: authenticated read-only core status
 
-## Current transport note (P15 E83)
+## Current transport note (P15 E84)
 
 `CoreIpcClient` now retains the status query and also exposes typed version 1
-text-submit, STOP, terminal-readback, settings-query and history-query methods
+text-submit, STOP, terminal-readback, settings/history, confirmation
+query/decision/disconnect and factual event-batch methods
 over the same authenticated native message-mode pipe. Text submissions are sent
 once; a timeout after write returns `OutcomeUnknown` and is never retried
 automatically. Four ordinary client operations leave one independent client
@@ -13,13 +14,19 @@ retains 32 authenticated client handlers, limits ordinary request dispatch to
 are running. Settings are allowlisted; history is bounded and re-redacted at
 the IPC projection. See [E82](../../../docs/completion/p15_e82_authenticated_transport.md)
 and [E83](../../../docs/completion/p15_e83_settings_history.md).
+E84 completes the remaining contracts; see the implemented
+[v1 protocol](../../../docs/completion/p15_protocol_v1.md).
 
 The dashboard still calls only status and action entry remains disabled. The
-full Windows C# IPC runner now passes 64 checks, including actual authenticated
-Python-server interoperability for submission/readback/STOP/settings/history.
-No production command submission or STOP is wired to the dashboard. Confirmation
-messages and factual event sequencing/buffering/reconnect remain P15 contract
-work; see E83 for commands and tested-source identity.
+full Windows C# IPC runner now passes 101 checks, including actual authenticated
+confirmation decisions, registered owned-file read/verification, ledger
+readback and event replay/reconnect. Event batches use a durable 512-fact
+journal and explicit reset after overflow/stream change; the C# cursor rejects
+gaps and duplicate application. No production command submission or STOP is
+wired to the dashboard. P16 owns the native approval-dialog connection, P17
+dashboard actions and P18 visible event consumption. See
+[E84](../../../docs/completion/p15_e84_contract_completion.md) for source/build
+identity, exact commands and limits. No push subscription or heartbeat runs.
 
 P09 security checkpoint (2026-10-20): the Python credential factory now uses
 private atomic Windows creation and opened-handle owner/DACL/size verification.

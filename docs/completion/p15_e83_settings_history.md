@@ -1,5 +1,8 @@
 # E83 — P15 settings and history query contracts
 
+Follow-up: [E84](p15_e84_contract_completion.md) completes the remaining P15
+confirmation/event contracts. The E83 packet status below is historical.
+
 ## Scope
 
 This bounded packet adds read-only version 1 `settings_query` and

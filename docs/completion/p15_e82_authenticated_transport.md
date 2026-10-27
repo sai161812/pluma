@@ -1,9 +1,9 @@
 # E82 — P15 authenticated request transport and reserved STOP capacity
 
-Current follow-up: the earlier C# runtime limitation recorded below was
-resolved in [E83](p15_e83_settings_history.md). The full current runner passes
-three consecutive 64-check runs on the execution-authorized Windows host.
-E82 retains its original checkpoint results as historical evidence.
+Follow-up: [E83](p15_e83_settings_history.md) resolved the earlier C# runtime
+limitation. [E84](p15_e84_contract_completion.md) completes the remaining P15
+contracts with 101 native IPC checks. E82 retains its original checkpoint
+results as historical evidence.
 
 ## Scope
 

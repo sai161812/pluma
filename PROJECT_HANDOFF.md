@@ -1,6 +1,38 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P15 settings/history query contracts E83
+## Current checkpoint: 2026-10-27, P15 contract completion E84
+
+**P15's required contract gate is complete.** E84 adds the remaining material
+confirmation query/decision/disconnect messages and durable factual event
+projections with ordering, retention, duplicate handling and reconnect/reset.
+The exact implemented semantics are in the [v1 protocol](docs/completion/p15_protocol_v1.md);
+[E84](docs/completion/p15_e84_contract_completion.md) records test commands,
+source/build hashes, native evidence and limitations.
+
+- Final isolated affected regression: **311 passed**, no skips/xfails.
+  Native authenticated Python/C# IPC: **101 checks passed**, including real
+  registry/policy execution of an owned-file read, independent verification,
+  WAL ledger readback, approval/denial/STOP/disconnect and event replay.
+  Both IPC and production WinUI builds: **0 warnings/errors**.
+- No-client policy remains REQUIRE_CONFIRMATION. Exact material decisions are
+  single-use and task/call/client bound; STOP, expiry, lost client and shutdown
+  fail closed. No approval thread/timer/device is created by the broker.
+- The committed SQLite event journal retains 512 identity-only facts, serves
+  at most 100 per page and explicitly requires snapshot reset after overflow,
+  stream change or impossible cursor. Events never imply verified completion;
+  consumers use history/terminal readback. No push/heartbeat is claimed.
+- Tested implementation: `b0f80d5ea6cfb67ab4f005e6c83510e5848704cc` on
+  `p12-preparation`. Recovery point: `a36e9596ca671c843ac4e553705ba47aeea26d16`.
+  The fixture uses only owned temp files, a private credential, native pipes
+  and a file-backed ledger. No personal desktop or inference work was run.
+
+There are no remaining P15 contract packets. Ready for independent Sol review;
+approval is not assumed. **P16 is the next safe milestone and has not started.**
+It owns the native material approval dialog and its physical acceptance.
+Production dashboard actions remain disabled; P17 owns submission/STOP wiring,
+and P18 owns the visible event consumer. Do not advance automatically.
+
+## Previous checkpoint: 2026-10-27, P15 settings/history query contracts E83
 
 **P15 remains in progress.** E83 adds authenticated, typed, read-only v1
 settings and history queries to the Python resident and C# transport. Settings
