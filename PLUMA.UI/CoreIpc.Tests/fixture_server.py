@@ -47,6 +47,11 @@ if mode == "versioned":
     from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
     from pluma.tools.registry import ToolRegistry
     from pluma.ui.ipc_confirmations import IpcConfirmationBroker
+    from pydantic import BaseModel, ConfigDict, StrictStr
+
+    class FixtureReadArgs(BaseModel):
+        model_config = ConfigDict(extra="forbid", strict=True)
+        path: StrictStr
 
     owned_db = Path(sys.argv[2]) / f"p15-ledger-{os.getpid()}.db"
     if owned_db.exists():
@@ -69,8 +74,7 @@ if mode == "versioned":
                                   "Read owned fixture.", verified=False)
 
     registry.register(ToolSpec(name="fixture_read", description="Read an owned fixture after material approval",
-        args_schema={"type": "object", "properties": {"path": {"type": "string"}},
-                     "required": ["path"], "additionalProperties": False}, risk_class=RiskClass.HIGH, timeout_s=5,
+        args_schema=FixtureReadArgs, risk_class=RiskClass.HIGH, timeout_s=5,
         # This inert read fixture deliberately uses the owned thread path so
         # parent-side entry counters can prove that denied calls never enter.
         executor=lambda args, context: read_owned_fixture(args, context),
