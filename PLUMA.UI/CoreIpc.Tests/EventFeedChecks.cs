@@ -136,10 +136,16 @@ internal static class EventFeedChecks
                 catch (OperationCanceledException) { Cancelled = true; throw; }
             return Ok(Next);
         }
-        public Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, string? task, CancellationToken token) =>
-            Task.FromResult(Ok(new CoreRequestProtocol.HistoryReply(1, "history_reply", request, task,
-                task is null ? Snapshot.Select(id => Tasks[id]).ToArray() : [Tasks[task]], [])));
+        public Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, string? task, CancellationToken token)
+        {
+            if (task is not null) throw new InvalidOperationException("The feed must not fetch complete task history for correlation.");
+            return Task.FromResult(Ok(new CoreRequestProtocol.HistoryReply(1, "history_reply", request, null,
+                Snapshot.Select(id => Tasks[id]).ToArray(), [])));
+        }
         public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token) =>
             Task.FromResult(task == FailTask ? CoreRequestResult<CoreRequestProtocol.TerminalReadback>.Failed(CoreConnectionFailure.Unavailable) : Ok(Results[task]));
+        public Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token) =>
+            Task.FromResult(Ok(new CoreRequestProtocol.ActivityPage(1, "activity_page", request, task,
+                Tasks[task].RequestId, Tasks[task].FinalState, Tasks[task].Route, [], 0, false, null)));
     }
 }

@@ -12,6 +12,7 @@ internal interface IEventFeedClient
 {
     Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> EventsAsync(string request, string? stream, long after, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, string? task, CancellationToken token);
+    Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token);
 }
 
@@ -23,6 +24,8 @@ internal sealed class CoreEventFeedClient(CoreIpcClient client) : IEventFeedClie
         client.GetHistoryAsync(request, task, task is null ? 25 : 100, token);
     public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token) =>
         client.GetTerminalReadbackAsync(request, task, token);
+    public Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token) =>
+        client.GetActivityAsync(new(request, task, Limit: 1), token);
 }
 
 public sealed record EventFeedEntry(string Identity, string TaskId, DateTimeOffset Timestamp,
@@ -103,14 +106,14 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
             {
                 foreach (var group in fresh.GroupBy(item => item.TaskId).OrderBy(group => group.Last().Sequence))
                 {
-                    var history = await client.HistoryAsync(Id(), group.Key, token);
-                    if (!history.IsSuccess || history.Response!.Tasks is not { Length: 1 })
+                    var evidence = await client.ActivityAsync(Id(), group.Key, token);
+                    if (!evidence.IsSuccess)
                         throw new IOException("Task evidence unavailable.");
-                    var task = history.Response.Tasks[0];
-                    if (task.TaskId != group.Key || group.Any(item => item.RequestId is not null && item.RequestId != task.RequestId))
+                    var task = evidence.Response!;
+                    if (task.TaskId != group.Key || group.Any(item => item.RequestId is not null && item.RequestId != task.TaskRequestId))
                         throw new JsonException("Event and task identities differ.");
                     var last = group.Last();
-                    observations.Add(await ObserveAsync(task.TaskId, task.RequestId, batch.StreamId + "/" + last.Sequence,
+                    observations.Add(await ObserveAsync(task.TaskId, task.TaskRequestId, batch.StreamId + "/" + last.Sequence,
                         DateTimeOffset.Parse(last.OccurredAt), token));
                 }
                 // Ledger commits can precede terminal-ready/cached verification.

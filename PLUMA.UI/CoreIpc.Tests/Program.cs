@@ -52,6 +52,7 @@ internal static class Program
         await ConfirmationControllerChecks.RunAsync(Check);
         await CommandControllerChecks.RunAsync(Check);
         await EventFeedChecks.RunAsync(Check);
+        ActivityChecks.Run(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))
             Check((await client.GetStatusAsync(default)).Failure == CoreConnectionFailure.CredentialsUnavailable && !File.Exists(absent),
@@ -411,6 +412,7 @@ internal static class Program
             "the consumer honors reset readback even when saved cursor was ahead of the journal");
         await ConfirmationControllerChecks.RunNativeAsync(client, Check);
         await CommandControllerChecks.RunNativeAsync(client, Check);
+        await ActivityChecks.RunNativeAsync(client, Check);
         var supported = await client.GetSettingsAsync(Id(), default);
         var legacySettings = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(supported.Response,
             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }))!.AsObject();

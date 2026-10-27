@@ -30,6 +30,7 @@
     <Compile Include="../PLUMA.UI/CoreIpcClient.cs" Link="CoreIpcClient.cs" />
     <Compile Include="../PLUMA.UI/CoreRequestProtocol.cs" Link="CoreRequestProtocol.cs" />
     <Compile Include="../PLUMA.UI/CoreContractProtocol.cs" Link="CoreContractProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreActivityProtocol.cs" Link="CoreActivityProtocol.cs" />
     <Compile Include="../PLUMA.UI/ConfirmationController.cs" Link="ConfirmationController.cs" />
     <Compile Include="../PLUMA.UI/CommandController.cs" Link="CommandController.cs" />
     <Compile Include="../PLUMA.UI/EventFeedController.cs" Link="EventFeedController.cs" />

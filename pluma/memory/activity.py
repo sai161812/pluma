@@ -563,6 +563,31 @@ class ActivityQuery:
     # Alias for compatibility with external caller expectations
     get_task_actions = actions_for_task
 
+    def activity_page(self, task_id: str, after_action_id: int, limit: int) -> List[Dict[str, Any]]:
+        """One bounded SQLite snapshot; never fetch commands or action payloads.
+
+        Fetch one extra action for continuation. A task without further actions
+        still yields its task/cleanup metadata through the left join.
+        """
+        if type(after_action_id) is not int or after_action_id < 0 or type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Invalid activity page bounds")
+        rows = self._db.execute_read("""
+            SELECT t.task_id, t.request_id AS task_request_id, t.final_state AS saved_state, t.route,
+                substr(c.metadata_json, 1, 65537) AS cleanup_json,
+                a.id AS action_id, a.step_index, substr(a.tool, 1, 65) AS tool, a.risk,
+                a.verified, (a.error_json IS NOT NULL) AS error_recorded,
+                coalesce(a.approval_state IN ('DENY', 'denied'), 0) AS policy_denied,
+                coalesce(u.available, 0) AS undo_available,
+                coalesce(u.rollback_attempted, 0) AS rollback_attempted, u.rollback_ok
+            FROM tasks t
+            LEFT JOIN (SELECT id, task_id, step_index, tool, risk, verified, error_json, approval_state
+                FROM actions WHERE task_id=? AND id>? ORDER BY id LIMIT ?) a ON a.task_id=t.task_id
+            LEFT JOIN undo_records u ON u.action_id=a.id
+            LEFT JOIN cleanup_reports c ON c.task_id=t.task_id
+            WHERE t.task_id=? ORDER BY a.id
+            """, (task_id, after_action_id, limit + 1, task_id))
+        return [dict(row) for row in rows]
+
     def undo_record_for_action(self, action_row_id: int) -> Optional[Dict[str, Any]]:
         """Return the undo record for an action row, or None."""
         row = self._db.execute_read_one(

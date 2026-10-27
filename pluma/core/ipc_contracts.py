@@ -97,6 +97,77 @@ class HistoryQueryV1(_Envelope):
         return self
 
 
+class ActivityQueryV1(_Envelope):
+    message_type: Literal["activity_query"]
+    request_id: StrictStr
+    task_id: StrictStr
+    after_action_id: StrictInt = Field(default=0, ge=0, le=9223372036854775807)
+    limit: StrictInt = Field(default=25, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def canonical_ids(self):
+        _validate_id("request_id", self.request_id)
+        _validate_id("task_id", self.task_id)
+        return self
+
+
+class ActivityActionV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    action_id: StrictInt = Field(ge=1)
+    step_index: StrictInt = Field(ge=0, le=2147483647)
+    tool: StrictStr = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    risk: Literal["READ", "LOW", "MEDIUM", "HIGH", "ADMIN", "DENY"]
+    verified: StrictBool
+    error_recorded: StrictBool
+    policy_denied: StrictBool
+    undo_available: StrictBool
+    rollback_attempted: StrictBool
+    rollback_ok: Optional[StrictBool]
+
+    @model_validator(mode="after")
+    def consistent_rollback(self):
+        if not self.rollback_attempted and self.rollback_ok is not None:
+            raise ValueError("Rollback result requires a recorded attempt")
+        return self
+
+
+class ActivityCleanupV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    complete: StrictBool
+    unresolved_count: StrictInt = Field(ge=0, le=512)
+
+    @model_validator(mode="after")
+    def consistent(self):
+        if self.complete != (self.unresolved_count == 0):
+            raise ValueError("Inconsistent cleanup summary")
+        return self
+
+
+class ActivityPageV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = PROTOCOL_VERSION
+    message_type: Literal["activity_page"] = "activity_page"
+    request_id: StrictStr
+    task_id: StrictStr
+    task_request_id: StrictStr
+    saved_state: Optional[Literal["CREATED", "RUNNING", "STOPPING", "ROLLING_BACK", "SUCCEEDED",
+                                  "FAILED", "STOPPED", "STOPPED_WITH_RESIDUAL", "ABORTED_BY_CRASH"]]
+    route: Optional[Literal["FAST", "SMART", "SCREEN", "DEEP"]]
+    actions: list[ActivityActionV1] = Field(max_length=100)
+    next_action_id: StrictInt = Field(ge=0, le=9223372036854775807)
+    has_more: StrictBool
+    cleanup: Optional[ActivityCleanupV1]
+
+    @model_validator(mode="after")
+    def correlation(self):
+        for name in ("request_id", "task_id", "task_request_id"):
+            _validate_id(name, getattr(self, name))
+        ids = [action.action_id for action in self.actions]
+        if ids != sorted(set(ids)) or ids and self.next_action_id != ids[-1] or self.has_more and not ids:
+            raise ValueError("Inconsistent action page")
+        return self
+
+
 class SubmissionAckV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     protocol_version: Literal[1] = PROTOCOL_VERSION
@@ -391,6 +462,8 @@ def parse_versioned_request(payload: dict):
             return SettingsQueryV1.model_validate(payload)
         if kind == "history_query":
             return HistoryQueryV1.model_validate(payload)
+        if kind == "activity_query":
+            return ActivityQueryV1.model_validate(payload)
     except ValidationError:
         raise ValueError("INVALID_REQUEST") from None
     raise ValueError("UNKNOWN_MESSAGE_TYPE")

@@ -316,7 +316,7 @@ class ResidentCore:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
-            HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
+            ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
         )
         try:
@@ -343,6 +343,8 @@ class ResidentCore:
             return self._settings_query_v1(request)
         if isinstance(request, HistoryQueryV1):
             return self._history_query_v1(request)
+        if isinstance(request, ActivityQueryV1):
+            return self._activity_query_v1(request)
         if isinstance(request, (ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1)):
             return self._remaining_contract_v1(request)
         return ProtocolErrorV1(error_code="UNKNOWN_MESSAGE_TYPE",
@@ -751,6 +753,55 @@ class ResidentCore:
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "HISTORY_UNAVAILABLE",
                     "message": "Activity history could not be read safely."}
+
+    def _activity_query_v1(self, request):
+        from pluma.core.ipc_contracts import ActivityActionV1, ActivityCleanupV1, ActivityPageV1
+        from pluma.core.cleanup import CleanupEvidence, latest_unresolved
+        from pluma.memory.activity import ActivityQuery
+
+        def failure(code):
+            return {"protocol_version": 1, "message_type": "protocol_error", "error_code": code,
+                    "message": "Activity evidence is unavailable."}
+
+        try:
+            rows = ActivityQuery(self.ledger._db).activity_page(request.task_id, request.after_action_id, request.limit)
+            if not rows:
+                return failure("TASK_NOT_FOUND")
+            metadata = rows[0]
+            cleanup = None
+            encoded = metadata["cleanup_json"]
+            if encoded is not None:
+                if len(encoded) > 65536:
+                    raise ValueError("Cleanup evidence exceeds its bound")
+                value = json.loads(encoded)
+                if (not isinstance(value, dict) or type(value.get("version")) is not int or value["version"] != 1
+                        or type(value.get("complete")) is not bool or not isinstance(value.get("entries"), list)
+                        or len(value["entries"]) > 512):
+                    raise ValueError("Invalid cleanup evidence")
+                checks = [CleanupEvidence.model_validate(item, strict=True) for item in value["entries"]]
+                count = len(latest_unresolved(checks))
+                if value["complete"] != (count == 0):
+                    raise ValueError("Cleanup summary contradicts evidence")
+                cleanup = ActivityCleanupV1(complete=count == 0, unresolved_count=count)
+            action_rows = [row for row in rows if row["action_id"] is not None]
+            actions = []
+            for row in action_rows[:request.limit]:
+                def flag(name):
+                    if type(row[name]) is not int or row[name] not in (0, 1):
+                        raise ValueError("Invalid action evidence flag")
+                    return bool(row[name])
+                actions.append(ActivityActionV1(action_id=row["action_id"], step_index=row["step_index"],
+                    tool=row["tool"], risk=row["risk"], verified=flag("verified"),
+                    error_recorded=flag("error_recorded"), policy_denied=flag("policy_denied"),
+                    undo_available=flag("undo_available"), rollback_attempted=flag("rollback_attempted"),
+                    rollback_ok=None if row["rollback_ok"] is None else flag("rollback_ok")))
+            return ActivityPageV1(request_id=request.request_id, task_id=metadata["task_id"],
+                task_request_id=metadata["task_request_id"], saved_state=metadata["saved_state"], route=metadata["route"],
+                actions=actions, next_action_id=actions[-1].action_id if actions else request.after_action_id,
+                has_more=len(action_rows) > request.limit, cleanup=cleanup).model_dump(mode="json")
+        except Exception:
+            logger.warning("Activity evidence could not be read safely.")
+            return failure("ACTIVITY_UNAVAILABLE")
 
     def _run_crash_recovery(self) -> None:
         """Scan for unfinished tasks from previous run and clean up.
