@@ -1,5 +1,8 @@
 # E86 — P17 dashboard submission and independent STOP
 
+Follow-up: [P18 E87](p18_event_feed.md) now implements its first bounded feed/
+notice packet. P18-not-started statements below describe this P17 checkpoint.
+
 Date: 2026-10-27 (Asia/Calcutta). Branch: `p12-preparation`.
 Tested implementation: `fc552ee04f152644da43da68a215141541185528`.
 Recovery point: `af855cb97a1571effd22f9aca8f67d144dc383c0`, whose tracked tree

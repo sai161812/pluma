@@ -15,13 +15,14 @@ uncertain-write replay are blocked. Terminal persistence, verification and
 residual facts govern the displayed outcome. P16 native material approval
 remains connected. P15 query/event contracts remain authoritative.
 
-Fresh native checks: **138 authenticated IPC**, **95 native UI**, **675 popup**
-and **195 formatting**, plus layout/surface/audio/copy gates and zero-warning
-builds. [E86](../../../docs/completion/p17_command_submission.md) records exact
-source/build identity, fixture boundaries and recovery. See the
+Latest P18 packet native checks: **154 authenticated IPC**, **105 native UI**,
+**663 popup** and **195 formatting**, plus layout/surface/audio/copy gates and
+zero-warning builds. [E87](../../../docs/completion/p18_event_feed.md) records
+exact source/build identity, fixture boundaries and recovery. P17 remains
+recorded in [E86](../../../docs/completion/p17_command_submission.md). See the
 [command wiring contract](wiring_command_submission.md).
 
-P18 owns the broader visible live feed/notification consumer; P19-P23 retain
+P18 [E87](../../../docs/completion/p18_event_feed.md) adds the shell-owned task feed/terminal notice bridge; detailed event surfaces remain open. P19-P23 retain
 voice, history/undo, settings, health/recovery and perception surfaces. No push
 subscription or heartbeat is implemented. Historical descriptions below retain
 their dates and do not override the current handoff/matrix. P25 physical/owner

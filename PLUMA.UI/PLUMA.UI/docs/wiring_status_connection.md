@@ -1,6 +1,17 @@
 # Wiring step 1: authenticated read-only core status
 
-## Current transport note (P17 E86)
+## Current transport note (P18 packet 1 E87)
+
+P18 now has a shell-owned bounded event consumer for the dashboard task feed
+and evidence-backed terminal notices. Cursor commits follow complete readback;
+historical reset/replay does not repeat notices. Native exact-source verification
+passes 154 IPC and 105 UI checks, with the existing popup/formatting gates.
+Detailed action/state/cleanup surfaces and full event-driven desktop/backend
+acceptance remain open. See [E87](../../../docs/completion/p18_event_feed.md)
+and the [event feed contract](wiring_event_feed.md). No push subscription or
+heartbeat was introduced. The P17 transport description below remains applicable.
+
+## Previous transport note (P17 E86)
 
 `CoreIpcClient` now retains the status query and also exposes typed version 1
 text-submit, STOP, terminal-readback, settings/history, confirmation

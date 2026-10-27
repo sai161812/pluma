@@ -1,6 +1,49 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P17 dashboard submission and priority STOP E86
+## Current checkpoint: 2026-10-27, P18 factual event feed packet E87
+
+**P18 is in progress.** This first bounded packet implements a shell-owned
+committed-event consumer, the bounded dashboard live feed and task-terminal
+notices through existing surface 24. Detailed remaining event surfaces are not
+claimed complete. [E87](docs/completion/p18_event_feed.md) and its
+[wiring contract](PLUMA.UI/PLUMA.UI/docs/wiring_event_feed.md) record scope,
+source, tests and recovery.
+
+- Source: `83417432f150f26b6e1189d8ed0cfa7e768d02c6`, pushed on
+  `p12-preparation`. Recovery: completed P17 `48b959b1ca35ba5f37d961d634cd67f6a29d353f`.
+- Fresh pre-edit **175 Python / 138 native IPC** prerequisites pass. All 23
+  recorded E80 source/test hashes still match; existing P00-P15 evidence and
+  owner-approved physical deferrals retain their documented scope.
+- Local console suite: **154 checks**, including 16 new event-consumer cases.
+  Final console/native/production builds: zero warnings/errors; 33 XAML copy
+  scans pass. Terminal-cache settling was reproduced as a failing check and
+  fixed with bounded read-only refresh, without weakening success evidence.
+- The cursor commits only after complete independent readback. Snapshot/reset
+  suppresses historical notices; replay, lost reads, gaps and private text cannot
+  fabricate completion. Display/observation bounds are 200/512 with pages of 25.
+  Window close drains the loop; notification dismissal issues no cancellation.
+- Local native execution was blocked by Application Control before Main; stale
+  output was rejected. [Windows run 40518641201](https://github.com/sai161812/pluma/actions/runs/40518641201)
+  passes on exact source: **154 IPC / 105 actual native UI / 663 popup / 195
+  formatting**, plus layout/surface/audio/copy gates and zero-warning builds.
+  No local policy bypass or personal desktop/device/power mutation occurred.
+
+This bounded packet is ready for independent Sol review; approval is not assumed.
+Its packet gate passes, while overall P18 remains incomplete.
+
+Remaining P18: detailed task/step/route/tool/result/rollback projections and
+surfaces 4-9; policy/perception surfaces 17, 19 and 22-23; evidence-backed worker
+termination surface 21; broader notice types/current/recent activity panels;
+full event-driven desktop-host/backend burst/replacement/reconnect/STOP/close
+acceptance across those surfaces. P17 surface 20 remains connected. Do not infer
+termination from an event name or resource release alone.
+
+Next safe packet: typed action/state/cleanup readback and deterministic
+projection contracts, then their affected existing surfaces. P19 has not started.
+P25 physical/owner appearance and later release gates remain separate. Independent
+Sol approval is not assumed. Do not advance or merge automatically.
+
+## Previous checkpoint: 2026-10-27, P17 dashboard submission and priority STOP E86
 
 **P17's required gate is complete.** Enter/Run now submits one typed request
 through the shared backend. The shell owns one command controller; duplicates

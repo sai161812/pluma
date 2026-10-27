@@ -166,7 +166,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 24. Toast Notification
 **Purpose:** One-line non-blocking info / warning pop-in.  
 **Data/Actions:** Short message, severity level (info / warning / error), auto-dismiss.  
-**Future wire contract (P18):** a factual notification event. No generic IPC notification event is currently implemented.
+**P18 packet 1:** committed task events trigger independent terminal/history readback and deterministic notices through EventFeedController, EventNoticePresentation and the existing PopupStackHost. Broader notice types and complete desktop/backend acceptance remain open. See [event feed contract](wiring_event_feed.md).
 
 ### 25. Critical Error Dialog
 **Purpose:** Blocking dialog on fatal failures — IPC down, unhandled crash.  

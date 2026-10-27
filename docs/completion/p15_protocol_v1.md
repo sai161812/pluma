@@ -129,4 +129,4 @@ Overflow, an impossible future cursor or a different database stream returns
 fresh snapshots before accepting more events. A normal core restart preserves
 the database stream and retained replay; replacement/restoration may require
 reset. Disconnected consumers do not block execution or STOP. P18 owns the
-visible event consumer; this protocol creates no fabricated UI activity.
+remaining detailed event consumer. P18 E87 connects the bounded task feed and terminal notice bridge using independent readback; this protocol creates no fabricated UI activity.
