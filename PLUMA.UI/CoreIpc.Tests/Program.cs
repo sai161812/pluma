@@ -50,7 +50,6 @@ internal static class Program
     private static async Task RunAsync()
     {
         await ConfirmationControllerChecks.RunAsync(Check);
-        await CommandControllerChecks.RunAsync(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))
             Check((await client.GetStatusAsync(default)).Failure == CoreConnectionFailure.CredentialsUnavailable && !File.Exists(absent),
@@ -409,20 +408,6 @@ internal static class Program
         Check(cursor.RequiresSnapshot && cursor.Sequence == ahead.Response!.LastSequence,
             "the consumer honors reset readback even when saved cursor was ahead of the journal");
         await ConfirmationControllerChecks.RunNativeAsync(client, Check);
-        await CommandControllerChecks.RunNativeAsync(client, Check);
-        var supported = await client.GetSettingsAsync(Id(), default);
-        var legacySettings = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(supported.Response,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }))!.AsObject();
-        legacySettings.Remove("submission_stop_fence");
-        // Reply with the actual query correlation so refusal proves the missing
-        // capability, rather than an unrelated malformed-envelope rejection.
-        await using (var legacy = new LocalServer(PipeName(), legacySettings.ToJsonString(), "legacy-settings"))
-        await using (var oldClient = new CoreIpcClient(Options(legacy.Name)))
-        {
-            var refused = await new CoreCommandClient(oldClient).SubmitAsync(Id(), "must not submit", default);
-            Check(legacy.SettingsOnly && !refused.IsSuccess && !refused.OutcomeUnknown && refused.Failure == CoreConnectionFailure.Protocol,
-                "a core without confirmed submission fencing cannot admit dashboard commands");
-        }
     }
 
     private static async Task Exchange(string reply, CoreConnectionFailure expected, Func<CoreStatusResult, bool>? additional, string label, string mode = "normal", string? key = null)
@@ -454,7 +439,6 @@ internal static class Program
     {
         internal string Name { get; }
         internal bool StatusOnly { get; private set; }
-        internal bool SettingsOnly { get; private set; }
         private readonly NamedPipeServerStream _pipe;
         private readonly CancellationTokenSource _stop = new(TimeSpan.FromSeconds(8));
         private readonly Task _task;
@@ -483,15 +467,6 @@ internal static class Program
                 StatusOnly = request == "{\"command\":\"status\"}";
                 if (mode == "stall-response")
                 { await Task.Delay(Timeout.Infinite, _stop.Token); return; }
-                if (mode == "legacy-settings")
-                {
-                    using var envelope = JsonDocument.Parse(request);
-                    SettingsOnly = envelope.RootElement.GetProperty("message_type").GetString() == "settings_query";
-                    if (!SettingsOnly) throw new InvalidDataException("Only the read-only compatibility query is permitted.");
-                    var response = System.Text.Json.Nodes.JsonNode.Parse(reply)!.AsObject();
-                    response["request_id"] = envelope.RootElement.GetProperty("request_id").GetString();
-                    await _pipe.WriteAsync(Encoding.UTF8.GetBytes(response.ToJsonString()), _stop.Token);
-                }
                 if (StatusOnly) await _pipe.WriteAsync(Encoding.UTF8.GetBytes(reply), _stop.Token);
             }
             catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }

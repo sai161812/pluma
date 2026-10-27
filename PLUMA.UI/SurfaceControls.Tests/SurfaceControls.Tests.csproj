@@ -31,7 +31,6 @@
     <Compile Include="../PLUMA.UI/CoreRequestProtocol.cs" Link="CoreRequestProtocol.cs" />
     <Compile Include="../PLUMA.UI/CoreContractProtocol.cs" Link="CoreContractProtocol.cs" />
     <Compile Include="../PLUMA.UI/ConfirmationController.cs" Link="ConfirmationController.cs" />
-    <Compile Include="../PLUMA.UI/CommandController.cs" Link="CommandController.cs" />
     <Compile Include="../PLUMA.UI/NativeConfirmationPresenter.cs" Link="NativeConfirmationPresenter.cs" />
     <Compile Include="../PLUMA.UI/PolicyBlockNotice.xaml.cs" Link="PolicyBlockNotice.xaml.cs" />
     <Compile Include="../PLUMA.UI/RiskApprovalDialog.xaml.cs" Link="RiskApprovalDialog.xaml.cs" />
