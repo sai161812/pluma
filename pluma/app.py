@@ -69,9 +69,13 @@ class PlumaApplicationRuntime:
         )
         self.rollback_engine.task_resolver = self.supervisor.get_task
         self.policy_rules = PolicyRules()
+        from pluma.ui.ipc_confirmations import IpcConfirmationBroker
+        self.confirmation_broker = (IpcConfirmationBroker(self.supervisor.get_task)
+                                    if confirmation_contract is None else
+                                    confirmation_contract if isinstance(confirmation_contract, IpcConfirmationBroker) else None)
         self.policy_engine = PolicyEngine(
             rules=self.policy_rules,
-            confirmation_contract=confirmation_contract,
+            confirmation_contract=confirmation_contract if confirmation_contract is not None else self.confirmation_broker,
             command_catalog_path=str(paths.roaming_root / 'commands.json'),
         )
         self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop)
@@ -132,6 +136,7 @@ class PlumaApplicationRuntime:
             ownership_registry=self.ownership_registry,
             effective_model_path=model_path,
             effective_stt_model_path=stt_model_path,
+            confirmation_broker=self.confirmation_broker,
         )
 
     def close(self, timeout_s: float = 5.0):

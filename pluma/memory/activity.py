@@ -509,6 +509,31 @@ class ActivityQuery:
     # Alias for compatibility with external caller expectations
     get_recent_tasks = recent_tasks
 
+    def event_batch(self, stream_id, after_sequence=0, limit=100):
+        """Read bounds and events in one SQLite statement/snapshot."""
+        rows = self._db.execute_read("""
+            WITH bounds AS (
+                SELECT s.stream_id, COALESCE(MIN(e.sequence),0) AS first_sequence,
+                       COALESCE(MAX(e.sequence),0) AS last_sequence
+                FROM ui_event_stream s LEFT JOIN ui_events e ON 1=1 WHERE s.singleton=1
+            )
+            SELECT b.*, e.sequence, e.kind, e.occurred_at, e.task_id, e.request_id, e.record_id
+            FROM bounds b LEFT JOIN ui_events e ON e.sequence > ?
+            ORDER BY e.sequence LIMIT ?""", (after_sequence, limit + 1))
+        if not rows or rows[0]["stream_id"] is None:
+            raise ValueError("Event journal is unavailable.")
+        first, last = rows[0]["first_sequence"], rows[0]["last_sequence"]
+        reset = (stream_id != rows[0]["stream_id"] or after_sequence > last
+                 or (first > 0 and after_sequence < first - 1))
+        events = [] if reset else [{key: row[key] for key in (
+            "sequence", "kind", "occurred_at", "task_id", "request_id", "record_id")}
+            for row in rows if row["sequence"] is not None]
+        more = len(events) > limit
+        events = events[:limit]
+        return {"stream_id": rows[0]["stream_id"], "first_sequence": first, "last_sequence": last,
+                "next_sequence": last if reset else (events[-1]["sequence"] if events else after_sequence),
+                "reset_required": reset, "has_more": more, "events": events}
+
     def task_by_id(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Return one task row or None."""
         row = self._db.execute_read_one(

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Authentication;
 using System.Security.Cryptography;
@@ -198,6 +199,32 @@ namespace PLUMA.UI
             VersionedCallAsync(new CoreRequestProtocol.HistoryQueryRequest(requestId, taskId, limit).ToMessage(), requestId,
                 false, false, bytes => CoreRequestProtocol.HistoryReply.Parse(bytes), value => value.RequestId, cancellationToken,
                 value => value.TaskId == taskId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ConfirmationList>> GetConfirmationsAsync(
+            string requestId, string clientId, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.ConfirmationQueryRequest(requestId, clientId).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.ConfirmationList.Parse(bytes), value => value.RequestId,
+                cancellationToken, value => value.ClientId == clientId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ConfirmationAck>> DecideConfirmationAsync(
+            CoreRequestProtocol.ConfirmationDecisionRequest request, CancellationToken cancellationToken) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, true,
+                bytes => CoreRequestProtocol.ConfirmationAck.Parse(bytes), value => value.RequestId, cancellationToken,
+                value => value.ConfirmationId == request.ConfirmationId && (!value.Accepted || value.Approved == request.Approved));
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ConfirmationDisconnected>> DisconnectConfirmationsAsync(
+            string requestId, string clientId, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.ConfirmationDisconnectRequest(requestId, clientId).ToMessage(), requestId,
+                false, true, bytes => CoreRequestProtocol.ConfirmationDisconnected.Parse(bytes), value => value.RequestId,
+                cancellationToken, value => value.ClientId == clientId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> GetEventsAsync(
+            CoreRequestProtocol.EventsQueryRequest request, CancellationToken cancellationToken) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, false,
+                bytes => CoreRequestProtocol.EventBatch.Parse(bytes), value => value.RequestId, cancellationToken,
+                value => value.ResetRequired || (value.StreamId == request.StreamId &&
+                    value.Events.Length <= request.Limit && value.Events.All(item => item.Sequence > request.AfterSequence) &&
+                    value.NextSequence >= request.AfterSequence));
 
         private async Task<CoreRequestResult<T>> VersionedCallAsync<T>(byte[] request, string requestId,
             bool priority, bool mutation, Func<byte[], T> parse, Func<T, string> correlation,

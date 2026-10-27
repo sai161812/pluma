@@ -118,7 +118,7 @@ class PolicyEngine:
         # Without a trusted exact-call intent proof, MEDIUM requires explicit
         # approval too. Natural language and planner arguments cannot grant it.
         if risk in (RiskClass.MEDIUM, RiskClass.HIGH):
-            if self.confirmation_contract is None:
+            if self.confirmation_contract is None or not getattr(self.confirmation_contract, "is_available", True):
                 return PolicyEvaluationResult(PolicyDecision.REQUIRE_CONFIRMATION, risk,
                     "Explicit approval is required for this operation.", requires_confirmation=True)
             if not isinstance(task_id, str) or not task_id.strip():

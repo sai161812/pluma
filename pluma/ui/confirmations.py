@@ -37,6 +37,11 @@ class ConfirmationResponse:
 class ConfirmationContract(abc.ABC):
     """Abstract functional confirmation contract interface."""
 
+    @property
+    def is_available(self) -> bool:
+        """Whether a requester can currently deliver a material confirmation."""
+        return True
+
     @abc.abstractmethod
     def request_confirmation(self, request: ConfirmationRequest) -> ConfirmationResponse:
         """Prompt user to confirm or deny an action. Blocks until answered."""

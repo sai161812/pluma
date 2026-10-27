@@ -51,10 +51,12 @@ class ResidentCore:
         ipc_address: Optional[str] = None,
         effective_model_path: Optional[str] = None,
         effective_stt_model_path: Optional[str] = None,
+        confirmation_broker: Optional[Any] = None,
     ) -> None:
         self.config = config or load_config()
         self.effective_model_path = effective_model_path
         self.effective_stt_model_path = effective_stt_model_path
+        self.confirmation_broker = confirmation_broker
         self.registry = ownership_registry or OwnershipRegistry()
         self.ledger = ledger
         self.supervisor = supervisor or TaskSupervisor(ownership_registry=self.registry, ledger=self.ledger)
@@ -310,6 +312,7 @@ class ResidentCore:
     def _handle_versioned_ipc(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
+            ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
             HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
         )
@@ -337,6 +340,8 @@ class ResidentCore:
             return self._settings_query_v1(request)
         if isinstance(request, HistoryQueryV1):
             return self._history_query_v1(request)
+        if isinstance(request, (ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1)):
+            return self._remaining_contract_v1(request)
         return ProtocolErrorV1(error_code="UNKNOWN_MESSAGE_TYPE",
             message="The message type is not supported.").model_dump(mode="json")
 
@@ -545,6 +550,34 @@ class ResidentCore:
             **receipt,
         }
 
+    def _remaining_contract_v1(self, request):
+        from pluma.core.ipc_contracts import (
+            ConfirmationQueryV1, ConfirmationDecisionV1, EventsQueryV1,
+            ConfirmationListV1, ConfirmationAckV1, ConfirmationDisconnectedV1, EventBatchV1,
+        )
+        try:
+            if isinstance(request, EventsQueryV1):
+                from pluma.memory.activity import ActivityQuery
+                batch = ActivityQuery(self.ledger._db).event_batch(
+                    request.stream_id, request.after_sequence, request.limit)
+                return EventBatchV1(request_id=request.request_id, **batch).model_dump(mode="json")
+            broker = getattr(self, "confirmation_broker", None)
+            if broker is None:
+                raise ValueError("Confirmation contract is unavailable.")
+            if isinstance(request, ConfirmationQueryV1):
+                return ConfirmationListV1(request_id=request.request_id, client_id=request.client_id,
+                    confirmations=broker.pending(request.client_id)).model_dump(mode="json")
+            if isinstance(request, ConfirmationDecisionV1):
+                accepted, error = broker.decide(request)
+                return ConfirmationAckV1(request_id=request.request_id,
+                    confirmation_id=request.confirmation_id, accepted=accepted,
+                    approved=request.approved if accepted else None, error_code=error).model_dump(mode="json")
+            return ConfirmationDisconnectedV1(request_id=request.request_id, client_id=request.client_id,
+                denied_count=broker.disconnect(request.client_id)).model_dump(mode="json")
+        except Exception:
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "CONTRACT_UNAVAILABLE", "message": "The requested contract is unavailable."}
+
     def _settings_query_v1(self, request):
         from pluma.core.ipc_contracts import SettingsSnapshotV1
         config = getattr(self, "config", None)
@@ -734,6 +767,9 @@ class ResidentCore:
         if not hasattr(self, "_entry_gate"):
             self._entry_gate = WorkGate()
         self._entry_gate.begin_shutdown()
+        broker = getattr(self, "confirmation_broker", None)
+        if broker is not None:
+            broker.close()
         self._running = False
         if hasattr(self.ipc, "begin_shutdown"):
             self.ipc.begin_shutdown()

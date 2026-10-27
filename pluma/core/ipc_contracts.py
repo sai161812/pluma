@@ -244,6 +244,115 @@ class HistoryReplyV1(BaseModel):
         return self
 
 
+class _ClientRequest(_Envelope):
+    request_id: StrictStr
+    client_id: StrictStr
+
+    @model_validator(mode="after")
+    def canonical_ids(self):
+        for name in ("request_id", "client_id", "task_id", "confirmation_id"):
+            if hasattr(self, name):
+                _validate_id(name, getattr(self, name))
+        return self
+
+
+class ConfirmationQueryV1(_ClientRequest):
+    message_type: Literal["confirmation_query"]
+
+
+class ConfirmationDecisionV1(_ClientRequest):
+    message_type: Literal["confirmation_decision"]
+    task_id: StrictStr
+    confirmation_id: StrictStr
+    binding: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    approved: StrictBool
+
+
+class ConfirmationDisconnectV1(_ClientRequest):
+    message_type: Literal["confirmation_disconnect"]
+
+
+class EventsQueryV1(_Envelope):
+    message_type: Literal["events_query"]
+    request_id: StrictStr
+    stream_id: Optional[StrictStr] = None
+    after_sequence: StrictInt = Field(default=0, ge=0, le=9223372036854775807)
+    limit: StrictInt = Field(default=100, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def canonical_ids(self):
+        _validate_id("request_id", self.request_id)
+        if self.stream_id is not None:
+            _validate_id("stream_id", self.stream_id)
+        elif self.after_sequence:
+            raise ValueError("A cursor requires its stream identity.")
+        return self
+
+
+class _Reply(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = 1
+    request_id: StrictStr
+
+
+class ConfirmationViewV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    confirmation_id: StrictStr
+    task_id: StrictStr
+    binding: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    tool: StrictStr
+    risk: Literal["MEDIUM", "HIGH"]
+    arguments: Dict[str, Any]
+    prompt: StrictStr
+    target_summary: Optional[StrictStr]
+    expires_at: StrictStr
+
+
+class ConfirmationListV1(_Reply):
+    message_type: Literal["confirmation_list"] = "confirmation_list"
+    client_id: StrictStr
+    confirmations: list[ConfirmationViewV1] = Field(max_length=32)
+
+
+class ConfirmationAckV1(_Reply):
+    message_type: Literal["confirmation_ack"] = "confirmation_ack"
+    confirmation_id: StrictStr
+    accepted: StrictBool
+    approved: Optional[StrictBool]
+    error_code: Optional[StrictStr]
+
+
+class ConfirmationDisconnectedV1(_Reply):
+    message_type: Literal["confirmation_disconnected"] = "confirmation_disconnected"
+    client_id: StrictStr
+    denied_count: StrictInt = Field(ge=0, le=32)
+
+
+EventKind = Literal["task_recorded", "task_changed", "action_recorded", "action_changed",
+                    "rollback_changed", "cleanup_recorded", "resource_changed", "screen_recorded"]
+
+
+class LedgerEventV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    sequence: StrictInt = Field(ge=1)
+    kind: EventKind
+    occurred_at: StrictStr
+    task_id: StrictStr
+    request_id: Optional[StrictStr]
+    record_id: Optional[StrictInt]
+
+
+class EventBatchV1(_Reply):
+    message_type: Literal["event_batch"] = "event_batch"
+    stream_id: StrictStr
+    first_sequence: StrictInt = Field(ge=0)
+    last_sequence: StrictInt = Field(ge=0)
+    next_sequence: StrictInt = Field(ge=0)
+    reset_required: StrictBool
+    has_more: StrictBool
+    events: list[LedgerEventV1] = Field(max_length=100)
+
+
 def _validate_id(name: str, value: str) -> None:
     try:
         if str(UUID(value)) != value:
@@ -252,15 +361,22 @@ def _validate_id(name: str, value: str) -> None:
         raise ValueError(f"{name} must be a canonical lowercase UUID") from None
 
 
-def parse_versioned_request(payload: dict) -> (SubmitTextV1 | TerminalReadbackRequestV1 |
-        StopRequestV1 | SettingsQueryV1 | HistoryQueryV1 | None):
+def parse_versioned_request(payload: dict):
     """Parse a v1 message, return None for the existing legacy command envelope."""
     if "protocol_version" not in payload and "message_type" not in payload:
         return None
     if type(payload.get("protocol_version")) is not int or payload["protocol_version"] != PROTOCOL_VERSION:
         raise ValueError("UNSUPPORTED_PROTOCOL_VERSION")
     kind = payload.get("message_type")
+    if not isinstance(kind, str):
+        raise ValueError("INVALID_REQUEST")
     try:
+        added = {"confirmation_query": ConfirmationQueryV1,
+                 "confirmation_decision": ConfirmationDecisionV1,
+                 "confirmation_disconnect": ConfirmationDisconnectV1,
+                 "events_query": EventsQueryV1}
+        if kind in added:
+            return added[kind].model_validate(payload)
         if kind == "submit_text":
             return SubmitTextV1.model_validate(payload)
         if kind == "terminal_readback":

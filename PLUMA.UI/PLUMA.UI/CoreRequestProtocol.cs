@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace PLUMA.UI;
 
-internal static class CoreRequestProtocol
+internal static partial class CoreRequestProtocol
 {
     internal const int Version = 1;
     private static readonly JsonSerializerOptions Options = new()
@@ -233,8 +233,20 @@ internal static class CoreRequestProtocol
     {
         using JsonDocument document = JsonDocument.Parse(message.ToArray(), new JsonDocumentOptions { MaxDepth = 8 });
         if (document.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Expected object.");
-        var names = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty property in document.RootElement.EnumerateObject())
-            if (!names.Add(property.Name)) throw new JsonException("Duplicate property.");
+        CheckObject(document.RootElement);
+        static void CheckObject(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                var names = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+                foreach (JsonProperty property in element.EnumerateObject())
+                {
+                    if (!names.Add(property.Name)) throw new JsonException("Duplicate property.");
+                    CheckObject(property.Value);
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+                foreach (JsonElement item in element.EnumerateArray()) CheckObject(item);
+        }
     }
 }

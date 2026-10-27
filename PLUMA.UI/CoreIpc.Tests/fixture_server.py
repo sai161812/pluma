@@ -22,8 +22,13 @@ def status(request):
 
 
 db = None
+owned_db = None
+registry = None
+owned_read = None
 release_status = threading.Event()
 event_lock = threading.Lock()
+executed_calls = []
+approved_calls = set()
 
 
 def report_event(value):
@@ -38,11 +43,36 @@ if mode == "versioned":
     from pluma.config.loader import load_config
     from pluma.memory.activity import ActivityLedger
     from pluma.memory.db import DbConnection
+    from pluma.policy.engine import PolicyEngine
+    from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
+    from pluma.tools.registry import ToolRegistry
+    from pluma.ui.ipc_confirmations import IpcConfirmationBroker
 
-    db = DbConnection(":memory:")
+    owned_db = Path(sys.argv[2]) / f"p15-ledger-{os.getpid()}.db"
+    if owned_db.exists():
+        raise RuntimeError("Owned fixture database already exists.")
+    db = DbConnection(str(owned_db))
     db.open()
     ledger = ActivityLedger(db)
     supervisor = TaskSupervisor(ledger=ledger)
+    broker = IpcConfirmationBroker(supervisor.get_task, timeout_s=3)
+    registry = ToolRegistry(policy_engine=PolicyEngine(confirmation_contract=broker))
+    owned_read = Path(sys.argv[2]) / f"p15-owned-read-{os.getpid()}.txt"
+    with owned_read.open("x", encoding="utf-8") as fixture_file:
+        fixture_file.write("PLUMA owned P15 fixture")
+
+    def read_owned_fixture(args, context):
+        executed_calls.append(context.task_id)
+        return ToolResult.success("fixture_read", {"length": len(owned_read.read_text(encoding="utf-8"))},
+                                  "Read owned fixture.", verified=False)
+
+    registry.register(ToolSpec(name="fixture_read", description="Read an owned fixture after material approval",
+        args_schema={"type": "object", "additionalProperties": False}, risk_class=RiskClass.HIGH, timeout_s=5,
+        # This inert read fixture deliberately uses the owned thread path so
+        # parent-side entry counters can prove that denied calls never enter.
+        executor=lambda args, context: read_owned_fixture(args, context),
+        verifier=lambda result: VerifyResult(ok=result.data["length"] == len(owned_read.read_text(encoding="utf-8")),
+            method="file_readback", detail="Owned fixture length read back.")))
 
     class FixtureOrchestrator:
         def execute(self, request, capsule):
@@ -52,9 +82,14 @@ if mode == "versioned":
                 if not capsule.cancellation_token.wait_for_cancel(8):
                     raise TimeoutError("Owned fixture wait expired.")
                 capsule.cancellation_token.raise_if_cancelled()
-            supervisor.finalize_task(capsule.task_id, TaskState.SUCCEEDED)
+            success = True
+            if request.text == "fixture:approval":
+                result = registry.execute("fixture_read", {}, task_context=capsule, ledger=ledger)
+                success = result.ok and result.verified
+            final = TaskState.SUCCEEDED if success else TaskState.FAILED
+            supervisor.finalize_task(capsule.task_id, final)
             return SimpleNamespace(
-                final_state=TaskState.SUCCEEDED, completion_verified=True,
+                final_state=final, completion_verified=success,
                 terminal_persisted=True, has_residual=False,
                 route=SimpleNamespace(value="FAST"),
                 user_message="Fixture result verified.", duration_ms=1.0,
@@ -64,6 +99,7 @@ if mode == "versioned":
     core.ledger = ledger
     core.supervisor = supervisor
     core.orchestrator = FixtureOrchestrator()
+    core.confirmation_broker = broker
     core.config = load_config(Path(sys.argv[2]) / "no-user-settings.json")
     core.config["brain"]["model_path"] = r"C:\fixture\planner.gguf"
     core.config["voice"]["model_path"] = r"C:\fixture\whisper.ggml"
@@ -76,7 +112,11 @@ if mode == "versioned":
             return status(request)
         if request.get("message_type") == "stop":
             release_status.set()
-        return core.handle_ipc_command(request)
+        reply = core.handle_ipc_command(request)
+        if (request.get("message_type") == "confirmation_decision" and request.get("approved") is True
+                and reply.get("accepted") is True):
+            approved_calls.add(request["task_id"])
+        return reply
 elif mode == "status":
     handler = status
 else:
@@ -106,9 +146,18 @@ finally:
         print(f"IPC_FIXTURE_REMAINING_OWNERS {remaining!r}", flush=True)
         raise
     if db is not None:
+        broker.close()
         supervisor.stop_all_active_tasks()
         for thread in list(getattr(core, "_submission_threads", {}).values()):
             thread.join(timeout=2)
             if thread.is_alive():
                 raise RuntimeError("Owned fixture task did not exit.")
+        registry.close()
+        if set(executed_calls) - approved_calls or len(executed_calls) != len(set(executed_calls)):
+            raise RuntimeError("Unapproved or duplicate fixture executor entry.")
         db.close()
+    if owned_read is not None:
+        owned_read.unlink()
+    if owned_db is not None:
+        for suffix in ("", "-wal", "-shm"):
+            Path(str(owned_db) + suffix).unlink(missing_ok=True)

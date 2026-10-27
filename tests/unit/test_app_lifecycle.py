@@ -67,6 +67,15 @@ def test_runtime_wires_configured_planner_limits_and_model_lifecycle() -> None:
         config["brain"]["model_name"] = "planner-fixture.gguf"
         runtime = PlumaApplicationRuntime(paths=paths, config=config)
         try:
+            assert runtime.policy_engine.confirmation_contract is runtime.confirmation_broker
+            assert runtime.resident_core.confirmation_broker is runtime.confirmation_broker
+            assert not runtime.confirmation_broker.is_available
+            opened = runtime.resident_core.handle_ipc_command({
+                "protocol_version": 1, "message_type": "confirmation_query",
+                "request_id": "0aba89fa-dad8-420f-8bd5-37ae8daaa786",
+                "client_id": "b88d7081-cf53-471f-aa6c-d84b084a927f",
+            })
+            assert opened["confirmations"] == [] and runtime.confirmation_broker.is_available
             assert runtime.llm_lifecycle.adapter.max_plan_steps == 4
             assert runtime.llm_lifecycle.idle_unload_seconds == 7
             assert runtime.llm_lifecycle.adapter.model_path == str(
@@ -81,6 +90,8 @@ def test_runtime_wires_configured_planner_limits_and_model_lifecycle() -> None:
             assert settings["stt_model_path"] == str(paths.whisper_models_dir / "ggml-base.en.bin")
         finally:
             runtime.close()
+        assert not runtime.confirmation_broker.is_available
+        assert runtime.confirmation_broker._clients == {}
 
 
 def test_runtime_wires_lazy_whisper_model_and_locked_stt_unload_setting() -> None:

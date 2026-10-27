@@ -29,7 +29,7 @@ internal static class Program
             CreatePrivateDirectory(Root);
             WritePrivateKey(Secret);
             await RunAsync();
-            Console.WriteLine($"{_checks} IPC checks passed. No production core, microphone or tool execution was started.");
+            Console.WriteLine($"{_checks} IPC checks passed. No production resident, microphone or personal desktop actions were started.");
             return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }
@@ -83,6 +83,15 @@ internal static class Program
 
         string requestId = "9fb62f64-4eb4-42b3-b268-8c586a90da12";
         string taskId = "a30d93be-1110-4d54-9fd2-4bf03f9d595c";
+        await using (var server = new LocalServer(PipeName(), "", "stall-response"))
+        await using (var client = new CoreIpcClient(Options(server.Name, milliseconds: 180)))
+        {
+            var decision = new CoreRequestProtocol.ConfirmationDecisionRequest(requestId,
+                Guid.NewGuid().ToString("D"), taskId, Guid.NewGuid().ToString("D"), new string('a', 64), true);
+            var uncertain = await client.DecideConfirmationAsync(decision, default);
+            Check(uncertain.Response is null && uncertain.Failure == CoreConnectionFailure.Timeout && uncertain.OutcomeUnknown,
+                "material-decision timeout after write is uncertain and never silently retried");
+        }
         var submit = new CoreRequestProtocol.SubmitText(requestId, "get system status").ToMessage();
         using (var submitJson = JsonDocument.Parse(submit))
             Check(submitJson.RootElement.GetProperty("protocol_version").GetInt32() == 1 &&
@@ -249,6 +258,8 @@ internal static class Program
             Check(taskHistory.IsSuccess && taskHistory.Response!.TaskId == submitted.Response.TaskId,
                 "authenticated C# task-history query preserves task correlation");
 
+            await RemainingContractsAsync(client, requestsPipe);
+
             string holdRequestId = Guid.NewGuid().ToString("D");
             CoreRequestResult<CoreRequestProtocol.SubmissionAck> held =
                 await client.SubmitTextAsync(holdRequestId, "fixture:hold", default);
@@ -287,6 +298,114 @@ internal static class Program
             Check(statuses.All(result => result.Status is { Running: true }),
                 "priority STOP releases the owned stalled status fixtures cleanly");
         }
+    }
+
+    private static async Task RemainingContractsAsync(CoreIpcClient client, string pipe)
+    {
+        string Id() => Guid.NewGuid().ToString("D");
+        string clientId = Id();
+        var opened = await client.GetConfirmationsAsync(Id(), clientId, default);
+        Check(opened.IsSuccess && opened.Response!.Confirmations.Length == 0,
+            "authenticated confirmation query opens a bounded logical client lease");
+        var initial = await client.GetEventsAsync(new(Id()), default);
+        Check(initial.IsSuccess && initial.Response!.ResetRequired, "event handshake requires factual snapshot readback");
+        var cursor = new CoreEventCursor();
+        cursor.Apply(initial.Response!);
+        Check((await client.GetHistoryAsync(Id(), null, 100, default)).IsSuccess, "event resynchronization reads actual history");
+        cursor.SnapshotRead();
+        long? verifiedAction = null;
+        foreach (string scenario in new[] { "approve", "deny", "stop", "disconnect" })
+        {
+            var submission = await client.SubmitTextAsync(Id(), "fixture:approval", default);
+            Check(submission.IsSuccess && submission.Response!.Accepted, "owned confirmation fixture admitted: " + scenario);
+            string taskId = submission.Response!.TaskId!;
+            CoreRequestProtocol.ConfirmationView? item = null;
+            var deadline = Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(3))
+            {
+                var pending = await client.GetConfirmationsAsync(Id(), clientId, default);
+                item = pending.Response?.Confirmations.SingleOrDefault(value => value.TaskId == taskId);
+                if (item is not null) break;
+                await Task.Delay(10);
+            }
+            Check(item is { Tool: "fixture_read", Risk: "HIGH" }, "material call is published with task and binding: " + scenario);
+            var decision = new CoreRequestProtocol.ConfirmationDecisionRequest(Id(), clientId, taskId,
+                item!.ConfirmationId, item.Binding, scenario == "approve");
+            if (scenario == "approve")
+            {
+                var mismatch = await client.DecideConfirmationAsync(decision with { Binding = new string('0', 64) }, default);
+                Check(mismatch.Response is { Accepted: false, ErrorCode: "CONFIRMATION_MISMATCH" }, "changed exact-call binding cannot approve");
+                Check((await client.DecideConfirmationAsync(decision, default)).Response is { Accepted: true, Approved: true },
+                    "exact material approval is recorded once");
+                Check((await client.DecideConfirmationAsync(decision, default)).Response is { Accepted: false, ErrorCode: "CONFIRMATION_NOT_PENDING" },
+                    "duplicate decision cannot approve a second call");
+            }
+            else if (scenario == "deny")
+                Check((await client.DecideConfirmationAsync(decision, default)).Response is { Accepted: true, Approved: false },
+                    "explicit denial is recorded without authorizing execution");
+            else if (scenario == "stop")
+            {
+                Check((await client.StopAsync(Id(), taskId, default)).IsSuccess, "STOP remains responsive during material approval");
+                Check((await client.DecideConfirmationAsync(decision with { Approved = true }, default)).Response is { Accepted: false },
+                    "late approval cannot revive a stopped task");
+            }
+            else
+                Check((await client.DisconnectConfirmationsAsync(Id(), clientId, default)).Response is { DeniedCount: 1 },
+                    "logical UI disconnect denies its pending material operation");
+
+            CoreRequestProtocol.TerminalReadback? terminal = null;
+            deadline.Restart();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(3))
+            {
+                terminal = (await client.GetTerminalReadbackAsync(submission.Response.RequestId, taskId, default)).Response;
+                if (terminal?.Terminal == true) break;
+                await Task.Delay(10);
+            }
+            Check(terminal is { Terminal: true, TerminalPersisted: true } &&
+                (scenario == "approve" ? terminal is { FinalState: "SUCCEEDED", CompletionVerified: true }
+                    : !terminal.CompletionVerified && terminal.FinalState is "FAILED" or "STOPPED" or "STOPPED_WITH_RESIDUAL"),
+                "terminal and ledger preserve the exact decision outcome: " + scenario);
+            var history = await client.GetHistoryAsync(Id(), taskId, 100, default);
+            if (scenario == "approve")
+            {
+                var action = history.Response!.Actions.Single();
+                verifiedAction = action.ActionId;
+                Check(action is { Tool: "fixture_read", Verified: true, ApprovalState: "ALLOW" },
+                    "registered owned-file action has independent postcondition and policy ledger readback");
+            }
+            else
+                Check(history.IsSuccess && history.Response!.Actions.All(action => !action.Verified),
+                    "unapproved task contains no verified fixture execution: " + scenario);
+        }
+        var request = new CoreRequestProtocol.EventsQueryRequest(Id(), cursor.StreamId, cursor.Sequence);
+        var batch = await client.GetEventsAsync(request, default);
+        Check(batch.IsSuccess && batch.Response!.Events.Any(item => item.Kind == "action_recorded" && item.RecordId == verifiedAction),
+            "authenticated event feed names the actual committed verified action identity");
+        Check(cursor.Apply(batch.Response!).Length > 0, "C# event cursor applies committed facts in sequence");
+        var replay = await client.GetEventsAsync(request with { RequestId = Id() }, default);
+        Check(replay.IsSuccess && cursor.Apply(replay.Response!).Length == 0, "replayed event batch is deduplicated without cursor regression");
+        await using (var reconnect = new CoreIpcClient(Options(pipe, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
+        {
+            var resumed = await reconnect.GetEventsAsync(new(Id(), cursor.StreamId, cursor.Sequence), default);
+            Check(resumed.IsSuccess && !resumed.Response!.ResetRequired && resumed.Response.Events.Length == 0,
+                "a new authenticated connection resumes the same durable event cursor");
+        }
+        var wrongStream = await client.GetEventsAsync(new(Id(), Id(), 0), default);
+        Check(wrongStream.IsSuccess && wrongStream.Response!.ResetRequired && wrongStream.Response.Events.Length == 0,
+            "replaced database identity requires snapshot resynchronization instead of invented continuity");
+        try { CoreRequestProtocol.EventBatch.Parse("{}"u8); throw new Exception("Missing event fields accepted."); }
+        catch (JsonException) { Check(true, "required event fields cannot default into a successful cursor"); }
+        try { CoreRequestProtocol.ConfirmationAck.Parse("{}"u8); throw new Exception("Missing decision fields accepted."); }
+        catch (JsonException) { Check(true, "required decision fields cannot default into approval"); }
+        long before = cursor.Sequence;
+        var gap = batch.Response! with { Events = [batch.Response.Events[0] with { Sequence = before + 2 }], NextSequence = before + 2 };
+        try { cursor.Apply(gap); throw new Exception("Event gap accepted."); }
+        catch (JsonException) { Check(cursor.Sequence == before, "event gaps refuse without partially changing the consumer cursor"); }
+        var ahead = await client.GetEventsAsync(new(Id(), cursor.StreamId, cursor.Sequence + 1000), default);
+        Check(ahead.IsSuccess && ahead.Response!.ResetRequired, "an impossible future cursor requires explicit resynchronization");
+        cursor.Apply(ahead.Response!);
+        Check(cursor.RequiresSnapshot && cursor.Sequence == ahead.Response!.LastSequence,
+            "the consumer honors reset readback even when saved cursor was ahead of the journal");
     }
 
     private static async Task Exchange(string reply, CoreConnectionFailure expected, Func<CoreStatusResult, bool>? additional, string label, string mode = "normal", string? key = null)

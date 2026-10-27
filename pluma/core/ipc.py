@@ -26,6 +26,19 @@ IPC_SECRET_SIZE: int = 32  # 256-bit persistent secret
 IPC_CHALLENGE_SIZE: int = 32  # 256-bit ephemeral challenge
 
 
+def _unique_json_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("Duplicate JSON property.")
+        value[key] = item
+    return value
+
+
+def _reject_nonfinite_json(value):
+    raise ValueError("Non-finite JSON number.")
+
+
 def get_pipe_name() -> str:
     """Return a secure, per-user named pipe address."""
     username = os.environ.get("USERNAME") or os.environ.get("USER") or "default"
@@ -329,10 +342,11 @@ class IpcServer:
 
             # Parse and validate JSON
             try:
-                req = json.loads(msg_bytes.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
+                req = json.loads(msg_bytes.decode("utf-8"), object_pairs_hook=_unique_json_object,
+                                 parse_constant=_reject_nonfinite_json)
+            except (ValueError, RecursionError):
                 conn.send_bytes(json.dumps(
-                    {"status": "error", "message": f"Malformed JSON request: {parse_err}"}
+                    {"status": "error", "message": "Malformed JSON request."}
                 ).encode("utf-8"))
                 return
 

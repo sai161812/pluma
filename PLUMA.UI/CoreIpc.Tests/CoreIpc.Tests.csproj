@@ -10,5 +10,6 @@
     <Compile Include="../PLUMA.UI/CoreIpcClient.cs" Link="CoreIpcClient.cs" />
     <Compile Include="../PLUMA.UI/CoreStatus.cs" Link="CoreStatus.cs" />
     <Compile Include="../PLUMA.UI/CoreRequestProtocol.cs" Link="CoreRequestProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreContractProtocol.cs" Link="CoreContractProtocol.cs" />
   </ItemGroup>
 </Project>
