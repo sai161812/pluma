@@ -179,7 +179,13 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="Live messages"
                                    Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <ListView x:Name="LiveMessagesList" IsItemClickEnabled="False" SelectionMode="None" />
+                        <TextBlock x:Name="LiveConnectionText" Text="Live activity is not connected."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                        <ListView x:Name="LiveMessagesList" IsItemClickEnabled="False" SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate><TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" /></DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                     </StackPanel>
                 </Border>
             </Grid>

@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Dispatching;
 using System;
 using System.Globalization;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,14 +19,41 @@ namespace PLUMA.UI
         private bool _preview;
         private CancellationToken _ownerLifetime;
         private CommandController? _commands;
+        private EventFeedController? _events;
+        private readonly ObservableCollection<EventFeedEntry> _liveEntries = new();
         private readonly DispatcherQueue _dispatcher;
 
         public DashboardPage()
         {
             this.InitializeComponent();
             _dispatcher = DispatcherQueue;
-            Loaded += (_, _) => { if (_commands != null) { _commands.Changed -= OnCommandChanged; _commands.Changed += OnCommandChanged; ApplyCommand(_commands.View); } BeginRefresh(); };
+            Loaded += (_, _) =>
+            {
+                if (_commands != null) { _commands.Changed -= OnCommandChanged; _commands.Changed += OnCommandChanged; ApplyCommand(_commands.View); }
+                if (_events != null) { _events.Changed -= OnEventsChanged; _events.Changed += OnEventsChanged; OnEventsChanged(_events.View); }
+                BeginRefresh();
+            };
             Unloaded += OnUnloaded;
+        }
+
+        internal void AttachEventController(EventFeedController events)
+        {
+            if (_events != null) _events.Changed -= OnEventsChanged;
+            _events = events;
+            _events.Changed += OnEventsChanged;
+            OnEventsChanged(events.View);
+        }
+
+        private void OnEventsChanged(EventFeedView view)
+        {
+            if (!_dispatcher.HasThreadAccess)
+            { _dispatcher.TryEnqueue(() => OnEventsChanged(_events!.View)); return; }
+            if (!IsLoaded || _ownerLifetime.IsCancellationRequested || _preview) return;
+            while (_liveEntries.Count > 0 && !view.Entries.Any(entry => entry.Identity == _liveEntries[0].Identity)) _liveEntries.RemoveAt(0);
+            if (_liveEntries.Count > view.Entries.Length || _liveEntries.Where((entry, index) => entry.Identity != view.Entries[index].Identity).Any()) _liveEntries.Clear();
+            foreach (var entry in view.Entries.Skip(_liveEntries.Count)) _liveEntries.Add(entry);
+            if (!ReferenceEquals(LiveMessagesList.ItemsSource, _liveEntries)) LiveMessagesList.ItemsSource = _liveEntries;
+            LiveConnectionText.Text = view.Status;
         }
 
         internal void AttachCommandController(CommandController commands)
@@ -40,7 +69,8 @@ namespace PLUMA.UI
             _core = core;
             _ownerLifetime = ownerLifetime;
             _preview = false;
-            CurrentActivityList.Items.Clear(); RecentActivityList.Items.Clear(); LiveMessagesList.Items.Clear();
+            CurrentActivityList.Items.Clear(); RecentActivityList.Items.Clear();
+            LiveMessagesList.ItemsSource = null; LiveMessagesList.Items.Clear();
             CommandInput.IsEnabled = false;
             ApplyStatus(CoreStatusResult.Failed(CoreConnectionFailure.Unavailable));
             CoreRefreshButton.IsEnabled = true;
@@ -56,7 +86,8 @@ namespace PLUMA.UI
             CommandMessageText.Text = "Preview only. Commands are not executed.";
             CurrentActivityList.Items.Add("Reading the active window");
             foreach (string text in new[] { "Opened Calculator", "Found quarterly report.pdf", "Closed Notepad" }) RecentActivityList.Items.Add(text);
-            foreach (string text in new[] { "Captured active window", "Detected visible text", "Locating Downloads" }) LiveMessagesList.Items.Add(text);
+            foreach (string text in new[] { "Captured active window", "Detected visible text", "Locating Downloads" })
+                LiveMessagesList.Items.Add(new EventFeedEntry(text, "Preview", DateTimeOffset.UtcNow, text, false, false, false));
         }
 
         private async void OnRefreshCore(object sender, RoutedEventArgs args)
@@ -128,6 +159,7 @@ namespace PLUMA.UI
         private async void OnUnloaded(object sender, RoutedEventArgs args)
         {
             if (_commands != null) _commands.Changed -= OnCommandChanged;
+            if (_events != null) _events.Changed -= OnEventsChanged;
             CancellationTokenSource? stopped = _healthLifetime;
             Task previous = _healthTask;
             stopped?.Cancel();

@@ -51,6 +51,7 @@ internal static class Program
     {
         await ConfirmationControllerChecks.RunAsync(Check);
         await CommandControllerChecks.RunAsync(Check);
+        await EventFeedChecks.RunAsync(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))
             Check((await client.GetStatusAsync(default)).Failure == CoreConnectionFailure.CredentialsUnavailable && !File.Exists(absent),

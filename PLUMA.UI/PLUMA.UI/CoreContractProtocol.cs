@@ -177,6 +177,7 @@ internal static partial class CoreRequestProtocol
 /// <summary>One serialized consumer per cursor; no polling worker or cached UI state.</summary>
 internal sealed class CoreEventCursor
 {
+    internal CoreEventCursor Fork() => new() { StreamId = StreamId, Sequence = Sequence, RequiresSnapshot = RequiresSnapshot };
     internal string? StreamId { get; private set; }
     internal long Sequence { get; private set; }
     internal bool RequiresSnapshot { get; private set; }

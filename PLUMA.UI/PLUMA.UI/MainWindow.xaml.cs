@@ -33,6 +33,8 @@ namespace PLUMA.UI
         private bool _closed;
         private ConfirmationController? _confirmations;
         private Task _confirmationTask = Task.CompletedTask;
+        private readonly EventFeedController _events;
+        private Task _eventTask = Task.CompletedTask;
         private readonly CommandController _commands;
         private readonly DispatcherQueue _dispatcher;
         private string? _lastStopMessage;
@@ -51,6 +53,8 @@ namespace PLUMA.UI
             _dispatcher = DispatcherQueue;
             _commands = new CommandController(new CoreCommandClient(_coreStatus));
             _commands.Changed += OnCommandChanged;
+            _events = new EventFeedController(new CoreEventFeedClient(_coreStatus));
+            _events.Notice += OnEventNotice;
 
             // Extend content into the title bar so we can show a subtle app title
             // while retaining the native caption buttons. Register the AppTitleBar
@@ -66,13 +70,16 @@ namespace PLUMA.UI
                 _confirmations = new ConfirmationController(new CoreConfirmationClient(_coreStatus),
                     new NativeConfirmationPresenter(() => ContentFrame.XamlRoot));
                 _confirmationTask = _confirmations.RunAsync(_healthLifetime.Token);
+                _eventTask = _events.RunAsync(_healthLifetime.Token);
             };
             Closed += async (_, _) =>
             {
                 _closed = true; _healthLifetime.Cancel(); _popups?.Dispose();
                 _commands.Changed -= OnCommandChanged;
+                _events.Notice -= OnEventNotice;
                 await _commands.DisposeAsync();
                 await _confirmationTask;
+                await _eventTask;
                 await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
             };
         }
@@ -84,7 +91,17 @@ namespace PLUMA.UI
             {
                 dashboard.AttachCommandController(_commands);
                 dashboard.AttachCoreClient(_coreStatus, _healthLifetime.Token);
+                dashboard.AttachEventController(_events);
             }
+        }
+
+        private void OnEventNotice(EventFeedEntry entry)
+        {
+            if (!_dispatcher.HasThreadAccess)
+            { _dispatcher.TryEnqueue(() => OnEventNotice(entry)); return; }
+            if (_closed) return;
+            Popups.Present("ledger-notice-" + entry.TaskId, 24, EventNoticePresentation.Create(entry),
+                persistent: false, lifetime: TimeSpan.FromSeconds(4));
         }
 
         private void OnCommandChanged(CommandView view)
