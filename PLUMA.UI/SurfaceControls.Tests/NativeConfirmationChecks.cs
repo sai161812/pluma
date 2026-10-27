@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
@@ -111,7 +113,7 @@ internal static class NativeConfirmationChecks
         { Disconnections++; return _inner.DisconnectAsync(request, owner, token); }
     }
 
-    private sealed class Fixture : IAsyncDisposable
+    internal sealed class Fixture : IAsyncDisposable
     {
         internal string Pipe = "pluma_p16_native_" + Guid.NewGuid().ToString("N");
         private readonly string _root = Path.Combine(Path.GetTempPath(), "PLUMA-P16-" + Guid.NewGuid().ToString("N"));
@@ -119,23 +121,40 @@ internal static class NativeConfirmationChecks
         private Process _process = null!;
         private DateTime _created;
         private Task<string> _errors = null!, _output = null!;
-        internal static async Task<Fixture> StartAsync()
+        private readonly ConcurrentQueue<string> _events = new();
+        internal async Task WaitForEventAsync(string marker)
+        {
+            await Until(() =>
+            {
+                while (_events.TryDequeue(out string? line)) if (line == marker) return true;
+                return false;
+            }, 3);
+        }
+        private async Task<string> CollectOutputAsync()
+        {
+            var output = new StringBuilder();
+            while (await _process.StandardOutput.ReadLineAsync() is string line)
+            { _events.Enqueue(line); output.AppendLine(line); }
+            return output.ToString();
+        }
+        internal static async Task<Fixture> StartAsync(string mode = "versioned")
         {
             var value = new Fixture();
             Directory.CreateDirectory(value._root);
             var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("PLUMA_TEST_PYTHON") ?? "python")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (string arg in new[] { "-u", Path.Combine(Directory.GetCurrentDirectory(), "PLUMA.UI", "CoreIpc.Tests", "fixture_server.py"),
-                value.Pipe, value._root, "versioned", "normal" }) start.ArgumentList.Add(arg);
+                value.Pipe, value._root, mode, "normal" }) start.ArgumentList.Add(arg);
             value._process = Process.Start(start) ?? throw new InvalidOperationException("Owned fixture did not start.");
             value._created = value._process.StartTime.ToUniversalTime();
+            Console.WriteLine($"OWNED native fixture {value._root}; PID {value._process.Id}; created {value._created:O}; mode {mode}");
             value._errors = value._process.StandardError.ReadToEndAsync();
             value._output = Task.FromResult(string.Empty);
             try
             {
                 using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(7));
                 string? ready = await value._process.StandardOutput.ReadLineAsync(budget.Token);
-                value._output = value._process.StandardOutput.ReadToEndAsync();
+                value._output = value.CollectOutputAsync();
                 if (ready != "READY") throw new InvalidOperationException("Owned fixture was not ready.");
                 return value;
             }

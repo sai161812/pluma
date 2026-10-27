@@ -29,6 +29,8 @@ release_status = threading.Event()
 event_lock = threading.Lock()
 executed_calls = []
 approved_calls = set()
+command_calls = []
+command_resources = []
 
 
 def report_event(value):
@@ -37,7 +39,7 @@ def report_event(value):
         sys.stdout.flush()
 
 
-if mode == "versioned":
+if mode in {"versioned", "commands"}:
     from pluma.core.resident import ResidentCore
     from pluma.core.task_supervisor import TaskState, TaskSupervisor
     from pluma.config.loader import load_config
@@ -111,6 +113,69 @@ if mode == "versioned":
     core.config["brain"]["model_path"] = r"C:\fixture\planner.gguf"
     core.config["voice"]["model_path"] = r"C:\fixture\whisper.ggml"
 
+    if mode == "commands":
+        # Actual production orchestration/policy/registry/verification/SQLite.
+        # Only routing and planner waiting are fixed inert fixture adapters.
+        from typing import Literal
+        from pluma.core.orchestrator import Orchestrator
+        from pluma.core.router import RouteResult
+        from pluma.core.task_supervisor import ResourceOwnership
+        from pluma.brain.schemas import Plan, PlanMode, RouteMode, ToolCall
+
+        class CommandArgs(BaseModel):
+            model_config = ConfigDict(extra="forbid", strict=True)
+            operation: Literal["read", "fail", "hold", "residual"]
+
+        def command_executor(args, context):
+            command_calls.append(context.task_id)
+            operation = args["operation"]
+            if operation == "residual":
+                conflict = Path(sys.argv[2]) / ("p17-conflict-" + context.task_id + ".txt")
+                with conflict.open("x", encoding="utf-8") as stream:
+                    stream.write("original fixture")
+                command_resources.append(conflict)
+                context.register_owned_resource("temp_file", ResourceOwnership.PLUMA_CREATED, str(conflict))
+                conflict.write_text("changed owned fixture; cleanup must refuse", encoding="utf-8")
+            if operation in {"hold", "residual"}:
+                report_event("COMMAND_ENTERED")
+                if not context.cancellation_token.wait_for_cancel(8):
+                    raise TimeoutError("Owned command fixture was not stopped.")
+                context.cancellation_token.raise_if_cancelled()
+            if operation == "fail":
+                return ToolResult.failure("fixture_command", "Owned fixture failure.", "FIXTURE_FAILED")
+            return ToolResult.success("fixture_command", {"length": len(owned_read.read_text(encoding="utf-8"))},
+                                      "Read owned fixture.", verified=False)
+
+        registry.register(ToolSpec(name="fixture_command", description="Read only an owned fixture", args_schema=CommandArgs,
+            risk_class=RiskClass.READ, timeout_s=10, executor=command_executor,
+            verifier=lambda result: VerifyResult(ok=result.data.get("length") == len(owned_read.read_text(encoding="utf-8")),
+                method="owned_file_readback", detail="Owned file length independently read back.")))
+        registry.register(ToolSpec(name="fixture_denied", description="Inert policy refusal", args_schema=CommandArgs,
+            risk_class=RiskClass.DENY, timeout_s=2,
+            executor=lambda args, context: (_ for _ in ()).throw(RuntimeError("Denied executor must never run.")),
+            verifier=lambda result: VerifyResult(ok=False, method="denied")))
+
+        class CommandRouter:
+            def route(self, request):
+                operation = request.text.removeprefix("fixture:")
+                if operation == "planning":
+                    return RouteResult(RouteMode.SMART, "Owned planner cancellation fixture")
+                if operation not in {"read", "fail", "hold", "residual", "denied"}:
+                    raise ValueError("Unknown fixture command.")
+                return RouteResult(RouteMode.FAST, "Owned safe fixture", Plan(route=RouteMode.FAST, mode=PlanMode.DIRECT,
+                    steps=[ToolCall(tool="fixture_denied" if operation == "denied" else "fixture_command",
+                        arguments={"operation": "read" if operation == "denied" else operation}, purpose="Owned fixture")]))
+
+        class WaitingPlanner:
+            def plan(self, *, cancellation_token, **kwargs):
+                report_event("PLANNING_ENTERED")
+                if not cancellation_token.wait_for_cancel(8):
+                    raise TimeoutError("Owned planner fixture was not stopped.")
+                cancellation_token.raise_if_cancelled()
+
+        core.orchestrator = Orchestrator(registry=registry, supervisor=supervisor, ledger=ledger,
+            router=CommandRouter(), llm_manager=WaitingPlanner())
+
     def handler(request):
         if request == {"command": "status"}:
             if saturate_status:
@@ -162,7 +227,21 @@ finally:
         registry.close()
         if set(executed_calls) - approved_calls or len(executed_calls) != len(set(executed_calls)):
             raise RuntimeError("Unapproved or duplicate fixture executor entry.")
+        if len(command_calls) != len(set(command_calls)):
+            raise RuntimeError("Duplicate command fixture executor entry.")
+        if mode == "commands":
+            import sqlite3
+            from contextlib import closing
+            with closing(sqlite3.connect("file:" + owned_db.as_posix() + "?mode=ro", uri=True)) as readback:
+                rows = readback.execute("SELECT task_id, final_state FROM tasks").fetchall()
+                if not rows or any(state not in {"SUCCEEDED", "FAILED", "STOPPED", "STOPPED_WITH_RESIDUAL"} for _, state in rows):
+                    raise RuntimeError("Independent fixture SQLite terminal readback failed.")
+                report_event("COMMAND_LEDGER_READBACK_OK")
         db.close()
+    for conflict in command_resources:
+        if conflict.parent != Path(sys.argv[2]) or not conflict.name.startswith("p17-conflict-"):
+            raise RuntimeError("Owned conflict cleanup path was not verified.")
+        conflict.unlink(missing_ok=True)
     if owned_read is not None:
         owned_read.unlink()
     if owned_db is not None:

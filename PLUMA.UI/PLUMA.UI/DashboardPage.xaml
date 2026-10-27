@@ -48,12 +48,25 @@
                     <TextBlock Text="Command entry"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                CharacterSpacing="40" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <AutoSuggestBox x:Name="CommandInput" PlaceholderText="Ask PLUMA to do something" IsEnabled="False"
-                                    HorizontalAlignment="Stretch">
+                                    QuerySubmitted="OnCommandSubmitted" HorizontalAlignment="Stretch"
+                                    AutomationProperties.Name="Command text">
                         <AutoSuggestBox.QueryIcon>
                             <SymbolIcon Symbol="Find" />
                         </AutoSuggestBox.QueryIcon>
                     </AutoSuggestBox>
+                        <Button x:Name="CommandRunButton" Grid.Column="1" Content="Run" IsEnabled="False" Click="OnRunCommand"
+                                AutomationProperties.Name="Run command" />
+                        <Button x:Name="CommandStopButton" Grid.Column="2" Content="Stop" IsEnabled="False" Click="OnStopCommand"
+                                AutomationProperties.Name="Stop all PLUMA tasks" ToolTipService.ToolTip="Stop all PLUMA tasks" />
+                    </Grid>
+                    <TextBlock x:Name="CommandMessageText" Text="Connect to PLUMA to enter a command." TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock x:Name="CommandIdentityText" Visibility="Collapsed" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
                 </StackPanel>
             </Border>
 

@@ -101,6 +101,9 @@ class ResidentCore:
         self._submission_lock = threading.RLock()
         self._submission_records = OrderedDict()
         self._submission_threads = {}
+        self._submission_fence_lock = threading.RLock()
+        self._stopped_submission_ids = set()
+        self._submission_admission_paused = False
 
     def _on_voice_press(self) -> None:
         # Bare fixtures initialize lazily; production creates the gate at startup.
@@ -353,7 +356,15 @@ class ResidentCore:
                 self._submission_lock = threading.RLock()
                 self._submission_records = OrderedDict()
                 self._submission_threads = {}
+            if not hasattr(self, "_submission_fence_lock"):
+                self._submission_fence_lock = threading.RLock()
+                self._stopped_submission_ids = set()
+                self._submission_admission_paused = False
         return self._submission_lock
+
+    def _submission_is_stopped(self, request_id):
+        with self._submission_fence_lock:
+            return self._submission_admission_paused or request_id in self._stopped_submission_ids
 
     def _submit_text_v1(self, request, ack_type):
         from pluma.memory.activity import ActivityQuery, TaskRecord
@@ -367,6 +378,18 @@ class ResidentCore:
         digest = hashlib.sha256(request.text.encode("utf-8")).hexdigest()
         lock = self._submission_state()
         with lock:
+            # Once a stopped request has durable terminal history, the existing
+            # replay check is its fence. Reclaim those in-memory IDs on ordinary
+            # admission, never by doing database I/O in the priority STOP path.
+            with self._submission_fence_lock:
+                for stopped_id in list(self._stopped_submission_ids):
+                    record = self._submission_records.get(stopped_id)
+                    cap = record.get("capsule") if record is not None else None
+                    if cap is not None and cap.terminal_ready.is_set() and cap.terminal_persisted is True:
+                        self._stopped_submission_ids.discard(stopped_id)
+            if self._submission_is_stopped(request.request_id):
+                return ack(accepted=False, error_code="SUBMISSION_STOPPED",
+                           message="This submission was stopped or admission is paused.")
             previous = self._submission_records.get(request.request_id)
             if previous is not None:
                 if previous["digest"] != digest:
@@ -429,7 +452,24 @@ class ResidentCore:
             )
             self._submission_threads[capsule.task_id] = thread
             try:
-                thread.start()
+                # STOP never waits for the ordinary submission/history lock.
+                # Its short fence orders against the actual thread start.
+                with self._submission_fence_lock:
+                    fenced = self._submission_is_stopped(request.request_id)
+                    if not fenced:
+                        thread.start()
+                if fenced:
+                    self._submission_records.pop(request.request_id, None)
+                    self._submission_threads.pop(capsule.task_id, None)
+                    self.supervisor.stop_task(capsule.task_id)
+                    if capsule.terminal_ready.is_set():
+                        # A STOP may have finalized before insert_task returned.
+                        # Reassert its authoritative state after that insertion.
+                        self.ledger.finalize_task(capsule.task_id, final_state=capsule.state.value,
+                            completed_at=capsule.completed_at.isoformat(),
+                            stop_reason=capsule.cancellation_token.reason.value,
+                            error_code=None, entries=[item.model_dump() for item in capsule.cleanup_evidence])
+                    return ack(accepted=False, error_code="SUBMISSION_STOPPED", message="This submission was stopped before execution.")
             except Exception:
                 self._submission_records.pop(request.request_id, None)
                 self._submission_threads.pop(capsule.task_id, None)
@@ -542,7 +582,18 @@ class ResidentCore:
             ).model_dump(mode="json")
 
     def _stop_v1(self, request):
+        if request.submission_request_id is not None:
+            self._submission_state()
+            with self._submission_fence_lock:
+                if len(self._stopped_submission_ids) < 256:
+                    self._stopped_submission_ids.add(request.submission_request_id)
+                elif request.submission_request_id not in self._stopped_submission_ids:
+                    # Never evict a cancelled identity and accidentally admit it.
+                    # Capacity exhaustion pauses new admissions until restart.
+                    self._submission_admission_paused = True
         receipt = self.supervisor.request_stop(request.task_id).wire()
+        if getattr(self, "_submission_admission_paused", False):
+            receipt["message"] = "STOP acknowledged. Submission fence capacity is exhausted; new requests require a core restart."
         return {
             "protocol_version": 1,
             "message_type": "stop_ack",
@@ -587,6 +638,7 @@ class ResidentCore:
                     "message": "Current settings are unavailable."}
         values = {
             "request_id": request.request_id,
+            "submission_stop_fence": True,
             "text_hotkey": get(config, "agent", "text_hotkey"),
             "stop_hotkey": get(config, "agent", "stop_hotkey"),
             "voice_hotkey": get(config, "agent", "voice_hotkey", default="ctrl+alt+v"),
