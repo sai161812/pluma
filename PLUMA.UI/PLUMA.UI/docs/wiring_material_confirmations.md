@@ -3,7 +3,7 @@
 The existing native dark `RiskApprovalDialog` is connected to P15's typed
 confirmation contract. `MainWindow` owns one `ConfirmationController` and
 `NativeConfirmationPresenter` for the window lifetime. The dashboard's command
-entry remains disabled; enabling submission/STOP controls belongs to P17.
+entry is now connected by [P17's submission/STOP owner](wiring_command_submission.md).
 
 ## Delivery and ownership
 

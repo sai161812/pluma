@@ -32,7 +32,7 @@ explicitly queries while the shell is open and disposes its lifetime on close.
 | --- | --- | --- |
 | `submit_text` | `text` (1–4096 characters, nonblank) | `submission_ack`: accepted/refused, task identity |
 | `terminal_readback` | originating `request_id`, `task_id` | `terminal_readback`: pending/terminal, verification, persistence, residual facts |
-| `stop` | optional `task_id` (otherwise global) | `stop_ack`: existing evidence-bearing `pluma.stop.v1` receipt |
+| `stop` | optional `task_id` (otherwise global); optional `submission_request_id` only for global STOP | `stop_ack`: existing evidence-bearing `pluma.stop.v1` receipt |
 | `settings_query` | none | `settings_snapshot`: allowlisted effective configuration |
 | `history_query` | optional `task_id`, `limit` (1–100, default 25) | `history_reply`: recent tasks or one task with ordered actions; over-limit task history is refused |
 | `confirmation_query` | `client_id` | `confirmation_list`: client identity and its pending material operations |
@@ -44,6 +44,18 @@ The wire models are the exact field/type definitions. A fixed
 `protocol_error` is returned for invalid/unavailable requests without exposing
 raw exceptions or sensitive arguments. The existing legacy envelopes remain
 supported; new clients use the versioned catalog.
+
+## Submission STOP fence
+
+P17 adds a canonical `submission_request_id` fence to global STOP. It refuses
+late admission of that exact originating request, independently of ordinary
+submission/history I/O. Stopped IDs are bounded to 256; unresolved saturation
+pauses admission until restart instead of evicting a cancellation. Durable
+terminal replay checks permit safe reclamation. Settings advertise
+`submission_stop_fence: true` only on a supporting resident; the C# dashboard
+adapter refuses submission when it is absent/false. Existing clients may omit
+the optional field. A fence cannot be combined with task-scoped STOP. See
+[P17 E86](p17_command_submission.md) for admission-race and native UI evidence.
 
 ## Material confirmation lifetime
 

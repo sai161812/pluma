@@ -1,5 +1,9 @@
 # E85 — P16 native material approval completion
 
+Follow-up: [P17 E86](p17_command_submission.md) now connects dashboard submission
+and independent STOP. The P17-not-started statements below describe this earlier
+P16 checkpoint, not the current handoff.
+
 ## Verdict
 
 P16's required gate passes: the existing native risk dialog now receives actual

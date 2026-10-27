@@ -18,7 +18,7 @@ Windows 11 acceptance are recorded in
 [ui_integration_review.md](ui_integration_review.md). See
 [popup_placement_refinement.md](popup_placement_refinement.md) before wiring.
 
-These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81-E84 complete the [v1 contract catalog](../../../docs/completion/p15_protocol_v1.md) for text-submit, STOP, terminal readback, settings/history, exact material confirmation and committed event query/replay. P16 E85 connects native material approval through a window-owned bounded query loop with exact material readback; action/event-consumer connections remain P17-P23 work; dashboard action entry stays disabled. No push stream or heartbeat exists: factual events use bounded request/readback batches, and only catalogued message/event names are implemented behavior.
+These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81-E84 complete the [v1 contract catalog](../../../docs/completion/p15_protocol_v1.md) for text-submit, STOP, terminal readback, settings/history, exact material confirmation and committed event query/replay. P16 E85 connects native material approval through a window-owned bounded query loop with exact material readback; P17 E86 connects guarded dashboard submission and independent STOP with verified terminal readback; broader event/voice/history/settings/health/perception connections remain P18-P23 work. No push stream or heartbeat exists: factual events use bounded request/readback batches, and only catalogued message/event names are implemented behavior.
 
 ---
 
@@ -27,7 +27,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 1. Dashboard
 **Purpose:** Primary command entry and live task view.  
 **Data/Actions:** Text input bar, active task state badge, current route badge (FAST/SMART/DEEP/SCREEN), live message feed, recent ledger entries, core health indicator.  
-**Wire:** `IPC → task_state`, `router.route()` result, `ActivityLedger` stream.
+**Wire:** P17 `CommandController` uses typed authenticated submission/priority STOP and persisted terminal readback; broader factual activity/feed consumption remains P18. See [command wiring](wiring_command_submission.md).
 
 ### 2. Settings
 **Purpose:** Configure LLM paths, hotkeys, audio emulation, tool policy overrides.  
@@ -142,7 +142,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 20. Cancellation Animation
 **Purpose:** Full visual feedback when STOP is triggered (hotkey or voice "stop").  
 **Data/Actions:** Animated "Stopping…" overlay, task ID, elapsed time at cancellation.  
-**Wire:** `CancellationToken.cancel()` event, `TaskState.STOPPING`.
+**Wire:** P17 MainWindow presents actual command STOP request/acknowledgement facts through the existing shared popup host. Cleanup/terminal evidence stays authoritative; broader hotkey/voice/event projection remains with the later surface wiring milestones.
 
 ### 21. Worker Termination Flash
 **Purpose:** Brief confirmation that the isolated tool worker process was killed.  

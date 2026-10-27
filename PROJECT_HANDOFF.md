@@ -1,6 +1,47 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P16 native material approval E85
+## Current checkpoint: 2026-10-27, P17 dashboard submission and priority STOP E86
+
+**P17's required gate is complete.** Enter/Run now submits one typed request
+through the shared backend. The shell owns one command controller; duplicates
+are blocked, unknown writes are never replayed, and request/task identity plus
+persisted verification/residual readback govern results. STOP runs independently
+of execute replies and UI presentation; request-ID fencing prevents late
+admission after cancellation. [E86](docs/completion/p17_command_submission.md)
+and the [wiring contract](PLUMA.UI/PLUMA.UI/docs/wiring_command_submission.md)
+record exact checks and boundaries.
+
+- Clean starting/recovery commit: `af855cb97a1571effd22f9aca8f67d144dc383c0`,
+  identical tracked tree to completed P16 `8330955`. Reused the preserved P17
+  source after review; no branch switch, merge, reset or force push.
+- Verified all 23 recorded E80 source/test hashes against the current files;
+  existing P00–P15 scoped evidence and owner-approved physical limits remain.
+  Fresh pre-edit **191 Python / 117 authenticated IPC** prerequisites passed.
+- Reproduced the missing queued-submission fence: **3 failed / 5 passed** before,
+  **8 passed** after. Final affected Python **199 passed in 24.65s**; additional
+  raw audit/owned worker/undo/inert-power **100 passed in 26.81s**. No skips/xfails.
+- Native authenticated IPC **138 checks** and actual WinUI **95 checks** pass
+  against real production orchestration/registry/verification and an owned WAL
+  ledger. Fixture routing/planner waits and lost replies are explicitly injected;
+  no personal desktop/model/microphone/power/UAC operation ran.
+- Native popup **675**, formatting **195**, layout **64,537**, surface contracts
+  **30**, visualizer **15** and **33 compiled-XAML copy scans** pass. Three
+  builds have zero warnings/errors. Dark fixture renders were inspected.
+  PowerShell 7 was absent, so its combined wrapper did not run; every constituent
+  gate above ran individually, without changing security policy.
+- Tested implementation: `fc552ee04f152644da43da68a215141541185528`.
+  Full logs/build hashes remain ignored under `output/p17-authorized-*`.
+  Close drains UI observation/approval leases and does not claim backend STOP;
+  use Stop to cancel accepted work. Native policy/undo remain authoritative.
+
+No P17 gate packets remain. Ready for independent Sol review; approval is not
+assumed. **P18 is next and has not started.** Broader live notifications,
+voice/history/settings/health/perception wiring and later scenario, physical,
+performance, security and release acceptance remain with their assigned owners.
+Recovery instructions are in E86; preserve existing recovery branches. Do not
+advance or merge automatically.
+
+## Previous checkpoint: 2026-10-27, P16 native material approval E85
 
 **P16's required gate is complete.** The existing native risk dialog is wired
 through P15 to actual pending policy calls. It displays the deterministic

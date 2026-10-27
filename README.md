@@ -6,11 +6,11 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-10-26):** P00-P11 is merged into main; P12 semantic screen control and targeted OCR are implemented and audited on `p12-preparation`. [E69](docs/completion/p12_final_audit.md) records the gate and current test results. Text action entry and later integration/release acceptance remain open. P13 is in progress: [E70](docs/completion/p13_e01_tool_subset.md) fixes the Downloads file/browser planner-schema selection defect; inference ownership/STOP and real-model acceptance remain open. See [the handoff](PROJECT_HANDOFF.md) for the next bounded packet.
+> **Current state (2026-10-27):** P00?P17 covered implementation gates are recorded complete within their documented scope. Dashboard typed command submission, independent priority STOP and native material approval are connected. [E86](docs/completion/p17_command_submission.md) records fresh Python/IPC/native UI evidence and recovery; earlier owner-approved physical limits and later full scenario/performance/security/release gates remain open. P18 live-state/notification wiring is next and has not started. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
-Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production action, voice, events, history and settings connections remain in progress.
+Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP and material approval are connected; visible voice, broader events, history and settings connections remain in progress.
 
 A real interaction recording should be added here once that UI path is complete. Until then, the repository evidence is the implementation, tests, release artifacts, and verification logs rather than a mocked interface.
 
