@@ -13,6 +13,9 @@ namespace PLUMA.UI
             nameof(Text), typeof(string), typeof(PopupMessageText), new PropertyMetadata(string.Empty, OnTextChanged));
         public static readonly DependencyProperty FollowTailProperty = DependencyProperty.Register(
             nameof(FollowTail), typeof(bool), typeof(PopupMessageText), new PropertyMetadata(false));
+        public static readonly DependencyProperty PreserveLiteralTextProperty = DependencyProperty.Register(
+            nameof(PreserveLiteralText), typeof(bool), typeof(PopupMessageText), new PropertyMetadata(false,
+                (sender, args) => ((PopupMessageText)sender).RefreshText()));
         public static readonly DependencyProperty IsTextSelectionEnabledProperty = DependencyProperty.Register(
             nameof(IsTextSelectionEnabled), typeof(bool), typeof(PopupMessageText), new PropertyMetadata(false,
                 (sender, args) => ((PopupMessageText)sender)._message.IsTextSelectionEnabled = (bool)args.NewValue));
@@ -63,6 +66,7 @@ namespace PLUMA.UI
 
         public string Text { get => (string)GetValue(TextProperty); set => SetValue(TextProperty, value); }
         public bool FollowTail { get => (bool)GetValue(FollowTailProperty); set => SetValue(FollowTailProperty, value); }
+        public bool PreserveLiteralText { get => (bool)GetValue(PreserveLiteralTextProperty); set => SetValue(PreserveLiteralTextProperty, value); }
         public bool IsTextSelectionEnabled { get => (bool)GetValue(IsTextSelectionEnabledProperty); set => SetValue(IsTextSelectionEnabledProperty, value); }
         public string DisplayText => _message.Text;
         internal ScrollViewer MessageScroll => _scroll;
@@ -73,9 +77,14 @@ namespace PLUMA.UI
             var control = (PopupMessageText)sender;
             bool atEnd = control._scroll.ScrollableHeight - control._scroll.VerticalOffset < 2;
             control._followPending = control.FollowTail && (control._followPending || atEnd);
-            control._message.Text = PopupText.Message(args.NewValue as string);
-            AutomationProperties.SetName(control._scroll, control._message.Text);
+            control.RefreshText();
             // Native layout coalesces rapid partial transcripts; scrolling waits for the new extent.
+        }
+        private void RefreshText()
+        {
+            if (_message is null) return;
+            _message.Text = PreserveLiteralText ? Text : PopupText.Message(Text);
+            AutomationProperties.SetName(_scroll, _message.Text);
         }
     }
 }

@@ -49,6 +49,7 @@ internal static class Program
 
     private static async Task RunAsync()
     {
+        await ConfirmationControllerChecks.RunAsync(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))
             Check((await client.GetStatusAsync(default)).Failure == CoreConnectionFailure.CredentialsUnavailable && !File.Exists(absent),
@@ -406,6 +407,7 @@ internal static class Program
         cursor.Apply(ahead.Response!);
         Check(cursor.RequiresSnapshot && cursor.Sequence == ahead.Response!.LastSequence,
             "the consumer honors reset readback even when saved cursor was ahead of the journal");
+        await ConfirmationControllerChecks.RunNativeAsync(client, Check);
     }
 
     private static async Task Exchange(string reply, CoreConnectionFailure expected, Func<CoreStatusResult, bool>? additional, string label, string mode = "normal", string? key = null)

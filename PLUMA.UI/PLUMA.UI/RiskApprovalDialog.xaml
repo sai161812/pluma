@@ -41,6 +41,9 @@
             </StackPanel>
         </Grid>
 
+        <local:PopupMessageText x:Name="MaterialEffectText" PreserveLiteralText="True"
+                               FontFamily="Segoe UI Variable" FontSize="14" MaxHeight="128" Visibility="Collapsed" />
+
         <StackPanel Spacing="5">
             <TextBlock Text="Risk level"
                        FontFamily="Segoe UI Variable"
@@ -60,6 +63,7 @@
                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                     CornerRadius="4">
                 <local:PopupMessageText x:Name="SanitizedArgumentsText"
+                           PreserveLiteralText="True"
                            FontFamily="Segoe UI Variable"
                            FontSize="13" MaxHeight="160" />
             </Border>

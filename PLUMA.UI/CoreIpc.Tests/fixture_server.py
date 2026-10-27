@@ -57,17 +57,20 @@ if mode == "versioned":
     supervisor = TaskSupervisor(ledger=ledger)
     broker = IpcConfirmationBroker(supervisor.get_task, timeout_s=3)
     registry = ToolRegistry(policy_engine=PolicyEngine(confirmation_contract=broker))
-    owned_read = Path(sys.argv[2]) / f"p15-owned-read-{os.getpid()}.txt"
+    owned_read = Path(sys.argv[2]) / f"p16_budget_预算_{os.getpid()}.txt"
     with owned_read.open("x", encoding="utf-8") as fixture_file:
         fixture_file.write("PLUMA owned P15 fixture")
 
     def read_owned_fixture(args, context):
+        if args != {"path": str(owned_read)}:
+            raise RuntimeError("Only the exact owned fixture path is permitted.")
         executed_calls.append(context.task_id)
         return ToolResult.success("fixture_read", {"length": len(owned_read.read_text(encoding="utf-8"))},
                                   "Read owned fixture.", verified=False)
 
     registry.register(ToolSpec(name="fixture_read", description="Read an owned fixture after material approval",
-        args_schema={"type": "object", "additionalProperties": False}, risk_class=RiskClass.HIGH, timeout_s=5,
+        args_schema={"type": "object", "properties": {"path": {"type": "string"}},
+                     "required": ["path"], "additionalProperties": False}, risk_class=RiskClass.HIGH, timeout_s=5,
         # This inert read fixture deliberately uses the owned thread path so
         # parent-side entry counters can prove that denied calls never enter.
         executor=lambda args, context: read_owned_fixture(args, context),
@@ -84,7 +87,7 @@ if mode == "versioned":
                 capsule.cancellation_token.raise_if_cancelled()
             success = True
             if request.text == "fixture:approval":
-                result = registry.execute("fixture_read", {}, task_context=capsule, ledger=ledger)
+                result = registry.execute("fixture_read", {"path": str(owned_read)}, task_context=capsule, ledger=ledger)
                 success = result.ok and result.verified
             final = TaskState.SUCCEEDED if success else TaskState.FAILED
             supervisor.finalize_task(capsule.task_id, final)

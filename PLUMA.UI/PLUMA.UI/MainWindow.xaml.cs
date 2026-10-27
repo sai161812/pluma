@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
@@ -28,6 +29,8 @@ namespace PLUMA.UI
         private readonly CoreIpcClient _coreStatus = new();
         private readonly CancellationTokenSource _healthLifetime = new();
         private bool _closed;
+        private ConfirmationController? _confirmations;
+        private Task _confirmationTask = Task.CompletedTask;
         public PopupStackHost Popups
         {
             get
@@ -49,9 +52,17 @@ namespace PLUMA.UI
 
             // Navigate to the default page (Dashboard)
             NavigateDashboard();
+            ContentFrame.Loaded += (_, _) =>
+            {
+                if (_closed || _confirmations is not null) return;
+                _confirmations = new ConfirmationController(new CoreConfirmationClient(_coreStatus),
+                    new NativeConfirmationPresenter(() => ContentFrame.XamlRoot));
+                _confirmationTask = _confirmations.RunAsync(_healthLifetime.Token);
+            };
             Closed += async (_, _) =>
             {
                 _closed = true; _healthLifetime.Cancel(); _popups?.Dispose();
+                await _confirmationTask;
                 await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
             };
         }

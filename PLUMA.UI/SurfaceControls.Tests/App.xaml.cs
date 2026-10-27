@@ -209,6 +209,7 @@ namespace PLUMA.UI.Tests
             Check(showing.Status == Windows.Foundation.AsyncStatus.Started, "failure stays visible while host verifies recovery");
             dialog.Hide();
             await showing;
+            await NativeConfirmationChecks.RunAsync(root, Check);
         }
 
         private sealed class FakeCoreStatusClient : ICoreStatusClient
