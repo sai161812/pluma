@@ -1,6 +1,34 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P00-P14 audit closure E80
+## Current checkpoint: 2026-10-27, P15 versioned request slice E81
+
+**P15 is in progress.** E81 implements a bounded version 1 text submit,
+independent STOP and terminal-readback contract. Python returns a correlated
+acknowledgement while a ResidentCore-owned task executes; duplicate IDs are
+safe within the bounded resident cache and durable IDs are refused after
+restart. Readback uses the TaskSupervisor capsule, with a limited factual
+ledger projection after restart. C# now has matching strict
+typed wire models, but production C# transport/UI submission is not connected.
+See [E81](docs/completion/p15_e81_versioned_requests.md) for exact files,
+commands, results and limits.
+
+- Focused Python IPC/STOP/shutdown/resident regressions: **104 passed**. C# IPC
+  suite: **49 passed**. The stale resident STOP assertion now checks the
+  existing evidence-bearing `pluma.stop.v1` response fields.
+- Packet fixtures used in-memory history and deterministic fake executors; no
+  real tools/models or personal state were touched. C# contract tests and the
+  Python handler were verified independently; authenticated C# versioned
+  request/response transport remains unverified. STOP under native-pipe
+  saturation remains unverified; the legacy server has no reserved STOP slot.
+- Recovery point before this packet: `fcd22c3513a68762b56f6d8b0852178c2b073c70`
+  on `p12-preparation`.
+
+Next safe packet: connect the typed C# models through the existing authenticated
+Windows message-mode pipe and prove cross-language submit/ack/readback/STOP
+round trips. Then continue P15's confirmation, settings/history and factual
+event/reconnect contracts. P15 is not complete; do not start P16 automatically.
+
+## Previous checkpoint: 2026-10-27, P00-P14 audit closure E80
 
 **The identified audit findings A1-A6 are repaired and the assigned P00-P14
 backend gates are closed with the existing recorded owner-approved physical

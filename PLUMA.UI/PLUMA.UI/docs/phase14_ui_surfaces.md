@@ -18,8 +18,7 @@ Windows 11 acceptance are recorded in
 [ui_integration_review.md](ui_integration_review.md). See
 [popup_placement_refinement.md](popup_placement_refinement.md) before wiring.
 
-All surfaces wire directly to the resident core via `pluma.core.ipc` (named pipe / JSON-RPC).  
-No surface requires polling — all state changes are event-driven from the core.
+These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81 adds backend versioned text-submit, STOP and terminal-readback contracts plus C# wire models, but the production C# client does not yet send them. No push stream or heartbeat exists; future event references below are not implemented behavior.
 
 ---
 
@@ -157,17 +156,17 @@ No surface requires polling — all state changes are event-driven from the core
 ### 22. Live Message Feed
 **Purpose:** Scrolling real-time log of everything PLUMA says it is doing.  
 **Data/Actions:** `ToolResult.factual_message` strings, orchestrator status lines, timestamps.  
-**Wire:** All IPC `tool_result` and `status` events.
+**Future wire contract (P18):** factual task/tool events. No live event subscription is implemented yet.
 
 ### 23. Core Health Indicator
 **Purpose:** Small ambient indicator showing the resident core is connected.  
 **Data/Actions:** Green/red dot, "Connected" / "Disconnected", IPC ping latency.  
-**Wire:** `pluma/core/ipc.py` heartbeat.
+**Current wire:** status on dashboard load and explicit refresh. There is no heartbeat or continuously updated health claim.
 
 ### 24. Toast Notification
 **Purpose:** One-line non-blocking info / warning pop-in.  
 **Data/Actions:** Short message, severity level (info / warning / error), auto-dismiss.  
-**Wire:** Generic IPC notification event.
+**Future wire contract (P18):** a factual notification event. No generic IPC notification event is currently implemented.
 
 ### 25. Critical Error Dialog
 **Purpose:** Blocking dialog on fatal failures — IPC down, unhandled crash.  

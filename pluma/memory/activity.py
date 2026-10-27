@@ -516,6 +516,14 @@ class ActivityQuery:
         )
         return dict(row) if row else None
 
+    def task_by_request_id(self, request_id: str) -> Optional[Dict[str, Any]]:
+        """Return the newest task row for a request ID, for IPC replay refusal."""
+        row = self._db.execute_read_one(
+            "SELECT * FROM tasks WHERE request_id = ? ORDER BY created_at DESC LIMIT 1",
+            (request_id,),
+        )
+        return dict(row) if row else None
+
     # Alias for compatibility
     get_task = task_by_id
 

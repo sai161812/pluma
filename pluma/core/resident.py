@@ -7,8 +7,10 @@ runtime lifecycle, task state. Must not load heavy ML at startup."
 from __future__ import annotations
 
 import logging
+import hashlib
 import sys
 import threading
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from pluma.config.loader import get, load_config
@@ -89,6 +91,9 @@ class ResidentCore:
         self._entry_gate = WorkGate()
         self._voice_lock = threading.Lock()
         self._voice_session = None
+        self._submission_lock = threading.RLock()
+        self._submission_records = OrderedDict()
+        self._submission_threads = {}
 
     def _on_voice_press(self) -> None:
         # Bare fixtures initialize lazily; production creates the gate at startup.
@@ -225,6 +230,8 @@ class ResidentCore:
 
     def _admittedhandle_ipc_command(self, req: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming IPC commands."""
+        if "protocol_version" in req or "message_type" in req:
+            return self._handle_versioned_ipc(req)
         cmd = req.get("command")
 
         # 1. Execute text command
@@ -294,6 +301,239 @@ class ResidentCore:
             return {"status": "ok", "tasks": tasks}
 
         return {"status": "error", "message": f"Unknown command: {cmd}"}
+
+    def _handle_versioned_ipc(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        from pluma.core.ipc_contracts import (
+            ProtocolErrorV1, SubmissionAckV1,
+            StopRequestV1, SubmitTextV1, TerminalReadbackRequestV1, parse_versioned_request,
+        )
+        try:
+            request = parse_versioned_request(payload)
+        except ValueError as exc:
+            code = str(exc) if str(exc) in {
+                "UNSUPPORTED_PROTOCOL_VERSION", "INVALID_REQUEST", "UNKNOWN_MESSAGE_TYPE"
+            } else "INVALID_REQUEST"
+            return ProtocolErrorV1(
+                error_code=code,
+                message={
+                    "UNSUPPORTED_PROTOCOL_VERSION": "This protocol version is not supported.",
+                    "INVALID_REQUEST": "The request is invalid.",
+                    "UNKNOWN_MESSAGE_TYPE": "The message type is not supported.",
+                }[code],
+            ).model_dump(mode="json")
+        if isinstance(request, SubmitTextV1):
+            return self._submit_text_v1(request, SubmissionAckV1)
+        if isinstance(request, TerminalReadbackRequestV1):
+            return self._terminal_readback_v1(request)
+        if isinstance(request, StopRequestV1):
+            return self._stop_v1(request)
+        return ProtocolErrorV1(error_code="UNKNOWN_MESSAGE_TYPE",
+            message="The message type is not supported.").model_dump(mode="json")
+
+    def _submission_state(self):
+        # Direct fixtures construct ResidentCore without __init__; initialize
+        # the same bounded, owned state lazily and atomically for them.
+        with _VOICE_INIT_LOCK:
+            if not hasattr(self, "_submission_lock"):
+                self._submission_lock = threading.RLock()
+                self._submission_records = OrderedDict()
+                self._submission_threads = {}
+        return self._submission_lock
+
+    def _submit_text_v1(self, request, ack_type):
+        from pluma.memory.activity import ActivityQuery, TaskRecord
+
+        ack = lambda **values: ack_type(
+            request_id=request.request_id, **values
+        ).model_dump(mode="json")
+        if self.orchestrator is None or self.ledger is None:
+            return ack(accepted=False, error_code="CORE_UNAVAILABLE",
+                       message="The request could not be accepted by the core.")
+        digest = hashlib.sha256(request.text.encode("utf-8")).hexdigest()
+        lock = self._submission_state()
+        with lock:
+            previous = self._submission_records.get(request.request_id)
+            if previous is not None:
+                if previous["digest"] != digest:
+                    return ack(accepted=False, error_code="REQUEST_ID_REUSED",
+                               message="The request ID is already bound to different text.")
+                return ack(accepted=True, task_id=previous["task_id"],
+                           message="The request was already accepted.")
+            prior_row = ActivityQuery(self.ledger._db).task_by_request_id(request.request_id)
+            if prior_row is not None:
+                return ack(accepted=False, error_code="REQUEST_ID_REPLAY",
+                           message="This request ID was used before; inspect its task before retrying.")
+            if len(self._submission_records) >= 256:
+                for key, record in list(self._submission_records.items()):
+                    if record.get("terminal") is not None:
+                        self._submission_records.pop(key)
+                        self._submission_threads.pop(record["task_id"], None)
+                        if len(self._submission_records) < 256:
+                            break
+                if len(self._submission_records) >= 256:
+                    return ack(accepted=False, error_code="BUSY",
+                               message="The core has no submission capacity.")
+            for task_id, thread in list(self._submission_threads.items()):
+                if not thread.is_alive():
+                    self._submission_threads.pop(task_id, None)
+            running = sum(thread.is_alive() for thread in self._submission_threads.values())
+            if running >= 4:
+                return ack(accepted=False, error_code="BUSY",
+                           message="The core has no submission capacity.")
+            try:
+                capsule = self.supervisor.create_task_capsule(request_id=request.request_id)
+                from pluma.core.request import InputMode, PlumaRequest
+                task_request = PlumaRequest(
+                    request_id=request.request_id, input_mode=InputMode.TEXT,
+                    text=request.text,
+                )
+                self.ledger.insert_task(TaskRecord(
+                    task_id=capsule.task_id, request_id=request.request_id,
+                    input_mode="text", command_text=request.text,
+                    created_at=task_request.created_at.isoformat(),
+                ))
+            except Exception:
+                if "capsule" in locals():
+                    try:
+                        self.supervisor.fail_task_with_rollback(capsule.task_id)
+                        from pluma.core.task_supervisor import TaskState
+                        self.supervisor.finalize_task(capsule.task_id, TaskState.FAILED)
+                    except Exception:
+                        logger.error("Rejected IPC task cleanup remains unverified.")
+                return ack(accepted=False, error_code="ADMISSION_FAILED",
+                           message="The core could not safely admit the request.")
+            record = {"digest": digest, "task_id": capsule.task_id,
+                      "request_id": request.request_id, "capsule": capsule,
+                      "terminal": None, "route": None, "duration_ms": None,
+                      "message": "Execution is in progress."}
+            self._submission_records[request.request_id] = record
+            thread = threading.Thread(
+                target=self._run_text_submission_v1,
+                args=(task_request, capsule, request.request_id),
+                name="PlumaSubmittedTask-" + capsule.task_id[:8], daemon=True,
+            )
+            self._submission_threads[capsule.task_id] = thread
+            try:
+                thread.start()
+            except Exception:
+                self._submission_records.pop(request.request_id, None)
+                self._submission_threads.pop(capsule.task_id, None)
+                try:
+                    self.supervisor.fail_task_with_rollback(capsule.task_id)
+                    from pluma.core.task_supervisor import TaskState
+                    self.supervisor.finalize_task(capsule.task_id, TaskState.FAILED)
+                except Exception:
+                    logger.error("Rejected IPC task cleanup remains unverified.")
+                return ack(accepted=False, error_code="ADMISSION_FAILED",
+                           message="The core could not safely start the accepted request.")
+        return ack(accepted=True, task_id=capsule.task_id,
+                   message="The request was accepted for execution.")
+
+    def _run_text_submission_v1(self, request, capsule, request_id: str) -> None:
+        try:
+            result = self.orchestrator.execute(request, capsule=capsule)
+            projection = {
+                "terminal": bool(capsule.terminal_ready.is_set()),
+                "final_state": str(result.final_state),
+                "completion_verified": bool(result.completion_verified),
+                "terminal_persisted": result.terminal_persisted,
+                "has_residual": bool(result.has_residual),
+                "route": result.route.value if hasattr(result.route, "value") else str(result.route),
+                "message": str(result.user_message or "Task result is available."),
+                "duration_ms": float(result.duration_ms),
+            }
+        except Exception:
+            logger.warning("Versioned IPC task did not return a result.")
+            projection = None
+            try:
+                self.supervisor.fail_task_with_rollback(capsule.task_id)
+                from pluma.core.task_supervisor import TaskState
+                capsule = self.supervisor.finalize_task(capsule.task_id, TaskState.FAILED)
+            except Exception:
+                logger.error("Versioned IPC task cleanup remains unverified.")
+        lock = self._submission_state()
+        with lock:
+            record = self._submission_records.get(request_id)
+            if record is None:
+                return
+            record["terminal"] = projection
+            record["capsule"] = capsule
+            if projection is None:
+                record["message"] = capsule.terminal_summary()
+            if projection is not None:
+                record["route"] = projection["route"]
+                record["duration_ms"] = projection["duration_ms"]
+                record["message"] = projection["message"]
+
+    def _terminal_readback_v1(self, request):
+        from pluma.core.ipc_contracts import TerminalReadbackV1
+        from pluma.memory.activity import ActivityQuery
+        lock = self._submission_state()
+        with lock:
+            record = self._submission_records.get(request.request_id)
+            if record is None:
+                row = ActivityQuery(self.ledger._db).task_by_request_id(request.request_id)
+                if row is None or row["task_id"] != request.task_id:
+                    return {"protocol_version": 1, "message_type": "protocol_error",
+                            "error_code": "TASK_NOT_FOUND",
+                            "message": "No task matches this request and task ID."}
+                state = row.get("final_state") or "CREATED"
+                terminal = state in {"SUCCEEDED", "FAILED", "STOPPED", "STOPPED_WITH_RESIDUAL", "ABORTED_BY_CRASH"}
+                residual = state == "STOPPED_WITH_RESIDUAL"
+                message = ("Task outcome was read from saved history; detailed verification is unavailable in this session."
+                           if terminal else "Execution status was read from saved history.")
+                return TerminalReadbackV1(
+                    request_id=request.request_id, task_id=request.task_id,
+                    terminal=terminal, final_state=state, completion_verified=False,
+                    terminal_persisted=True if terminal else None,
+                    has_residual=residual, route=row.get("route"), message=message,
+                    duration_ms=None,
+                ).model_dump(mode="json")
+            if record["task_id"] != request.task_id:
+                return {"protocol_version": 1, "message_type": "protocol_error",
+                        "error_code": "TASK_NOT_FOUND",
+                        "message": "No task matches this request and task ID."}
+            capsule = record.get("capsule")
+            result = record.get("terminal")
+            if capsule is not None:
+                ready = bool(capsule.terminal_ready.is_set())
+                details = capsule.outcome_details()
+                terminal = ready
+                final_state = capsule.state.value
+                verified = bool(result["completion_verified"]) if result is not None else False
+                persisted = details["terminal_persisted"]
+                residual = bool(details["has_residual"])
+                message = capsule.terminal_summary() if ready else "Execution is in progress."
+                route = record.get("route")
+                duration = record.get("duration_ms")
+            elif result is not None:
+                terminal = bool(result["terminal"])
+                final_state = result["final_state"]
+                verified = bool(result["completion_verified"])
+                persisted = result["terminal_persisted"]
+                residual = bool(result["has_residual"])
+                message = result["message"]
+                route = result["route"]
+                duration = result["duration_ms"]
+            else:
+                terminal, final_state, verified, persisted, residual = False, "CREATED", False, None, False
+                message, route, duration = "Execution is in progress.", None, None
+            return TerminalReadbackV1(
+                request_id=request.request_id, task_id=request.task_id,
+                terminal=terminal, final_state=final_state,
+                completion_verified=verified, terminal_persisted=persisted,
+                has_residual=residual, route=route, message=message,
+                duration_ms=duration,
+            ).model_dump(mode="json")
+
+    def _stop_v1(self, request):
+        receipt = self.supervisor.request_stop(request.task_id).wire()
+        return {
+            "protocol_version": 1,
+            "message_type": "stop_ack",
+            "request_id": request.request_id,
+            **receipt,
+        }
 
     def _run_crash_recovery(self) -> None:
         """Scan for unfinished tasks from previous run and clean up.
@@ -385,6 +625,8 @@ class ResidentCore:
         self.cancel_capture()
         if self.voice_enabled and self.voice_activation is not None:
             self.voice_activation.stop()
+        # Latch task cancellation before draining IPC or resident-owned workers.
+        self.supervisor.stop_all_active_tasks()
         if sys.platform == "win32" and self._hotkey_thread and self._hotkey_thread.is_alive():
             import ctypes
             user32 = ctypes.WinDLL("user32")
@@ -395,6 +637,12 @@ class ResidentCore:
         self.ipc.stop()
         if not self._entry_gate.wait_idle(1.0):
             raise RuntimeError("Resident handlers remain active.")
+        with self._submission_state():
+            submission_threads = list(self._submission_threads.values())
+        for thread in submission_threads:
+            thread.join(timeout=1.0)
+            if thread.is_alive():
+                raise RuntimeError("Submitted task owner remains active.")
         self.cancel_capture()  # an admitted press may have crossed the first cancel
         if self.voice_enabled and self.voice_pipeline is not None and hasattr(self.voice_pipeline, "lifecycle"):
             lifecycle = self.voice_pipeline.lifecycle

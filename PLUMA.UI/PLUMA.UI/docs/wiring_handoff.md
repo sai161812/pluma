@@ -8,17 +8,16 @@ See [cleanup/recovery](../../../docs/workspace_cleanup.md) and the
 [completion prompts](../../../PLUMA_COMPLETION_PROMPTS.md). Earlier workspace
 paths and branch-state descriptions below are historical preparation records.
 
-**Current progress:** the owner authorized wiring after this preparation.
-Step 1 now implements authenticated read-only dashboard status; see
-[the implementation and checks](wiring_status_connection.md) and
-[the pushed recovery checkpoint](wiring_recovery.md). A subsequent
-[bounded backend audit](backend_wiring_audit.md) reproduced nine findings;
-273 existing regressions and four audit controls pass, while eleven required
-behavior assertions fail. Keep action entry disabled until the recorded STOP,
-cleanup, voice/shutdown and credential issues are addressed. This audit does
-not certify the whole backend. Full wiring and physical/release acceptance
-remain open. The original preparation below is
-retained with its original baseline and branch state.
+**Current progress (2026-10-27):** dashboard status remains read-only and is
+refreshed on load or explicit user action. P15 E81 adds Python versioned
+submit/STOP/readback contracts and matching C# wire models; production C# does
+not yet send those messages. See [E81](../../../docs/completion/p15_e81_versioned_requests.md).
+The historic backend audit and branch/worktree descriptions below are retained
+as preparation records; their failure counts are superseded by the later P00-P14
+audit closures. Action entry remains disabled. No JSON-RPC dispatcher, heartbeat
+or live push event stream is implemented. Confirmation, settings/history,
+cross-language request transport, UI action wiring and P15/P16+ acceptance
+remain open.
 
 Prepared 2026-10-19 before wiring. This is repository preparation and a source
 inventory, not an implementation of the IPC adapter or a release-completion claim.

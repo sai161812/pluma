@@ -4,6 +4,7 @@ using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using PLUMA.UI;
 
 internal static class Program
@@ -63,6 +64,35 @@ internal static class Program
         Check(CoreIpcClient.ParseStatus(Encoding.UTF8.GetBytes(Healthy), 1).TaskLabel == "2 active tasks", "status projection uses supplied task count");
         Check(CoreStatusResult.Failed(CoreConnectionFailure.Timeout).HealthLabel == "Disconnected", "failure projection clears a previous connected state");
 
+        string requestId = "9fb62f64-4eb4-42b3-b268-8c586a90da12";
+        string taskId = "a30d93be-1110-4d54-9fd2-4bf03f9d595c";
+        var submit = new CoreRequestProtocol.SubmitText(requestId, "get system status").ToMessage();
+        using (var submitJson = JsonDocument.Parse(submit))
+            Check(submitJson.RootElement.GetProperty("protocol_version").GetInt32() == 1 &&
+                submitJson.RootElement.GetProperty("message_type").GetString() == "submit_text" &&
+                submitJson.RootElement.GetProperty("request_id").GetString() == requestId,
+                "C# encodes the versioned text request with stable correlation");
+        using (var stopJson = JsonDocument.Parse(new CoreRequestProtocol.StopRequest(requestId, taskId).ToMessage()))
+            Check(stopJson.RootElement.GetProperty("message_type").GetString() == "stop" &&
+                stopJson.RootElement.GetProperty("task_id").GetString() == taskId,
+                "C# encodes STOP as an independent correlated request");
+        try { _ = new CoreRequestProtocol.SubmitText(requestId, new string('x', 4097)).ToMessage(); throw new Exception("Oversized submit accepted."); }
+        catch (ArgumentException) { Check(true, "C# refuses text beyond the shared protocol bound"); }
+        try { CoreRequestProtocol.SubmissionAck.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":1,\"message_type\":\"submission_ack\",\"request_id\":\"{requestId}\",\"accepted\":true,\"task_id\":null,\"error_code\":null,\"message\":\"bad\"}}")); throw new Exception("Inconsistent ack accepted."); }
+        catch (JsonException) { Check(true, "C# refuses acknowledgements that claim acceptance without a task"); }
+        var validAck = CoreRequestProtocol.SubmissionAck.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":1,\"message_type\":\"submission_ack\",\"request_id\":\"{requestId}\",\"accepted\":true,\"task_id\":\"{taskId}\",\"error_code\":null,\"message\":\"accepted\"}}"));
+        Check(validAck.Accepted && validAck.TaskId == taskId, "C# parses correlated accepted acknowledgement");
+        try { CoreRequestProtocol.SubmissionAck.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":1,\"message_type\":\"submission_ack\",\"request_id\":\"{requestId}\",\"request_id\":\"{requestId}\",\"accepted\":true,\"task_id\":\"{taskId}\",\"error_code\":null,\"message\":\"accepted\"}}")); throw new Exception("Duplicate ack field accepted."); }
+        catch (JsonException) { Check(true, "C# rejects duplicate protocol fields"); }
+        try { CoreRequestProtocol.SubmissionAck.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":2,\"message_type\":\"submission_ack\",\"request_id\":\"{requestId}\",\"accepted\":true,\"task_id\":\"{taskId}\",\"error_code\":null,\"message\":\"accepted\"}}")); throw new Exception("Wrong version accepted."); }
+        catch (JsonException) { Check(true, "C# rejects unsupported protocol versions"); }
+        var pending = CoreRequestProtocol.TerminalReadback.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":1,\"message_type\":\"terminal_readback\",\"request_id\":\"{requestId}\",\"task_id\":\"{taskId}\",\"terminal\":false,\"final_state\":\"RUNNING\",\"completion_verified\":false,\"terminal_persisted\":null,\"has_residual\":false,\"route\":null,\"message\":\"Execution is in progress.\",\"duration_ms\":null}}"));
+        Check(!pending.Terminal && !pending.CompletionVerified, "C# preserves pending state without claiming success");
+        var stopAck = CoreRequestProtocol.StopAck.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":1,\"message_type\":\"stop_ack\",\"request_id\":\"{requestId}\",\"status\":\"ok\",\"stop_contract\":\"pluma.stop.v1\",\"message\":\"STOP request processed.\",\"error_code\":null,\"tasks\":[],\"stopped_tasks\":[],\"stopped_count\":0,\"latch_acknowledged_count\":0}}"));
+        Check(stopAck.RequestId == requestId && stopAck.StoppedCount == 0, "C# parses STOP receipt without inferring task completion");
+        try { CoreRequestProtocol.TerminalReadback.Parse(Encoding.UTF8.GetBytes($"{{\"protocol_version\":1,\"message_type\":\"terminal_readback\",\"request_id\":\"{requestId}\",\"task_id\":\"{taskId}\",\"terminal\":false,\"final_state\":\"RUNNING\",\"completion_verified\":true,\"terminal_persisted\":null,\"has_residual\":false,\"route\":null,\"message\":\"bad\",\"duration_ms\":null}}")); throw new Exception("Pending success accepted."); }
+        catch (JsonException) { Check(true, "C# rejects completion claims on pending work"); }
+
         await Exchange(Healthy, CoreConnectionFailure.None, result => result.Status is { Running: true, ActiveTasks: 2, VoiceEnabled: true }, "native message-mode status round trip");
         await Exchange(Healthy[..^1] + ",\"padding\":\"" + new string('x', 30000) + "\"}", CoreConnectionFailure.None,
             result => result.Status?.ActiveTasks == 2, "a native message larger than the read buffer is fully reassembled");
@@ -112,10 +142,10 @@ internal static class Program
         await using (var server = new LocalServer(PipeName(), Healthy, "stall"))
         {
             var client = new CoreIpcClient(Options(server.Name));
-            Task<CoreStatusResult>[] pending = Enumerable.Range(0, 4).Select(_ => client.GetStatusAsync(default)).ToArray();
+            Task<CoreStatusResult>[] pendingQueries = Enumerable.Range(0, 4).Select(_ => client.GetStatusAsync(default)).ToArray();
             Check((await client.GetStatusAsync(default)).Failure == CoreConnectionFailure.Busy, "concurrent status checks are bounded");
             await client.DisposeAsync();
-            foreach (var query in pending)
+            foreach (var query in pendingQueries)
             {
                 try { await query; throw new Exception("Disposed query completed as health."); }
                 catch (OperationCanceledException) { Check(true, "disposal cancels and awaits each owned query"); }
