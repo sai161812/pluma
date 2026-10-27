@@ -18,7 +18,7 @@ Windows 11 acceptance are recorded in
 [ui_integration_review.md](ui_integration_review.md). See
 [popup_placement_refinement.md](popup_placement_refinement.md) before wiring.
 
-These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81 adds backend versioned text-submit, STOP and terminal-readback contracts plus C# wire models, but the production C# client does not yet send them. No push stream or heartbeat exists; future event references below are not implemented behavior.
+These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81/E82 add versioned text-submit, STOP and terminal-readback contracts and authenticated C# client methods, but the dashboard does not invoke them and action entry remains disabled. No push stream or heartbeat exists; future event references below are not implemented behavior.
 
 ---
 

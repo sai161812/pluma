@@ -9,9 +9,10 @@ See [cleanup/recovery](../../../docs/workspace_cleanup.md) and the
 paths and branch-state descriptions below are historical preparation records.
 
 **Current progress (2026-10-27):** dashboard status remains read-only and is
-refreshed on load or explicit user action. P15 E81 adds Python versioned
-submit/STOP/readback contracts and matching C# wire models; production C# does
-not yet send those messages. See [E81](../../../docs/completion/p15_e81_versioned_requests.md).
+refreshed on load or explicit user action. P15 E81/E82 add Python versioned
+submit/STOP/readback contracts and authenticated C# transport methods; the
+dashboard does not invoke them. See [E81](../../../docs/completion/p15_e81_versioned_requests.md)
+and [E82](../../../docs/completion/p15_e82_authenticated_transport.md).
 The historic backend audit and branch/worktree descriptions below are retained
 as preparation records; their failure counts are superseded by the later P00-P14
 audit closures. Action entry remains disabled. No JSON-RPC dispatcher, heartbeat

@@ -195,7 +195,10 @@ class IpcServer:
         self._listener: Any = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        # One of the 32 retained client handlers is reserved for STOP. Normal
+        # requests may occupy at most 31 handlers, including long legacy calls.
         self._client_semaphore = threading.Semaphore(32)
+        self._normal_request_semaphore = threading.BoundedSemaphore(31)
         self._clients_lock = threading.RLock()
         self._clients = {}
         self._closing = False
@@ -343,6 +346,21 @@ class IpcServer:
             with self._clients_lock:
                 if self._closing:
                     return
+            command = req.get("command")
+            priority_stop = (req.get("message_type") == "stop" or
+                             command in ("stop", "STOP", "stop_all", "stop_task"))
+            normal_slot = False
+            if not priority_stop:
+                normal_slot = self._normal_request_semaphore.acquire(blocking=False)
+                if not normal_slot:
+                    if req.get("protocol_version") == 1:
+                        refusal = {"protocol_version": 1, "message_type": "protocol_error",
+                                   "error_code": "BUSY",
+                                   "message": "The core is busy. Check task status before submitting again."}
+                    else:
+                        refusal = {"status": "error", "message": "The core is busy. Check task status before submitting again."}
+                    conn.send_bytes(json.dumps(refusal).encode("utf-8"))
+                    return
             # Dispatch to handler (ResidentCore also gates admission).
             try:
                 resp = self._command_handler(req)
@@ -361,6 +379,9 @@ class IpcServer:
                     ).encode("utf-8"))
                 except Exception:
                     pass
+            finally:
+                if normal_slot:
+                    self._normal_request_semaphore.release()
         except EOFError:
             pass
         except Exception as e:

@@ -84,6 +84,20 @@ internal static class CoreRequestProtocol
         }
     }
 
+    internal sealed record ProtocolError(int ProtocolVersion, string MessageType, string ErrorCode, string Message)
+    {
+        internal static ProtocolError Parse(ReadOnlySpan<byte> message)
+        {
+            RejectDuplicateProperties(message);
+            var value = JsonSerializer.Deserialize<ProtocolError>(message.ToArray(), Options)
+                ?? throw new JsonException("Empty protocol error.");
+            if (value.ProtocolVersion != Version || value.MessageType != "protocol_error" ||
+                string.IsNullOrWhiteSpace(value.ErrorCode) || string.IsNullOrWhiteSpace(value.Message))
+                throw new JsonException("Invalid protocol error envelope.");
+            return value;
+        }
+    }
+
     internal sealed record TerminalReadback(int ProtocolVersion, string MessageType, string RequestId,
         string TaskId, bool Terminal, string FinalState, bool CompletionVerified,
         bool? TerminalPersisted, bool HasResidual, string? Route, string Message, double? DurationMs)

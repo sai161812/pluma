@@ -27,6 +27,15 @@ namespace PLUMA.UI
         };
     }
 
+    internal sealed record CoreRequestResult<T>(T? Response, CoreConnectionFailure Failure,
+        bool OutcomeUnknown, string? ErrorCode, string? Message) where T : class
+    {
+        internal bool IsSuccess => Response is not null && Failure == CoreConnectionFailure.None;
+        internal static CoreRequestResult<T> Failed(CoreConnectionFailure failure,
+            bool outcomeUnknown = false, string? errorCode = null, string? message = null) =>
+            new(null, failure, outcomeUnknown, errorCode, message);
+    }
+
     internal interface ICoreStatusClient : IAsyncDisposable
     {
         Task<CoreStatusResult> GetStatusAsync(CancellationToken cancellationToken);

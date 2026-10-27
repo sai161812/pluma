@@ -1,32 +1,37 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P15 versioned request slice E81
+## Current checkpoint: 2026-10-27, P15 authenticated transport E82
 
-**P15 is in progress.** E81 implements a bounded version 1 text submit,
-independent STOP and terminal-readback contract. Python returns a correlated
-acknowledgement while a ResidentCore-owned task executes; duplicate IDs are
-safe within the bounded resident cache and durable IDs are refused after
-restart. Readback uses the TaskSupervisor capsule, with a limited factual
-ledger projection after restart. C# now has matching strict
-typed wire models, but production C# transport/UI submission is not connected.
-See [E81](docs/completion/p15_e81_versioned_requests.md) for exact files,
-commands, results and limits.
+**P15 remains in progress.** E82 adds typed C# submit/STOP/readback methods over
+the existing HMAC-authenticated native message-mode pipe, reports uncertain
+post-write timeouts without retrying, and reserves one C# call slot for STOP.
+The Python IPC server reserves one of 32 client handlers for STOP. Its real
+authenticated pipe suite and 31-blocked-request STOP test pass. The C# project
+builds cleanly. A partial runtime run passed authenticated submit/readback and
+STOP during blocked execution, but a later saturation-fixture teardown failed;
+its missing-thread cleanup bug is fixed. Application Control blocked the
+rebuilt runner before Main, so the complete C# suite remains unverified. The dashboard
+still does not call the new methods and remains action-disabled. See
+[E82](docs/completion/p15_e82_authenticated_transport.md).
 
-- Focused Python IPC/STOP/shutdown/resident regressions: **104 passed**. C# IPC
-  suite: **49 passed**. The stale resident STOP assertion now checks the
-  existing evidence-bearing `pluma.stop.v1` response fields.
-- Packet fixtures used in-memory history and deterministic fake executors; no
-  real tools/models or personal state were touched. C# contract tests and the
-  Python handler were verified independently; authenticated C# versioned
-  request/response transport remains unverified. STOP under native-pipe
-  saturation remains unverified; the legacy server has no reserved STOP slot.
-- Recovery point before this packet: `fcd22c3513a68762b56f6d8b0852178c2b073c70`
-  on `p12-preparation`.
+- Focused Python IPC/STOP/shutdown/resident regressions: **106 passed**, no
+  skips or xfails. C# build: **0 warnings/errors**. Partial C# v1 runtime checks
+  passed, but the complete runner has no green result due to fixture teardown
+  and the subsequent Application Control block. No production tools/models or
+  personal desktop state were used.
+- Recovery point before E82: `c5a702837c853dfd51f109a0bac2de8067bd39c2` on
+  `p12-preparation`.
 
-Next safe packet: connect the typed C# models through the existing authenticated
-Windows message-mode pipe and prove cross-language submit/ack/readback/STOP
-round trips. Then continue P15's confirmation, settings/history and factual
-event/reconnect contracts. P15 is not complete; do not start P16 automatically.
+Next safe packet: execute the authored C# authenticated v1 round trips on a
+Windows test host where Application Control permits the test binary. Then add
+the bounded settings/history query contracts and continue factual event and
+reconnect contracts. P15 is not complete; do not start P16 automatically.
+
+## Previous checkpoint: 2026-10-27, P15 versioned request slice E81
+
+E81 implemented the Python version 1 text submit, independent STOP and
+terminal-readback handlers plus strict C# wire DTOs. Its then-current checks
+and limitations are recorded in [E81](docs/completion/p15_e81_versioned_requests.md).
 
 ## Previous checkpoint: 2026-10-27, P00-P14 audit closure E80
 

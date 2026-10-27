@@ -63,6 +63,23 @@ internal static class Program
         }
         Check(CoreIpcClient.ParseStatus(Encoding.UTF8.GetBytes(Healthy), 1).TaskLabel == "2 active tasks", "status projection uses supplied task count");
         Check(CoreStatusResult.Failed(CoreConnectionFailure.Timeout).HealthLabel == "Disconnected", "failure projection clears a previous connected state");
+        await using (var server = new LocalServer(PipeName(), "", "stall-response"))
+        await using (var client = new CoreIpcClient(Options(server.Name, milliseconds: 180)))
+        {
+            CoreRequestResult<CoreRequestProtocol.SubmissionAck> uncertain =
+                await client.SubmitTextAsync("9fb62f64-4eb4-42b3-b268-8c586a90da12", "safe fixture request", default);
+            Check(uncertain.Response is null && uncertain.Failure == CoreConnectionFailure.Timeout && uncertain.OutcomeUnknown,
+                "a reply timeout after request write is surfaced as uncertain without retry");
+        }
+        await using (var server = new LocalServer(PipeName(), "", "stall-response"))
+        await using (var client = new CoreIpcClient(Options(server.Name)))
+        using (var cancel = new CancellationTokenSource(120))
+        {
+            CoreRequestResult<CoreRequestProtocol.SubmissionAck> uncertain =
+                await client.SubmitTextAsync("c583f0b4-6ed0-420c-bdb1-9c87e46264ef", "safe fixture request", cancel.Token);
+            Check(uncertain.Response is null && uncertain.Failure == CoreConnectionFailure.Timeout && uncertain.OutcomeUnknown,
+                "caller cancellation after request write preserves uncertain submission state");
+        }
 
         string requestId = "9fb62f64-4eb4-42b3-b268-8c586a90da12";
         string taskId = "a30d93be-1110-4d54-9fd2-4bf03f9d595c";
@@ -186,6 +203,66 @@ internal static class Program
                     "production Python IPC server authenticates the C# client and returns a multi-buffer status message");
             }
         }
+
+        string requestsPipe = PipeName();
+        await using (var python = await PythonServer.StartAsync(requestsPipe, "versioned"))
+        await using (var client = new CoreIpcClient(Options(requestsPipe, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
+        {
+            string wireRequestId = Guid.NewGuid().ToString("D");
+            CoreRequestResult<CoreRequestProtocol.SubmissionAck> submitted =
+                await client.SubmitTextAsync(wireRequestId, "fixture:success", default);
+            Check(submitted.IsSuccess && submitted.Response is { Accepted: true, RequestId: var acceptedId } && acceptedId == wireRequestId,
+                "authenticated C# submit reaches the Python resident and returns the same request identity");
+            CoreRequestResult<CoreRequestProtocol.TerminalReadback>? readback = null;
+            var deadline = Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(3))
+            {
+                readback = await client.GetTerminalReadbackAsync(wireRequestId, submitted.Response!.TaskId!, default);
+                if (readback.Response?.Terminal == true) break;
+                await Task.Delay(20);
+            }
+            Check(readback is { IsSuccess: true, Response.Terminal: true, Response.CompletionVerified: true,
+                Response.TerminalPersisted: true, Response.FinalState: "SUCCEEDED" },
+                "authenticated C# readback observes Python task terminal and ledger verification");
+
+            string holdRequestId = Guid.NewGuid().ToString("D");
+            CoreRequestResult<CoreRequestProtocol.SubmissionAck> held =
+                await client.SubmitTextAsync(holdRequestId, "fixture:hold", default);
+            Check(held.IsSuccess && held.Response is { Accepted: true }, "blocking fixture task is accepted asynchronously");
+            await python.WaitForLineAsync("TASK_ENTERED");
+            string stopRequestId = Guid.NewGuid().ToString("D");
+            CoreRequestResult<CoreRequestProtocol.StopAck> stop =
+                await client.StopAsync(stopRequestId, held.Response!.TaskId, default);
+            Check(stop.IsSuccess && stop.Response is { RequestId: var stoppedRequestId } && stoppedRequestId == stopRequestId,
+                "priority authenticated STOP remains responsive during a blocked execution response");
+            CoreRequestResult<CoreRequestProtocol.TerminalReadback>? stopped = null;
+            deadline.Restart();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(3))
+            {
+                stopped = await client.GetTerminalReadbackAsync(holdRequestId, held.Response.TaskId!, default);
+                if (stopped.Response?.Terminal == true) break;
+                await Task.Delay(20);
+            }
+            Check(stopped is { IsSuccess: true, Response.Terminal: true, Response.CompletionVerified: false,
+                Response.FinalState: "STOPPED" or "STOPPED_WITH_RESIDUAL" },
+                "STOP terminal readback preserves stopped state without claiming completed execution");
+        }
+
+        string saturatedPipe = PipeName();
+        await using (var python = await PythonServer.StartAsync(saturatedPipe, "versioned", saturate: true))
+        await using (var client = new CoreIpcClient(Options(saturatedPipe, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
+        {
+            Task<CoreStatusResult>[] statusCalls = Enumerable.Range(0, 4)
+                .Select(_ => client.GetStatusAsync(default)).ToArray();
+            for (int index = 0; index < 4; index++) await python.WaitForLineAsync("STATUS_ENTERED");
+            string stopId = Guid.NewGuid().ToString("D");
+            CoreRequestResult<CoreRequestProtocol.StopAck> priorityStop = await client.StopAsync(stopId, null, default);
+            Check(priorityStop.IsSuccess && priorityStop.Response?.RequestId == stopId,
+                "reserved C# STOP call slot and Python priority handler remain available under four stalled calls");
+            CoreStatusResult[] statuses = await Task.WhenAll(statusCalls);
+            Check(statuses.All(result => result.Status is { Running: true }),
+                "priority STOP releases the owned stalled status fixtures cleanly");
+        }
     }
 
     private static async Task Exchange(string reply, CoreConnectionFailure expected, Func<CoreStatusResult, bool>? additional, string label, string mode = "normal", string? key = null)
@@ -241,7 +318,10 @@ internal static class Program
                 CryptographicOperations.ZeroMemory(token); CryptographicOperations.ZeroMemory(proof);
                 if (!accepted) return;
                 await _pipe.WriteAsync(Encoding.ASCII.GetBytes(mode == "bad-ack" ? "BAD_ACK" : "AUTH_OK"), _stop.Token);
-                StatusOnly = Encoding.UTF8.GetString(await ReadAsync()) == "{\"command\":\"status\"}";
+                string request = Encoding.UTF8.GetString(await ReadAsync());
+                StatusOnly = request == "{\"command\":\"status\"}";
+                if (mode == "stall-response")
+                { await Task.Delay(Timeout.Infinite, _stop.Token); return; }
                 if (StatusOnly) await _pipe.WriteAsync(Encoding.UTF8.GetBytes(reply), _stop.Token);
             }
             catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }
@@ -249,7 +329,7 @@ internal static class Program
         }
         private async Task<byte[]> ReadAsync()
         {
-            byte[] buffer = new byte[128];
+            byte[] buffer = new byte[1024];
             int count = await _pipe.ReadAsync(buffer, _stop.Token);
             if (count == 0 || !_pipe.IsMessageComplete) throw new IOException();
             return buffer[..count];
@@ -267,15 +347,15 @@ internal static class Program
         private PythonServer(string name, Process process)
         {
             Name = name; _process = process; _created = process.StartTime.ToUniversalTime();
-            _executable = process.MainModule!.FileName; _errors = process.StandardError.ReadToEndAsync();
+            _executable = Path.GetFileName(process.StartInfo.FileName); _errors = process.StandardError.ReadToEndAsync();
             Console.WriteLine($"OWNED fixture {name}; PID {process.Id}; created {_created:O}; command class Python IPC fixture");
         }
-        internal static async Task<PythonServer> StartAsync(string name)
+        internal static async Task<PythonServer> StartAsync(string name, string mode = "status", bool saturate = false)
         {
             string script = Path.Combine(Directory.GetCurrentDirectory(), "PLUMA.UI", "CoreIpc.Tests", "fixture_server.py");
             var info = new ProcessStartInfo(Environment.GetEnvironmentVariable("PLUMA_TEST_PYTHON") ?? "python")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (string argument in new[] { "-u", script, name, Root }) info.ArgumentList.Add(argument);
+            foreach (string argument in new[] { "-u", script, name, Root, mode, saturate ? "saturate" : "normal" }) info.ArgumentList.Add(argument);
             var fixture = new PythonServer(name, Process.Start(info) ?? throw new InvalidOperationException("Fixture process did not start."));
             try
             {
@@ -284,6 +364,11 @@ internal static class Program
                 return fixture;
             }
             catch { await fixture.DisposeAsync(); throw; }
+        }
+        internal async Task WaitForLineAsync(string expected)
+        {
+            string? line = await _process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(8));
+            if (line != expected) throw new InvalidOperationException($"Expected fixture event {expected}, received {line ?? "<eof>"}.");
         }
         public async ValueTask DisposeAsync()
         {
@@ -296,13 +381,15 @@ internal static class Program
                     catch (TimeoutException)
                     {
                         using Process current = Process.GetProcessById(_process.Id);
-                        if (current.StartTime.ToUniversalTime() != _created || current.MainModule?.FileName != _executable)
+                        string? image = current.MainModule?.FileName;
+                        if (current.StartTime.ToUniversalTime() != _created ||
+                            (image is not null && !string.Equals(Path.GetFileName(image), _executable, StringComparison.OrdinalIgnoreCase)))
                             throw new InvalidOperationException("Owned fixture identity changed; cleanup refused.");
                         _process.Kill(true); await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
                     }
                 }
-                await _errors;
-                if (_process.ExitCode != 0) throw new InvalidOperationException("Python IPC fixture exited unsuccessfully.");
+                string errors = await _errors;
+                if (_process.ExitCode != 0) throw new InvalidOperationException("Python IPC fixture exited unsuccessfully: " + errors);
             }
             finally { _process.Dispose(); }
         }
