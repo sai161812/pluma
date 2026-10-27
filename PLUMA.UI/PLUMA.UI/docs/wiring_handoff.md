@@ -9,16 +9,19 @@ See [cleanup/recovery](../../../docs/workspace_cleanup.md) and the
 paths and branch-state descriptions below are historical preparation records.
 
 **Current progress (2026-10-27):** dashboard status remains read-only and is
-refreshed on load or explicit user action. P15 E81/E82 add Python versioned
-submit/STOP/readback contracts and authenticated C# transport methods; the
-dashboard does not invoke them. See [E81](../../../docs/completion/p15_e81_versioned_requests.md)
-and [E82](../../../docs/completion/p15_e82_authenticated_transport.md).
+refreshed on load or explicit user action. P15 E81-E83 define versioned
+submit/STOP/readback and settings/history contracts with authenticated C#
+transport. The full 64-check C# IPC runner passes against the Python resident.
+The dashboard does not invoke these methods. See [E81](../../../docs/completion/p15_e81_versioned_requests.md),
+[E82](../../../docs/completion/p15_e82_authenticated_transport.md), and
+[E83](../../../docs/completion/p15_e83_settings_history.md).
 The historic backend audit and branch/worktree descriptions below are retained
 as preparation records; their failure counts are superseded by the later P00-P14
 audit closures. Action entry remains disabled. No JSON-RPC dispatcher, heartbeat
-or live push event stream is implemented. Confirmation, settings/history,
-cross-language request transport, UI action wiring and P15/P16+ acceptance
-remain open.
+or live push event stream is implemented. Material confirmation messages and
+factual event projection/buffer/reconnect contracts remain open. Production
+UI action wiring belongs to its later milestone; the dashboard remains
+action-disabled.
 
 Prepared 2026-10-19 before wiring. This is repository preparation and a source
 inventory, not an implementation of the IPC adapter or a release-completion claim.

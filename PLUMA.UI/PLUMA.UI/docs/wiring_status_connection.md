@@ -1,22 +1,25 @@
 # Wiring step 1: authenticated read-only core status
 
-## Current transport note (P15 E82)
+## Current transport note (P15 E83)
 
 `CoreIpcClient` now retains the status query and also exposes typed version 1
-text-submit, STOP and terminal-readback methods over the same authenticated
-native message-mode pipe. Text submissions are sent once; a timeout after write
-returns `OutcomeUnknown` and is never retried automatically. Four ordinary
-client operations leave one independent client slot for STOP. The Python server
+text-submit, STOP, terminal-readback, settings-query and history-query methods
+over the same authenticated native message-mode pipe. Text submissions are sent
+once; a timeout after write returns `OutcomeUnknown` and is never retried
+automatically. Four ordinary client operations leave one independent client
+slot for STOP. The Python server
 retains 32 authenticated client handlers, limits ordinary request dispatch to
 31 and reserves one handler for STOP, including while synchronous legacy calls
-are running. See [E82](../../../docs/completion/p15_e82_authenticated_transport.md).
+are running. Settings are allowlisted; history is bounded and re-redacted at
+the IPC projection. See [E82](../../../docs/completion/p15_e82_authenticated_transport.md)
+and [E83](../../../docs/completion/p15_e83_settings_history.md).
 
-The dashboard still calls only status and action entry remains disabled. A
-partial P15 C# run passed submit/readback/STOP checks but failed during fixture
-teardown. After the fixture fix, Windows Application Control blocked the rebuilt
-runner, so the full C# run has no green result. The code compiles. The detailed
-step-1 history below records its earlier implementation and test run, not the
-current full client capability.
+The dashboard still calls only status and action entry remains disabled. The
+full Windows C# IPC runner now passes 64 checks, including actual authenticated
+Python-server interoperability for submission/readback/STOP/settings/history.
+No production command submission or STOP is wired to the dashboard. Confirmation
+messages and factual event sequencing/buffering/reconnect remain P15 contract
+work; see E83 for commands and tested-source identity.
 
 P09 security checkpoint (2026-10-20): the Python credential factory now uses
 private atomic Windows creation and opened-handle owner/DACL/size verification.
@@ -50,8 +53,8 @@ targets `ui-polish-integration`; PR 1 and `main` remain unmerged/unchanged.
   Secret/proof buffers are cleared and are never logged or sent as a secret.
 - Python's Windows `PipeConnection` uses native message boundaries. Each proof
   or JSON request is one native pipe message; no TCP length prefix or
-  newline-delimited/JSON-RPC protocol is invented. E82 extends only the v1
-  request handler and dispatch capacity described in its evidence.
+  newline-delimited/JSON-RPC protocol is invented. E82 extends v1 request
+  transport and dispatch capacity; E83 adds settings/history queries.
 - `CoreStatus.cs`: typed status/result projection. Missing, mistyped, negative,
   duplicate, malformed or oversized fields cannot imply connected state. Only
   supplied running/active-count/voice flags are accepted; a reachable stopped

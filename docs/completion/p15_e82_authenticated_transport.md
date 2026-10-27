@@ -1,5 +1,10 @@
 # E82 — P15 authenticated request transport and reserved STOP capacity
 
+Current follow-up: the earlier C# runtime limitation recorded below was
+resolved in [E83](p15_e83_settings_history.md). The full current runner passes
+three consecutive 64-check runs on the execution-authorized Windows host.
+E82 retains its original checkpoint results as historical evidence.
+
 ## Scope
 
 Continues E81's versioned request contract with authenticated C# submit,

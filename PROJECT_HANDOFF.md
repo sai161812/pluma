@@ -1,31 +1,36 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P15 authenticated transport E82
+## Current checkpoint: 2026-10-27, P15 settings/history query contracts E83
 
-**P15 remains in progress.** E82 adds typed C# submit/STOP/readback methods over
-the existing HMAC-authenticated native message-mode pipe, reports uncertain
-post-write timeouts without retrying, and reserves one C# call slot for STOP.
-The Python IPC server reserves one of 32 client handlers for STOP. Its real
-authenticated pipe suite and 31-blocked-request STOP test pass. The C# project
-builds cleanly. A partial runtime run passed authenticated submit/readback and
-STOP during blocked execution, but a later saturation-fixture teardown failed;
-its missing-thread cleanup bug is fixed. Application Control blocked the
-rebuilt runner before Main, so the complete C# suite remains unverified. The dashboard
-still does not call the new methods and remains action-disabled. See
-[E82](docs/completion/p15_e82_authenticated_transport.md).
+**P15 remains in progress.** E83 adds authenticated, typed, read-only v1
+settings and history queries to the Python resident and C# transport. Settings
+return only an explicit allowlist, including the effective planner and STT model
+paths supplied by application composition. History returns bounded newest-first
+task summaries or one task's step-ordered actions, with sensitive fields
+redacted again at the IPC boundary and no undo recipe exposed. The dashboard
+does not call these methods; action entry remains disabled.
 
-- Focused Python IPC/STOP/shutdown/resident regressions: **106 passed**, no
-  skips or xfails. C# build: **0 warnings/errors**. Partial C# v1 runtime checks
-  passed, but the complete runner has no green result due to fixture teardown
-  and the subsequent Application Control block. No production tools/models or
-  personal desktop state were used.
-- Recovery point before E82: `c5a702837c853dfd51f109a0bac2de8067bd39c2` on
+- The full Windows C# IPC integration runner passes **64 checks**, including
+  actual authenticated C# requests against the Python resident for submission,
+  terminal readback, settings, recent/task history and priority STOP. Python
+  fixture tests verify the SQLite projection, redaction, ordering, limits and
+  malformed query refusals. Exact commands and assembly identity are in
+  [E83](docs/completion/p15_e83_settings_history.md).
+- The runner uses a private owned pipe, isolated credential and in-memory
+  ledger; no production resident, tool, inference runtime, personal files or
+  desktop state are used. The dashboard remains action-disabled. No confirmation
+  decision or factual event stream is implemented.
+- Tested implementation commit: `94b19fa9e192142be83ec385cea04bccff0f7a60`;
+  tested C# assembly SHA-256 and exact commands are recorded in E83.
+- Recovery point before E83: `4724c5e747ee4001a8aad979ac85b1d476d23ef5` on
   `p12-preparation`.
 
-Next safe packet: execute the authored C# authenticated v1 round trips on a
-Windows test host where Application Control permits the test binary. Then add
-the bounded settings/history query contracts and continue factual event and
-reconnect contracts. P15 is not complete; do not start P16 automatically.
+Next safe packet: define and integration-test material confirmation request and
+decision messages with stale/mismatched/duplicate refusal. Then implement
+executor-sourced factual event projections with explicit sequence, bounded
+buffering, duplicate handling and reconnect readback. P15 is not complete; do
+not start P16 automatically. Production dashboard submission/STOP wiring stays
+for its later milestone.
 
 ## Previous checkpoint: 2026-10-27, P15 versioned request slice E81
 
