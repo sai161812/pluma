@@ -18,7 +18,7 @@ Windows 11 acceptance are recorded in
 [ui_integration_review.md](ui_integration_review.md). See
 [popup_placement_refinement.md](popup_placement_refinement.md) before wiring.
 
-These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81-E84 complete the [v1 contract catalog](../../../docs/completion/p15_protocol_v1.md) for text-submit, STOP, terminal readback, settings/history, exact material confirmation and committed event query/replay. Native dialog/action/event-consumer connections remain P16-P23 work; dashboard action entry stays disabled. No push stream or heartbeat exists: factual events use bounded request/readback batches, and only catalogued message/event names are implemented behavior.
+These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81-E84 complete the [v1 contract catalog](../../../docs/completion/p15_protocol_v1.md) for text-submit, STOP, terminal readback, settings/history, exact material confirmation and committed event query/replay. P16 E85 connects native material approval through a window-owned bounded query loop with exact material readback; action/event-consumer connections remain P17-P23 work; dashboard action entry stays disabled. No push stream or heartbeat exists: factual events use bounded request/readback batches, and only catalogued message/event names are implemented behavior.
 
 ---
 
@@ -128,7 +128,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 18. Risk Approval Dialog
 **Purpose:** Blocks execution and requests explicit user approval for HIGH-risk tools.  
 **Data/Actions:** Tool name, risk class, sanitised args, "Approve" and "Deny" buttons; denial returns `PERMISSION_DENIED`.  
-**Wire:** `ConfirmationContract.request_confirmation()`, `pluma/ui/confirmations.py`.
+**Wire:** `ConfirmationController` and `NativeConfirmationPresenter` connect the native dialog to authenticated typed pending/decision/disconnect contracts and the actual policy broker. E85 verifies exact literal material display, Deny default and fail-closed STOP/expiry/close; see [material approval wiring](wiring_material_confirmations.md).
 
 ### 19. Policy Block Notice
 **Purpose:** Non-blocking notice when an action is rejected by a policy rule.  

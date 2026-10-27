@@ -5,7 +5,9 @@ This contract is implemented by `ipc_contracts.py`, `ResidentCore`,
 `CoreIpcClient`. It uses the existing same-user Windows message-mode pipe and
 HMAC challenge/response. Each authenticated connection carries one request and
 one reply. It is bounded JSON, not JSON-RPC. No heartbeat, push subscription or
-automatic background polling is started.
+automatic background polling is started by the transport itself. P16's
+[window-owned approval connection](../../PLUMA.UI/PLUMA.UI/docs/wiring_material_confirmations.md)
+explicitly queries while the shell is open and disposes its lifetime on close.
 
 ## Common rules
 
@@ -71,7 +73,8 @@ the absolute confirmation deadline deny pending work. Waits last at most 30
 seconds and remain inside the registry's shorter ToolSpec budget/cancellation
 tree. The broker creates no worker or timer. Unanswered calls are never
 approved. Restart loses pending confirmations; old decisions cannot revive
-them. Native approval-dialog interaction is P16 work.
+them. Native approval-dialog interaction is connected and verified in
+[P16 E85](p16_material_approval.md).
 
 ## Factual event projection and reconnect
 

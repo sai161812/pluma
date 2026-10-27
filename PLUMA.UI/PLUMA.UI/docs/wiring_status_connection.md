@@ -1,6 +1,6 @@
 # Wiring step 1: authenticated read-only core status
 
-## Current transport note (P15 E84)
+## Current transport note (P16 E85)
 
 `CoreIpcClient` now retains the status query and also exposes typed version 1
 text-submit, STOP, terminal-readback, settings/history, confirmation
@@ -18,14 +18,16 @@ E84 completes the remaining contracts; see the implemented
 [v1 protocol](../../../docs/completion/p15_protocol_v1.md).
 
 The dashboard still calls only status and action entry remains disabled. The
-full Windows C# IPC runner now passes 101 checks, including actual authenticated
+full Windows C# IPC runner now passes 117 checks, including actual authenticated
 confirmation decisions, registered owned-file read/verification, ledger
 readback and event replay/reconnect. Event batches use a durable 512-fact
 journal and explicit reset after overflow/stream change; the C# cursor rejects
 gaps and duplicate application. No production command submission or STOP is
-wired to the dashboard. P16 owns the native approval-dialog connection, P17
-dashboard actions and P18 visible event consumption. See
-[E84](../../../docs/completion/p15_e84_contract_completion.md) for source/build
+wired to the dashboard. P16 connects the native approval dialog with a
+window-owned loop (250 ms between bounded queries), cancellation/drain and
+fresh-client reconnect. All 63 native control checks pass, including the real
+dialog/backend flow. P17 owns dashboard actions and P18 visible event consumption.
+See [E85](../../../docs/completion/p16_material_approval.md) for source/build
 identity, exact commands and limits. No push subscription or heartbeat runs.
 
 P09 security checkpoint (2026-10-20): the Python credential factory now uses

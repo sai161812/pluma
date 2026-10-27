@@ -1,5 +1,9 @@
 # E84 — P15 contract completion
 
+Follow-up: [E85](p16_material_approval.md) completes P16's native material
+approval connection. E84's next-milestone notes below retain their checkpoint
+context.
+
 ## Result and scope
 
 P15's required UI/core contract gate is complete. E81–E83 established

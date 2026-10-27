@@ -1,6 +1,45 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P15 contract completion E84
+## Current checkpoint: 2026-10-27, P16 native material approval E85
+
+**P16's required gate is complete.** The existing native risk dialog is wired
+through P15 to actual pending policy calls. It displays the deterministic
+material effect/target and literal redacted arguments, defaults to Deny, and
+sends one exact task/call-bound decision after fresh pending readback.
+STOP, expiry, changed/stale calls, disconnect, unknown writes and window close
+fail closed. [E85](docs/completion/p16_material_approval.md) records evidence,
+commands, source/build identities and scope; [wiring contract](PLUMA.UI/PLUMA.UI/docs/wiring_material_confirmations.md).
+
+- Before edits: **167 Python prerequisites** and **101 native IPC checks**
+  passed. Final affected regression: **191 Python tests + 54 inert power-action
+  tests**, zero skips/xfails. Only the already-declared Windows dependency was
+  added to an ignored isolated test venv; no dependency declaration changed.
+- Local actual native UI/backend run: **63 checks**. Hosted exact-source
+  [run 40472600843](https://github.com/sai161812/pluma/actions/runs/40472600843)
+  passes **117 IPC / 63 native UI / 663 native popup / 195 formatting**,
+  plus the layout/surface/audio/copy gates and zero-warning/error builds.
+  Hosted execution closes the latest local console Application Control block;
+  no security policy was bypassed or changed.
+- MainWindow owns the approval loop, dialog, expiry token and logical client.
+  It polls only while the shell is open (250 ms between bounded queries),
+  disconnects/drains on close, and retries lost connections with a fresh
+  client identity. Resident idle model/capture behavior is unchanged.
+- Current source: `429ad1a6628ac9aecd5f80b7ad8ed9d7f4cd1cbb`, following
+  implementation `c16f73c028d5238e6a40c32eb28d37dd6c673ff3`.
+  Recovery point: `05642c8dce6060c3d0f1a73277828b1aebc3be2d` on
+  `p12-preparation`. The strict fixture-schema correction preserves validation;
+  the literal-value audit still checks exact text, bounds and accessibility.
+- No destructive/power/UAC demonstration ran. Fresh inert/owned elevation
+  checks pass; E59's permitted actual DNS-only UAC proof remains separate and
+  applicable to the unchanged adapter. No permanent elevation was introduced.
+
+No P16 gate packets remain. Ready for independent Sol review; approval is not
+assumed. **P17 is the next safe milestone and has not started.** Dashboard
+submission/STOP entry stays disabled until P17. P25 physical/owner appearance
+and broader final acceptance keep their later owners. Do not advance or merge
+automatically.
+
+## Previous checkpoint: 2026-10-27, P15 contract completion E84
 
 **P15's required contract gate is complete.** E84 adds the remaining material
 confirmation query/decision/disconnect messages and durable factual event

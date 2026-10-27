@@ -12,7 +12,7 @@ paths and branch-state descriptions below are historical preparation records.
 refreshed on load or explicit user action. P15 E81-E84 complete versioned
 submit/STOP/readback, settings/history, exact material confirmation and durable
 event query/replay contracts with authenticated C# transport. The full
-101-check C# IPC runner passes against the Python resident and an owned WAL
+117-check C# IPC runner passes against the Python resident and an owned WAL
 ledger, including registered owned-file read/verification.
 The dashboard does not invoke these methods. See [E81](../../../docs/completion/p15_e81_versioned_requests.md),
 [E82](../../../docs/completion/p15_e82_authenticated_transport.md), and
@@ -24,8 +24,12 @@ audit closures. Action entry remains disabled. No JSON-RPC dispatcher, heartbeat
 or live push event stream is implemented. P15 event delivery uses bounded
 request/readback batches with sequence/stream cursors; the implemented
 [v1 catalog](../../../docs/completion/p15_protocol_v1.md) is authoritative.
-P16 approval dialogs, P17 dashboard actions and P18 visible event consumption
-remain their assigned UI milestones. The dashboard remains action-disabled.
+P16 E85 connects native approval dialogs through a window-owned bounded polling
+loop, exact material readback and fail-closed lifetime handling. All 63 native
+control checks pass, including real dialog/backend/ledger acceptance. See
+[E85](../../../docs/completion/p16_material_approval.md).
+P17 dashboard actions and P18 visible event consumption remain their assigned
+UI milestones. The dashboard remains action-disabled.
 
 Prepared 2026-10-19 before wiring. This is repository preparation and a source
 inventory, not an implementation of the IPC adapter or a release-completion claim.
