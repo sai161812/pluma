@@ -53,7 +53,6 @@ namespace PLUMA.UI
             _preview = true;
             TaskStateText.Text = "Running"; RouteText.Text = "Screen"; CoreHealthText.Text = "Connected";
             CommandInput.IsEnabled = true;
-            CommandMessageText.Text = "Preview only. Commands are not executed.";
             CurrentActivityList.Items.Add("Reading the active window");
             foreach (string text in new[] { "Opened Calculator", "Found quarterly report.pdf", "Closed Notepad" }) RecentActivityList.Items.Add(text);
             foreach (string text in new[] { "Captured active window", "Detected visible text", "Locating Downloads" }) LiveMessagesList.Items.Add(text);

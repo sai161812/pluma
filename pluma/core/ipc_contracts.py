@@ -153,7 +153,7 @@ class SettingsSnapshotV1(BaseModel):
     protocol_version: Literal[1] = PROTOCOL_VERSION
     message_type: Literal["settings_snapshot"] = "settings_snapshot"
     request_id: StrictStr
-    submission_stop_fence: StrictBool = False
+    submission_stop_fence: Literal[True] = True
     text_hotkey: StrictStr
     stop_hotkey: StrictStr
     voice_hotkey: StrictStr
