@@ -185,8 +185,8 @@ namespace PLUMA.UI
                 value => value.TaskId == taskId);
 
         internal Task<CoreRequestResult<CoreRequestProtocol.StopAck>> StopAsync(
-            string requestId, string? taskId, CancellationToken cancellationToken) =>
-            VersionedCallAsync(new CoreRequestProtocol.StopRequest(requestId, taskId).ToMessage(), requestId,
+            string requestId, string? taskId, CancellationToken cancellationToken, string? submissionRequestId = null) =>
+            VersionedCallAsync(new CoreRequestProtocol.StopRequest(requestId, taskId, submissionRequestId).ToMessage(), requestId,
                 true, true, bytes => CoreRequestProtocol.StopAck.Parse(bytes), value => value.RequestId, cancellationToken);
 
         internal Task<CoreRequestResult<CoreRequestProtocol.SettingsSnapshot>> GetSettingsAsync(

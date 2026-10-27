@@ -55,10 +55,13 @@ class StopRequestV1(_Envelope):
     message_type: Literal["stop"]
     request_id: StrictStr
     task_id: Optional[StrictStr] = None
+    submission_request_id: Optional[StrictStr] = None
 
     @model_validator(mode="after")
     def canonical_ids(self):
-        for name in ("request_id", "task_id"):
+        if self.task_id is not None and self.submission_request_id is not None:
+            raise ValueError("submission fencing belongs to global STOP")
+        for name in ("request_id", "task_id", "submission_request_id"):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -150,6 +153,7 @@ class SettingsSnapshotV1(BaseModel):
     protocol_version: Literal[1] = PROTOCOL_VERSION
     message_type: Literal["settings_snapshot"] = "settings_snapshot"
     request_id: StrictStr
+    submission_stop_fence: Literal[True] = True
     text_hotkey: StrictStr
     stop_hotkey: StrictStr
     voice_hotkey: StrictStr

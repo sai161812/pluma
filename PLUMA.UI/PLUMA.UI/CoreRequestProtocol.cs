@@ -36,13 +36,15 @@ internal static partial class CoreRequestProtocol
         }
     }
 
-    internal sealed record StopRequest(string RequestId, string? TaskId = null)
+    internal sealed record StopRequest(string RequestId, string? TaskId = null, string? SubmissionRequestId = null)
     {
         internal byte[] ToMessage()
         {
             RequireId(RequestId, nameof(RequestId));
             if (TaskId is not null) RequireId(TaskId, nameof(TaskId));
-            return JsonSerializer.SerializeToUtf8Bytes(new StopEnvelope(Version, "stop", RequestId, TaskId), Options);
+            if (SubmissionRequestId is not null) RequireId(SubmissionRequestId, nameof(SubmissionRequestId));
+            if (TaskId is not null && SubmissionRequestId is not null) throw new ArgumentException("Submission fencing requires global STOP.");
+            return JsonSerializer.SerializeToUtf8Bytes(new StopEnvelope(Version, "stop", RequestId, TaskId, SubmissionRequestId), Options);
         }
     }
 
@@ -73,7 +75,7 @@ internal static partial class CoreRequestProtocol
         bool WakePhraseEnabled, bool SaveAudio, bool PersistScreenshots, bool OcrEnabled,
         bool UiaFirst, string ModelRuntime, string ModelProfile, string? PlannerModelPath,
         string? SttModelPath, bool ConfirmHighRisk,
-        bool RedactSensitiveLogs, bool ActivityViewEnabled)
+        bool RedactSensitiveLogs, bool ActivityViewEnabled, bool SubmissionStopFence = false)
     {
         internal static SettingsSnapshot Parse(ReadOnlySpan<byte> message)
         {
@@ -218,7 +220,8 @@ internal static partial class CoreRequestProtocol
 
     private sealed record SubmitEnvelope(int protocol_version, string message_type, string request_id, string text);
     private sealed record ReadbackEnvelope(int protocol_version, string message_type, string request_id, string task_id);
-    private sealed record StopEnvelope(int protocol_version, string message_type, string request_id, string? task_id);
+    private sealed record StopEnvelope(int protocol_version, string message_type, string request_id, string? task_id,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? submission_request_id);
     private sealed record SettingsEnvelope(int protocol_version, string message_type, string request_id);
     private sealed record HistoryEnvelope(int protocol_version, string message_type, string request_id,
         string? task_id, int limit);
