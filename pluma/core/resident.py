@@ -638,6 +638,7 @@ class ResidentCore:
                     "message": "Current settings are unavailable."}
         values = {
             "request_id": request.request_id,
+            "submission_stop_fence": True,
             "text_hotkey": get(config, "agent", "text_hotkey"),
             "stop_hotkey": get(config, "agent", "stop_hotkey"),
             "voice_hotkey": get(config, "agent", "voice_hotkey", default="ctrl+alt+v"),

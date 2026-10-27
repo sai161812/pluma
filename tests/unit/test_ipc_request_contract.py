@@ -133,6 +133,7 @@ def test_settings_query_exposes_only_allowlisted_configuration(resident_fixture)
     reply = core.handle_ipc_command({"protocol_version": 1, "message_type": "settings_query",
                                     "request_id": request_id})
     assert reply["message_type"] == "settings_snapshot"
+    assert reply["submission_stop_fence"] is True
     assert reply["request_id"] == request_id
     assert reply["model_profile"] == "fixture-profile"
     assert reply["planner_model_path"] == r"C:\private\models\local.gguf"
