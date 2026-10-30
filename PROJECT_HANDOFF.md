@@ -1,6 +1,54 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-27, P18 activity evidence packet E88
+## Current checkpoint: 2026-10-30, P18 recorded-surface bindings E89
+
+**P18 is in progress.** This packet binds route badge 6, recorded action/result
+status 8 and explicit denial notice 19 to actual readback. It removes fake
+route/result defaults and adds bounded caption wrapping. Full result detail and
+matched-policy reason contracts remain open. [E89](docs/completion/p18_recorded_surfaces.md)
+records exact scope, evidence and remaining components.
+
+- Source: `ef178524548eb43ed1c573f22959184e364785d1`, following `975cbaf`,
+  caption wrap `af5e99b` and formatter assertion `6a19059`. Recovery: `52116bad7650bf6b119a400838a3e95e1c8f729d`.
+- Fresh Python prerequisites: **127 passed in 20.14s**, no skips/xfails.
+  The unchanged E88 native executable was blocked by local Application Control
+  before Main; that attempt is not a pass. Its source exactly matches the E88
+  passing 171 IPC / 105 native UI gate, reused within its documented scope.
+- Local console/native controls/production builds and 33 XAML copy scans pass.
+  Exact-source [Windows gate 41046523711](https://github.com/sai161812/pluma/actions/runs/41046523711)
+  passed: **182 IPC / 113 native UI / 663 popup / 195 formatting**, plus
+  **64,537 layout / 30 surface** checks and the audio visualizer suite. Builds
+  have zero warnings/errors. Earlier failed/cancelled runs are not passes. No local policy bypass or alternate loading route was attempted.
+- Exact saved action IDs and all scoped readbacks precede batch publication.
+  Stable task/action keys deduplicate or replace changed material. Historical
+  reset is silent; route/action facts precede the task terminal notice in each
+  coalesced task group. A real native ordering race was reproduced and fixed
+  with a bounded journal-coherence barrier: four attempts, 22 pages per attempt,
+  within 30 seconds. Unsettled reads retain the previous view with explicit
+  stale/settling status, then retry next poll. Publication yields between callbacks.
+  Surface fingerprint state is bounded to 512 keys. Exact-source console and
+  native regressions passed without weakening assertions.
+- Result/policy messages come from fixed factual templates and saved flags.
+  Recorded evidence does not invent live execution, task success, exact policy
+  reason or worker termination. Controls retain native dark sizes/styles and
+  the shared host's placement, reading holds and dismissal behavior.
+
+Remaining components: task-running 4, step progress 5, tool-call 7, rollback 9,
+verification 17, owned-worker termination 21, remaining live-message panel 22
+and core-health projection 23 (dedicated health remains P22); richer
+result/error detail for 8 and exact matched-policy reason for 19; broader
+notices/current/recent activity panels; capacity arbitration and full event-driven
+multi-surface desktop/backend acceptance. Surface 20 STOP and 24 task notices
+remain connected. P25 physical checks retain their owner.
+
+Next safe packet: typed redacted result/error and matched-denial reason
+readback to finish surfaces 8/19, followed by actual task/step/tool/rollback
+facts. Add required facts before displaying live state or termination. P19 has
+not started. This bounded packet is ready for independent Sol review; approval
+is not assumed.
+Do not advance or merge automatically.
+
+## Previous checkpoint: 2026-10-27, P18 activity evidence packet E88
 
 **P18 is in progress.** This packet implements typed paginated task/action/
 cleanup readback and deterministic projection contracts. The production task

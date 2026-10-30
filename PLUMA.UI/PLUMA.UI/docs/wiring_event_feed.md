@@ -65,16 +65,27 @@ keeps explicit preview data; normal production navigation creates no samples.
 
 ## Remaining P18 work
 
-Detailed task/step/route/tool/result/rollback projections, policy and perception
-indicators, verified owned worker-termination feedback, and the remaining event
-surfaces 4–9, 17, 19–23 need subsequent bounded packets. Where existing IPC lacks
-required evidence, add a narrowly typed readback before presentation. A resource
-event or dismissal never proves worker termination. Full event-driven desktop
-host/backend acceptance across all surfaces remains part of P18, with physical
-Windows/owner appearance acceptance still assigned to P25.
+E89 adds the recorded-evidence bindings for route 6, result 8 and denial 19.
+Action events require exact saved action IDs and all readbacks precede batch
+publication. A final journal query detects material readback racing newer
+commits; a bounded retry drains retained events before any publication. Limits
+are four attempts, 22 pages each and the existing 30-second budget. Delivery
+yields between callbacks. An unsettled read retains the prior view with explicit
+settling/stale status and retries next poll without publishing partial facts.
+Changed evidence uses stable task/action replacement keys; historical
+reset remains silent. Rich result/error detail and exact matched-policy reasons
+remain open. See [E89](../../../docs/completion/p18_recorded_surfaces.md).
+
+Remaining live task/step/tool/rollback and verification bindings, owned-worker
+termination, live-message panel and core-health projection (surfaces 4, 5, 7,
+9, 17 and 21-23) need subsequent
+packets. Detailed result/reason fields for 8/19 and full desktop/backend burst
+acceptance also remain open. Required missing evidence must be established
+before presentation; resource release or dismissal never proves termination.
+Physical Windows/owner appearance acceptance stays with P25.
 
 E88 implements typed saved-state/action/cleanup readback and deterministic
-projection contracts. The next safe packet binds those facts to the affected
+projection contracts. The next safe packet extends and binds facts to the affected
 remaining surfaces, adding missing live-start/step or termination evidence
 before displaying such claims. Do not start P19 or merge.
 See [E87](../../../docs/completion/p18_event_feed.md) for exact source, tests,
