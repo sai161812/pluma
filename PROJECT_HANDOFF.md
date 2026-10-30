@@ -1,6 +1,44 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-30, P18 recorded-surface bindings E89
+## Current checkpoint: 2026-10-30, P18 factual result/reason readback E90
+
+**P18 remains in progress.** This bounded packet addresses group 1: detailed
+result/error and actual matched-policy reason readback for surfaces 8/19.
+[E90](docs/completion/p18_action_details.md) records the exact scope and checks.
+
+- Source `06db4c78e07ce29f50c35f960188500310c8b899`, following implementation
+  `c9dbf58` and wire/view separation `650805d`; recovery `3aa79ba4b6399e74fcddbdc2bc95956f57c68b4e` (E89).
+- Fresh isolated prerequisites: **66 passed in 12.09s**. Final affected Python:
+  **182 passed in 37.69s**, including 18 new detail checks, migration/ledger,
+  mutation, policy, redaction, existing v1 contracts and STOP. Additional Activity
+  view/lifecycle regressions: **17 passed in 2.25s**; no skips/xfails.
+- New nullable ledger presentation stores redacted executor copy, error code and
+  actual policy reason. Complete-value redaction precedes UTF-8 bounds;
+  secret-shaped error identities are withheld on write and read. Historical
+  absence remains unavailable. Private result/error bodies are not fetched.
+- Separate strict `action_detail_query` / `action_detail` leaves the original
+  E88 page wire unchanged. Exact detail identity and all readbacks precede batch
+  publication. Transient query IDs cannot replay unchanged presentation.
+- Result cards distinguish pending intent and recorded verification; policy
+  notices use saved reasons. Neither dismissal nor readback invokes an action.
+  Existing dark XAML/theme, sizes, host layout and motion remain unchanged.
+- Console/native-control builds have zero warnings/errors. Exact-source
+  [Windows gate 41051248953](https://github.com/sai161812/pluma/actions/runs/41051248953)
+  passed **194 IPC / 121 native UI / 663 popup / 195 formatting** checks, plus
+  layout/surface/audio/copy gates. Actual success, failure and denial tasks
+  retain independent WAL outcome comparison and no implicit cancellation.
+  Obsolete/cancelled runs are not exact-source acceptance for this correction.
+
+Remaining requested groups: (2) actual live task/step/tool/rollback displays;
+(3) verification, verified owned-worker termination, remaining live feed and
+core-health projection; (4) full multi-surface burst/reconnect/STOP/navigation/
+shutdown acceptance and capacity arbitration. P25 physical checks remain separate.
+Next safe packet establishes actual live evidence for surfaces 4/5/7/9 before
+showing executing states or totals. P19 has not started. This bounded packet is ready for independent Sol review;
+independent approval is not assumed. Do not merge or
+advance automatically.
+
+## Previous checkpoint: 2026-10-30, P18 recorded-surface bindings E89
 
 **P18 is in progress.** This packet binds route badge 6, recorded action/result
 status 8 and explicit denial notice 19 to actual readback. It removes fake

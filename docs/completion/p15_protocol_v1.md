@@ -30,6 +30,7 @@ explicitly queries while the shell is open and disposes its lifetime on close.
 
 | Request | Additional fields | Reply |
 | --- | --- | --- |
+| `action_detail_query` | `task_id`, positive Int64 `action_id` | `action_detail`: exact task/request/action/tool identity and nullable bounded redacted factual message, error code and matched-policy reason (P18 E90) |
 | `submit_text` | `text` (1–4096 characters, nonblank) | `submission_ack`: accepted/refused, task identity |
 | `terminal_readback` | originating `request_id`, `task_id` | `terminal_readback`: pending/terminal, verification, persistence, residual facts |
 | `stop` | optional `task_id` (otherwise global); optional `submission_request_id` only for global STOP | `stop_ack`: existing evidence-bearing `pluma.stop.v1` receipt |
@@ -76,7 +77,21 @@ summary is recomputed from latest validated persisted checks; no report is null,
 not proof of complete cleanup. Contradictory/corrupt/oversized reports refuse.
 No worker-terminated claim is exposed. See [E88](p18_activity_evidence.md).
 
+## P18 action presentation extension
+
+P18 E90 adds scoped `action_detail_query` / `action_detail`, without adding fields
+to the strict E88 activity-page wire record. Presentation is separate local UI
+state. Both text fields are limited to 1,024 UTF-8 bytes after complete-value
+redaction; error codes are uppercase ASCII identifiers of at most 64 characters, with
+secret-shaped values withheld.
+Historical missing values remain null; malformed/contradictory data refuses.
+The query selects no private result/error body or inverse recipe and is read-only.
+New UI detail bindings require the paired core endpoint; an older core refuses
+the new query, leaving the consumer explicitly unavailable rather than fabricating
+detail. See [E90](p18_action_details.md) for source-specific evidence and scope.
+
 ## Material confirmation lifetime
+
 
 An explicit `confirmation_query` opens/renews a logical client lease for 30
 seconds, bounded to 16 clients. It is independent of the short-lived pipe

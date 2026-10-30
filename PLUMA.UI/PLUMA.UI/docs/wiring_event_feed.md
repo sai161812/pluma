@@ -65,22 +65,19 @@ keeps explicit preview data; normal production navigation creates no samples.
 
 ## Remaining P18 work
 
-E89 adds the recorded-evidence bindings for route 6, result 8 and denial 19.
-Action events require exact saved action IDs and all readbacks precede batch
-publication. A final journal query detects material readback racing newer
-commits; a bounded retry drains retained events before any publication. Limits
-are four attempts, 22 pages each and the existing 30-second budget. Delivery
-yields between callbacks. An unsettled read retains the prior view with explicit
-settling/stale status and retries next poll without publishing partial facts.
-Changed evidence uses stable task/action replacement keys; historical
-reset remains silent. Rich result/error detail and exact matched-policy reasons
-remain open. See [E89](../../../docs/completion/p18_recorded_surfaces.md).
+E89 binds recorded route/result/denial facts. E90 adds exact scoped, separately
+typed saved executor-message/error/reason readback. All detail reads precede the
+existing four-attempt/22-page/30-second coherence barrier; unavailable or foreign
+detail leaves the cursor and callbacks uncommitted. Fingerprints use material
+copy, not transient query IDs. Historical absent detail stays unavailable.
+Pre-mutation intent is Pending; actual verification stays separate. Original E88
+wire records, dark styles and host placement/motion remain unchanged. See
+[E90](../../../docs/completion/p18_action_details.md).
 
 Remaining live task/step/tool/rollback and verification bindings, owned-worker
 termination, live-message panel and core-health projection (surfaces 4, 5, 7,
 9, 17 and 21-23) need subsequent
-packets. Detailed result/reason fields for 8/19 and full desktop/backend burst
-acceptance also remain open. Required missing evidence must be established
+packets. Full desktop/backend burst acceptance remains open. Required missing evidence must be established
 before presentation; resource release or dismissal never proves termination.
 Physical Windows/owner appearance acceptance stays with P25.
 
