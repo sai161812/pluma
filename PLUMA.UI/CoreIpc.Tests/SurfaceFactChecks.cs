@@ -53,6 +53,21 @@ internal static class SurfaceFactChecks
         await coherent.PollOnceAsync(default);
         check(delivered.SequenceEqual(new[] { "surface", "surface", "surface", "terminal" }),
             "journal coherence retry delivers committed action facts before terminal notice when readback races events");
+
+        var busy = new Client { EmptySnapshot = true };
+        var deferred = new EventFeedController(busy);
+        var deferredFacts = new List<ActivitySurfaceFact>(); int deferredNotices = 0;
+        deferred.Surface += deferredFacts.Add; deferred.Notice += _ => deferredNotices++;
+        await deferred.PollOnceAsync(default);
+        busy.Next = busy.Batch(3, false, busy.Event(1, "task_recorded"), busy.Event(2, "action_recorded", 10), busy.Event(3, "action_recorded", 20));
+        busy.AdvancingReads = 4;
+        await deferred.PollOnceAsync(default);
+        check(busy.AdvancingReads == 0 && deferredFacts.Count == 0 && deferredNotices == 0 &&
+            deferred.View.Entries.Length == 0 && deferred.View.Status.Contains("settling"),
+            "four unsettled readbacks defer publication with explicit stale status and preserve the previous view");
+        await deferred.PollOnceAsync(default);
+        check(deferredFacts.Count == 3 && deferredNotices == 1 && deferred.View.Status == "Live activity connected.",
+            "a later settled poll retries the uncommitted events and publishes each recorded fact once");
     }
 
     private sealed class Client : IEventFeedClient
@@ -63,6 +78,7 @@ internal static class SurfaceFactChecks
         internal CoreRequestProtocol.EventBatch Next;
         internal long? FailAfter;
         internal bool EmptySnapshot, AdvanceOnRead;
+        internal int AdvancingReads;
         internal readonly List<long> ReadAfter = [];
         internal readonly Dictionary<long, CoreRequestProtocol.ActivityAction> Actions = new()
         { [10] = new(10, 0, "fixture_read", "READ", false, false, false, false, false, null),
@@ -83,6 +99,12 @@ internal static class SurfaceFactChecks
             {
                 AdvanceOnRead = false;
                 Next = Batch(3, false, Event(1, "task_recorded"), Event(2, "action_recorded", 10), Event(3, "action_recorded", 20));
+            }
+            if (AdvancingReads > 0)
+            {
+                AdvancingReads--;
+                long next = Next.Events.Last().Sequence + 1;
+                Next = Batch(next, false, Next.Events.Append(Event(next, "task_changed")).ToArray());
             }
             return Task.FromResult(Ok(new CoreRequestProtocol.TerminalReadback(1, "terminal_readback", request, task, true, "SUCCEEDED", true, true, false, Route, "PRIVATE_SURFACE_PAYLOAD", 1)));
         }

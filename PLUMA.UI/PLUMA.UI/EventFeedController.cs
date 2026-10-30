@@ -216,7 +216,8 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                 }
                 return;
             }
-            throw new IOException("Activity changed before readback could settle.");
+            lock (_gate) _status = "Activity readback is settling. Saved entries may be stale.";
+            Changed?.Invoke(View);
         }
         finally { Interlocked.Exchange(ref _polling, 0); }
     }
