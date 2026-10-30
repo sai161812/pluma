@@ -49,8 +49,9 @@ internal static class EventFeedChecks
         check(owner.View.Entries.Length == count && notices.Count == 2,
             "failed material readback commits neither a partial burst nor a notification");
         source.FailTask = null;
+        int retryStart = source.CursorReads.Count;
         await owner.PollOnceAsync(default);
-        check(source.After == 3 && notices.Count == 3 && owner.View.Entries.Last().TaskId == changed,
+        check(source.CursorReads[retryStart] == 3 && notices.Count == 3 && owner.View.Entries.Last().TaskId == changed,
             "readback recovery retries the uncommitted cursor without repeating previous terminal notices");
 
         foreach (var scenario in new[] { ("SUCCEEDED", false, true, false), ("SUCCEEDED", true, false, false),
@@ -117,6 +118,7 @@ internal static class EventFeedChecks
         internal CoreRequestProtocol.EventBatch Next;
         internal string? FailTask;
         internal long After;
+        internal readonly List<long> CursorReads = [];
         internal bool Stall, Cancelled;
         internal Client() { Next = Batch(Stream, 0, true); }
         internal string Add(string state = "SUCCEEDED", bool verified = true, bool persisted = true, bool residual = false)
@@ -131,6 +133,7 @@ internal static class EventFeedChecks
         public async Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> EventsAsync(string request, string? stream, long after, CancellationToken token)
         {
             After = after;
+            CursorReads.Add(after);
             if (Stall)
                 try { await Task.Delay(Timeout.Infinite, token); }
                 catch (OperationCanceledException) { Cancelled = true; throw; }

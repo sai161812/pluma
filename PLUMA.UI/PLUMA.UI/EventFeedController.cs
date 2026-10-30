@@ -90,107 +90,133 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
         try
         {
             token = budget.Token;
-            var reply = await client.EventsAsync(Id(), _cursor.StreamId, _cursor.Sequence, token);
-            if (!reply.IsSuccess) throw new IOException("Activity readback unavailable.");
-            var batch = reply.Response!;
-            var stagedCursor = _cursor.Fork();
-            var fresh = stagedCursor.Apply(batch);
-            var observations = new List<Observation>();
-            var surfaceFacts = new List<ActivitySurfaceFact>();
-            if (batch.ResetRequired)
+            // Material readback can observe commits newer than the first event
+            // query. Retry a bounded number of times before publishing any fact.
+            for (int attempt = 0; attempt < 4; attempt++)
             {
-                var history = await client.HistoryAsync(Id(), null, token);
-                if (!history.IsSuccess) throw new IOException("Activity snapshot unavailable.");
-                foreach (var task in history.Response!.Tasks.Reverse())
+                var reply = await client.EventsAsync(Id(), _cursor.StreamId, _cursor.Sequence, token);
+                if (!reply.IsSuccess) throw new IOException("Activity readback unavailable.");
+                var batch = reply.Response!;
+                var stagedCursor = _cursor.Fork();
+                var fresh = new List<CoreRequestProtocol.LedgerEvent>(stagedCursor.Apply(batch));
+                int pages = 1;
+                while (!batch.ResetRequired && batch.HasMore)
                 {
-                    observations.Add(await ObserveAsync(task.TaskId, task.RequestId, batch.StreamId + "/snapshot/" + task.TaskId,
-                        DateTimeOffset.Parse(task.CompletedAt ?? task.CreatedAt), token, notify: false));
-                    if (task.Route is not null) surfaceFacts.Add(ActivitySurfaceFact.ForRoute(task.TaskId, task.Route));
+                    if (++pages > 22) throw new IOException("Activity backlog requires resynchronization.");
+                    var continuation = await client.EventsAsync(Id(), stagedCursor.StreamId, stagedCursor.Sequence, token);
+                    if (!continuation.IsSuccess) throw new IOException("Activity continuation unavailable.");
+                    batch = continuation.Response!;
+                    if (batch.ResetRequired) throw new JsonException("Activity stream changed during readback.");
+                    fresh.AddRange(stagedCursor.Apply(batch));
                 }
-                stagedCursor.SnapshotRead();
-            }
-            else
-            {
-                foreach (var group in fresh.GroupBy(item => item.TaskId).OrderBy(group => group.Last().Sequence))
+                var observations = new List<Observation>();
+                var surfaceFacts = new List<ActivitySurfaceFact>();
+                if (batch.ResetRequired)
                 {
-                    var evidence = await client.ActivityAsync(Id(), group.Key, token);
-                    if (!evidence.IsSuccess)
-                        throw new IOException("Task evidence unavailable.");
-                    var task = evidence.Response!;
-                    if (task.TaskId != group.Key || group.Any(item => item.RequestId is not null && item.RequestId != task.TaskRequestId))
-                        throw new JsonException("Event and task identities differ.");
-                    var last = group.Last();
-                    observations.Add(await ObserveAsync(task.TaskId, task.TaskRequestId, batch.StreamId + "/" + last.Sequence,
-                        DateTimeOffset.Parse(last.OccurredAt), token));
-                    surfaceFacts.AddRange(await ReadSurfacesAsync(group, task, token));
+                    var history = await client.HistoryAsync(Id(), null, token);
+                    if (!history.IsSuccess) throw new IOException("Activity snapshot unavailable.");
+                    foreach (var task in history.Response!.Tasks.Reverse())
+                    {
+                        observations.Add(await ObserveAsync(task.TaskId, task.RequestId, batch.StreamId + "/snapshot/" + task.TaskId,
+                            DateTimeOffset.Parse(task.CompletedAt ?? task.CreatedAt), token, notify: false));
+                        if (task.Route is not null) surfaceFacts.Add(ActivitySurfaceFact.ForRoute(task.TaskId, task.Route));
+                    }
+                    stagedCursor.SnapshotRead();
                 }
-                // Ledger commits can precede terminal-ready/cached verification.
-                // Recheck active observations and give settled-but-unverified success
-                // three extra reads; no endless refresh of historical completions.
-                Observation[] settling;
+                else
+                {
+                    foreach (var group in fresh.GroupBy(item => item.TaskId).OrderBy(group => group.Last().Sequence))
+                    {
+                        var evidence = await client.ActivityAsync(Id(), group.Key, token);
+                        if (!evidence.IsSuccess)
+                            throw new IOException("Task evidence unavailable.");
+                        var task = evidence.Response!;
+                        if (task.TaskId != group.Key || group.Any(item => item.RequestId is not null && item.RequestId != task.TaskRequestId))
+                            throw new JsonException("Event and task identities differ.");
+                        var last = group.Last();
+                        observations.Add(await ObserveAsync(task.TaskId, task.TaskRequestId, batch.StreamId + "/" + last.Sequence,
+                            DateTimeOffset.Parse(last.OccurredAt), token));
+                        surfaceFacts.AddRange(await ReadSurfacesAsync(group, task, token));
+                    }
+                    // Ledger commits can precede terminal-ready/cached verification.
+                    // Recheck active observations and give settled-but-unverified success
+                    // three extra reads; no endless refresh of historical completions.
+                    Observation[] settling;
+                    lock (_gate)
+                    {
+                        var eligible = _known.Values.Where(item => item.ReadsRemaining != 0 &&
+                            observations.All(next => next.Entry.TaskId != item.Entry.TaskId)).ToArray();
+                        int start = _refreshOffset % Math.Max(1, eligible.Length);
+                        settling = eligible.Skip(start).Concat(eligible.Take(start)).Take(25 - observations.Count).ToArray();
+                        _refreshOffset = (start + settling.Length) % Math.Max(1, eligible.Length);
+                    }
+                    foreach (var item in settling)
+                        observations.Add(await ObserveAsync(item.Entry.TaskId, item.RequestId, item.BaseIdentity,
+                            item.Entry.Timestamp, token, item.ReadsRemaining < 0 ? 3 : item.ReadsRemaining - 1, item.NotifyTransitions));
+                }
+                if (!batch.ResetRequired)
+                {
+                    var tail = await client.EventsAsync(Id(), stagedCursor.StreamId, stagedCursor.Sequence, token);
+                    if (!tail.IsSuccess) throw new IOException("Activity coherence readback unavailable.");
+                    if (tail.Response!.ResetRequired) throw new JsonException("Activity stream changed during readback.");
+                    if (stagedCursor.Fork().Apply(tail.Response).Length != 0) continue;
+                }
+                token.ThrowIfCancellationRequested();
+                var notices = new List<EventFeedEntry>();
+                var surfaces = new List<ActivitySurfaceFact>();
+                bool changed;
                 lock (_gate)
                 {
-                    var eligible = _known.Values.Where(item => item.ReadsRemaining != 0 &&
-                        observations.All(next => next.Entry.TaskId != item.Entry.TaskId)).ToArray();
-                    int start = _refreshOffset % Math.Max(1, eligible.Length);
-                    settling = eligible.Skip(start).Concat(eligible.Take(start)).Take(25 - observations.Count).ToArray();
-                    _refreshOffset = (start + settling.Length) % Math.Max(1, eligible.Length);
-                }
-                foreach (var item in settling)
-                    observations.Add(await ObserveAsync(item.Entry.TaskId, item.RequestId, item.BaseIdentity,
-                        item.Entry.Timestamp, token, item.ReadsRemaining < 0 ? 3 : item.ReadsRemaining - 1, item.NotifyTransitions));
-            }
-            token.ThrowIfCancellationRequested();
-            var notices = new List<EventFeedEntry>();
-            var surfaces = new List<ActivitySurfaceFact>();
-            bool changed;
-            lock (_gate)
-            {
-                changed = batch.ResetRequired || _status != "Live activity connected.";
-                if (batch.ResetRequired)
-                { _entries.Clear(); _known.Clear(); _knownOrder.Clear(); _surfaceKnown.Clear(); _surfaceOrder.Clear(); }
-                foreach (var fact in surfaceFacts)
-                {
-                    if (_surfaceKnown.TryGetValue(fact.Key, out var fingerprint) && fingerprint == fact.Fingerprint) continue;
-                    if (!_surfaceKnown.ContainsKey(fact.Key))
+                    changed = batch.ResetRequired || _status != "Live activity connected.";
+                    if (batch.ResetRequired)
+                    { _entries.Clear(); _known.Clear(); _knownOrder.Clear(); _surfaceKnown.Clear(); _surfaceOrder.Clear(); }
+                    foreach (var fact in surfaceFacts)
                     {
-                        if (_surfaceKnown.Count == 512) _surfaceKnown.Remove(_surfaceOrder.Dequeue());
-                        _surfaceOrder.Enqueue(fact.Key);
+                        if (_surfaceKnown.TryGetValue(fact.Key, out var fingerprint) && fingerprint == fact.Fingerprint) continue;
+                        if (!_surfaceKnown.ContainsKey(fact.Key))
+                        {
+                            if (_surfaceKnown.Count == 512) _surfaceKnown.Remove(_surfaceOrder.Dequeue());
+                            _surfaceOrder.Enqueue(fact.Key);
+                        }
+                        _surfaceKnown[fact.Key] = fact.Fingerprint;
+                        if (!batch.ResetRequired) surfaces.Add(fact);
                     }
-                    _surfaceKnown[fact.Key] = fact.Fingerprint;
-                    if (!batch.ResetRequired) surfaces.Add(fact);
+                    foreach (var item in observations)
+                    {
+                        var entry = item.Entry;
+                        _known.TryGetValue(entry.TaskId, out var previous);
+                        if (previous?.Fingerprint == item.Fingerprint) { _known[entry.TaskId] = item; continue; }
+                        changed = true;
+                        if (!batch.ResetRequired && item.NotifyTransitions && entry.Terminal &&
+                            (previous is not null && (!previous.Entry.Terminal || previous.Entry.Verified != entry.Verified ||
+                                previous.Entry.Warning != entry.Warning || previous.Entry.Message != entry.Message) ||
+                             previous is null && fresh.Any(e => e.TaskId == entry.TaskId && e.Kind == "task_recorded")))
+                            notices.Add(entry);
+                        if (!_known.ContainsKey(entry.TaskId))
+                        {
+                            if (_known.Count == 512) _known.Remove(_knownOrder.Dequeue());
+                            _knownOrder.Enqueue(entry.TaskId);
+                        }
+                        _known[entry.TaskId] = item;
+                        if (_entries.Count == 200) _entries.RemoveAt(0);
+                        _entries.Add(entry);
+                    }
+                    _cursor = stagedCursor;
+                    _status = "Live activity connected.";
                 }
+                if (changed) Changed?.Invoke(View);
+                // Preserve the coalesced task order, with route/action evidence
+                // delivered before that task's terminal notice.
                 foreach (var item in observations)
                 {
-                    var entry = item.Entry;
-                    _known.TryGetValue(entry.TaskId, out var previous);
-                    if (previous?.Fingerprint == item.Fingerprint) { _known[entry.TaskId] = item; continue; }
-                    changed = true;
-                    if (!batch.ResetRequired && item.NotifyTransitions && entry.Terminal &&
-                        (previous is not null && (!previous.Entry.Terminal || previous.Entry.Verified != entry.Verified ||
-                            previous.Entry.Warning != entry.Warning || previous.Entry.Message != entry.Message) ||
-                         previous is null && fresh.Any(e => e.TaskId == entry.TaskId && e.Kind == "task_recorded")))
-                        notices.Add(entry);
-                    if (!_known.ContainsKey(entry.TaskId))
-                    {
-                        if (_known.Count == 512) _known.Remove(_knownOrder.Dequeue());
-                        _knownOrder.Enqueue(entry.TaskId);
-                    }
-                    _known[entry.TaskId] = item;
-                    if (_entries.Count == 200) _entries.RemoveAt(0);
-                    _entries.Add(entry);
+                    foreach (var fact in surfaces.Where(fact => fact.TaskId == item.Entry.TaskId))
+                    { token.ThrowIfCancellationRequested(); Surface?.Invoke(fact); await Task.Yield(); }
+                    foreach (var entry in notices.Where(entry => entry.TaskId == item.Entry.TaskId))
+                    { token.ThrowIfCancellationRequested(); Notice?.Invoke(entry); await Task.Yield(); }
                 }
-                _cursor = stagedCursor;
-                _status = "Live activity connected.";
+                return;
             }
-            if (changed) Changed?.Invoke(View);
-            // Preserve the coalesced task order, with route/action evidence
-            // delivered before that task's terminal notice.
-            foreach (var item in observations)
-            {
-                foreach (var fact in surfaces.Where(fact => fact.TaskId == item.Entry.TaskId)) Surface?.Invoke(fact);
-                foreach (var entry in notices.Where(entry => entry.TaskId == item.Entry.TaskId)) Notice?.Invoke(entry);
-            }
+            throw new IOException("Activity changed before readback could settle.");
         }
         finally { Interlocked.Exchange(ref _polling, 0); }
     }
