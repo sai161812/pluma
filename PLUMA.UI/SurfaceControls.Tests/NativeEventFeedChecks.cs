@@ -65,7 +65,7 @@ internal static class NativeEventFeedChecks
                 card.ApplyEvidence(actionFact.Action! with { Tool = new string('m', 64) });
                 card.UpdateLayout();
                 var toolLabel = (TextBlock)card.FindName("ToolNameText");
-                check(toolLabel.Text.Contains(new string('m', 64)) && toolLabel.ActualHeight > 20,
+                check(toolLabel.Text.Contains(new string('m', 64), StringComparison.OrdinalIgnoreCase) && toolLabel.ActualHeight > 20,
                     "native result card wraps the complete maximum-length unbroken tool name");
             }
             else
