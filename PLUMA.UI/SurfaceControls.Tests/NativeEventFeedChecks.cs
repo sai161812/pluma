@@ -62,6 +62,11 @@ internal static class NativeEventFeedChecks
                 check(((PopupStatusIndicator)card.FindName("OutcomeState")).Label == "Verified" &&
                     ((PopupMessageText)card.FindName("ResultText")).DisplayText.Contains("postcondition was verified"),
                     "native result card binds recorded postcondition proof without invented file success");
+                card.ApplyEvidence(actionFact.Action! with { Tool = new string('m', 64) });
+                card.UpdateLayout();
+                var toolLabel = (TextBlock)card.FindName("ToolNameText");
+                check(toolLabel.Text.Contains(new string('m', 64)) && toolLabel.ActualHeight > 20,
+                    "native result card wraps the complete maximum-length unbroken tool name");
             }
             else
             {

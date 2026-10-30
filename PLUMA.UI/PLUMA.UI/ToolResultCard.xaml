@@ -39,7 +39,7 @@
                            FontFamily="Segoe UI Variable"
                            FontSize="16"
                            FontWeight="SemiBold" MaxHeight="96" />
-                <TextBlock x:Name="ToolNameText" Text="Tool unavailable"
+                <TextBlock x:Name="ToolNameText" Text="Tool unavailable" TextWrapping="Wrap"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
