@@ -253,8 +253,7 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                 actualDetail.ActionId != action.ActionId || actualDetail.Tool != action.Tool ||
                 !action.PolicyDenied && actualDetail.PolicyReason is not null)
                 throw new JsonException("Action presentation identity differs.");
-            action = action with { Detail = actualDetail };
-            facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action));
+            facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action, actualDetail));
         }
         return facts.ToArray();
     }

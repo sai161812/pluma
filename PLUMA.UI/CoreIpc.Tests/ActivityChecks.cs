@@ -36,13 +36,14 @@ internal static class ActivityChecks
         }
         check(parsed.TaskId == task && parsed.Actions.Single().Verified && parsed.Cleanup is { Complete: true },
             "typed activity parser retains exact task/action correlation and cleanup evidence");
-        foreach (string change in new[] { "missing-flag", "wrong-boolean", "duplicate-id", "wrong-tail", "cleanup-contradiction", "unattempted-rollback", "unknown-state" })
+        foreach (string change in new[] { "missing-flag", "wrong-boolean", "duplicate-id", "wrong-tail", "cleanup-contradiction", "unattempted-rollback", "unknown-state", "unexpected-detail" })
         {
             var node = JsonNode.Parse(Wire(page))!.AsObject();
             var first = node["actions"]![0]!.AsObject();
             switch (change)
             {
                 case "missing-flag": first.Remove("verified"); break;
+                case "unexpected-detail": first["detail"] = "Not an E88 wire field"; break;
                 case "wrong-boolean": first["verified"] = "true"; break;
                 case "duplicate-id": node["actions"]!.AsArray().Add(first.DeepClone()); break;
                 case "wrong-tail": node["next_action_id"] = 9; break;

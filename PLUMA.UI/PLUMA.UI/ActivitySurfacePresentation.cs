@@ -10,11 +10,11 @@ internal static class ActivitySurfacePresentation
         if (fact.Surface == 6 && fact.Route is not null) return new RouteBadgePopup { Route = fact.Route };
         if (fact.Surface == 8 && fact.Action is { } action)
         {
-            var result = new ToolResultCard(); result.ApplyEvidence(action); return result;
+            var result = new ToolResultCard(); result.ApplyEvidence(action, fact.Detail); return result;
         }
         if (fact.Surface == 19 && fact.Action is { PolicyDenied: true } denied)
             return new PolicyBlockNotice { ToolName = denied.Tool,
-                MatchedRule = denied.Detail?.PolicyReason ?? "The recorded denial reason is unavailable.", IsNoticeOpen = true };
+                MatchedRule = fact.Detail?.PolicyReason ?? "The recorded denial reason is unavailable.", IsNoticeOpen = true };
         throw new ArgumentException("No supported surface matches this activity evidence.");
     }
 }

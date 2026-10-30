@@ -54,8 +54,7 @@ internal static partial class CoreRequestProtocol
         [property: JsonRequired] string Tool, [property: JsonRequired] string Risk,
         [property: JsonRequired] bool Verified, [property: JsonRequired] bool ErrorRecorded,
         [property: JsonRequired] bool PolicyDenied, [property: JsonRequired] bool UndoAvailable,
-        [property: JsonRequired] bool RollbackAttempted, [property: JsonRequired] bool? RollbackOk,
-        [property: JsonIgnore] ActionDetail? Detail = null);
+        [property: JsonRequired] bool RollbackAttempted, [property: JsonRequired] bool? RollbackOk);
     internal sealed record ActivityCleanup([property: JsonRequired] bool Complete, [property: JsonRequired] int UnresolvedCount);
     internal sealed record ActivityPage([property: JsonRequired] int ProtocolVersion,
         [property: JsonRequired] string MessageType, [property: JsonRequired] string RequestId,

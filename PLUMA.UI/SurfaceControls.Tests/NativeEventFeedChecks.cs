@@ -61,15 +61,15 @@ internal static class NativeEventFeedChecks
                 var card = (ToolResultCard)actionView;
                 check(((PopupStatusIndicator)card.FindName("OutcomeState")).Label == "Verified" &&
                     ((PopupMessageText)card.FindName("ResultText")).DisplayText == "Read owned fixture." &&
-                    actionFact.Action!.Detail!.FactualMessage == "Read owned fixture.",
+                    actionFact.Detail!.FactualMessage == "Read owned fixture.",
                     "native result card binds the actual saved executor message and independent verification flags");
                 var original = actionFact.Action!;
-                card.ApplyEvidence(original with { Verified = false, ErrorRecorded = true,
-                    Detail = original.Detail! with { ErrorCode = "MUTATION_OUTCOME_PENDING", FactualMessage = "Execution outcome has not been observed." } });
+                card.ApplyEvidence(original with { Verified = false, ErrorRecorded = true },
+                    actionFact.Detail! with { ErrorCode = "MUTATION_OUTCOME_PENDING", FactualMessage = "Execution outcome has not been observed." });
                 check(((PopupStatusIndicator)card.FindName("OutcomeState")).Label == "Pending" &&
                     ((PopupStatusIndicator)card.FindName("VerificationState")).Label == "Not verified",
                     "native pre-mutation intent remains pending without an execution or verification claim");
-                card.ApplyEvidence(actionFact.Action! with { Tool = new string('m', 64) });
+                card.ApplyEvidence(actionFact.Action! with { Tool = new string('m', 64) }, actionFact.Detail);
                 card.UpdateLayout();
                 var toolLabel = (TextBlock)card.FindName("ToolNameText");
                 check(toolLabel.Text.Contains(new string('m', 64), StringComparison.OrdinalIgnoreCase) && toolLabel.ActualHeight > 20,
@@ -82,13 +82,13 @@ internal static class NativeEventFeedChecks
                     ((PopupMessageText)card.FindName("ResultText")).Text == "Failed: Owned fixture failure." &&
                     ((PopupMessageText)card.FindName("ErrorCodeText")).Text == "FIXTURE_FAILED" &&
                     ((PopupMessageText)card.FindName("ErrorCodeText")).Visibility == Microsoft.UI.Xaml.Visibility.Visible &&
-                    actionFact.Action!.Detail!.ErrorCode == "FIXTURE_FAILED",
+                    actionFact.Detail!.ErrorCode == "FIXTURE_FAILED",
                     "native failed executor result and error code survive actual ledger/IPC readback without an exception body");
             }
             else
             {
                 var policy = (PolicyBlockNotice)actionView;
-                check(policy.IsNoticeOpen && policy.MatchedRule == actionFact.Action!.Detail!.PolicyReason &&
+                check(policy.IsNoticeOpen && policy.MatchedRule == actionFact.Detail!.PolicyReason &&
                     !string.IsNullOrWhiteSpace(policy.MatchedRule) && policy.ToolName == "fixture_denied",
                     "native policy notice binds the exact saved denial reason and tool identity");
                 policy.HideNotice();

@@ -90,7 +90,7 @@ internal static class SurfaceFactChecks
         detailed.Next = detailed.Batch(5, false, detailed.Event(5, "action_changed", 20));
         await detailedOwner.PollOnceAsync(default);
         check(detailedFacts.Count == 4 && detailedFacts.Last().Key == detailKey &&
-            detailedFacts.Last().Action!.Detail!.FactualMessage == detailed.DetailMessage,
+            detailedFacts.Last().Detail!.FactualMessage == detailed.DetailMessage,
             "changed factual detail replaces the same action key without changing verification flags");
     }
 
