@@ -13,11 +13,14 @@ internal interface IEventFeedClient
     Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> EventsAsync(string request, string? stream, long after, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, string? task, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token, long afterActionId = 0);
+    Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token);
 }
 
 internal sealed class CoreEventFeedClient(CoreIpcClient client) : IEventFeedClient
 {
+    public Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token) =>
+        client.GetActionDetailAsync(new(request, task, action), token);
     public Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> EventsAsync(string request, string? stream, long after, CancellationToken token) =>
         client.GetEventsAsync(new(request, stream, after, 25), token);
     public Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, string? task, CancellationToken token) =>
@@ -243,6 +246,14 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                 action = actual.Actions.SingleOrDefault(item => item.ActionId == group.Key);
             }
             if (action is null) throw new IOException("No saved action matches this event.");
+            var detail = await client.DetailAsync(Id(), page.TaskId, action.ActionId, token);
+            if (!detail.IsSuccess) throw new IOException("Action presentation unavailable.");
+            var actualDetail = detail.Response!;
+            if (actualDetail.TaskId != page.TaskId || actualDetail.TaskRequestId != page.TaskRequestId ||
+                actualDetail.ActionId != action.ActionId || actualDetail.Tool != action.Tool ||
+                !action.PolicyDenied && actualDetail.PolicyReason is not null)
+                throw new JsonException("Action presentation identity differs.");
+            action = action with { Detail = actualDetail };
             facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action));
         }
         return facts.ToArray();

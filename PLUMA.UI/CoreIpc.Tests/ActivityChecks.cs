@@ -16,6 +16,24 @@ internal static class ActivityChecks
         var page = new CoreRequestProtocol.ActivityPage(1, "activity_page", Id(), task, request,
             "SUCCEEDED", "FAST", [action], 3, false, new(true, 0));
         var parsed = CoreRequestProtocol.ActivityPage.Parse(Encoding.UTF8.GetBytes(Wire(page)));
+        var detail = new CoreRequestProtocol.ActionDetail(1, "action_detail", Id(), task, request, 3,
+            "fixture_read", "Read owned résumé 文件.", null, null);
+        check(CoreRequestProtocol.ActionDetail.Parse(Encoding.UTF8.GetBytes(Wire(detail))).FactualMessage == detail.FactualMessage,
+            "typed action presentation preserves bounded Unicode executor copy");
+        foreach (string change in new[] { "missing-text", "oversized-unicode", "bad-code", "bad-tool", "bad-id" })
+        {
+            var node = JsonNode.Parse(Wire(detail))!.AsObject();
+            switch (change)
+            {
+                case "missing-text": node.Remove("factual_message"); break;
+                case "oversized-unicode": node["factual_message"] = new string('文', 400); break;
+                case "bad-code": node["error_code"] = "not a code"; break;
+                case "bad-tool": node["tool"] = "bad tool"; break;
+                case "bad-id": node["action_id"] = 0; break;
+            }
+            try { CoreRequestProtocol.ActionDetail.Parse(Encoding.UTF8.GetBytes(node.ToJsonString())); throw new Exception("Bad detail accepted."); }
+            catch (JsonException) { check(true, "action presentation fails closed: " + change); }
+        }
         check(parsed.TaskId == task && parsed.Actions.Single().Verified && parsed.Cleanup is { Complete: true },
             "typed activity parser retains exact task/action correlation and cleanup evidence");
         foreach (string change in new[] { "missing-flag", "wrong-boolean", "duplicate-id", "wrong-tail", "cleanup-contradiction", "unattempted-rollback", "unknown-state" })
@@ -71,6 +89,9 @@ internal static class ActivityChecks
             check(page.Actions[0].Verified == expected.Verified && page.Actions[0].RollbackAttempted == expected.RollbackAttempted &&
                 page.Actions[0].UndoAvailable == expected.UndoAvailable,
                 "actual activity flags agree with independent WAL history readback");
+            var detail = await client.GetActionDetailAsync(new(Id(), task.TaskId, page.Actions[0].ActionId), default);
+            check(detail.IsSuccess && detail.Response!.TaskRequestId == task.RequestId && detail.Response.Tool == expected.Tool,
+                "actual authenticated action detail retains exact saved task/request/action/tool scope");
             string serialized = Wire(page);
             check(!serialized.Contains("arguments") && !serialized.Contains("command_text") && !serialized.Contains("creation_time"),
                 "native activity response contains no command, argument body or process identity");

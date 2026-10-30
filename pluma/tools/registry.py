@@ -504,14 +504,16 @@ def _check_postcondition(args, context, *, verifier, tool):
         return ToolResult.failure(tool, "Postcondition verification failed.", "POSTCONDITION_FAILED")
 
 
-def _record_no_execution(ledger, task_context, step_index, tool_name, arguments, risk, decision, result):
+def _record_no_execution(ledger, task_context, step_index, tool_name, arguments, risk, decision, result, *, policy_reason=None):
     if ledger is not None and task_context is not None:
         from pluma.memory.activity import ActionRecord
         try:
             ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
                 tool=tool_name, args_raw=arguments, risk=risk.value, adapter="policy",
                 approval_state=decision, verified=False, result_data={"executed": False},
-                error_detail={"code": result.error_code, "error": result.error}), _timeout_s=2.0)
+                error_detail={"code": result.error_code, "error": result.error},
+                factual_message=result.factual_message,
+                policy_reason=policy_reason), _timeout_s=2.0)
         except Exception:
             return ToolResult.failure(tool_name, "Action history could not be verified. No action was executed.",
                                       error_code="LEDGER_WRITE_FAILED")
@@ -1027,7 +1029,8 @@ class ToolRegistry:
                     ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
                         tool=tool_name, args_raw=validated_args, risk=spec.risk_class.value,
                         approval_state="PRIORITY_STOP", adapter="supervisor", result_data=result.data,
-                        verified=result.verified, error_detail={"code": result.error_code} if not result.ok else None),
+                        verified=result.verified, error_detail={"code": result.error_code} if not result.ok else None,
+                        factual_message=result.factual_message),
                         _timeout_s=2.0)
                 except Exception:
                     return ToolResult.failure(tool_name, "STOP history could not be verified.", "LEDGER_WRITE_FAILED")
@@ -1180,7 +1183,8 @@ class ToolRegistry:
             elif approval_state != "ALLOW":
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
-                        "Blocked by policy: " + policy_eval.reason, error_code="POLICY_DENIED"))
+                        "Blocked by policy: " + policy_eval.reason, error_code="POLICY_DENIED"),
+                    policy_reason=policy_eval.reason)
             if tool_name == 'run_project_command':
                 execution_binding = getattr(policy_eval, 'execution_binding', None)
 
@@ -1464,6 +1468,7 @@ class ToolRegistry:
                 prepared = ActionRecord(task_id=task_context.task_id, step_index=step_index,
                     tool=tool_name, args_raw=validated_args, risk=effective_risk.value,
                     approval_state=approval_state, result_data={"executed": None, "non_undoable": spec.non_undoable},
+                    factual_message="Execution outcome has not been observed.",
                     error_detail={"code": "MUTATION_OUTCOME_PENDING",
                                   "error": "Execution outcome has not been observed."})
                 try:
@@ -1767,6 +1772,7 @@ class ToolRegistry:
                     adapter=final_result.adapter_used,
                     duration_ms=duration_ms,
                     result_data=final_result.data,
+                    factual_message=final_result.factual_message,
                     verified=verified,
                     verification_detail=verify_detail.model_dump() if verify_detail else None,
                     error_detail={"error": final_result.error, "code": final_result.error_code} if final_result.error else None,

@@ -28,7 +28,7 @@ internal static class NativeEventFeedChecks
         var page = new DashboardPage();
         page.AttachCoreClient(core); page.AttachEventController(owner);
         root.Children.Clear(); root.Children.Add(page);
-        foreach (string command in new[] { "fixture:read", "fixture:denied" })
+        foreach (string command in new[] { "fixture:read", "fixture:fail", "fixture:denied" })
         {
             var submitted = await core.SubmitTextAsync(Guid.NewGuid().ToString("D"), command, default);
             if (submitted.Response is not { Accepted: true }) throw new InvalidOperationException("Owned event task not admitted.");
@@ -60,19 +60,37 @@ internal static class NativeEventFeedChecks
             {
                 var card = (ToolResultCard)actionView;
                 check(((PopupStatusIndicator)card.FindName("OutcomeState")).Label == "Verified" &&
-                    ((PopupMessageText)card.FindName("ResultText")).DisplayText.Contains("postcondition was verified"),
-                    "native result card binds recorded postcondition proof without invented file success");
+                    ((PopupMessageText)card.FindName("ResultText")).DisplayText == "Read owned fixture." &&
+                    actionFact.Action!.Detail!.FactualMessage == "Read owned fixture.",
+                    "native result card binds the actual saved executor message and independent verification flags");
+                var original = actionFact.Action!;
+                card.ApplyEvidence(original with { Verified = false, ErrorRecorded = true,
+                    Detail = original.Detail! with { ErrorCode = "MUTATION_OUTCOME_PENDING", FactualMessage = "Execution outcome has not been observed." } });
+                check(((PopupStatusIndicator)card.FindName("OutcomeState")).Label == "Pending" &&
+                    ((PopupStatusIndicator)card.FindName("VerificationState")).Label == "Not verified",
+                    "native pre-mutation intent remains pending without an execution or verification claim");
                 card.ApplyEvidence(actionFact.Action! with { Tool = new string('m', 64) });
                 card.UpdateLayout();
                 var toolLabel = (TextBlock)card.FindName("ToolNameText");
                 check(toolLabel.Text.Contains(new string('m', 64), StringComparison.OrdinalIgnoreCase) && toolLabel.ActualHeight > 20,
                     "native result card wraps the complete maximum-length unbroken tool name");
             }
+            else if (command == "fixture:fail")
+            {
+                var card = (ToolResultCard)actionView;
+                check(((PopupStatusIndicator)card.FindName("OutcomeState")).Label == "Issue recorded" &&
+                    ((PopupMessageText)card.FindName("ResultText")).Text == "Failed: Owned fixture failure." &&
+                    ((PopupMessageText)card.FindName("ErrorCodeText")).Text == "FIXTURE_FAILED" &&
+                    ((PopupMessageText)card.FindName("ErrorCodeText")).Visibility == Microsoft.UI.Xaml.Visibility.Visible &&
+                    actionFact.Action!.Detail!.ErrorCode == "FIXTURE_FAILED",
+                    "native failed executor result and error code survive actual ledger/IPC readback without an exception body");
+            }
             else
             {
                 var policy = (PolicyBlockNotice)actionView;
-                check(policy.IsNoticeOpen && policy.MatchedRule.Contains("denial") && policy.ToolName == "fixture_denied",
-                    "native policy notice binds the exact denied action and remains factual");
+                check(policy.IsNoticeOpen && policy.MatchedRule == actionFact.Action!.Detail!.PolicyReason &&
+                    !string.IsNullOrWhiteSpace(policy.MatchedRule) && policy.ToolName == "fixture_denied",
+                    "native policy notice binds the exact saved denial reason and tool identity");
                 policy.HideNotice();
             }
             root.Children.Remove(actionView);

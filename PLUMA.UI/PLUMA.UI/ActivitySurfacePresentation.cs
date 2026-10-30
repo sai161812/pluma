@@ -14,7 +14,7 @@ internal static class ActivitySurfacePresentation
         }
         if (fact.Surface == 19 && fact.Action is { PolicyDenied: true } denied)
             return new PolicyBlockNotice { ToolName = denied.Tool,
-                MatchedRule = "Policy denial is recorded for this action.", IsNoticeOpen = true };
+                MatchedRule = denied.Detail?.PolicyReason ?? "The recorded denial reason is unavailable.", IsNoticeOpen = true };
         throw new ArgumentException("No supported surface matches this activity evidence.");
     }
 }

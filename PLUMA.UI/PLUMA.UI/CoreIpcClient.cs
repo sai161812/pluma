@@ -197,6 +197,12 @@ namespace PLUMA.UI
                     value.Actions.All(item => item.ActionId > request.AfterActionId) &&
                     (value.Actions.Length > 0 || value.NextActionId == request.AfterActionId));
 
+        internal Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> GetActionDetailAsync(
+            CoreRequestProtocol.ActionDetailRequest request, CancellationToken token) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, false,
+                bytes => CoreRequestProtocol.ActionDetail.Parse(bytes), value => value.RequestId, token,
+                value => value.TaskId == request.TaskId && value.ActionId == request.ActionId);
+
         internal Task<CoreRequestResult<CoreRequestProtocol.SettingsSnapshot>> GetSettingsAsync(
             string requestId, CancellationToken cancellationToken) =>
             VersionedCallAsync(new CoreRequestProtocol.SettingsQueryRequest(requestId).ToMessage(), requestId,

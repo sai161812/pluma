@@ -316,7 +316,7 @@ class ResidentCore:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
-            ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
+            ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
         )
         try:
@@ -345,6 +345,8 @@ class ResidentCore:
             return self._history_query_v1(request)
         if isinstance(request, ActivityQueryV1):
             return self._activity_query_v1(request)
+        if isinstance(request, ActionDetailQueryV1):
+            return self._action_detail_v1(request)
         if isinstance(request, (ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1)):
             return self._remaining_contract_v1(request)
         return ProtocolErrorV1(error_code="UNKNOWN_MESSAGE_TYPE",
@@ -753,6 +755,27 @@ class ResidentCore:
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "HISTORY_UNAVAILABLE",
                     "message": "Activity history could not be read safely."}
+
+    def _action_detail_v1(self, request):
+        from pluma.core.ipc_contracts import ActionDetailV1
+        from pluma.memory.activity import ActivityQuery
+        from pluma.memory.action_presentation import decode_presentation
+        try:
+            row = ActivityQuery(self.ledger._db).action_detail(request.task_id, request.action_id)
+            if row is None:
+                return {"protocol_version": 1, "message_type": "protocol_error",
+                        "error_code": "ACTION_NOT_FOUND", "message": "Action detail is unavailable."}
+            value = decode_presentation(row["tool"], row["presentation_json"])
+            if value["policy_reason"] is not None and row["policy_denied"] != 1:
+                raise ValueError("Denial reason without saved denial")
+            return ActionDetailV1(request_id=request.request_id, task_id=row["task_id"],
+                task_request_id=row["task_request_id"], action_id=row["action_id"], tool=row["tool"],
+                factual_message=value["factual_message"], error_code=value["error_code"],
+                policy_reason=value["policy_reason"]).model_dump(mode="json")
+        except Exception:
+            logger.warning("Action presentation could not be read safely.")
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "ACTION_DETAIL_UNAVAILABLE", "message": "Action detail is unavailable."}
 
     def _activity_query_v1(self, request):
         from pluma.core.ipc_contracts import ActivityActionV1, ActivityCleanupV1, ActivityPageV1

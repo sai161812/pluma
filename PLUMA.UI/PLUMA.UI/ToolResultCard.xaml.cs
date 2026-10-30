@@ -10,10 +10,14 @@ namespace PLUMA.UI
         }
         internal void ApplyEvidence(CoreRequestProtocol.ActivityAction action)
         {
-            ResultText.Text = ActivityProjection.ActionMessage(action);
+            ResultText.Text = action.Detail?.FactualMessage ?? ActivityProjection.ActionMessage(action);
+            ErrorCodeText.Text = action.Detail?.ErrorCode ?? string.Empty;
+            ErrorCodeText.Visibility = action.Detail?.ErrorCode is null
+                ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
             ToolNameText.Text = "Tool: " + PopupText.Label(action.Tool);
             bool issue = action.ErrorRecorded || action.PolicyDenied;
-            OutcomeState.Label = issue ? "Issue recorded" : action.Verified ? "Verified" : "Unverified";
+            bool pending = action.Detail?.ErrorCode == "MUTATION_OUTCOME_PENDING";
+            OutcomeState.Label = pending ? "Pending" : issue ? "Issue recorded" : action.Verified ? "Verified" : "Unverified";
             OutcomeState.Kind = action.Verified && !issue ? PopupStatusKind.Success : PopupStatusKind.Dot;
             VerificationState.Label = action.Verified ? "Postcondition verified" : "Not verified";
             VerificationState.Kind = action.Verified ? PopupStatusKind.Success : PopupStatusKind.Dot;

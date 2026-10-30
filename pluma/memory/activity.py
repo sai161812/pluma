@@ -78,6 +78,8 @@ class ActionRecord:
     verified: bool = False
     verification_detail: Optional[Dict[str, Any]] = None
     error_detail: Optional[Dict[str, Any]] = None
+    factual_message: Optional[str] = None
+    policy_reason: Optional[str] = None
     # Returned after insert so the caller can attach an UndoRecord.
     _row_id: Optional[int] = field(default=None, init=False, repr=False)
 
@@ -202,14 +204,15 @@ class ActivityLedger:
             INSERT INTO actions
               (task_id, step_index, tool, adapter, args_json_sanitized,
                risk, approval_state, started_at, ended_at, duration_ms,
-               result_json, verified, verification_json, error_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               result_json, verified, verification_json, error_json, presentation_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.task_id, record.step_index, record.tool, record.adapter,
                 sanitised_args, record.risk, record.approval_state,
                 record.started_at, record.ended_at, record.duration_ms,
                 result_json, int(record.verified), verify_json, error_json,
+                self._presentation(record),
             ),
             wait=True,
             timeout_s=_timeout_s,
@@ -218,6 +221,11 @@ class ActivityLedger:
         return row_id  # type: ignore[return-value]
 
     # -- Undo records --
+
+    @staticmethod
+    def _presentation(record):
+        from pluma.memory.action_presentation import encode_presentation
+        return encode_presentation(record)
 
     def insert_undo_record(self, record: UndoRecord, *, _timeout_s: Optional[float] = None) -> None:
         """Insert an undo record linked to an action row."""
@@ -267,10 +275,10 @@ class ActivityLedger:
         encode = lambda value: json.dumps(redact_sensitive_data(value)) if value is not None else None
         statements = [(
             """UPDATE actions SET adapter=?, ended_at=?, duration_ms=?, result_json=?,
-                   verified=?, verification_json=?, error_json=? WHERE id=? AND task_id=?""",
+                   verified=?, verification_json=?, error_json=?, presentation_json=? WHERE id=? AND task_id=?""",
             (record.adapter, record.ended_at or _now_iso(), record.duration_ms,
              encode(record.result_data), int(record.verified), encode(record.verification_detail),
-             encode(record.error_detail), row_id, record.task_id)),
+             encode(record.error_detail), self._presentation(record), row_id, record.task_id)),
             ("UPDATE undo_records SET undo_json=? WHERE action_id=?", (encode(undo_data), row_id))]
         if not_executed:
             statements.append(("UPDATE undo_records SET available=0 WHERE action_id=?", (row_id,)))
@@ -587,6 +595,16 @@ class ActivityQuery:
             WHERE t.task_id=? ORDER BY a.id
             """, (task_id, after_action_id, limit + 1, task_id))
         return [dict(row) for row in rows]
+
+    def action_detail(self, task_id: str, action_id: int):
+        """Scoped snapshot: no arguments, result/error bodies or inverse recipes."""
+        row = self._db.execute_read_one("""SELECT a.id AS action_id, a.tool,
+            a.task_id, t.request_id AS task_request_id,
+            coalesce(a.approval_state IN ('DENY', 'denied'), 0) AS policy_denied,
+            substr(a.presentation_json, 1, 14001) AS presentation_json
+            FROM actions a JOIN tasks t ON t.task_id=a.task_id WHERE a.task_id=? AND a.id=?""",
+            (task_id, action_id))
+        return dict(row) if row else None
 
     def undo_record_for_action(self, action_row_id: int) -> Optional[Dict[str, Any]]:
         """Return the undo record for an action row, or None."""

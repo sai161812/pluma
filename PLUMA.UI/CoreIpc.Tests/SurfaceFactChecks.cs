@@ -68,10 +68,40 @@ internal static class SurfaceFactChecks
         await deferred.PollOnceAsync(default);
         check(deferredFacts.Count == 3 && deferredNotices == 1 && deferred.View.Status == "Live activity connected.",
             "a later settled poll retries the uncommitted events and publishes each recorded fact once");
+
+        var detailed = new Client { EmptySnapshot = true, DetailMessage = "Saved executor detail." };
+        var detailedOwner = new EventFeedController(detailed);
+        var detailedFacts = new List<ActivitySurfaceFact>(); detailedOwner.Surface += detailedFacts.Add;
+        await detailedOwner.PollOnceAsync(default);
+        detailed.Next = detailed.Batch(3, false, detailed.Event(1, "task_recorded"), detailed.Event(2, "action_recorded", 10), detailed.Event(3, "action_recorded", 20));
+        detailed.FailDetail = true;
+        try { await detailedOwner.PollOnceAsync(default); throw new Exception("Failed detail accepted."); } catch (IOException) { }
+        check(detailedFacts.Count == 0, "unavailable detail leaves all route/action facts and the cursor uncommitted");
+        detailed.FailDetail = false; detailed.WrongDetail = true;
+        try { await detailedOwner.PollOnceAsync(default); throw new Exception("Foreign detail accepted."); } catch (JsonException) { }
+        check(detailedFacts.Count == 0, "foreign detail identity is rejected before any surface publication");
+        detailed.WrongDetail = false;
+        await detailedOwner.PollOnceAsync(default);
+        detailed.Next = detailed.Batch(4, false, detailed.Event(4, "action_changed", 20));
+        await detailedOwner.PollOnceAsync(default);
+        check(detailedFacts.Count == 3, "fresh detail request identities cannot replay unchanged material");
+        string detailKey = detailedFacts.Last().Key;
+        detailed.DetailMessage = "Updated executor detail.";
+        detailed.Next = detailed.Batch(5, false, detailed.Event(5, "action_changed", 20));
+        await detailedOwner.PollOnceAsync(default);
+        check(detailedFacts.Count == 4 && detailedFacts.Last().Key == detailKey &&
+            detailedFacts.Last().Action!.Detail!.FactualMessage == detailed.DetailMessage,
+            "changed factual detail replaces the same action key without changing verification flags");
     }
 
     private sealed class Client : IEventFeedClient
     {
+        public Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token) =>
+            Task.FromResult(FailDetail ? CoreRequestResult<CoreRequestProtocol.ActionDetail>.Failed(CoreConnectionFailure.Unavailable) :
+                Ok(new CoreRequestProtocol.ActionDetail(1, "action_detail", request, WrongDetail ? Id() : task, _request,
+                    action, Actions[action].Tool, DetailMessage, null, null)));
+        internal string? DetailMessage;
+        internal bool FailDetail, WrongDetail;
         internal string Stream = Id();
         internal string Route = "FAST";
         private readonly string _task = Id(), _request = Id();

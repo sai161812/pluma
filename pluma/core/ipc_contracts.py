@@ -111,6 +111,43 @@ class ActivityQueryV1(_Envelope):
         return self
 
 
+class ActionDetailQueryV1(_Envelope):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    message_type: Literal["action_detail_query"]
+    request_id: StrictStr
+    task_id: StrictStr
+    action_id: StrictInt = Field(ge=1, le=9223372036854775807)
+
+    @model_validator(mode="after")
+    def canonical_ids(self):
+        _validate_id("request_id", self.request_id)
+        _validate_id("task_id", self.task_id)
+        return self
+
+
+class ActionDetailV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = PROTOCOL_VERSION
+    message_type: Literal["action_detail"] = "action_detail"
+    request_id: StrictStr
+    task_id: StrictStr
+    task_request_id: StrictStr
+    action_id: StrictInt = Field(ge=1, le=9223372036854775807)
+    tool: StrictStr = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    factual_message: Optional[StrictStr]
+    error_code: Optional[StrictStr] = Field(pattern=r"^[A-Z][A-Z0-9_]{0,63}$")
+    policy_reason: Optional[StrictStr]
+
+    @model_validator(mode="after")
+    def bounded(self):
+        for name in ("request_id", "task_id", "task_request_id"):
+            _validate_id(name, getattr(self, name))
+        for text in (self.factual_message, self.policy_reason):
+            if text is not None and len(text.encode("utf-8")) > 1024:
+                raise ValueError("Oversized action presentation")
+        return self
+
+
 class ActivityActionV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     action_id: StrictInt = Field(ge=1)
@@ -464,6 +501,8 @@ def parse_versioned_request(payload: dict):
             return HistoryQueryV1.model_validate(payload)
         if kind == "activity_query":
             return ActivityQueryV1.model_validate(payload)
+        if kind == "action_detail_query":
+            return ActionDetailQueryV1.model_validate(payload)
     except ValidationError:
         raise ValueError("INVALID_REQUEST") from None
     raise ValueError("UNKNOWN_MESSAGE_TYPE")

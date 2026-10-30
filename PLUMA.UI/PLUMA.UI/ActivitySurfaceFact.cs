@@ -12,6 +12,7 @@ internal sealed record ActivitySurfaceFact(string Key, int Surface, string TaskI
 
     internal static ActivitySurfaceFact ForAction(string task, CoreRequestProtocol.ActivityAction action) =>
         new("ledger-action-" + task + "/" + action.ActionId, action.PolicyDenied ? 19 : 8, task,
-            string.Join("/", action.Tool, action.StepIndex, action.Risk, action.Verified, action.ErrorRecorded, action.PolicyDenied),
+            string.Join("/", action.Tool, action.StepIndex, action.Risk, action.Verified, action.ErrorRecorded, action.PolicyDenied,
+                System.Text.Json.JsonSerializer.Serialize(new[] { action.Detail?.FactualMessage, action.Detail?.ErrorCode, action.Detail?.PolicyReason })),
             Action: action);
 }

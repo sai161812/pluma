@@ -7,6 +7,38 @@ namespace PLUMA.UI;
 
 internal static partial class CoreRequestProtocol
 {
+    internal sealed record ActionDetailRequest(string RequestId, string TaskId, long ActionId)
+    {
+        internal byte[] ToMessage()
+        {
+            RequireId(RequestId, "request_id"); RequireId(TaskId, "task_id");
+            if (ActionId <= 0) throw new ArgumentException("Invalid action identity.");
+            return JsonSerializer.SerializeToUtf8Bytes(new { protocol_version = Version, message_type = "action_detail_query",
+                request_id = RequestId, task_id = TaskId, action_id = ActionId }, Options);
+        }
+    }
+
+    internal sealed record ActionDetail([property: JsonRequired] int ProtocolVersion,
+        [property: JsonRequired] string MessageType, [property: JsonRequired] string RequestId,
+        [property: JsonRequired] string TaskId, [property: JsonRequired] string TaskRequestId,
+        [property: JsonRequired] long ActionId, [property: JsonRequired] string Tool,
+        [property: JsonRequired] string? FactualMessage, [property: JsonRequired] string? ErrorCode,
+        [property: JsonRequired] string? PolicyReason)
+    {
+        internal static ActionDetail Parse(ReadOnlySpan<byte> message)
+        {
+            var value = ReadContract<ActionDetail>(message);
+            Envelope(value.ProtocolVersion, value.MessageType, "action_detail", value.RequestId);
+            RequireId(value.TaskId, "task_id"); RequireId(value.TaskRequestId, "task_request_id");
+            if (value.ActionId <= 0 || value.Tool is null ||
+                !System.Text.RegularExpressions.Regex.IsMatch(value.Tool, @"\A[a-z][a-z0-9_]{0,63}\z") ||
+                value.ErrorCode is not null && !System.Text.RegularExpressions.Regex.IsMatch(value.ErrorCode, @"\A[A-Z][A-Z0-9_]{0,63}\z") ||
+                new[] { value.FactualMessage, value.PolicyReason }.Any(text => text is not null && System.Text.Encoding.UTF8.GetByteCount(text) > 1024))
+                throw new JsonException("Invalid action presentation.");
+            return value;
+        }
+    }
+
     internal sealed record ActivityQueryRequest(string RequestId, string TaskId, long AfterActionId = 0, int Limit = 25)
     {
         internal byte[] ToMessage()
@@ -22,7 +54,8 @@ internal static partial class CoreRequestProtocol
         [property: JsonRequired] string Tool, [property: JsonRequired] string Risk,
         [property: JsonRequired] bool Verified, [property: JsonRequired] bool ErrorRecorded,
         [property: JsonRequired] bool PolicyDenied, [property: JsonRequired] bool UndoAvailable,
-        [property: JsonRequired] bool RollbackAttempted, [property: JsonRequired] bool? RollbackOk);
+        [property: JsonRequired] bool RollbackAttempted, [property: JsonRequired] bool? RollbackOk,
+        [property: JsonIgnore] ActionDetail? Detail = null);
     internal sealed record ActivityCleanup([property: JsonRequired] bool Complete, [property: JsonRequired] int UnresolvedCount);
     internal sealed record ActivityPage([property: JsonRequired] int ProtocolVersion,
         [property: JsonRequired] string MessageType, [property: JsonRequired] string RequestId,
