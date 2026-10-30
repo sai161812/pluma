@@ -52,6 +52,7 @@ internal static class Program
         await ConfirmationControllerChecks.RunAsync(Check);
         await CommandControllerChecks.RunAsync(Check);
         await EventFeedChecks.RunAsync(Check);
+        await SurfaceFactChecks.RunAsync(Check);
         ActivityChecks.Run(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))

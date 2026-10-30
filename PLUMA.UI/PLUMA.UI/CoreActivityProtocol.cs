@@ -65,15 +65,18 @@ internal sealed record ActivityFact(string Identity, string Kind, string Message
 /// <summary>Saved evidence only: no live execution, termination or aggregate success inferred.</summary>
 internal static class ActivityProjection
 {
+    internal static string ActionMessage(CoreRequestProtocol.ActivityAction action) =>
+        action.PolicyDenied ? "Policy denial is recorded."
+        : action.ErrorRecorded ? "An action issue is recorded."
+        : action.Verified ? "The action postcondition was verified."
+        : "Action recorded; its postcondition is unverified.";
+
     internal static ActivityFact[] Project(CoreRequestProtocol.ActivityPage page)
     {
         var facts = new System.Collections.Generic.List<ActivityFact>();
         foreach (var action in page.Actions)
         {
-            string message = action.PolicyDenied ? "Policy denial is recorded."
-                : action.ErrorRecorded ? "An action issue is recorded."
-                : action.Verified ? "The action postcondition was verified."
-                : "Action recorded; its postcondition is unverified.";
+            string message = ActionMessage(action);
             facts.Add(new(page.TaskId + "/action/" + action.ActionId, "action",
                 "Step " + ((long)action.StepIndex + 1) + ": " + message, action.PolicyDenied || action.ErrorRecorded));
             if (action.RollbackAttempted)

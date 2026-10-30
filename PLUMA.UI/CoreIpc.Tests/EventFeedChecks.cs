@@ -144,7 +144,7 @@ internal static class EventFeedChecks
         }
         public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token) =>
             Task.FromResult(task == FailTask ? CoreRequestResult<CoreRequestProtocol.TerminalReadback>.Failed(CoreConnectionFailure.Unavailable) : Ok(Results[task]));
-        public Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token) =>
+        public Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token, long afterActionId = 0) =>
             Task.FromResult(Ok(new CoreRequestProtocol.ActivityPage(1, "activity_page", request, task,
                 Tasks[task].RequestId, Tasks[task].FinalState, Tasks[task].Route, [], 0, false, null)));
     }

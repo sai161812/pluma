@@ -30,16 +30,16 @@
                            Style="{StaticResource CaptionTextBlockStyle}"
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
-                <local:PopupStatusIndicator Grid.Column="1" Label="Completed" Kind="Success"
+                <local:PopupStatusIndicator x:Name="OutcomeState" Grid.Column="1" Label="Unverified" Kind="Dot"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
             <StackPanel Grid.Row="1" Spacing="4">
-                <local:PopupMessageText Text="quarterly report.pdf opened successfully"
+                <local:PopupMessageText x:Name="ResultText" Text="Action evidence is unavailable."
                            FontFamily="Segoe UI Variable"
                            FontSize="16"
                            FontWeight="SemiBold" MaxHeight="96" />
-                <TextBlock Text="Tool · Open file"
+                <TextBlock x:Name="ToolNameText" Text="Tool unavailable"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
@@ -50,7 +50,7 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <local:PopupStatusIndicator x:Name="VerificationState" Label="Verified" Kind="Success" />
+                <local:PopupStatusIndicator x:Name="VerificationState" Label="Not verified" Kind="Dot" />
 
                 <local:PopupMessageText x:Name="ErrorCodeText"
                            Grid.Column="1"

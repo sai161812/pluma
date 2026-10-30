@@ -12,7 +12,7 @@ internal interface IEventFeedClient
 {
     Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> EventsAsync(string request, string? stream, long after, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, string? task, CancellationToken token);
-    Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token);
+    Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token, long afterActionId = 0);
     Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token);
 }
 
@@ -24,8 +24,8 @@ internal sealed class CoreEventFeedClient(CoreIpcClient client) : IEventFeedClie
         client.GetHistoryAsync(request, task, task is null ? 25 : 100, token);
     public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token) =>
         client.GetTerminalReadbackAsync(request, task, token);
-    public Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token) =>
-        client.GetActivityAsync(new(request, task, Limit: 1), token);
+    public Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token, long afterActionId = 0) =>
+        client.GetActivityAsync(new(request, task, afterActionId, 1), token);
 }
 
 public sealed record EventFeedEntry(string Identity, string TaskId, DateTimeOffset Timestamp,
@@ -42,11 +42,14 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
     private readonly List<EventFeedEntry> _entries = [];
     private readonly Dictionary<string, Observation> _known = new();
     private readonly Queue<string> _knownOrder = new();
+    private readonly Dictionary<string, string> _surfaceKnown = new();
+    private readonly Queue<string> _surfaceOrder = new();
     private CoreEventCursor _cursor = new();
     private string _status = "Live activity is not connected.";
     private int _running, _polling, _refreshOffset;
     internal event Action<EventFeedView>? Changed;
     internal event Action<EventFeedEntry>? Notice;
+    internal event Action<ActivitySurfaceFact>? Surface;
     internal EventFeedView View { get { lock (_gate) return new(_entries.ToArray(), _status); } }
     private static string Id() => Guid.NewGuid().ToString("D");
     private sealed record Observation(string Fingerprint, EventFeedEntry Entry, string RequestId,
@@ -93,13 +96,17 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
             var stagedCursor = _cursor.Fork();
             var fresh = stagedCursor.Apply(batch);
             var observations = new List<Observation>();
+            var surfaceFacts = new List<ActivitySurfaceFact>();
             if (batch.ResetRequired)
             {
                 var history = await client.HistoryAsync(Id(), null, token);
                 if (!history.IsSuccess) throw new IOException("Activity snapshot unavailable.");
                 foreach (var task in history.Response!.Tasks.Reverse())
+                {
                     observations.Add(await ObserveAsync(task.TaskId, task.RequestId, batch.StreamId + "/snapshot/" + task.TaskId,
                         DateTimeOffset.Parse(task.CompletedAt ?? task.CreatedAt), token, notify: false));
+                    if (task.Route is not null) surfaceFacts.Add(ActivitySurfaceFact.ForRoute(task.TaskId, task.Route));
+                }
                 stagedCursor.SnapshotRead();
             }
             else
@@ -115,6 +122,7 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                     var last = group.Last();
                     observations.Add(await ObserveAsync(task.TaskId, task.TaskRequestId, batch.StreamId + "/" + last.Sequence,
                         DateTimeOffset.Parse(last.OccurredAt), token));
+                    surfaceFacts.AddRange(await ReadSurfacesAsync(group, task, token));
                 }
                 // Ledger commits can precede terminal-ready/cached verification.
                 // Recheck active observations and give settled-but-unverified success
@@ -134,11 +142,24 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
             }
             token.ThrowIfCancellationRequested();
             var notices = new List<EventFeedEntry>();
+            var surfaces = new List<ActivitySurfaceFact>();
             bool changed;
             lock (_gate)
             {
                 changed = batch.ResetRequired || _status != "Live activity connected.";
-                if (batch.ResetRequired) { _entries.Clear(); _known.Clear(); _knownOrder.Clear(); }
+                if (batch.ResetRequired)
+                { _entries.Clear(); _known.Clear(); _knownOrder.Clear(); _surfaceKnown.Clear(); _surfaceOrder.Clear(); }
+                foreach (var fact in surfaceFacts)
+                {
+                    if (_surfaceKnown.TryGetValue(fact.Key, out var fingerprint) && fingerprint == fact.Fingerprint) continue;
+                    if (!_surfaceKnown.ContainsKey(fact.Key))
+                    {
+                        if (_surfaceKnown.Count == 512) _surfaceKnown.Remove(_surfaceOrder.Dequeue());
+                        _surfaceOrder.Enqueue(fact.Key);
+                    }
+                    _surfaceKnown[fact.Key] = fact.Fingerprint;
+                    if (!batch.ResetRequired) surfaces.Add(fact);
+                }
                 foreach (var item in observations)
                 {
                     var entry = item.Entry;
@@ -163,9 +184,41 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                 _status = "Live activity connected.";
             }
             if (changed) Changed?.Invoke(View);
-            foreach (var entry in notices) Notice?.Invoke(entry);
+            // Preserve the coalesced task order, with route/action evidence
+            // delivered before that task's terminal notice.
+            foreach (var item in observations)
+            {
+                foreach (var fact in surfaces.Where(fact => fact.TaskId == item.Entry.TaskId)) Surface?.Invoke(fact);
+                foreach (var entry in notices.Where(entry => entry.TaskId == item.Entry.TaskId)) Notice?.Invoke(entry);
+            }
         }
         finally { Interlocked.Exchange(ref _polling, 0); }
+    }
+
+    private async Task<ActivitySurfaceFact[]> ReadSurfacesAsync(System.Linq.IGrouping<string, CoreRequestProtocol.LedgerEvent> events,
+        CoreRequestProtocol.ActivityPage page, CancellationToken token)
+    {
+        var facts = new List<ActivitySurfaceFact>();
+        if (page.Route is not null && events.Any(item => item.Kind is "task_recorded" or "task_changed"))
+            facts.Add(ActivitySurfaceFact.ForRoute(page.TaskId, page.Route));
+        var actionEvents = events.Where(item => item.Kind is "action_recorded" or "action_changed").ToArray();
+        if (actionEvents.Any(item => item.RecordId is null)) throw new JsonException("Action event has no recorded action identity.");
+        foreach (var group in actionEvents.GroupBy(item => item.RecordId!.Value).OrderBy(group => group.Last().Sequence))
+        {
+            var action = page.Actions.FirstOrDefault(item => item.ActionId == group.Key);
+            if (action is null)
+            {
+                var reply = await client.ActivityAsync(Id(), page.TaskId, token, group.Key - 1);
+                if (!reply.IsSuccess) throw new IOException("Action evidence unavailable.");
+                var actual = reply.Response!;
+                if (actual.TaskId != page.TaskId || actual.TaskRequestId != page.TaskRequestId)
+                    throw new JsonException("Action evidence belongs to another task.");
+                action = actual.Actions.SingleOrDefault(item => item.ActionId == group.Key);
+            }
+            if (action is null) throw new IOException("No saved action matches this event.");
+            facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action));
+        }
+        return facts.ToArray();
     }
 
     private async Task<Observation> ObserveAsync(string taskId, string requestId, string identity,

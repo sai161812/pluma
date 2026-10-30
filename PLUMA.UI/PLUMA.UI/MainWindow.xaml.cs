@@ -55,6 +55,7 @@ namespace PLUMA.UI
             _commands.Changed += OnCommandChanged;
             _events = new EventFeedController(new CoreEventFeedClient(_coreStatus));
             _events.Notice += OnEventNotice;
+            _events.Surface += OnActivitySurface;
 
             // Extend content into the title bar so we can show a subtle app title
             // while retaining the native caption buttons. Register the AppTitleBar
@@ -77,6 +78,7 @@ namespace PLUMA.UI
                 _closed = true; _healthLifetime.Cancel(); _popups?.Dispose();
                 _commands.Changed -= OnCommandChanged;
                 _events.Notice -= OnEventNotice;
+                _events.Surface -= OnActivitySurface;
                 await _commands.DisposeAsync();
                 await _confirmationTask;
                 await _eventTask;
@@ -93,6 +95,15 @@ namespace PLUMA.UI
                 dashboard.AttachCoreClient(_coreStatus, _healthLifetime.Token);
                 dashboard.AttachEventController(_events);
             }
+        }
+
+        private void OnActivitySurface(ActivitySurfaceFact fact)
+        {
+            if (!_dispatcher.HasThreadAccess)
+            { _dispatcher.TryEnqueue(() => OnActivitySurface(fact)); return; }
+            if (_closed) return;
+            Popups.Present(fact.Key, fact.Surface, ActivitySurfacePresentation.Create(fact), persistent: false,
+                lifetime: TimeSpan.FromSeconds(fact.Surface == 6 ? 2 : 4));
         }
 
         private void OnEventNotice(EventFeedEntry entry)
