@@ -72,6 +72,18 @@ def test_unicode_bound_secret_redaction_and_missing_history(resident_fixture):
     assert detail["factual_message"] is None and detail["error_code"] is None and detail["policy_reason"] is None
 
 
+def test_secret_shaped_error_identity_is_withheld_on_write_and_read(resident_fixture):
+    core, ledger, _ = resident_fixture
+    synthetic = "AKIA1234567890123456"
+    task, _, action = setup(ledger, error_detail={"code": synthetic})
+    row = ActivityQuery(ledger._db).actions_for_task(task)[0]
+    assert synthetic not in row["presentation_json"] + row["error_json"]
+    assert query(core, task, action)["error_code"] is None
+    encoded = json.dumps(dict(version=1, factual_message=None, error_code=synthetic, policy_reason=None))
+    ledger._db.execute_write("UPDATE actions SET presentation_json=? WHERE id=?", (encoded, action))
+    assert query(core, task, action)["error_code"] is None
+
+
 @pytest.mark.parametrize("encoded", ["{", "x" * 14001,
     json.dumps({"version": 1, "factual_message": None, "error_code": "not a code", "policy_reason": None}),
     json.dumps({"version": True, "factual_message": None, "error_code": None, "policy_reason": None})])

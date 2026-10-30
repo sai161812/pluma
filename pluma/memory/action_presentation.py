@@ -2,7 +2,7 @@
 import json
 import re
 
-from pluma.memory.redaction import redact_command_text
+from pluma.memory.redaction import redact_command_text, redact_string
 
 TEXT_BYTES = 1024
 
@@ -23,7 +23,8 @@ def _text(tool, value):
 
 
 def presentation(tool, message, error_code=None, policy_reason=None):
-    code = error_code if isinstance(error_code, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", error_code) else None
+    redacted_code = redact_string(error_code) if isinstance(error_code, str) else None
+    code = redacted_code if redacted_code is not None and re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", redacted_code) else None
     return {"version": 1, "factual_message": _text(tool, message), "error_code": code,
             "policy_reason": _text(tool, policy_reason)}
 
