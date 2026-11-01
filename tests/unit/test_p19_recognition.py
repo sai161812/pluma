@@ -108,8 +108,9 @@ def test_owned_channel_stop_cleanup_and_persisted_readback(resident_fixture):
             assert "owned recognition" not in row["metadata_json"]
     finally:
         supervisor.stop_task(cap.task_id, grace_s=0)
-        if not controller.verify_cleanup():
-            controller.dispose_owned_worker()
+        # The terminal supervisor may already have retired this native event.
+        # A final caller/disposer must still return its factual STOP outcome.
+        controller.dispose_owned_worker()
 
 
 def test_channel_scope_and_sequence_fail_closed(resident_fixture):

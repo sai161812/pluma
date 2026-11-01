@@ -495,7 +495,12 @@ class TaskWorkerController:
             if _cancel_parent and self._cancellation_token is not None:
                 self._cancellation_token.cancel()
             if self._admission is not None:
-                self._admission.cancel()
+                try:
+                    if not self._admission.is_closed:
+                        self._admission.cancel()
+                except RuntimeError:
+                    if not self._admission.is_closed:
+                        raise
         self._terminate_internal()
 
     def dispose_owned_worker(self) -> None:
