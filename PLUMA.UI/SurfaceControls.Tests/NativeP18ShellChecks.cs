@@ -65,7 +65,7 @@ internal static class NativeP18ShellChecks
                 ((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).IsConnected,
                 "actual navigation restores shell-owned live state and measured connection health without resubmitting");
             var capacityKeys = new List<string>();
-            for (int index = host.Count; index < PopupStackState.Capacity - 1; index++)
+            for (int index = 0; host.Count < PopupStackState.Capacity - 1 && index < PopupStackState.Capacity; index++)
             {
                 string key = "owned-capacity-" + index; capacityKeys.Add(key);
                 if (!host.Present(key, 6, new RouteBadgePopup(), persistent: true))
