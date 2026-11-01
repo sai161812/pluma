@@ -35,10 +35,10 @@ internal static class NativeP18ShellChecks
         CoreRequestProtocol.SubmissionAck? closeTask = null;
         try
         {
-            await Until(() => shell.Dashboard is { IsLoaded: true } page && ((Button)page.FindName("RunCommandButton")).IsEnabled);
+            await Until(() => shell.Dashboard is { IsLoaded: true } page && ((Button)page.FindName("CommandRunButton")).IsEnabled);
             var dashboard = shell.Dashboard!;
             ((AutoSuggestBox)dashboard.FindName("CommandInput")).Text = "fixture:hold";
-            Invoke((Button)dashboard.FindName("RunCommandButton"));
+            Invoke((Button)dashboard.FindName("CommandRunButton"));
             await Until(() => host.Windows.Any(window => window.HostedContent is ToolCallCard card &&
                 ((PopupStatusIndicator)card.FindName("CallStatus")).Label == "Executing"));
             var live = await client.GetRuntimeAsync(Id(), default);
@@ -56,7 +56,7 @@ internal static class NativeP18ShellChecks
             check(originalToolWindow != 0 && host.HandleFor("runtime-tool-" + task.TaskId) == originalToolWindow,
                 "actual live replacements update the existing owned popup window instead of duplicating it");
             shell.NavigateForAcceptance(false); await Task.Delay(30); shell.NavigateForAcceptance(true);
-            await Until(() => shell.Dashboard is { IsLoaded: true } page && ((Button)page.FindName("StopButton")).IsEnabled);
+            await Until(() => shell.Dashboard is { IsLoaded: true } page && ((Button)page.FindName("CommandStopButton")).IsEnabled);
             dashboard = shell.Dashboard!;
             check(((ListView)dashboard.FindName("CurrentActivityList")).Items.Cast<string>().Any(line => line.Contains(task.TaskId)) &&
                 ((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).IsConnected,
@@ -69,7 +69,7 @@ internal static class NativeP18ShellChecks
                     throw new InvalidOperationException("Owned capacity fixture was not admitted.");
             }
             check(host.Count == PopupStackState.Capacity - 1, "actual shared host is saturated except the reserved priority STOP slot");
-            var stopTimer = Stopwatch.StartNew(); Invoke((Button)dashboard.FindName("StopButton"));
+            var stopTimer = Stopwatch.StartNew(); Invoke((Button)dashboard.FindName("CommandStopButton"));
             await Until(() => frames.Any(frame => frame.Any(card => card.Key == "command-stop" && card.Opacity > .9)));
             await Until(() => notifications.Any(item => item.Key == "ledger-notice-" + task.TaskId));
             var stopped = await client.GetTerminalReadbackAsync(task.TaskRequestId, task.TaskId, default);
@@ -79,13 +79,13 @@ internal static class NativeP18ShellChecks
             foreach (string key in capacityKeys) host.Dismiss(key);
             await Until(() => !host.Windows.Any(window => window.HostedContent is ToolCallCard or TaskRunningPopup or StepProgressPopup));
 
-            await Until(() => ((Button)dashboard.FindName("RunCommandButton")).IsEnabled);
+            await Until(() => ((Button)dashboard.FindName("CommandRunButton")).IsEnabled);
             ((AutoSuggestBox)dashboard.FindName("CommandInput")).Text = "fixture:process";
-            Invoke((Button)dashboard.FindName("RunCommandButton"));
+            Invoke((Button)dashboard.FindName("CommandRunButton"));
             await Until(() => host.Windows.Any(window => window.HostedContent is ToolCallCard card &&
                 ((PopupMessageText)card.FindName("CallTool")).Text == "Fixture process" &&
                 ((PopupStatusIndicator)card.FindName("CallStatus")).Label == "Executing"));
-            Invoke((Button)dashboard.FindName("StopButton"));
+            Invoke((Button)dashboard.FindName("CommandStopButton"));
             await Until(() => notifications.Any(item => item.Surface == 21 && item.Accepted));
             var absent = await client.GetRuntimeAsync(Id(), default);
             var worker = absent.Response!.Terminations.Single();
