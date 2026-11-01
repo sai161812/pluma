@@ -278,3 +278,57 @@ def test_ipc_stop_drains_cooperative_owned_future_before_inverse(resident_fixtur
     finally:
         release.set()
         registry.close()
+
+
+def test_redirected_headless_host_enters_worker_and_verifies_stop_and_inverse(tmp_path, monkeypatch):
+    """Actual Windows process/IPC/WAL acceptance; no desktop or user files."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    from pluma.core.ipc import IpcClient
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    pipe = "pluma_p18_headless_" + uuid4().hex
+    output = tmp_path / "fixture.out.log"
+    with output.open("w", encoding="utf-8") as stdout, (tmp_path / "fixture.err.log").open("w", encoding="utf-8") as stderr:
+        child = subprocess.Popen([sys.executable, "-u", "PLUMA.UI/CoreIpc.Tests/fixture_server.py", pipe, str(tmp_path), "commands"],
+            stdin=subprocess.PIPE, stdout=stdout, stderr=stderr, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        try:
+            def until(read, timeout=5):
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    value = read()
+                    if value:
+                        return value
+                    assert child.poll() is None, "Owned fixture exited before readback."
+                    time.sleep(.01)
+                raise AssertionError("Owned headless fixture evidence was not observed.")
+            until(lambda: "READY" in output.read_text(encoding="utf-8"))
+            client = IpcClient(address="\\\\.\\pipe\\" + pipe)
+            def request(kind, **arguments):
+                return client.send_command(dict(protocol_version=1, message_type=kind, request_id=str(uuid4()), **arguments), timeout=2)
+            for command in ("process", "rollback"):
+                ack = request("submit_text", text="fixture:" + command)
+                assert ack["accepted"]
+                task = ack["task_id"]
+                until(lambda: any(item["task_id"] == task and item["phase"] == "EXECUTING" for item in request("runtime_query")["tasks"]))
+                assert request("stop", task_id=task)["latch_acknowledged_count"] == 1
+                if command == "rollback":
+                    until(lambda: any(item["task_id"] == task and item["state"] == "ROLLING_BACK" and item["rollback_step"] == 1
+                        for item in request("runtime_query")["tasks"]))
+                def read_terminal():
+                    value = client.send_command(dict(protocol_version=1, message_type="terminal_readback", request_id=ack["request_id"], task_id=task))
+                    return value if value.get("terminal") else None
+                value = until(read_terminal)
+                assert value["final_state"] == "STOPPED" and value["terminal_persisted"] and not value["has_residual"]
+                if command == "process":
+                    assert any(item["task_id"] == task and item["creation_time"] > 0 for item in request("runtime_query")["terminations"])
+            assert "ROLLBACK_READBACK_OK" in output.read_text(encoding="utf-8")
+        finally:
+            if child.poll() is None:
+                child.stdin.write("stop\n"); child.stdin.flush()
+                try:
+                    child.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    child.terminate(); child.wait(timeout=3)
+                    raise AssertionError("Owned fixture did not drain.")
+        assert child.returncode == 0 and "COMMAND_LEDGER_READBACK_OK" in output.read_text(encoding="utf-8")

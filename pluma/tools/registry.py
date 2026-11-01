@@ -41,7 +41,8 @@ _GLOBAL_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 )
 
 # Multiprocessing context for isolated execution (spawn avoids fork hazards on Windows)
-_MP_CONTEXT = multiprocessing.get_context("spawn")
+from pluma.adapters.worker_process import worker_context
+_MP_CONTEXT = worker_context()
 
 
 @dataclass
