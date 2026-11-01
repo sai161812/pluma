@@ -1,6 +1,54 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-30, P18 factual result/reason readback E90
+## Current checkpoint: 2026-11-01, P18 completion E91
+
+**P18's scoped implementation and acceptance gate is complete.** All requested
+remaining groups 2–4 are closed; group 1 remains covered by E90.
+[E91](docs/completion/p18_live_runtime.md) records implementation, exact commands,
+source/build identities, evidence boundaries and recovery.
+
+- Tested source `b60bdeafd13a2ec6df5eb10777725886470deaa7` on branch
+  `p12-preparation`; recovery `f73bcdc5e5c9ca4f015304cc2e6e65a00d4bf58f`.
+  Source commits are pushed. Subsequent checkpoint changes are documentation only.
+- Task/step/tool/rollback surfaces use capsule-owned actual phases, validated
+  revisions and selected inverses. Dispatch is distinct from executor entry;
+  selected undo is indeterminate until verified. No sample executing/success
+  state or planner-written purpose enters these production paths.
+- Exact saved verifier proof drives surface 17, including OCR/text compatibility
+  names. Surface 21 requires verified owned absence with exact PID/creation time
+  and observed exit. Factual executor/task messages, current activity and measured
+  connection latency bind the existing dashboard controls. Extended capability
+  health remains P22; the indicator does not invent it.
+- STOP's latch/admission boundary is preserved. A reproduced cooperative tool
+  exit race now has one shared 100 ms drain budget; unknown work still blocks
+  rollback. A reproduced headless console-startup stall is fixed by a scoped
+  console-free Windows spawn adapter with unchanged ownership/Job fencing.
+  All temporary diagnostics/global patches were removed.
+- Fresh initial prerequisites: **81 passed**. Affected Python regression:
+  **341 passed in 75.47 s**. Final worker/admission/cancellation/shutdown/rollback
+  regression after the spawn fix: **178 passed in 32.37 s**, including actual
+  redirected-host process/STOP/absence/inverse/WAL evidence; no skips/xfails.
+- Exact-source [Windows gate 41335025620](https://github.com/sai161812/pluma/actions/runs/41335025620)
+  passed **215 IPC / 160 native UI / 663 popup / 195 formatting** checks, plus
+  **64,537 layout / 30 surface** checks, audio visualization and copy gates.
+  Builds have zero warnings/errors. Artifact SHA-256, preview executable identity
+  and inspected logs are recorded in E91; failed/cancelled runs are not passes.
+- Actual MainWindow/shared-host acceptance covers live identity, native replacement,
+  navigation, saturated-stack priority STOP, owned-worker termination, a real
+  owned-file inverse, result/verifier/denial delivery burst, reconnect/dedup,
+  factual feed and shutdown while backend work remains owned. Independent WAL
+  outcomes agree. No personal clipboard/files/browser/device/power state is used.
+
+**Remaining P18 work: none.** P25 physical taskbar/DPI/accessibility/owner review,
+P22 extended health and later scenario/performance/security/release gates remain
+separate. This is not full-product readiness or assumed Sol approval.
+**Next safe step:** independent Sol review of E91, then await owner authorization
+for P19. P19 has not started. No merge or automatic advancement.
+
+Recovery: preserve unrelated work and use a reviewed revert of this P18 packet
+back toward `f73bcdc`; do not reset, clean, switch branches or force-push.
+
+## Previous checkpoint: 2026-10-30, P18 factual result/reason readback E90
 
 **P18 remains in progress.** This bounded packet addresses group 1: detailed
 result/error and actual matched-policy reason readback for surfaces 8/19.

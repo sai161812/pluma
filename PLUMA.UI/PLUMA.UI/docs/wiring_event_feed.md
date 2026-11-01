@@ -63,7 +63,7 @@ An observable collection is updated incrementally without forced scrolling or
 rebinding on every poll. Empty polls do not publish unchanged views. The gallery
 keeps explicit preview data; normal production navigation creates no samples.
 
-## Remaining P18 work
+## Recorded detail and live runtime extensions
 
 E89 binds recorded route/result/denial facts. E90 adds exact scoped, separately
 typed saved executor-message/error/reason readback. All detail reads precede the
@@ -74,16 +74,27 @@ Pre-mutation intent is Pending; actual verification stays separate. Original E88
 wire records, dark styles and host placement/motion remain unchanged. See
 [E90](../../../docs/completion/p18_action_details.md).
 
-Remaining live task/step/tool/rollback and verification bindings, owned-worker
-termination, live-message panel and core-health projection (surfaces 4, 5, 7,
-9, 17 and 21-23) need subsequent
-packets. Full desktop/backend burst acceptance remains open. Required missing evidence must be established
-before presentation; resource release or dismissal never proves termination.
-Physical Windows/owner appearance acceptance stays with P25.
+E91 adds strict `runtime_query` snapshots from capsule-owned live state and
+scoped `action_verification_query` readback. One shell-owned RuntimeController
+polls every 250 ms within a 3-second request budget and drains on close. Task,
+step and tool surfaces distinguish dispatch, actual entry, verification and
+recording. Rollback shows the selected inverse with indeterminate progress;
+saved cleanup remains authoritative. Initial worker history seeds silently,
+and later identity-bound verified absence proofs deduplicate across reconnect.
+The original event consumer retains its coherent atomic publication barrier.
 
-E88 implements typed saved-state/action/cleanup readback and deterministic
-projection contracts. The next safe packet extends and binds facts to the affected
-remaining surfaces, adding missing live-start/step or termination evidence
-before displaying such claims. Do not start P19 or merge.
+Dashboard binds the existing LiveMessageFeed incrementally to factual entries,
+without forced scrolling on unchanged polls. CoreHealthIndicator reports actual
+connection readback latency, not model/device/capability health. Navigation
+restores shell-owned observations; close drains without an implicit STOP.
+The host keeps its 48-entry bound and approved dark placement/motion/reading
+contracts. Live updates are fair and bounded to 12 per frame/32 live entries;
+ordinary notifications reserve one admission slot for priority STOP. Capacity
+refusal leaves feed/history authoritative and creates no unbounded queue.
+
+[E91](../../../docs/completion/p18_live_runtime.md) records combined native
+shell/backend acceptance and its exact source. Resource release or dismissal
+never proves termination. P25 physical/owner appearance acceptance remains
+separate. P19 is not started and this work does not authorize a merge.
 See [E87](../../../docs/completion/p18_event_feed.md) for exact source, tests,
 native-versus-fixture boundaries and recovery.

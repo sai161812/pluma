@@ -164,3 +164,38 @@ fresh snapshots before accepting more events. A normal core restart preserves
 the database stream and retained replay; replacement/restoration may require
 reset. Disconnected consumers do not block execution or STOP. P18 owns the
 remaining detailed event consumer. P18 E87 connects the bounded task feed and terminal notice bridge using independent readback; this protocol creates no fabricated UI activity.
+
+## P18 live readback extensions (E91)
+
+Both queries are authenticated read-only v1 requests with strict fields and a
+canonical UUID `request_id`. They are observation APIs, never tool admission.
+
+- `runtime_query`: no further arguments. `runtime_snapshot` returns the same
+  request identity, up to 256 unique active `tasks` and the latest 256 retained
+  identity-bound `terminations`. A busy/invalid snapshot returns fixed
+  `RUNTIME_UNAVAILABLE`, not an empty successful snapshot.
+- Each task contains `task_id`, `task_request_id`, active `state`, `elapsed_ms`,
+  `plan_revision`, nullable `step`/`total`, `tool`/`risk`/`phase`,
+  `tool_elapsed_ms`, redacted `arguments` (at most 1024 UTF-8 bytes), and nullable
+  `rollback_step`/`rollback_total`/`rollback_recipe`. All fields must be present.
+  States are CREATED/RUNNING/STOPPING/ROLLING_BACK. Phases distinguish DISPATCHING,
+  EXECUTING, VERIFYING and RECORDING. Only observed executor entry provides
+  EXECUTING and an elapsed value. Replanning starts a new validated revision;
+  counts do not invent total future replans or completed inverses.
+- A termination contains exact `task_id`, `task_request_id`, positive `pid` and
+  `creation_time`, actual integer `exit_code`, and `command_class=tool_worker`.
+  It is derived only from verified PLUMA-owned process-absence evidence.
+  Initial connection seeds historical proofs silently; later unseen identities
+  emit once, retaining a bounded 512-key reconnect cache. This is not a durable
+  notification delivery guarantee; saved cleanup is authoritative.
+- `action_verification_query`: exact `task_id` and positive `action_id`, with
+  the same scoping rules as E90 detail. `action_verification` includes query and
+  task/request identity, action/tool identity and nullable `verified`, `method`,
+  `detail`. These last fields are all present or all null. Method is a bounded
+  ASCII identifier, detail is redacted before the 1024-byte UTF-8 limit. Saved
+  proof must agree with the saved verification flag. Missing legacy proof is
+  unavailable; corruption/contradiction returns `VERIFICATION_UNAVAILABLE`.
+
+Existing E88 activity and E90 detail DTOs are unchanged. The consumer commits
+neither cursor nor callbacks before scoped proof readback succeeds. A runtime
+snapshot cannot prove terminal success, undo completion or worker/model health.

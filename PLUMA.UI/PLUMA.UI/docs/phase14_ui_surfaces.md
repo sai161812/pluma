@@ -18,7 +18,16 @@ Windows 11 acceptance are recorded in
 [ui_integration_review.md](ui_integration_review.md). See
 [popup_placement_refinement.md](popup_placement_refinement.md) before wiring.
 
-These are intended surface contracts, not a claim that every surface is wired. The resident uses an authenticated per-user Windows message-mode named pipe with bounded JSON messages; it is not JSON-RPC. The dashboard currently has read-only status on load and explicit refresh. P15 E81-E84 complete the [v1 contract catalog](../../../docs/completion/p15_protocol_v1.md) for text-submit, STOP, terminal readback, settings/history, exact material confirmation and committed event query/replay. P16 E85 connects native material approval through a window-owned bounded query loop with exact material readback; P17 E86 connects guarded dashboard submission and independent STOP with verified terminal readback; broader event/voice/history/settings/health/perception connections remain P18-P23 work. No push stream or heartbeat exists: factual events use bounded request/readback batches, and only catalogued message/event names are implemented behavior.
+These are intended surface contracts, not a claim that every surface is wired.
+The resident uses authenticated per-user Windows message-mode named pipes with
+bounded JSON messages, not JSON-RPC. P15 defines the [v1 contract
+catalog](../../../docs/completion/p15_protocol_v1.md); P16 binds material approval,
+P17 guarded text submission/independent STOP, and P18 E87-E91 factual saved/live
+readback, the message panel and shared notification stack. Connection latency
+comes from measured readback; there is no push stream or invented capability
+health. Voice, history/undo, settings, extended health and perception retain
+their later milestone gates. [E91](../../../docs/completion/p18_live_runtime.md)
+records exact tested source and native-versus-fixture boundaries.
 
 ---
 
@@ -27,7 +36,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 1. Dashboard
 **Purpose:** Primary command entry and live task view.  
 **Data/Actions:** Text input bar, active task state badge, current route badge (FAST/SMART/DEEP/SCREEN), live message feed, recent ledger entries, core health indicator.  
-**Wire:** P17 `CommandController` uses typed authenticated submission/priority STOP and persisted terminal readback; broader factual activity/feed consumption remains P18. See [command wiring](wiring_command_submission.md).
+**Wire:** P17 CommandController owns typed submission/priority STOP and persisted terminal readback; P18 E91 adds actual current activity, bounded saved executor/task messages and measured connection readback. See [command wiring](wiring_command_submission.md) and [event/readback wiring](wiring_event_feed.md).
 
 ### 2. Settings
 **Purpose:** Configure LLM paths, hotkeys, audio emulation, tool policy overrides.  
@@ -46,12 +55,12 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 4. Task Running Popup
 **Purpose:** Compact overlay showing an active task is in progress.  
 **Data/Actions:** Task ID, state (RUNNING / STOPPING / ROLLING_BACK), elapsed timer, dismiss on task end.  
-**Wire:** `TaskSupervisor` state changes → IPC push.
+**Wire (P18 E91):** authenticated `runtime_query` from the task-owned state mirror, observed by the shell-owned RuntimeController; no IPC push.
 
 ### 5. Step Progress Popup
 **Purpose:** Shows the multi-step planner advancing through tool calls.  
 **Data/Actions:** Step N of M, current tool name, purpose string, spinner.  
-**Wire:** `MultiStepOrchestrator` step events.
+**Wire (P18 E91):** validated plan revision/selected step from FAST/SMART orchestration through runtime readback. No planner-written purpose enters Activity copy.
 
 ### 6. Route Badge Popup
 **Purpose:** Briefly shows which execution route was chosen after a command.  
@@ -61,7 +70,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 7. Tool Call Card
 **Purpose:** Shows a tool executing in real time.  
 **Data/Actions:** Tool name, sanitised arguments, live elapsed timer, risk class badge.  
-**Wire:** `ToolRegistry.execute()` start event, `ToolSpec.risk_class`.
+**Wire (P18 E91):** actual registry/owned-worker entry, verification/recording phases, effective risk and redacted bounded arguments via runtime readback. Dispatch alone does not mean executing.
 
 ### 8. Tool Result Card
 **Purpose:** Shows the outcome of a completed tool call.  
@@ -71,7 +80,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 9. Rollback Popup
 **Purpose:** Visible while the system is undoing actions after a failure or STOP.  
 **Data/Actions:** "Rolling back…" heading, list of recipes executing (e.g., "Restoring file…"), step-by-step progress.  
-**Wire:** `RollbackEngine` recipe events, `TaskState.ROLLING_BACK`.
+**Wire (P18 E91):** RollbackEngine selected inverse and ROLLING_BACK runtime state. Progress remains indeterminate until saved inverse/cleanup verification establishes its outcome.
 
 ### 10. Conflict Alert Popup
 **Purpose:** Warns user when a rollback cannot proceed automatically.  
@@ -119,7 +128,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 17. Post-Click Verify Indicator
 **Purpose:** Shows result of the mandatory post-click visual verification.  
 **Data/Actions:** "Verified ✓" or "Unverified ✗", verification method (ocr_rescan), detail string.  
-**Wire:** `ToolResult.verify_detail` → `VerifyResult`.
+**Wire (P18 E91):** exact scoped saved `action_verification_query` proof, matched to the saved action flag before atomic publication. Historical absence remains unavailable.
 
 ---
 
@@ -147,7 +156,7 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 21. Worker Termination Flash
 **Purpose:** Brief confirmation that the isolated tool worker process was killed.  
 **Data/Actions:** Worker PID, "Worker terminated" message, auto-hides.  
-**Wire:** `TaskWorkerController._terminate_internal()` → Job Object terminate event.
+**Wire (P18 E91):** runtime readback of verified PLUMA-owned worker absence, exact task/PID/creation time and exit code. Neither a Job terminate call nor resource release alone is sufficient.
 
 ---
 
@@ -156,17 +165,17 @@ These are intended surface contracts, not a claim that every surface is wired. T
 ### 22. Live Message Feed
 **Purpose:** Scrolling real-time log of everything PLUMA says it is doing.  
 **Data/Actions:** `ToolResult.factual_message` strings, orchestrator status lines, timestamps.  
-**Future wire contract (P18):** factual task/tool events. No live event subscription is implemented yet.
+**Wire (P18 E91):** bounded factual E87 event/readback entries, incrementally applied to LiveMessageFeed. Unchanged polls do not rebind or force scrolling.
 
 ### 23. Core Health Indicator
 **Purpose:** Small ambient indicator showing the resident core is connected.  
 **Data/Actions:** Green/red dot, "Connected" / "Disconnected", IPC ping latency.  
-**Current wire:** status on dashboard load and explicit refresh. There is no heartbeat or continuously updated health claim.
+**Current wire (P18 E91):** status on load/Refresh plus measured shell-owned runtime connection readback. This is connection/latency only; extended worker/model/device/capability health remains P22.
 
 ### 24. Toast Notification
 **Purpose:** One-line non-blocking info / warning pop-in.  
 **Data/Actions:** Short message, severity level (info / warning / error), auto-dismiss.  
-**P18 packet 1:** committed task events trigger independent terminal/history readback and deterministic notices through EventFeedController, EventNoticePresentation and the existing PopupStackHost. Broader notice types and complete desktop/backend acceptance remain open. See [event feed contract](wiring_event_feed.md).
+**P18 E87–E91:** committed task events trigger independent terminal/history readback and deterministic notices through EventFeedController, EventNoticePresentation and the existing PopupStackHost. Combined shell/backend burst, reconnect, STOP, navigation and shutdown checks are recorded in [E91](../../../docs/completion/p18_live_runtime.md). See [event feed contract](wiring_event_feed.md); P25 physical review remains separate.
 
 ### 25. Critical Error Dialog
 **Purpose:** Blocking dialog on fatal failures — IPC down, unhandled crash.  

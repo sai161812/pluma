@@ -6,7 +6,7 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-10-30):** P00-P17 covered implementation gates are recorded complete within their documented scope. Dashboard typed command submission, independent priority STOP and native material approval are connected. [E86](docs/completion/p17_command_submission.md) records fresh Python/IPC/native UI evidence and recovery; earlier owner-approved physical limits and later full scenario/performance/security/release gates remain open. [P18 packets](docs/completion/p18_action_details.md) implement the bounded task feed, typed activity evidence and saved route/result/error/policy-reason bindings; remaining event-surface wiring is in progress. See [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-11-01):** P18's scoped implementation and acceptance gate is complete. [E91](docs/completion/p18_live_runtime.md) records exact-source Python and Windows native evidence for factual live/saved state, verification, owned-worker termination, the message feed and shared stack. Earlier P00-P17 gates retain their documented limitations. P19 has not started; physical, extended-health and later scenario/security/release gates remain separate. Next is independent Sol review. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
