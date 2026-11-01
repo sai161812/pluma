@@ -114,10 +114,13 @@ class WhisperSttAdapter:
             raise RuntimeError("Native STT requires the matching task capsule.")
 
         from pluma.tools.registry import WorkerRequest, WorkerResponse
+        from pluma.voice.recognition import RecognitionProgress
 
         controller = registry.get_worker(task_id)
         capsule.worker_controller = controller
         capsule.tool_registry = registry
+        progress = RecognitionProgress(task_id, cancellation_token)
+        capsule.recognition_progress = progress
         request = WorkerRequest(
             task_id=task_id,
             tool_name="voice_stt",
@@ -129,17 +132,24 @@ class WhisperSttAdapter:
             },
             timeout_s=self.inference_timeout_s,
             supervisor_pid=os.getpid(),
+            recognition_updates=True,
         )
-        status, payload = controller.execute_call(
-            _native_stt_executor,
-            request.validated_args,
-            request,
-            timeout_s=self.inference_timeout_s,
-            job_object=getattr(capsule, "job_object", None),
-            cancellation_token=cancellation_token,
-        )
+        try:
+            status, payload = controller.execute_call(
+                _native_stt_executor,
+                request.validated_args,
+                request,
+                timeout_s=self.inference_timeout_s,
+                job_object=getattr(capsule, "job_object", None),
+                cancellation_token=cancellation_token,
+                on_recognition=progress.accept,
+            )
+        except Exception:
+            progress.finish("FAILED")
+            raise
 
         if status in ("cancelled", "timeout"):
+            progress.finish("TIMED_OUT" if status == "timeout" else "CANCELLED")
             if controller.verify_cleanup() is not True:
                 raise RuntimeError("Stopped STT worker cleanup could not be verified.")
             if status == "timeout":
@@ -147,9 +157,11 @@ class WhisperSttAdapter:
             from pluma.core.cancellation import TaskCancelledError
             raise TaskCancelledError("Speech transcription was stopped.")
         if cancellation_token.is_cancelled:
+            progress.finish("CANCELLED")
             from pluma.core.cancellation import TaskCancelledError
             raise TaskCancelledError("Speech transcription was stopped.")
         if status != "ok" or not isinstance(payload, WorkerResponse):
+            progress.finish("FAILED")
             raise RuntimeError("Owned local STT worker failed before returning a result.")
 
         result = payload.result
@@ -157,11 +169,13 @@ class WhisperSttAdapter:
         if (not result.ok or data.get("runtime_unloaded") is not True
                 or not isinstance(data.get("text"), str)
                 or not isinstance(data.get("segments"), list)):
+            progress.finish("FAILED")
             raise RuntimeError("Local STT inference or model cleanup was not verified.")
         confidence = data.get("confidence")
         if not isinstance(confidence, (int, float)) or not math.isfinite(confidence):
             confidence = 0.0
         confidence = min(1.0, max(0.0, float(confidence)))
+        progress.finish("RECOGNIZED", data["text"])
         return TranscriptResult(
             text=data["text"],
             confidence=confidence,
@@ -191,6 +205,8 @@ def _native_stt_executor(arguments: Dict[str, Any], task_context: Any):
     text = ""
     segments_out: List[Dict[str, Any]] = []
     probabilities: List[float] = []
+    publish = None
+    callbacks_released = True
     try:
         import numpy as np
         from pywhispercpp.model import Model
@@ -212,11 +228,24 @@ def _native_stt_executor(arguments: Dict[str, Any], task_context: Any):
         model_ref = weakref.ref(model)
         cancellation_token.raise_if_cancelled()
         samples = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
+        from pluma.voice.recognition import MAX_SEGMENTS, MAX_SEGMENT_BYTES
+        publish = getattr(task_context, "publish_recognition", None)
+        sequence = 0
+        def recognized_segment(segment):
+            nonlocal sequence
+            if cancellation_token.is_cancelled or sequence >= MAX_SEGMENTS:
+                return
+            text = getattr(segment, "text", None)
+            if not isinstance(text, str) or not text.strip() or len(text.encode("utf-8")) > MAX_SEGMENT_BYTES:
+                return
+            sequence += 1
+            publish(sequence, text)
         whisper_segments = model.transcribe(
             samples,
             language=arguments["language"],
             abort_callback=lambda: cancellation_token.is_cancelled,
             extract_probability=True,
+            new_segment_callback=recognized_segment if callable(publish) else None,
             print_progress=False,
             print_realtime=False,
             print_timestamps=False,
@@ -252,10 +281,21 @@ def _native_stt_executor(arguments: Dict[str, Any], task_context: Any):
         logger.warning("Native whisper.cpp transcription failed.")
         model_error = True
     finally:
+        if model is not None and callable(publish):
+            try:
+                # pywhispercpp retains the bound Model callback in native
+                # parameters. Unregister it before dropping the last model
+                # reference; GC alone cannot break that native ownership edge.
+                from pywhispercpp.model import pw
+                pw.assign_new_segment_callback(model._params, None)
+                pw.assign_abort_callback(model._params, None)
+                model._new_segment_callback = None
+            except Exception:
+                callbacks_released = False
         model = None
         gc.collect()
 
-    runtime_unloaded = model_ref is None or model_ref() is None
+    runtime_unloaded = callbacks_released and (model_ref is None or model_ref() is None)
     if not runtime_unloaded:
         return ToolResult.failure("voice_stt", "Whisper model release could not be verified.",
                                   error_code="STT_MODEL_UNLOAD_UNVERIFIED")

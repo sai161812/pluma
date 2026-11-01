@@ -60,6 +60,7 @@ class WorkerRequest:
     supervisor_pid: Optional[int] = None
     execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
     screen_snapshot: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    recognition_updates: bool = False
 
 
 @dataclass
@@ -198,6 +199,10 @@ def _worker_process_loop(
             if getattr(worker_req, "env_overrides", None):
                 os.environ.update(worker_req.env_overrides)
             worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
+            if worker_req.recognition_updates:
+                if worker_req.tool_name != "voice_stt":
+                    raise ValueError("Recognition updates require the voice worker.")
+                worker_ctx.publish_recognition = lambda sequence, text: conn.send(("recognition", (sequence, text)))
             if admission is not None:
                 worker_ctx.cancellation_token = WorkerCancellationView(admission)
             worker_ctx.undo_stack = list(worker_req.undo_stack)
@@ -395,11 +400,15 @@ class TaskWorkerController:
         job_object: Any = None,
         cancellation_token: Optional[CancellationToken] = None,
         on_entered: Optional[Callable[[float], None]] = None,
+        on_recognition: Optional[Callable[[int, str], None]] = None,
     ) -> Tuple[str, Any]:
         from pluma.adapters.worker_pipe import WorkerPipe, WorkerIOCancelled
 
         if worker_req.task_id is not None and worker_req.task_id != self.task_id:
             return ("error", "Worker request does not belong to this task.")
+        if worker_req.recognition_updates and (worker_req.tool_name != "voice_stt" or on_recognition is None):
+            return ("error", "Recognition updates require a voice observation owner.")
+        recognition_sequence = 0
         deadline = time.monotonic() + timeout_s
         admission = cancellation_token.process_admission() if cancellation_token is not None else None
         while True:
@@ -441,6 +450,17 @@ class TaskWorkerController:
                         response = conn.recv(deadline) if isinstance(conn, WorkerPipe) else conn.recv()
                         if self._is_stopped():
                             raise WorkerIOCancelled()
+                        if response[0] == "recognition":
+                            from pluma.voice.recognition import validate_segment
+                            if not worker_req.recognition_updates or not isinstance(response[1], tuple) or len(response[1]) != 2:
+                                raise ValueError("Unexpected recognition evidence.")
+                            sequence, text = response[1]
+                            validate_segment(sequence, text)
+                            if sequence != recognition_sequence + 1:
+                                raise ValueError("Recognition sequence is not contiguous.")
+                            recognition_sequence = sequence
+                            on_recognition(sequence, text)
+                            continue
                         if response[0] == "entered":
                             if on_entered is not None:
                                 started = response[1]

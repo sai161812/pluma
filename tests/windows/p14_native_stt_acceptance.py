@@ -81,15 +81,20 @@ def _cleanup_readback(runtime, capsule, reason: str) -> dict:
     return metadata
 
 
-def _assert_original_process_absent(identity: dict) -> None:
+def _same_original_process(identity: dict) -> bool:
     pid = int(identity["pid"])
-    creation_time = float(identity["creation_time"])
+    creation_time = identity["creation_time"]
+    _assert(type(creation_time) is int and creation_time > 0, "Worker native creation identity is invalid.")
+    unix_time = creation_time / 10_000_000 - 11644473600
     try:
         process = psutil.Process(pid)
-        same_process = math.isclose(process.create_time(), creation_time, abs_tol=0.01)
+        return math.isclose(process.create_time(), unix_time, rel_tol=0, abs_tol=0.01)
     except psutil.NoSuchProcess:
-        same_process = False
-    _assert(not same_process, "The task-owned STT process remained alive after STOP.")
+        return False
+
+
+def _assert_original_process_absent(identity: dict) -> None:
+    _assert(not _same_original_process(identity), "The task-owned STT process remained alive after STOP.")
 
 
 def _wait_for_native_worker_cpu(capsule, future_thread: threading.Thread) -> tuple[dict, float]:
@@ -101,8 +106,12 @@ def _wait_for_native_worker_cpu(capsule, future_thread: threading.Thread) -> tup
         identity = getattr(controller, "worker_identity", None) if controller else None
         if identity and identity.get("pid") and identity.get("creation_time") is not None:
             try:
+                if not _same_original_process(identity):
+                    break
                 process = psutil.Process(int(identity["pid"]))
                 current = process.cpu_times()
+                if not _same_original_process(identity):
+                    break
                 total = current.user + current.system
                 if previous is not None:
                     observed += max(0.0, total - previous)

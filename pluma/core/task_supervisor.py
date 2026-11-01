@@ -149,6 +149,7 @@ class TaskCapsule(BaseModel):
     undo_stack: List[Dict[str, Any]] = Field(default_factory=list)
     steps: List[TaskStep] = Field(default_factory=list)
     live_presentation: Any = Field(default_factory=LivePresentation, exclude=True)
+    recognition_progress: Any = Field(default=None, exclude=True)
     owned_resources: List[OwnedResource] = Field(default_factory=list)
 
     cleanup_evidence: List[CleanupEvidence] = Field(default_factory=list)
