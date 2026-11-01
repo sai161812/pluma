@@ -207,3 +207,36 @@ snapshots inside the backend. It adds no public v1 query, durable event or C# DT
 Decoded RECOGNIZED text is not request commitment. Recognition previews must
 remain transient and must not enter Activity/history or act as an execution API.
 Typed lifecycle/readback, reconnect/reset and overlay integration remain P19 work.
+
+## P19 transient voice readback (E93)
+
+[E93](p19_voice_lifecycle.md) adds `voice_query` and `voice_snapshot`. This
+supersedes E92's absence of a public voice query; overlay wiring remains open.
+
+- Query: v1 envelope, canonical `request_id`, optional nullable `stream_id` and
+  `voice_id`. A voice ID requires its stream. No audio, command or action fields.
+- Reply: `request_id`, resident `stream_id`, `reset_required`, nullable `voice`.
+  A different stream/generation or expired generation requires replacement of
+  the prior view. Reconnect reads current state, never historical speech replay.
+- Voice: `voice_id`, `task_id`, nullable `task_request_id`, `phase`, nullable
+  `code`, nullable `capture_active`/`boundary_complete`, nullable `recognition_id`,
+  integer `recognition_sequence` (0-128), and UTF-8 bounded `text` (16384 bytes).
+  Every reply field must be present. Unknown fields/inconsistent facts fail.
+- Phases: STARTING/LISTENING/DECODING/COMMITTED/CLARIFICATION/EMPTY/ERROR/CANCELLED/
+  TIMED_OUT. Request identity exists only for COMMITTED, after real same-capsule
+  orchestrator admission. It is not successful execution or verification.
+  Text is permitted only during DECODING or COMMITTED and is redacted first.
+- Capture metadata is only present in LISTENING and is read atomically from
+  actual capture. A speech boundary is not a timeout. ERROR codes are limited
+  to CAPTURE_DENIED/CAPTURE_UNAVAILABLE/VOICE_FAILED; CLARIFICATION uses
+  LOW_CONFIDENCE_MATERIAL_TARGET and includes no transcript or guessed target.
+- STOP/deadline clear active previews; failures cannot revive. Terminal views
+  expire after 30 monotonic seconds, checked lazily on read. One latest voice
+  reference is retained; no timer, model, capture or subscriber is started by
+  queries. Busy/inconsistent reads return VOICE_UNAVAILABLE without old content.
+
+Consumers must own/serialize reads, check query correlation, reset/clear old
+state on null/failure/reset and cancel their lifetime on shutdown. Recognition
+preview is not durable Activity/history/feed data or an execution API. Measured
+waveform/silence-progress telemetry and actual overlay consumer remain later
+P19 work; no synthetic waveform or countdown is authorized by this contract.

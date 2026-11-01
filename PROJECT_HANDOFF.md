@@ -1,6 +1,42 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-02, P19 recognition-segment prerequisite E92
+## Current checkpoint: 2026-11-02, P19 typed lifecycle bridge E93
+
+**This bounded bridge packet is complete; P19 remains in progress.**
+[E93](docs/completion/p19_voice_lifecycle.md) records exact scope and evidence.
+
+- Tested source `4d0d6cf53416e2aed6323f3822508d1bfa6a0dce` on
+  `p12-preparation`; recovery `f7df3108327951e288519140d49d2c25f8596dff`.
+- Strict authenticated `voice_query` / `voice_snapshot` now connects real
+  resident lifecycle facts to matching Python/C# DTOs and a read-only client.
+  One transient generation distinguishes capture, decoding, actual same-capsule
+  request admission, clarification, empty/error/cancelled/deadline outcomes.
+  Recognition never implies commitment or tool success. STOP suppresses previews;
+  stream/generation/reset identity and lazy terminal expiry prevent stale replay.
+- Failed capture startup can retry after verified closure; unclosed capture stays
+  owned and blocks retry. New views contain no raw audio/driver details and are
+  excluded from capsule serialization and durable Activity/feed events.
+- A reproduced shutdown-admission race now finalizes voice refused before the
+  execution gate, instead of leaving a CREATED owner and decoding view forever.
+  The failing reproduction is retained as an ordinary passing regression.
+- Pre-edit prerequisites: **212 passed in 32.11 s**. Final affected Python:
+  **324 passed in 40.45 s**, no skips/xfails, including owned ledger cleanup,
+  real orchestrator admission, strict contracts, privacy and shutdown regressions.
+- Final local Windows runner: **239 IPC checks passed**, including authenticated
+  cold-state Python/C# voice readback/reconnect and existing priority STOP under
+  saturation. IPC and native UI test-host builds have zero warnings/errors.
+  A host build is not rendered-overlay or physical microphone acceptance.
+
+Remaining P19: bind the existing single overlay (11-14), own/cancel its polling,
+preserve transcript reading/tail behavior, provide genuine measured audio/VAD
+progress where required, and run native UI/core plus permitted device acceptance.
+**Next safe packet:** overlay/controller binding and focused native host checks.
+Existing dark UI is unchanged. E92 native STT evidence retains its scope; no new
+physical/model acceptance is claimed. Ready for independent Sol review; approval
+is not assumed. P20 has not started. Recovery uses a reviewed revert toward
+`f7df310`, preserving unrelated work; no reset/clean/force-push/merge.
+
+## Previous checkpoint: 2026-11-02, P19 recognition-segment prerequisite E92
 
 **This bounded backend packet is complete; P19 remains in progress.**
 [E92](docs/completion/p19_recognition_segments.md) records scope, exact commands,
