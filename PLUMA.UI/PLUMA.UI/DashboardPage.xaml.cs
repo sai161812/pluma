@@ -49,6 +49,9 @@ namespace PLUMA.UI
             if (!IsLoaded || _preview || _ownerLifetime.IsCancellationRequested) return;
             CoreHealthReadback.IsConnected = view.Connected;
             CoreHealthReadback.PingLatencyMs = view.RoundTripMs ?? double.NaN;
+            const string scope = "Latest live-state connection readback. Latency measures this request; model, worker and device health are unavailable here.";
+            ToolTipService.SetToolTip(CoreHealthReadback, scope);
+            AutomationProperties.SetHelpText(CoreHealthReadback, scope);
             var lines = view.Tasks.Select(task => $"Task {task.TaskId}: {PopupText.Label(task.State)}").ToArray();
             if (!CurrentActivityList.Items.Cast<string>().SequenceEqual(lines))
             { CurrentActivityList.Items.Clear(); foreach (string line in lines) CurrentActivityList.Items.Add(line); }

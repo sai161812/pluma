@@ -797,6 +797,8 @@ class ResidentCore:
                             pid=identity["pid"], creation_time=identity["creation_time"], exit_code=identity["exit_code"],
                             command_class="tool_worker")
                         terminations[(cap.task_id, item.pid, item.creation_time)] = item
+                        if len(terminations) > 256:
+                            del terminations[next(iter(terminations))]
             return RuntimeSnapshotV1(request_id=request.request_id, tasks=tasks,
                 terminations=list(terminations.values())).model_dump(mode="json")
         except Exception:

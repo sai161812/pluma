@@ -212,6 +212,21 @@ def test_worker_feedback_requires_owned_verified_identity(resident_fixture):
     supervisor.finalize_task(cap.task_id, TaskState.SUCCEEDED)
 
 
+def test_termination_snapshot_retains_only_latest_bounded_proofs(resident_fixture):
+    from pluma.core.cleanup import CleanupEvidence
+    core, ledger, supervisor = resident_fixture
+    cap = capsule(ledger, supervisor)
+    cap.cleanup_evidence = [CleanupEvidence(resource_id=f"fixture-{index}", kind="worker", verified=True,
+        code="WORKER_ABSENCE_VERIFIED", identity=dict(task_id=cap.task_id, ownership="PLUMA_CREATED",
+            command_class="tool_worker", pid=1000 + index, creation_time=123456 + index, exit_code=1))
+        for index in range(270)]
+    response = query(core)
+    assert len(response["tasks"]) == 1 and len(response["terminations"]) == 256
+    assert response["terminations"][0]["pid"] == 1014 and response["terminations"][-1]["pid"] == 1269
+    cap.cleanup_evidence.clear()
+    supervisor.finalize_task(cap.task_id, TaskState.SUCCEEDED)
+
+
 def test_real_rollback_publishes_selected_inverse_before_owned_file_restore(resident_fixture, tmp_path, monkeypatch):
     from pluma.memory.activity import ActionRecord, UndoRecord, ActivityQuery
     from pluma.rollback.engine import RollbackEngine
