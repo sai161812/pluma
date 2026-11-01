@@ -606,6 +606,12 @@ class ActivityQuery:
             (task_id, action_id))
         return dict(row) if row else None
 
+    def action_verification(self, task_id: str, action_id: int):
+        row = self._db.execute_read_one("""SELECT a.id AS action_id, a.task_id, a.tool, a.verified,
+            t.request_id AS task_request_id, substr(a.verification_json,1,16001) AS proof_json
+            FROM actions a JOIN tasks t ON t.task_id=a.task_id WHERE a.task_id=? AND a.id=?""", (task_id, action_id))
+        return dict(row) if row else None
+
     def undo_record_for_action(self, action_row_id: int) -> Optional[Dict[str, Any]]:
         """Return the undo record for an action row, or None."""
         row = self._db.execute_read_one(

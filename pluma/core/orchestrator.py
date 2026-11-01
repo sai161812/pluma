@@ -274,6 +274,7 @@ class Orchestrator:
         last_error: Optional[str] = None
         last_message = ""
 
+        capsule.live_presentation.plan(len(plan.steps))
         for idx, step in enumerate(plan.steps):
             if capsule.cancellation_token.is_cancelled:
                 final_state = "STOPPED"
@@ -281,6 +282,7 @@ class Orchestrator:
                 break
 
             step_start = time.perf_counter()
+            capsule.live_presentation.select(idx + 1)
             try:
                 result = self._registry.execute(
                     tool_name=step.tool,

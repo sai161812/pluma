@@ -125,6 +125,109 @@ class ActionDetailQueryV1(_Envelope):
         return self
 
 
+class ActionVerificationQueryV1(ActionDetailQueryV1):
+    message_type: Literal["action_verification_query"]
+
+
+class ActionVerificationV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = PROTOCOL_VERSION
+    message_type: Literal["action_verification"] = "action_verification"
+    request_id: StrictStr
+    task_id: StrictStr
+    task_request_id: StrictStr
+    action_id: StrictInt = Field(gt=0)
+    tool: StrictStr = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    verified: Optional[StrictBool]
+    method: Optional[StrictStr] = Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+    detail: Optional[StrictStr]
+
+    @model_validator(mode="after")
+    def consistent(self):
+        for key in ("request_id", "task_id", "task_request_id"):
+            _validate_id(key, getattr(self, key))
+        if ((self.verified is None) != (self.method is None) or (self.method is None) != (self.detail is None)
+                or self.detail is not None and len(self.detail.encode("utf-8")) > 1024):
+            raise ValueError("Invalid verification evidence")
+        return self
+
+
+class RuntimeQueryV1(_Envelope):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    message_type: Literal["runtime_query"]
+    request_id: StrictStr
+
+    @model_validator(mode="after")
+    def canonical_id(self):
+        _validate_id("request_id", self.request_id)
+        return self
+
+
+class RuntimeTaskV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    task_id: StrictStr
+    task_request_id: StrictStr
+    state: Literal["CREATED", "RUNNING", "STOPPING", "ROLLING_BACK"]
+    elapsed_ms: StrictInt = Field(ge=0)
+    plan_revision: StrictInt = Field(ge=0)
+    step: Optional[StrictInt] = Field(ge=1)
+    total: Optional[StrictInt] = Field(ge=1)
+    tool: Optional[StrictStr] = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    risk: Optional[Literal["READ", "LOW", "MEDIUM", "HIGH", "ADMIN", "DENY"]]
+    phase: Optional[Literal["DISPATCHING", "EXECUTING", "VERIFYING", "RECORDING"]]
+    tool_elapsed_ms: Optional[StrictInt] = Field(ge=0)
+    arguments: Optional[StrictStr]
+    rollback_step: Optional[StrictInt] = Field(ge=1)
+    rollback_total: Optional[StrictInt] = Field(ge=1)
+    rollback_recipe: Optional[StrictStr] = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+
+    @model_validator(mode="after")
+    def consistent(self):
+        _validate_id("task_id", self.task_id)
+        _validate_id("task_request_id", self.task_request_id)
+        if (self.step is not None and (self.total is None or self.step > self.total)
+                or (self.tool is None) != (self.phase is None) or (self.tool is None) != (self.risk is None)
+                or self.phase == "DISPATCHING" and self.tool_elapsed_ms is not None
+                or self.phase == "EXECUTING" and self.tool_elapsed_ms is None
+                or self.arguments is not None and len(self.arguments.encode("utf-8")) > 1024
+                or self.rollback_step is not None and (self.rollback_total is None or self.rollback_step > self.rollback_total)):
+            raise ValueError("Inconsistent live task evidence")
+        return self
+
+
+class WorkerTerminationV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    task_id: StrictStr
+    task_request_id: StrictStr
+    pid: StrictInt = Field(gt=0)
+    creation_time: StrictInt = Field(gt=0)
+    exit_code: StrictInt
+    command_class: Literal["tool_worker"]
+
+    @model_validator(mode="after")
+    def ids(self):
+        _validate_id("task_id", self.task_id)
+        _validate_id("task_request_id", self.task_request_id)
+        return self
+
+
+class RuntimeSnapshotV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = PROTOCOL_VERSION
+    message_type: Literal["runtime_snapshot"] = "runtime_snapshot"
+    request_id: StrictStr
+    tasks: list[RuntimeTaskV1] = Field(max_length=256)
+    terminations: list[WorkerTerminationV1] = Field(max_length=256)
+
+    @model_validator(mode="after")
+    def consistent(self):
+        _validate_id("request_id", self.request_id)
+        ids = [item.task_id for item in self.tasks]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Duplicate runtime task")
+        return self
+
+
 class ActionDetailV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     protocol_version: Literal[1] = PROTOCOL_VERSION
@@ -503,6 +606,10 @@ def parse_versioned_request(payload: dict):
             return ActivityQueryV1.model_validate(payload)
         if kind == "action_detail_query":
             return ActionDetailQueryV1.model_validate(payload)
+        if kind == "action_verification_query":
+            return ActionVerificationQueryV1.model_validate(payload)
+        if kind == "runtime_query":
+            return RuntimeQueryV1.model_validate(payload)
     except ValidationError:
         raise ValueError("INVALID_REQUEST") from None
     raise ValueError("UNKNOWN_MESSAGE_TYPE")

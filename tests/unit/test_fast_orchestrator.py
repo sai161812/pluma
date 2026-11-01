@@ -210,15 +210,27 @@ class TestOrchestratorFastRoute:
         assert result.route == RouteMode.FAST
         assert result.final_state == "SUCCEEDED"
 
-    def test_clear_clipboard_fast_route(self, orchestrator: Orchestrator, tmp_path: Path) -> None:
+    def test_clear_clipboard_fast_route(self, orchestrator: Orchestrator, tmp_path: Path, monkeypatch) -> None:
         from pluma.memory.db import DbConnection
-        from pluma.memory.activity import ActivityLedger
+        from pluma.memory.activity import ActivityLedger, ActionRecord
+        from pluma.tools.base import ToolResult
         with DbConnection(str(tmp_path / "owned-clipboard.db")) as db:
+            ledger = ActivityLedger(db)
+            owned = {"text": "owned fixture"}
+            def execute_fixture(tool_name, arguments, task_context, ledger, step_index):
+                # Routing/ledger fixture only; never open the personal clipboard.
+                assert tool_name == "clipboard_clear" and arguments == {}
+                owned["text"] = ""
+                verified = owned["text"] == ""
+                ledger.insert_action(ActionRecord(task_context.task_id, step_index, tool_name, {}, "LOW", verified=verified))
+                return ToolResult.success(tool_name, {}, "Owned routing fixture cleared.", verified=verified)
+            monkeypatch.setattr(orchestrator._registry, "execute", execute_fixture)
             configured = Orchestrator(registry=orchestrator._registry,
-                supervisor=orchestrator._supervisor, ledger=ActivityLedger(db))
+                supervisor=orchestrator._supervisor, ledger=ledger)
             result = configured.execute(_req("clear clipboard"))
             assert result.route == RouteMode.FAST
             assert result.final_state == "SUCCEEDED", result
+            assert owned["text"] == ""
 
     def test_minimize_window_fast_route(self, orchestrator: Orchestrator) -> None:
         result = orchestrator.execute(_req("minimize window"))

@@ -122,6 +122,12 @@ internal static class NativeConfirmationChecks
         private DateTime _created;
         private Task<string> _errors = null!, _output = null!;
         private readonly ConcurrentQueue<string> _events = new();
+        internal async Task ControlEventsAsync(bool paused)
+        {
+            await _process.StandardInput.WriteLineAsync(paused ? "pause_events" : "resume_events");
+            await _process.StandardInput.FlushAsync();
+            await WaitForEventAsync(paused ? "EVENTS_PAUSED" : "EVENTS_RESUMED");
+        }
         internal async Task WaitForEventAsync(string marker)
         {
             await Until(() =>

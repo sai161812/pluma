@@ -113,9 +113,11 @@ class MultiStepOrchestrator:
         while True:
             plan_succeeded = True
             step_offset = len(executed_records)
+            capsule.live_presentation.plan(len(current_plan.steps))
 
             for idx, tool_call in enumerate(current_plan.steps):
                 step_idx = step_offset + idx + 1
+                capsule.live_presentation.select(idx + 1)
 
                 # Lifetime step limit check
                 if len(executed_records) >= MAX_LIFETIME_STEPS:

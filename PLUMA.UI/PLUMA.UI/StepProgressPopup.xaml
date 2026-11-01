@@ -33,21 +33,21 @@
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
 
-                <local:PopupStatusIndicator Grid.Column="1" Label="Active" Kind="Progress"
+                <local:PopupStatusIndicator x:Name="StepStatus" Grid.Column="1" Label="Unavailable" Kind="Dot"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
             <TextBlock Grid.Row="1"
-                       Text="Step 2 of 4"
+                       x:Name="StepText" Text="Step unavailable"
                        FontFamily="Segoe UI Variable"
                        FontSize="18"
                        FontWeight="SemiBold" />
 
             <StackPanel Grid.Row="2" Spacing="3">
-                <TextBlock Text="Selecting text on screen"
+                <TextBlock x:Name="StepTool" Text="Tool unavailable"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <local:PopupMessageText Text="Locating the Downloads button"
+                <local:PopupMessageText x:Name="StepDetail" Text="Live step evidence is unavailable."
                            FontSize="14" MaxHeight="96" />
             </StackPanel>
         </Grid>

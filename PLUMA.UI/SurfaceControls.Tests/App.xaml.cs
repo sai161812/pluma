@@ -58,7 +58,7 @@ namespace PLUMA.UI.Tests
         private async Task RunChecks(StackPanel root)
         {
             var dashboard = new DashboardPage();
-            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Disconnected" &&
+            Check(!((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).IsConnected &&
                 ((ListView)dashboard.FindName("RecentActivityList")).Items.Count == 0 &&
                 !((AutoSuggestBox)dashboard.FindName("CommandInput")).IsEnabled,
                 "production dashboard starts disconnected with no fabricated activity or executable command entry");
@@ -66,21 +66,21 @@ namespace PLUMA.UI.Tests
             dashboard.AttachCoreClient(core);
             root.Children.Add(dashboard);
             await Task.Delay(120);
-            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Connected" &&
+            Check(((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).IsConnected &&
                 ((TextBlock)dashboard.FindName("TaskStateText")).Text == "2 active tasks" &&
                 ((TextBlock)dashboard.FindName("RouteText")).Text == "Unavailable", "dashboard projects only verified core status fields");
             double taskTop = ((TextBlock)dashboard.FindName("TaskStateText")).TransformToVisual(dashboard).TransformPoint(new Windows.Foundation.Point()).Y;
-            double healthTop = ((TextBlock)dashboard.FindName("CoreHealthText")).TransformToVisual(dashboard).TransformPoint(new Windows.Foundation.Point()).Y;
+            double healthTop = ((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).TransformToVisual(dashboard).TransformPoint(new Windows.Foundation.Point()).Y;
             Check(Math.Abs(taskTop - healthTop) <= 1, "core refresh action preserves alignment with adjacent status text");
             int probes = core.Calls; await Task.Delay(120);
             Check(core.Calls == probes, "dashboard health has no background polling loop");
             core.Next = CoreStatusResult.Failed(CoreConnectionFailure.Timeout);
             await Click((Button)dashboard.FindName("CoreRefreshButton"));
-            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Disconnected" &&
+            Check(!((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).IsConnected &&
                 ((TextBlock)dashboard.FindName("TaskStateText")).Text == "Unavailable", "failed refresh clears stale connected state");
             core.Next = new(new(true, 0, true, 1), CoreConnectionFailure.None);
             await Click((Button)dashboard.FindName("CoreRefreshButton"));
-            Check(((TextBlock)dashboard.FindName("CoreHealthText")).Text == "Connected" &&
+            Check(((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).IsConnected &&
                 ((TextBlock)dashboard.FindName("TaskStateText")).Text == "Idle", "explicit refresh reconnects and displays supplied idle state");
             core.Stall = true;
             ((IInvokeProvider)FrameworkElementAutomationPeer.CreatePeerForElement((Button)dashboard.FindName("CoreRefreshButton")).GetPattern(PatternInterface.Invoke)).Invoke();
@@ -212,6 +212,7 @@ namespace PLUMA.UI.Tests
             await NativeConfirmationChecks.RunAsync(root, Check);
             await NativeCommandChecks.RunAsync(root, Check);
             await NativeEventFeedChecks.RunAsync(root, Check);
+            await NativeP18ShellChecks.RunAsync(Check);
         }
 
         private sealed class FakeCoreStatusClient : ICoreStatusClient

@@ -7,6 +7,10 @@ internal static class ActivitySurfacePresentation
 {
     internal static FrameworkElement Create(ActivitySurfaceFact fact)
     {
+        if (fact.Surface == 17 && fact.Verification is { Verified: not null, Method: not null } proof)
+        {
+            var indicator = new PostClickVerifyIndicator(); indicator.ShowResult(proof.Verified.Value, proof.Method, proof.Detail ?? string.Empty); return indicator;
+        }
         if (fact.Surface == 6 && fact.Route is not null) return new RouteBadgePopup { Route = fact.Route };
         if (fact.Surface == 8 && fact.Action is { } action)
         {

@@ -14,11 +14,14 @@ internal interface IEventFeedClient
     Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, string? task, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> ActivityAsync(string request, string task, CancellationToken token, long afterActionId = 0);
     Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token);
+    Task<CoreRequestResult<CoreRequestProtocol.ActionVerification>> VerificationAsync(string request, string task, long action, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token);
 }
 
 internal sealed class CoreEventFeedClient(CoreIpcClient client) : IEventFeedClient
 {
+    public Task<CoreRequestResult<CoreRequestProtocol.ActionVerification>> VerificationAsync(string request, string task, long action, CancellationToken token) =>
+        client.GetVerificationAsync(request, task, action, token);
     public Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token) =>
         client.GetActionDetailAsync(new(request, task, action), token);
     public Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> EventsAsync(string request, string? stream, long after, CancellationToken token) =>
@@ -254,6 +257,17 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                 !action.PolicyDenied && actualDetail.PolicyReason is not null)
                 throw new JsonException("Action presentation identity differs.");
             facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action, actualDetail));
+            if (action.Tool is "invoke_control" or "invoke_screen_element" or "click_window_relative" or
+                "set_control_text" or "type_text" or "press_key" or "hotkey" or "click_element" or "click_text")
+            {
+                var verified = await client.VerificationAsync(Id(), page.TaskId, action.ActionId, token);
+                if (!verified.IsSuccess) throw new IOException("Verifier readback unavailable.");
+                var proof = verified.Response!;
+                if (proof.TaskId != page.TaskId || proof.TaskRequestId != page.TaskRequestId ||
+                    proof.ActionId != action.ActionId || proof.Tool != action.Tool || proof.Verified is bool ok && ok != action.Verified)
+                    throw new JsonException("Verifier proof identity differs.");
+                if (proof.Verified is not null) facts.Add(ActivitySurfaceFact.ForVerification(proof));
+            }
         }
         return facts.ToArray();
     }

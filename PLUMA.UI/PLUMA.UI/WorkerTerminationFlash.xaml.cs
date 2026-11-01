@@ -9,9 +9,9 @@ namespace PLUMA.UI
         public bool IsHosted { get; set; }
         public event EventHandler? DismissRequested;
         public static readonly DependencyProperty HeadingProperty = RegisterTextProperty(nameof(Heading), "Worker terminated");
-        public static readonly DependencyProperty MessageProperty = RegisterTextProperty(nameof(Message), "The isolated tool worker was closed safely");
-        public static readonly DependencyProperty WorkerPidProperty = RegisterTextProperty(nameof(WorkerPid), "18432");
-        public static readonly DependencyProperty ElapsedTimeProperty = RegisterTextProperty(nameof(ElapsedTime), "00:12");
+        public static readonly DependencyProperty MessageProperty = RegisterTextProperty(nameof(Message), "Termination evidence is unavailable.");
+        public static readonly DependencyProperty WorkerPidProperty = RegisterTextProperty(nameof(WorkerPid), "Unavailable");
+        public static readonly DependencyProperty ElapsedTimeProperty = RegisterTextProperty(nameof(ElapsedTime), "Unavailable");
         public static readonly DependencyProperty IsOpenProperty =
             DependencyProperty.Register(nameof(IsOpen), typeof(bool), typeof(WorkerTerminationFlash), new PropertyMetadata(false, OnIsOpenChanged));
 

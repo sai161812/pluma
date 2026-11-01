@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
 from pluma.core.cleanup import CleanupEvidence, cleanup_job, latest_unresolved
+from pluma.core.live_presentation import LivePresentation
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,7 @@ class TaskCapsule(BaseModel):
     # We maintain an undo stack for rollback.
     undo_stack: List[Dict[str, Any]] = Field(default_factory=list)
     steps: List[TaskStep] = Field(default_factory=list)
+    live_presentation: Any = Field(default_factory=LivePresentation, exclude=True)
     owned_resources: List[OwnedResource] = Field(default_factory=list)
 
     cleanup_evidence: List[CleanupEvidence] = Field(default_factory=list)
@@ -709,6 +711,8 @@ class TaskSupervisor:
             try:
                 from pluma.rollback.engine import RollbackEngine, RollbackResult
                 engine = self._rollback_engine or RollbackEngine()
+                if isinstance(engine, RollbackEngine) and engine.task_resolver is None:
+                    engine.task_resolver = self.get_task
                 reversible = [item for item in capsule.undo_stack if not item.get("non_undoable", False)]
                 remaining = list(reversible)
                 result = engine.rollback_task(task_id=task_id, cancellation_token=capsule.cancellation_token,

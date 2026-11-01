@@ -96,6 +96,8 @@ internal static class SurfaceFactChecks
 
     private sealed class Client : IEventFeedClient
     {
+        public Task<CoreRequestResult<CoreRequestProtocol.ActionVerification>> VerificationAsync(string request, string task, long action, CancellationToken token) =>
+            throw new InvalidOperationException("This fixture has no screen actions.");
         public Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token) =>
             Task.FromResult(FailDetail ? CoreRequestResult<CoreRequestProtocol.ActionDetail>.Failed(CoreConnectionFailure.Unavailable) :
                 Ok(new CoreRequestProtocol.ActionDetail(1, "action_detail", request, WrongDetail ? Id() : task, _request,

@@ -123,9 +123,7 @@
                                 AutomationProperties.Name="Refresh core connection" ToolTipService.ToolTip="Refresh core connection">
                             <SymbolIcon Symbol="Refresh" />
                         </Button>
-                        <TextBlock x:Name="CoreHealthText" Grid.Row="1" Text="Disconnected"
-                                   FontSize="18"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <local:CoreHealthIndicator x:Name="CoreHealthReadback" Grid.Row="1" />
                     </Grid>
                 </Border>
             </Grid>
@@ -177,15 +175,9 @@
                         BorderThickness="1"
                         CornerRadius="{ThemeResource OverlayCornerRadius}">
                     <StackPanel Spacing="12">
-                        <TextBlock Text="Live messages"
-                                   Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock x:Name="LiveConnectionText" Text="Live activity is not connected."
                                    TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
-                        <ListView x:Name="LiveMessagesList" IsItemClickEnabled="False" SelectionMode="None">
-                            <ListView.ItemTemplate>
-                                <DataTemplate><TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap" /></DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
+                        <local:LiveMessageFeed x:Name="LiveFeed" />
                     </StackPanel>
                 </Border>
             </Grid>

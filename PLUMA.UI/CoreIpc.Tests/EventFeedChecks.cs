@@ -111,6 +111,8 @@ internal static class EventFeedChecks
 
     private sealed class Client : IEventFeedClient
     {
+        public Task<CoreRequestResult<CoreRequestProtocol.ActionVerification>> VerificationAsync(string request, string task, long action, CancellationToken token) =>
+            throw new InvalidOperationException("This fixture has no screen actions.");
         public Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token) =>
             throw new InvalidOperationException("This fixture has no action rows.");
         internal string Stream = Id();

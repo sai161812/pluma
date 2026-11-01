@@ -158,7 +158,7 @@ def _invoke_executor(
     args: Dict[str, Any],
     task_context: Any,
     admission: Any,
-    observation: Optional[Dict[str, bool]] = None,
+    observation: Optional[Dict[str, Any]] = None,
 ) -> ToolResult:
     """Worker-side entry: finish preparation, then admit immediately at invocation.
 
@@ -170,6 +170,9 @@ def _invoke_executor(
         admission.admit_executor()
     if observation is not None:
         observation["started"] = True
+        entered = observation.get("on_entered")
+        if entered is not None:
+            entered(time.monotonic())
     if takes_context:
         return executor_fn(args, task_context)
     return executor_fn(args)
@@ -209,7 +212,8 @@ def _worker_process_loop(
                     ScreenSnapshot.model_validate(worker_req.screen_snapshot)
                 )
             
-            res = _invoke_executor(executor_fn, args, worker_ctx, admission)
+            res = _invoke_executor(executor_fn, args, worker_ctx, admission,
+                {"on_entered": lambda started: conn.send(("entered", started))})
                 
             undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
             resp = WorkerResponse(
@@ -389,6 +393,7 @@ class TaskWorkerController:
         timeout_s: float,
         job_object: Any = None,
         cancellation_token: Optional[CancellationToken] = None,
+        on_entered: Optional[Callable[[float], None]] = None,
     ) -> Tuple[str, Any]:
         from pluma.adapters.worker_pipe import WorkerPipe, WorkerIOCancelled
 
@@ -435,6 +440,13 @@ class TaskWorkerController:
                         response = conn.recv(deadline) if isinstance(conn, WorkerPipe) else conn.recv()
                         if self._is_stopped():
                             raise WorkerIOCancelled()
+                        if response[0] == "entered":
+                            if on_entered is not None:
+                                started = response[1]
+                                if type(started) is not float or not 0 <= started <= time.monotonic():
+                                    raise ValueError("Invalid worker entry evidence")
+                                on_entered(started)
+                            continue
                         return response
             except WorkerIOCancelled:
                 self.terminate_and_join()
@@ -1490,6 +1502,8 @@ class ToolRegistry:
         # slow ledger cannot cause an expired tool call to start late.
         timeout_s = min(timeout_s, max(0.0, call_deadline - time.monotonic()))
         execution_started = time.perf_counter()
+        live = getattr(task_context, "live_presentation", None)
+        live_generation = live.dispatch(tool_name, effective_risk.value, validated_args) if live is not None else None
         if timeout_s <= 0:
             from pluma.core.cancellation import StopReason
             if token is not None:
@@ -1519,6 +1533,7 @@ class ToolRegistry:
                     timeout_s,
                     job_object=getattr(task_context, "job_object", None) if task_context else None,
                     cancellation_token=token,
+                    on_entered=(lambda started: live.entered(live_generation, started)) if live is not None else None,
                 )
                 if status == "ok" and isinstance(payload, WorkerResponse):
                     result = payload.result
@@ -1637,7 +1652,8 @@ class ToolRegistry:
 
         if result is None and not use_process_isolation:
             # Execute in-process with thread pool executor and timeout enforcement
-            observation = {"started": False}
+            observation = {"started": False, "on_entered":
+                (lambda started: live.entered(live_generation, started)) if live is not None else None}
             future = None
             try:
                 executor_context = task_context
@@ -1698,10 +1714,14 @@ class ToolRegistry:
 
 
         # 5. Postcondition verification
+        if live is not None:
+            live.recording(live_generation)
         verified = result.verified
         verify_detail = result.verify_detail
         verification_error = None
         if result.ok and spec.verifier:
+            if live is not None:
+                live.verifying(live_generation)
             from pluma.verify.common import verify_noop
             if verified is False and spec.verifier is verify_noop:
                 pass
@@ -1743,6 +1763,8 @@ class ToolRegistry:
                 effect_state="not_executed" if execution_not_admitted else "committed" if result.ok and verified else "unknown")
 
         # 7. Build final consolidated result
+        if live is not None:
+            live.recording(live_generation)
         final_result = ToolResult(
             ok=result.ok and verified,
             tool=tool_name,
@@ -1786,6 +1808,8 @@ class ToolRegistry:
                         ledger.insert_undo_record(UndoRecord(action_row_id=row_id, undo_data=undo_record), _timeout_s=2.0)
             except Exception:
                 logging.getLogger(__name__).error("Execution history could not be verified.")
+                if live is not None:
+                    live.complete(live_generation)
                 return ToolResult.failure(tool_name,
                     "Execution history could not be verified. Effects may remain.", error_code="LEDGER_WRITE_FAILED")
 
@@ -1813,6 +1837,8 @@ class ToolRegistry:
             elif state.get('action') == 'screen_control_text':
                 with self._lock:
                     self._screen_text_undo_cache.pop(state.get('undo_ref'), None)
+        if live is not None:
+            live.complete(live_generation)
         return final_result
 
     # ------------------------------------------------------------------

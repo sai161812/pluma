@@ -316,7 +316,7 @@ class ResidentCore:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
-            ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
+            ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
         )
         try:
@@ -345,8 +345,12 @@ class ResidentCore:
             return self._history_query_v1(request)
         if isinstance(request, ActivityQueryV1):
             return self._activity_query_v1(request)
+        if isinstance(request, ActionVerificationQueryV1):
+            return self._action_verification_v1(request)
         if isinstance(request, ActionDetailQueryV1):
             return self._action_detail_v1(request)
+        if isinstance(request, RuntimeQueryV1):
+            return self._runtime_query_v1(request)
         if isinstance(request, (ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1)):
             return self._remaining_contract_v1(request)
         return ProtocolErrorV1(error_code="UNKNOWN_MESSAGE_TYPE",
@@ -755,6 +759,79 @@ class ResidentCore:
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "HISTORY_UNAVAILABLE",
                     "message": "Activity history could not be read safely."}
+
+    def _runtime_query_v1(self, request):
+        from datetime import datetime, timezone
+        from pluma.core.ipc_contracts import RuntimeTaskV1, RuntimeSnapshotV1, WorkerTerminationV1
+        try:
+            supervisor = self.supervisor
+            if not supervisor._lock.acquire(timeout=.05):
+                raise TimeoutError("Task snapshot is busy")
+            try:
+                retained = list(supervisor._tasks.values())
+                capsules = supervisor.get_active_tasks()
+            finally:
+                supervisor._lock.release()
+            if len(capsules) > 256:
+                raise ValueError("Live task bound exceeded")
+            now = datetime.now(timezone.utc)
+            tasks = []
+            for cap in capsules:
+                live = cap.live_presentation.snapshot()
+                state = cap.state.value
+                if state not in {"CREATED", "RUNNING", "STOPPING", "ROLLING_BACK"}:
+                    continue  # Terminal transition during snapshot; never replay it as live.
+                if cap.stop_latch_set and state in {"CREATED", "RUNNING"}:
+                    state = "STOPPING"
+                tasks.append(RuntimeTaskV1(task_id=cap.task_id, task_request_id=cap.request_id, state=state,
+                    elapsed_ms=max(0, int((now - (cap.started_at or cap.created_at)).total_seconds() * 1000)), **live))
+            terminations = {}
+            for cap in retained:
+                for proof in cap.cleanup_evidence:
+                    identity = proof.identity
+                    if (proof.kind == "worker" and proof.code == "WORKER_ABSENCE_VERIFIED" and proof.verified
+                            and identity.get("ownership") == "PLUMA_CREATED" and identity.get("task_id") == cap.task_id
+                            and identity.get("command_class") == "tool_worker"
+                            and all(type(identity.get(key)) is int for key in ("pid", "creation_time", "exit_code"))):
+                        item = WorkerTerminationV1(task_id=cap.task_id, task_request_id=cap.request_id,
+                            pid=identity["pid"], creation_time=identity["creation_time"], exit_code=identity["exit_code"],
+                            command_class="tool_worker")
+                        terminations[(cap.task_id, item.pid, item.creation_time)] = item
+            return RuntimeSnapshotV1(request_id=request.request_id, tasks=tasks,
+                terminations=list(terminations.values())).model_dump(mode="json")
+        except Exception:
+            logger.warning("Live task evidence could not be read safely.")
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "RUNTIME_UNAVAILABLE", "message": "Live task evidence is unavailable."}
+
+    def _action_verification_v1(self, request):
+        from pluma.core.ipc_contracts import ActionVerificationV1
+        from pluma.memory.activity import ActivityQuery
+        from pluma.memory.action_presentation import presentation
+        from pluma.memory.redaction import redact_string
+        try:
+            row = ActivityQuery(self.ledger._db).action_verification(request.task_id, request.action_id)
+            if row is None:
+                raise ValueError("Unknown action")
+            verified = method = detail = None
+            if row["proof_json"] is not None:
+                if len(row["proof_json"]) > 16000:
+                    raise ValueError("Oversized proof")
+                proof = json.loads(row["proof_json"])
+                if (not isinstance(proof, dict) or type(proof.get("ok")) is not bool
+                        or int(proof["ok"]) != row["verified"] or not isinstance(proof.get("method"), str)
+                        or not isinstance(proof.get("detail"), str)):
+                    raise ValueError("Contradictory verifier evidence")
+                verified = proof["ok"]
+                method = redact_string(proof["method"])
+                detail = presentation(row["tool"], proof["detail"])["factual_message"] or "No verification detail was recorded."
+            return ActionVerificationV1(request_id=request.request_id, task_id=row["task_id"],
+                task_request_id=row["task_request_id"], action_id=row["action_id"], tool=row["tool"],
+                verified=verified, method=method, detail=detail).model_dump(mode="json")
+        except Exception:
+            logger.warning("Action verification could not be read safely.")
+            return {"protocol_version": 1, "message_type": "protocol_error",
+                    "error_code": "VERIFICATION_UNAVAILABLE", "message": "Verification evidence is unavailable."}
 
     def _action_detail_v1(self, request):
         from pluma.core.ipc_contracts import ActionDetailV1

@@ -4,8 +4,11 @@ namespace PLUMA.UI;
 
 internal sealed record ActivitySurfaceFact(string Key, int Surface, string TaskId,
     string Fingerprint, string? Route = null, CoreRequestProtocol.ActivityAction? Action = null,
-    CoreRequestProtocol.ActionDetail? Detail = null)
+    CoreRequestProtocol.ActionDetail? Detail = null, CoreRequestProtocol.ActionVerification? Verification = null)
 {
+    internal static ActivitySurfaceFact ForVerification(CoreRequestProtocol.ActionVerification proof) =>
+        new($"verification-{proof.TaskId}-{proof.ActionId}", 17, proof.TaskId,
+            System.Text.Json.JsonSerializer.Serialize(new { proof.Verified, proof.Method, proof.Detail }), Verification: proof);
     internal static ActivitySurfaceFact ForRoute(string task, string route) =>
         route is "FAST" or "SMART" or "SCREEN" or "DEEP"
             ? new("ledger-route-" + task, 6, task, route, Route: route)

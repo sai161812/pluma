@@ -112,6 +112,13 @@ class RollbackEngine:
         succeeded = 0
         failed = 0
 
+        def publish(step, total, recipe):
+            if self.task_resolver is not None:
+                try:
+                    self.task_resolver(task_id).live_presentation.rollback(step, total, recipe)
+                except Exception:
+                    pass  # Presentation cannot prevent a required safe inverse.
+
         # 1. Fetch available undo records from database if available
         db_records: List[Dict[str, Any]] = []
         if self._query:
@@ -136,6 +143,7 @@ class RollbackEngine:
 
                 tool_name = rec.get("tool", "")
                 action_name = undo_data.get("action", tool_name)
+                publish(attempted, len(db_records), action_name)
 
                 claim_id = None
                 if self._ledger and action_id is not None:
@@ -191,6 +199,7 @@ class RollbackEngine:
             for item in list(reversed(memory_undo_stack)):
                 attempted += 1
                 action_name = item.get("action", "")
+                publish(attempted, len(memory_undo_stack), action_name)
                 step_res = self._apply(task_id, action_name, item)
                 step_results.append(step_res)
                 if step_res.ok:
