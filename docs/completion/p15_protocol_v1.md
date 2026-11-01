@@ -199,3 +199,11 @@ canonical UUID `request_id`. They are observation APIs, never tool admission.
 Existing E88 activity and E90 detail DTOs are unchanged. The consumer commits
 neither cursor nor callbacks before scoped proof readback succeeds. A runtime
 snapshot cannot prove terminal success, undo completion or worker/model health.
+
+## P19 internal recognition boundary (E92)
+
+[E92](p19_recognition_segments.md) adds task-owned, bounded native STT segment
+snapshots inside the backend. It adds no public v1 query, durable event or C# DTO.
+Decoded RECOGNIZED text is not request commitment. Recognition previews must
+remain transient and must not enter Activity/history or act as an execution API.
+Typed lifecycle/readback, reconnect/reset and overlay integration remain P19 work.

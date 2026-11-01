@@ -6,7 +6,7 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-11-01):** P18's scoped implementation and acceptance gate is complete. [E91](docs/completion/p18_live_runtime.md) records exact-source Python and Windows native evidence for factual live/saved state, verification, owned-worker termination, the message feed and shared stack. Earlier P00-P17 gates retain their documented limitations. P19 has not started; physical, extended-health and later scenario/security/release gates remain separate. Next is independent Sol review. See [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-11-02):** P18's scoped gate is complete ([E91](docs/completion/p18_live_runtime.md)). P19's bounded native recognition-segment prerequisite is verified ([E92](docs/completion/p19_recognition_segments.md)); P19 remains in progress. Typed lifecycle/IPC readback, existing voice-overlay bindings and native UI/device acceptance remain. Earlier gates retain their documented limitations; physical, extended-health and later scenario/security/release gates remain separate. The next safe packet is the lifecycle/readback bridge; independent Sol approval is not assumed. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 

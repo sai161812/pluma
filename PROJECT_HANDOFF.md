@@ -1,6 +1,38 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-01, P18 completion E91
+## Current checkpoint: 2026-11-02, P19 recognition-segment prerequisite E92
+
+**This bounded backend packet is complete; P19 remains in progress.**
+[E92](docs/completion/p19_recognition_segments.md) records scope, exact commands,
+source identity, native evidence boundaries and recovery. P20 has not started.
+
+- Tested source `196574118815ed912ef41908ec8b0ee027916aed`, following `dd405eb`,
+  on `p12-preparation`; recovery `34b67362c4429fc43a9cf9c640b0dbdd427fbc8c`.
+- Genuine Whisper segment callbacks now reach bounded, volatile, task-owned
+  recognition snapshots before final delivery. They are not committed requests,
+  ledger events or a public UI IPC endpoint. STOP/timeout suppress previews;
+  malformed frames fail closed. Existing admission/confidence policy is retained.
+- Real native checks reproduced and fixed retained model callbacks and a retired
+  cancellation-gate race. The native absence helper now converts Windows process
+  identity timestamps correctly and rejects a matching live worker.
+- Pre-edit affected prerequisites: **212 passed in 24.00 s**. Final affected
+  regressions: **282 passed in 42.63 s**, without skips/xfails. Actual Whisper
+  segment delivery, STOP after a genuine segment and an owned deadline passed
+  in **4.4788 s**, including owned absence and independent SQLite readback.
+  Fresh P14 native CPU-STOP regression also passed with corrected identity checks.
+  Parent bindings remain unloaded/COLD; no microphone or personal desktop used.
+- P00-P18 evidence retains its recorded scope. No fresh physical microphone,
+  native planner or P19 UI acceptance is inferred. Existing dark UI is unchanged.
+
+Remaining P19: typed transient lifecycle/IPC readback (capture/VAD, commit,
+clarification, errors/reset); existing single-overlay surfaces 11-14 bindings;
+then native UI/core and permitted device acceptance. **Next safe packet:** the
+typed lifecycle/readback bridge, without treating decoded text as commitment.
+This packet is ready for independent Sol review; approval is not assumed.
+No merge or automatic advancement. Recovery uses a reviewed revert of this
+packet toward `34b6736`, preserving unrelated work; never reset/clean/force-push.
+
+## Previous checkpoint: 2026-11-01, P18 completion E91
 
 **P18's scoped implementation and acceptance gate is complete.** All requested
 remaining groups 2–4 are closed; group 1 remains covered by E90.
