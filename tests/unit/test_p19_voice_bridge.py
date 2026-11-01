@@ -173,6 +173,19 @@ def test_closed_execution_gate_does_not_fabricate_commit(orchestrator):
     orchestrator._supervisor.stop_task(cap.task_id, grace_s=0)
 
 
+def test_voice_release_after_execution_admission_closes_finalizes_owner(voice):
+    runtime, core, _ = voice
+    core.voice_pipeline.process_audio = lambda *a, **kw: PlumaRequest(input_mode=InputMode.VOICE, text="mute")
+    core._on_voice_press(); cap = core._current_voice_capsule
+    core.audio_capture.feed(b"owned synthetic audio")
+    runtime.supervisor.execution_gate.begin_shutdown()
+    core._on_voice_release()
+    assert cap.terminal_ready.is_set() and cap.voice_session is None
+    view = query(core)["voice"]
+    assert view["phase"] == "ERROR" and view["code"] == "VOICE_FAILED" and view["task_request_id"] is None
+    assert not runtime.supervisor.get_active_tasks()
+
+
 def test_terminal_retention_is_bounded_and_query_clears_latest_reference(voice):
     _, core, _ = voice
     core._on_voice_press(); cap = core._current_voice_capsule

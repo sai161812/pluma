@@ -218,8 +218,13 @@ class ResidentCore:
             dispatched = True
             self.orchestrator.execute(request, capsule=capsule)
         except TaskCancelledError:
-            failed = capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT
-            if failed:
+            # A closed execution gate can refuse admission before STOP reaches
+            # this capsule. That is not a dispatched/finished task: finalize it
+            # rather than leaving an orphaned CREATED owner and decoding view.
+            capsule.voice_presentation.finish("ERROR", "VOICE_FAILED")
+            failed = (not capsule.cancellation_token.is_cancelled
+                      or capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT)
+            if capsule.cancellation_token.reason == StopReason.TASK_TIMEOUT:
                 logger.warning("Voice request exceeded its deadline.")
         except Exception:
             capsule.voice_presentation.finish("ERROR", "VOICE_FAILED")
