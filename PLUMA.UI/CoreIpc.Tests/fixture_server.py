@@ -179,18 +179,18 @@ def main():
                 verifier=lambda result: VerifyResult(ok=False, method="stopped")))
             from pluma.rollback.engine import RollbackEngine
             import time
-            inverse = RollbackEngine()
-            move_recipe = inverse.recipes.get_recipe("move_file")
-            def observable_move(state):
-                # Bounded fixture latency makes the real inverse observable to
-                # the native shell; the production recipe still reads it back.
-                time.sleep(.65)
-                result = move_recipe(state)
-                if not result.ok or Path(state["destination"]).exists() or Path(state["source"]).read_text(encoding="utf-8") != "Owned rollback fixture":
-                    raise RuntimeError("Owned inverse readback failed.")
-                report_event("ROLLBACK_READBACK_OK")
-                return result
-            inverse.recipes.register("move_file", observable_move)
+            class ObservableRollback(RollbackEngine):
+                def _apply(self, task_id, action, state):
+                    # Delay selection, never replace the production owned inverse.
+                    if action == "move_file":
+                        time.sleep(.65)
+                    result = super()._apply(task_id, action, state)
+                    if action == "move_file":
+                        if not result.ok or Path(state["destination"]).exists() or Path(state["source"]).read_text(encoding="utf-8") != "Owned rollback fixture":
+                            raise RuntimeError("Owned inverse readback failed.")
+                        report_event("ROLLBACK_READBACK_OK")
+                    return result
+            inverse = ObservableRollback()
 
             class CommandRouter:
                 def route(self, request):
