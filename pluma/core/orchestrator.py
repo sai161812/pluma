@@ -190,6 +190,8 @@ class Orchestrator:
             ))
 
         # 3. Classify route
+        if request.input_mode == InputMode.VOICE and capsule.voice_presentation is not None:
+            capsule.voice_presentation.committed(request, capsule=capsule)
         route_result: RouteResult = self._router.route(request)
         if redact_command_text(request.text) == "[REDACTED CLIPBOARD COMMAND]":
             route_result.reason = "Clipboard-related command routed; private text omitted."

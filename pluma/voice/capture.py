@@ -68,6 +68,15 @@ class AudioCapture:
         """Whether the stream stopped at its configured VAD silence boundary."""
         return self._utterance_complete.is_set()
 
+    def observation(self):
+        """Bounded metadata readback, with no audio access or device operation."""
+        if not self._lock.acquire(timeout=.02):
+            raise TimeoutError("Capture observation is busy.")
+        try:
+            return self._is_recording, self._utterance_complete.is_set()
+        finally:
+            self._lock.release()
+
     def _append_audio_locked(self, chunk: bytes) -> bool:
         """Append bounded audio; return true when the stream must stop now."""
         if not self._is_recording or not chunk:

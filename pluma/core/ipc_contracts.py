@@ -83,6 +83,72 @@ class SettingsQueryV1(_Envelope):
         return self
 
 
+class VoiceQueryV1(_Envelope):
+    message_type: Literal["voice_query"]
+    request_id: StrictStr
+    stream_id: Optional[StrictStr] = None
+    voice_id: Optional[StrictStr] = None
+
+    @model_validator(mode="after")
+    def ids(self):
+        for name in ("request_id", "stream_id", "voice_id"):
+            value = getattr(self, name)
+            if value is not None:
+                _validate_id(name, value)
+        if self.voice_id is not None and self.stream_id is None:
+            raise ValueError("A voice generation requires its stream identity.")
+        return self
+
+
+class VoiceViewV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    voice_id: StrictStr
+    task_id: StrictStr
+    task_request_id: Optional[StrictStr]
+    phase: Literal["STARTING", "LISTENING", "DECODING", "COMMITTED", "CLARIFICATION",
+                   "EMPTY", "ERROR", "CANCELLED", "TIMED_OUT"]
+    code: Optional[Literal["CAPTURE_DENIED", "CAPTURE_UNAVAILABLE", "VOICE_FAILED",
+                           "LOW_CONFIDENCE_MATERIAL_TARGET"]]
+    capture_active: Optional[StrictBool]
+    boundary_complete: Optional[StrictBool]
+    recognition_id: Optional[StrictStr]
+    recognition_sequence: StrictInt = Field(ge=0, le=128)
+    text: StrictStr
+
+    @model_validator(mode="after")
+    def consistent(self):
+        for name in ("voice_id", "task_id", "task_request_id", "recognition_id"):
+            value = getattr(self, name)
+            if value is not None:
+                _validate_id(name, value)
+        if ((self.phase == "COMMITTED") != (self.task_request_id is not None)
+                or self.phase not in {"DECODING", "COMMITTED"} and self.text
+                or len(self.text.encode("utf-8")) > 16384
+                or self.phase != "LISTENING" and (self.capture_active is not None or self.boundary_complete is not None)
+                or self.recognition_id is None and self.recognition_sequence != 0
+                or (self.phase == "CLARIFICATION") != (self.code == "LOW_CONFIDENCE_MATERIAL_TARGET")
+                or self.phase == "ERROR" and self.code not in {"CAPTURE_DENIED", "CAPTURE_UNAVAILABLE", "VOICE_FAILED"}
+                or self.phase not in {"ERROR", "CLARIFICATION"} and self.code is not None):
+            raise ValueError("Inconsistent voice evidence")
+        return self
+
+
+class VoiceSnapshotV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = PROTOCOL_VERSION
+    message_type: Literal["voice_snapshot"] = "voice_snapshot"
+    request_id: StrictStr
+    stream_id: StrictStr
+    reset_required: StrictBool
+    voice: Optional[VoiceViewV1]
+
+    @model_validator(mode="after")
+    def ids(self):
+        _validate_id("request_id", self.request_id)
+        _validate_id("stream_id", self.stream_id)
+        return self
+
+
 class HistoryQueryV1(_Envelope):
     message_type: Literal["history_query"]
     request_id: StrictStr
@@ -600,6 +666,8 @@ def parse_versioned_request(payload: dict):
             return StopRequestV1.model_validate(payload)
         if kind == "settings_query":
             return SettingsQueryV1.model_validate(payload)
+        if kind == "voice_query":
+            return VoiceQueryV1.model_validate(payload)
         if kind == "history_query":
             return HistoryQueryV1.model_validate(payload)
         if kind == "activity_query":

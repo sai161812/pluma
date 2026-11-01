@@ -201,6 +201,11 @@ namespace PLUMA.UI
             VersionedCallAsync(new CoreRequestProtocol.RuntimeRequest(requestId).ToMessage(), requestId, false, false,
                 bytes => CoreRequestProtocol.RuntimeSnapshot.Parse(bytes), value => value.RequestId, token);
 
+        internal Task<CoreRequestResult<CoreRequestProtocol.VoiceSnapshot>> GetVoiceAsync(string requestId,
+            string? streamId, string? voiceId, CancellationToken token) =>
+            VersionedCallAsync(new CoreRequestProtocol.VoiceRequest(requestId, streamId, voiceId).ToMessage(), requestId, false, false,
+                bytes => CoreRequestProtocol.VoiceSnapshot.Parse(bytes), value => value.RequestId, token);
+
         internal Task<CoreRequestResult<CoreRequestProtocol.ActionVerification>> GetVerificationAsync(
             string requestId, string taskId, long actionId, CancellationToken token) =>
             VersionedCallAsync(new CoreRequestProtocol.VerificationRequest(requestId, taskId, actionId).ToMessage(), requestId, false, false,

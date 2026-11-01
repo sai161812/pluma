@@ -123,10 +123,14 @@ class ResidentCore:
         with _VOICE_INIT_LOCK:
             if not hasattr(self, "_voice_lock"):
                 self._voice_lock = threading.Lock()
+            if not hasattr(self, "_voice_stream_id"):
+                from uuid import uuid4
+                self._voice_stream_id = str(uuid4())
             return self._voice_lock
 
     def _admitted_on_voice_press(self) -> None:
         from pluma.voice.session import VoiceSession
+        from pluma.voice.presentation import VoicePresentation
         with self._voice_state_lock():
             previous = getattr(self, "_voice_session", None)
             if previous is not None:
@@ -137,15 +141,20 @@ class ResidentCore:
                     return  # failed closure keeps the device and capsule owned
                 self._voice_session = None
             capsule = self.supervisor.create_task_capsule(history_expected=False)
+            capsule.voice_presentation = VoicePresentation(capsule.task_id, capsule.cancellation_token)
             session = VoiceSession(capsule, self.audio_capture)
             self._voice_session = session
             self._current_voice_capsule = capsule
         try:
             self.supervisor.attach_voice_session(capsule, session)
             session.start()
-        except Exception:
+            capsule.voice_presentation.listening()
+        except Exception as exc:
+            capsule.voice_presentation.finish("ERROR", "CAPTURE_DENIED" if isinstance(exc, PermissionError) else "CAPTURE_UNAVAILABLE")
             logger.warning("Voice capture could not start.")
             session.finish_start()
+            if session.claim_release():
+                session.finish_release()
             if not capsule.terminal_ready.is_set():
                 if capsule.cancellation_token.is_cancelled:
                     self.supervisor.stop_task(capsule.task_id, grace_s=0)
@@ -153,6 +162,10 @@ class ResidentCore:
                     self.supervisor.fail_task_with_rollback(capsule.task_id)
         finally:
             self.supervisor.refresh_voice_cleanup(capsule)
+            with self._voice_state_lock():
+                if (getattr(self, "_voice_session", None) is session and session.released
+                        and session.idle and capsule.voice_session is None):
+                    self._voice_session = None
 
     def _on_voice_release(self) -> None:
         # Bare fixtures initialize lazily; production creates the gate at startup.
@@ -180,13 +193,16 @@ class ResidentCore:
             raw_audio = session.stop_and_get()
             capsule.cancellation_token.raise_if_cancelled()
             if not raw_audio or self.voice_pipeline is None:
+                capsule.voice_presentation.finish("EMPTY")
                 return
+            capsule.voice_presentation.decoding()
             request = self.voice_pipeline.process_audio(
                 raw_audio, cancellation_token=capsule.cancellation_token)
             raw_audio = None  # raw audio is never included in logs/history
             capsule.cancellation_token.raise_if_cancelled()
             from pluma.voice.pipeline import VoiceClarificationRequired
             if isinstance(request, VoiceClarificationRequired):
+                capsule.voice_presentation.finish("CLARIFICATION", "LOW_CONFIDENCE_MATERIAL_TARGET")
                 callback = self.on_voice_clarification_callback
                 if callback is not None:
                     callback(request)
@@ -194,6 +210,7 @@ class ResidentCore:
                     logger.info("Voice clarification is required; no request was admitted.")
                 return
             if request is None:
+                capsule.voice_presentation.finish("EMPTY")
                 return  # silence or invalid speech; no guessed action
             if self.orchestrator is None:
                 raise RuntimeError("Voice execution owner is unavailable.")
@@ -205,6 +222,7 @@ class ResidentCore:
             if failed:
                 logger.warning("Voice request exceeded its deadline.")
         except Exception:
+            capsule.voice_presentation.finish("ERROR", "VOICE_FAILED")
             # The task worker records its deadline by latching TASK_TIMEOUT;
             # retain that factual failure through voice-capsule finalization.
             failed = (not capsule.cancellation_token.is_cancelled
@@ -315,6 +333,7 @@ class ResidentCore:
     def _handle_versioned_ipc(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
+            VoiceQueryV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
             ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
@@ -351,10 +370,43 @@ class ResidentCore:
             return self._action_detail_v1(request)
         if isinstance(request, RuntimeQueryV1):
             return self._runtime_query_v1(request)
+        if isinstance(request, VoiceQueryV1):
+            return self._voice_query_v1(request)
         if isinstance(request, (ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1)):
             return self._remaining_contract_v1(request)
         return ProtocolErrorV1(error_code="UNKNOWN_MESSAGE_TYPE",
             message="The message type is not supported.").model_dump(mode="json")
+
+    def _voice_query_v1(self, request):
+        from pluma.core.ipc_contracts import ProtocolErrorV1, VoiceSnapshotV1
+        lock = self._voice_state_lock()
+        if not lock.acquire(timeout=.02):
+            return ProtocolErrorV1(error_code="VOICE_UNAVAILABLE",
+                message="Voice status is temporarily unavailable.").model_dump(mode="json")
+        try:
+            capsule = getattr(self, "_current_voice_capsule", None)
+            stream_id = self._voice_stream_id
+        finally:
+            lock.release()
+        try:
+            presentation = getattr(capsule, "voice_presentation", None)
+            view = presentation.snapshot(capsule, getattr(self, "audio_capture", None)) if presentation is not None else None
+            if not lock.acquire(timeout=.02):
+                raise TimeoutError("Voice observation is busy.")
+            try:
+                if capsule is not getattr(self, "_current_voice_capsule", None):
+                    raise ValueError("Voice generation changed during observation.")
+                if view is None and capsule is not None and presentation is not None:
+                    self._current_voice_capsule = None
+            finally:
+                lock.release()
+            reset = (request.stream_id != stream_id or
+                     request.voice_id != (view.voice_id if view is not None else None))
+            return VoiceSnapshotV1(request_id=request.request_id, stream_id=stream_id,
+                reset_required=reset, voice=view).model_dump(mode="json")
+        except (TimeoutError, ValueError):
+            return ProtocolErrorV1(error_code="VOICE_UNAVAILABLE",
+                message="Voice status is temporarily unavailable.").model_dump(mode="json")
 
     def _submission_state(self):
         # Direct fixtures construct ResidentCore without __init__; initialize

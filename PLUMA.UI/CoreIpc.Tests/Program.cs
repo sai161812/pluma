@@ -54,6 +54,7 @@ internal static class Program
         await EventFeedChecks.RunAsync(Check);
         await SurfaceFactChecks.RunAsync(Check);
         await RuntimeChecks.RunAsync(Check);
+        VoiceChecks.Run(Check);
         ActivityChecks.Run(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))
@@ -235,6 +236,12 @@ internal static class Program
         await using (var client = new CoreIpcClient(Options(requestsPipe, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
         {
             string wireRequestId = Guid.NewGuid().ToString("D");
+            var voice = await client.GetVoiceAsync(Guid.NewGuid().ToString("D"), null, null, default);
+            Check(voice.IsSuccess && voice.Response is { Voice: null, ResetRequired: true },
+                "authenticated native voice query reads the cold Python resident without starting capture");
+            var voiceAgain = await client.GetVoiceAsync(Guid.NewGuid().ToString("D"), voice.Response!.StreamId, null, default);
+            Check(voiceAgain.IsSuccess && voiceAgain.Response is { Voice: null, ResetRequired: false },
+                "voice stream identity survives reconnect without replaying a stale generation");
             CoreRequestResult<CoreRequestProtocol.SubmissionAck> submitted =
                 await client.SubmitTextAsync(wireRequestId, "fixture:success", default);
             Check(submitted.IsSuccess && submitted.Response is { Accepted: true, RequestId: var acceptedId } && acceptedId == wireRequestId,
