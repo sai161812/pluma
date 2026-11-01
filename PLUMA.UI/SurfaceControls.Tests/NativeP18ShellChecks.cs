@@ -56,7 +56,10 @@ internal static class NativeP18ShellChecks
             check(originalToolWindow != 0 && host.HandleFor("runtime-tool-" + task.TaskId) == originalToolWindow,
                 "actual live replacements update the existing owned popup window instead of duplicating it");
             shell.NavigateForAcceptance(false); await Task.Delay(30); shell.NavigateForAcceptance(true);
-            await Until(() => shell.Dashboard is { IsLoaded: true } page && ((Button)page.FindName("CommandStopButton")).IsEnabled);
+            await Until(() => shell.Dashboard is { IsLoaded: true } page &&
+                ((Button)page.FindName("CommandStopButton")).IsEnabled &&
+                ((CoreHealthIndicator)page.FindName("CoreHealthReadback")).IsConnected &&
+                ((ListView)page.FindName("CurrentActivityList")).Items.Cast<string>().Any(line => line.Contains(task.TaskId)));
             dashboard = shell.Dashboard!;
             check(((ListView)dashboard.FindName("CurrentActivityList")).Items.Cast<string>().Any(line => line.Contains(task.TaskId)) &&
                 ((CoreHealthIndicator)dashboard.FindName("CoreHealthReadback")).IsConnected,

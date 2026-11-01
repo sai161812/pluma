@@ -691,6 +691,16 @@ class TaskSupervisor:
         task_id = capsule.task_id
         if grace_s > 0:
             time.sleep(grace_s)
+        # IPC acknowledges the already-set latch independently of cleanup.
+        # Give cooperative owned futures one shared, bounded drain budget;
+        # otherwise a wakeup race permanently defers an otherwise safe inverse.
+        # No new work is admitted and unknown workers still retain ownership.
+        from concurrent.futures import wait
+        with capsule.work_lock:
+            futures = [item["future"] for item in capsule.owned_work.values()
+                       if item["future"] is not None and item["identity"].get("command_class") == "tool"]
+        if futures:
+            wait(futures, timeout=.1)
         capsule.close_resources(stopping=True)
         with self._lock:
             self._transition(capsule, TaskState.ROLLING_BACK)

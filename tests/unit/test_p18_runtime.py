@@ -251,3 +251,30 @@ def test_real_rollback_publishes_selected_inverse_before_owned_file_restore(resi
     assert (observed[0]["rollback_step"], observed[0]["rollback_total"], observed[0]["rollback_recipe"]) == (1, 1, "move_file")
     assert ActivityQuery(ledger._db).undo_record_for_action(action)["rollback_ok"] == 1
     supervisor.finalize_task(cap.task_id, TaskState.STOPPED)
+
+
+def test_ipc_stop_drains_cooperative_owned_future_before_inverse(resident_fixture, tmp_path):
+    core, ledger, supervisor = resident_fixture
+    cap = capsule(ledger, supervisor)
+    original, moved = tmp_path / "before.txt", tmp_path / "after.txt"
+    moved.write_text("Owned cooperative fixture", encoding="utf-8")
+    cap.undo_stack.append({"action": "move_file", "source": str(original), "destination": str(moved)})
+    registry = ToolRegistry()
+    entered, release = threading.Event(), threading.Event()
+    def cooperative():
+        entered.set()
+        assert cap.cancellation_token.wait_for_cancel(2)
+        assert release.wait(1)
+    future = registry.submit_owned(cooperative, task_id=cap.task_id, _task_context=cap)
+    try:
+        assert entered.wait(1)
+        receipt = supervisor.request_stop(cap.task_id, wait_s=0)
+        assert cap.stop_latch_set
+        time.sleep(.02)  # Simulate a bounded cooperative exit after the latch.
+        release.set()
+        assert supervisor.join_stop_operations(3)
+        assert future.done() and cap.state == TaskState.STOPPED
+        assert original.read_text(encoding="utf-8") == "Owned cooperative fixture" and not moved.exists()
+    finally:
+        release.set()
+        registry.close()
