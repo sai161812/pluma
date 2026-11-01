@@ -119,6 +119,18 @@ internal static class NativeP18ShellChecks
                 var reply = await client.SubmitTextAsync(Id(), "fixture:" + command, default);
                 if (reply.Response is not { Accepted: true } accepted) throw new InvalidOperationException("Owned burst refused.");
                 burst.Add((accepted, command is "read" or "verify"));
+                // Accumulate a delivery burst while respecting the resident's
+                // four-running-task admission limit. Never retry an action.
+                var admissionBudget = Stopwatch.StartNew();
+                bool persisted = false;
+                while (!persisted && admissionBudget.Elapsed < TimeSpan.FromSeconds(3))
+                {
+                    var outcome = await client.GetTerminalReadbackAsync(accepted.RequestId, accepted.TaskId!, default);
+                    if (!outcome.IsSuccess) throw new InvalidOperationException("Owned burst outcome unavailable.");
+                    persisted = outcome.Response is { Terminal: true, TerminalPersisted: true };
+                    if (!persisted) await Task.Delay(15);
+                }
+                if (!persisted) throw new TimeoutException("Owned burst outcome did not persist.");
             }
             await fixture.ControlEventsAsync(false);
             await Until(() => burst.All(item => notifications.Any(note => note.Key == "ledger-notice-" + item.Ack.TaskId) &&
