@@ -92,6 +92,8 @@ internal static class NativeP18ShellChecks
             await Until(() => notifications.Any(item => item.Surface == 21 && item.Accepted));
             var absent = await client.GetRuntimeAsync(Id(), default);
             var worker = absent.Response!.Terminations.Single();
+            await Until(() => host.Windows.Any(window => window.HostedContent is WorkerTerminationFlash flash &&
+                flash.WorkerPid == worker.Pid.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             check(host.Windows.Any(window => window.HostedContent is WorkerTerminationFlash flash &&
                 flash.WorkerPid == worker.Pid.ToString(System.Globalization.CultureInfo.InvariantCulture)) && worker.CreationTime > 0,
                 "actual owned process STOP produces native worker feedback only after identity-bound absence readback");
