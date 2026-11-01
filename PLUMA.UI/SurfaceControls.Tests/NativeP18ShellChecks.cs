@@ -133,6 +133,8 @@ internal static class NativeP18ShellChecks
             check(notifications.Count == count, "actual authenticated replay polls do not duplicate old multi-surface notifications");
             check(host.Windows.Select(window => window.Handle).Distinct().Count() == host.Windows.Count(),
                 "shared shell popup replacements keep one owned native window per entry");
+            host.Clear();
+            await Until(() => host.Count == 0);
             closeTask = (await client.SubmitTextAsync(Id(), "fixture:hold", default)).Response!;
             await Until(() => host.Windows.Any(window => window.HostedContent is TaskRunningPopup card &&
                 ((PopupMessageText)card.FindName("TaskIdentity")).Text == closeTask.TaskId));
