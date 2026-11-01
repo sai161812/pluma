@@ -277,7 +277,8 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
             facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action, actualDetail) with {
                 Timestamp = DateTimeOffset.Parse(group.Last().OccurredAt) });
             if (action.Tool is "invoke_control" or "invoke_screen_element" or "click_window_relative" or
-                "set_control_text" or "type_text" or "press_key" or "hotkey" or "click_element" or "click_text")
+                "set_control_text" or "type_text" or "press_key" or "hotkey" or "click_element" or "click_text" or
+                "click_ocr_text" or "type_into_element")
             {
                 var verified = await client.VerificationAsync(Id(), page.TaskId, action.ActionId, token);
                 if (!verified.IsSuccess) throw new IOException("Verifier readback unavailable.");

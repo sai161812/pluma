@@ -97,12 +97,27 @@ internal static class SurfaceFactChecks
         check(detailedOwner.View.Messages!.Last().Message.Contains("Updated executor detail.") &&
             detailedOwner.View.Messages!.Last().Message.Contains("Postcondition not verified."),
             "live tool messages replace material facts truthfully without inventing postcondition success");
+        foreach (string tool in new[] { "click_ocr_text", "type_into_element" })
+        {
+            var screen = new Client { EmptySnapshot = true, ScreenProof = true };
+            screen.Actions[10] = screen.Actions[10] with { Tool = tool, Verified = true };
+            var screenOwner = new EventFeedController(screen);
+            var proofs = new List<ActivitySurfaceFact>(); screenOwner.Surface += proofs.Add;
+            await screenOwner.PollOnceAsync(default);
+            screen.Next = screen.Batch(2, false, screen.Event(1, "task_recorded"), screen.Event(2, "action_changed", 10));
+            await screenOwner.PollOnceAsync(default);
+            check(proofs.Any(fact => fact is { Surface: 17, Verification.Verified: true } && fact.Verification.Tool == tool),
+                "registered UI compatibility action retains scoped saved verifier projection: " + tool);
+        }
     }
 
     private sealed class Client : IEventFeedClient
     {
+        internal bool ScreenProof;
         public Task<CoreRequestResult<CoreRequestProtocol.ActionVerification>> VerificationAsync(string request, string task, long action, CancellationToken token) =>
-            throw new InvalidOperationException("This fixture has no screen actions.");
+            ScreenProof ? Task.FromResult(Ok(new CoreRequestProtocol.ActionVerification(1, "action_verification", request, task, _request,
+                action, Actions[action].Tool, Actions[action].Verified, "owned_fixture_readback", "Recorded fixture proof."))) :
+                throw new InvalidOperationException("This fixture has no screen actions.");
         public Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> DetailAsync(string request, string task, long action, CancellationToken token) =>
             Task.FromResult(FailDetail ? CoreRequestResult<CoreRequestProtocol.ActionDetail>.Failed(CoreConnectionFailure.Unavailable) :
                 Ok(new CoreRequestProtocol.ActionDetail(1, "action_detail", request, WrongDetail ? Id() : task, _request,
