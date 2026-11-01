@@ -39,13 +39,14 @@ public sealed record EventFeedEntry(string Identity, string TaskId, DateTimeOffs
 {
     public string DisplayText => "Task " + TaskId + ": " + Message;
 }
-internal sealed record EventFeedView(EventFeedEntry[] Entries, string Status);
+internal sealed record EventFeedView(EventFeedEntry[] Entries, string Status, EventFeedEntry[]? Messages = null);
 
 /// <summary>One shell-owned read-only consumer; event identities trigger independent evidence readback.</summary>
 internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pollInterval = null)
 {
     private readonly object _gate = new();
     private readonly List<EventFeedEntry> _entries = [];
+    private readonly List<EventFeedEntry> _messages = [];
     private readonly Dictionary<string, Observation> _known = new();
     private readonly Queue<string> _knownOrder = new();
     private readonly Dictionary<string, string> _surfaceKnown = new();
@@ -56,7 +57,12 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
     internal event Action<EventFeedView>? Changed;
     internal event Action<EventFeedEntry>? Notice;
     internal event Action<ActivitySurfaceFact>? Surface;
-    internal EventFeedView View { get { lock (_gate) return new(_entries.ToArray(), _status); } }
+    internal EventFeedView View { get { lock (_gate) return new(_entries.ToArray(), _status, _messages.ToArray()); } }
+    private void AppendMessage(EventFeedEntry entry)
+    {
+        if (_messages.Count == 200) _messages.RemoveAt(0);
+        _messages.Add(entry);
+    }
     private static string Id() => Guid.NewGuid().ToString("D");
     private sealed record Observation(string Fingerprint, EventFeedEntry Entry, string RequestId,
         string BaseIdentity, int ReadsRemaining, bool NotifyTransitions);
@@ -175,7 +181,7 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                 {
                     changed = batch.ResetRequired || _status != "Live activity connected.";
                     if (batch.ResetRequired)
-                    { _entries.Clear(); _known.Clear(); _knownOrder.Clear(); _surfaceKnown.Clear(); _surfaceOrder.Clear(); }
+                    { _entries.Clear(); _messages.Clear(); _known.Clear(); _knownOrder.Clear(); _surfaceKnown.Clear(); _surfaceOrder.Clear(); }
                     foreach (var fact in surfaceFacts)
                     {
                         if (_surfaceKnown.TryGetValue(fact.Key, out var fingerprint) && fingerprint == fact.Fingerprint) continue;
@@ -190,6 +196,17 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                     foreach (var item in observations)
                     {
                         var entry = item.Entry;
+                        foreach (var fact in surfaces.Where(fact => fact.TaskId == entry.TaskId && fact.Action is not null))
+                        {
+                            var action = fact.Action!;
+                            string state = action.PolicyDenied ? "Blocked by policy." : action.ErrorRecorded ? "Action reported an error." :
+                                action.Verified ? "Postcondition verified." : "Postcondition not verified.";
+                            string message = PopupText.Label(action.Tool) + ": " + (fact.Detail?.FactualMessage ?? "Saved action detail is unavailable.") + " " + state;
+                            string fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(fact.Fingerprint)));
+                            AppendMessage(new(fact.Key + "/" + fingerprint, fact.TaskId, fact.Timestamp ?? entry.Timestamp,
+                                message, false, action.PolicyDenied || action.ErrorRecorded, action.Verified));
+                            changed = true;
+                        }
                         _known.TryGetValue(entry.TaskId, out var previous);
                         if (previous?.Fingerprint == item.Fingerprint) { _known[entry.TaskId] = item; continue; }
                         changed = true;
@@ -206,6 +223,7 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                         _known[entry.TaskId] = item;
                         if (_entries.Count == 200) _entries.RemoveAt(0);
                         _entries.Add(entry);
+                        AppendMessage(entry);
                     }
                     _cursor = stagedCursor;
                     _status = "Live activity connected.";
@@ -256,7 +274,8 @@ internal sealed class EventFeedController(IEventFeedClient client, TimeSpan? pol
                 actualDetail.ActionId != action.ActionId || actualDetail.Tool != action.Tool ||
                 !action.PolicyDenied && actualDetail.PolicyReason is not null)
                 throw new JsonException("Action presentation identity differs.");
-            facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action, actualDetail));
+            facts.Add(ActivitySurfaceFact.ForAction(page.TaskId, action, actualDetail) with {
+                Timestamp = DateTimeOffset.Parse(group.Last().OccurredAt) });
             if (action.Tool is "invoke_control" or "invoke_screen_element" or "click_window_relative" or
                 "set_control_text" or "type_text" or "press_key" or "hotkey" or "click_element" or "click_text")
             {

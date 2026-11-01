@@ -7,6 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../PLUMA.UI/PopupText.cs" Link="PopupText.cs" />
     <Compile Include="../PLUMA.UI/CoreIpcClient.cs" Link="CoreIpcClient.cs" />
     <Compile Include="../PLUMA.UI/CoreStatus.cs" Link="CoreStatus.cs" />
     <Compile Include="../PLUMA.UI/CoreRequestProtocol.cs" Link="CoreRequestProtocol.cs" />

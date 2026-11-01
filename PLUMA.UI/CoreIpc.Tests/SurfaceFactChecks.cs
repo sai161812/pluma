@@ -85,6 +85,8 @@ internal static class SurfaceFactChecks
         detailed.Next = detailed.Batch(4, false, detailed.Event(4, "action_changed", 20));
         await detailedOwner.PollOnceAsync(default);
         check(detailedFacts.Count == 3, "fresh detail request identities cannot replay unchanged material");
+        check(detailedOwner.View.Messages!.Count(row => row.Message.Contains("Saved executor detail.")) == 2,
+            "bounded live messages include exact saved executor copy without replay on fresh query identities");
         string detailKey = detailedFacts.Last().Key;
         detailed.DetailMessage = "Updated executor detail.";
         detailed.Next = detailed.Batch(5, false, detailed.Event(5, "action_changed", 20));
@@ -92,6 +94,9 @@ internal static class SurfaceFactChecks
         check(detailedFacts.Count == 4 && detailedFacts.Last().Key == detailKey &&
             detailedFacts.Last().Detail!.FactualMessage == detailed.DetailMessage,
             "changed factual detail replaces the same action key without changing verification flags");
+        check(detailedOwner.View.Messages!.Last().Message.Contains("Updated executor detail.") &&
+            detailedOwner.View.Messages!.Last().Message.Contains("Postcondition not verified."),
+            "live tool messages replace material facts truthfully without inventing postcondition success");
     }
 
     private sealed class Client : IEventFeedClient

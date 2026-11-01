@@ -75,7 +75,7 @@ namespace PLUMA.UI
             while (_liveEntries.Count > 0 && !view.Entries.Any(entry => entry.Identity == _liveEntries[0].Identity)) _liveEntries.RemoveAt(0);
             if (_liveEntries.Count > view.Entries.Length || _liveEntries.Where((entry, index) => entry.Identity != view.Entries[index].Identity).Any()) _liveEntries.Clear();
             foreach (var entry in view.Entries.Skip(_liveEntries.Count)) _liveEntries.Add(entry);
-            LiveFeed.ApplyEntries(_liveEntries);
+            LiveFeed.ApplyEntries(view.Messages ?? _liveEntries.ToArray());
             LiveConnectionText.Text = view.Status;
             RecentActivityList.Items.Clear();
             foreach (var item in view.Entries.Where(item => item.Terminal).TakeLast(25)) RecentActivityList.Items.Add(item.DisplayText);

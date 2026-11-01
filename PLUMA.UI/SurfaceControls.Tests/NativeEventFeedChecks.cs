@@ -119,7 +119,7 @@ internal static class NativeEventFeedChecks
         root.Children.Clear(); await Task.Delay(20);
         var returning = new DashboardPage(); returning.AttachCoreClient(core); returning.AttachEventController(owner);
         root.Children.Add(returning); await Task.Delay(30);
-        check(((LiveMessageFeed)returning.FindName("LiveFeed")).Entries.Count == owner.View.Entries.Length && notices == count,
+        check(((LiveMessageFeed)returning.FindName("LiveFeed")).Entries.Count == owner.View.Messages!.Length && notices == count,
             "native navigation restores the shell-owned feed without resubmission or replay");
         root.Children.Clear();
         await CheckRuntimeAsync(root, core, check);

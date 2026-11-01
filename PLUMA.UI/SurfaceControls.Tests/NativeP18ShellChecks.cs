@@ -125,6 +125,8 @@ internal static class NativeP18ShellChecks
             check(host.Count <= PopupStackState.Capacity && notifications.Any(item => item.Surface == 17 && item.Accepted) &&
                 notifications.Any(item => item.Surface == 19 && item.Accepted) && notifications.Any(item => item.Surface == 8 && item.Accepted),
                 "multi-surface burst recovers factual results, verification and denial through the actual shared bounded host");
+            check(((LiveMessageFeed)dashboard.FindName("LiveFeed")).Entries.Any(row => row.Message.Contains("Read owned fixture.") && row.Message.Contains("Postcondition verified.")),
+                "actual live-message widget projects saved executor detail and its independent verification flag");
             foreach (var item in burst)
             {
                 var saved = await client.GetHistoryAsync(Id(), item.Ack.TaskId, 100, default);

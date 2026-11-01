@@ -4,7 +4,8 @@ namespace PLUMA.UI;
 
 internal sealed record ActivitySurfaceFact(string Key, int Surface, string TaskId,
     string Fingerprint, string? Route = null, CoreRequestProtocol.ActivityAction? Action = null,
-    CoreRequestProtocol.ActionDetail? Detail = null, CoreRequestProtocol.ActionVerification? Verification = null)
+    CoreRequestProtocol.ActionDetail? Detail = null, CoreRequestProtocol.ActionVerification? Verification = null,
+    DateTimeOffset? Timestamp = null)
 {
     internal static ActivitySurfaceFact ForVerification(CoreRequestProtocol.ActionVerification proof) =>
         new($"verification-{proof.TaskId}-{proof.ActionId}", 17, proof.TaskId,
