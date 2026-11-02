@@ -1,6 +1,21 @@
 # Wiring step 1: authenticated read-only core status
 
-## Current transport note (P18 packet 2 E88)
+## Current transport note (P20 E96)
+
+[E96](../../../docs/completion/p20_detail_undo.md) completes bounded saved detail,
+selected-undo and recorded-conflict-folder contracts. Exact identities/material
+enter shared typed admission, confirmation, STOP, ownership and terminal
+readback; uncertain writes never replay. Four ordinary slots remain, with at
+most three background readers and a separate fifth STOP slot. Capability/readback
+and approval polling use bounded Busy-only retries; only proven unwritten Busy
+decisions may retry. This fixes the reproduced first-command capacity race.
+The authorized exact-source Windows gate passes 285 IPC and 214 native UI checks,
+including actual owned-file undo and Shell folder readback/owned closure; popup,
+formatting, layout/surface/audio/copy gates also pass. See the
+[v1 protocol](../../../docs/completion/p15_protocol_v1.md) and latest handoff.
+P21 has not started; later physical/release gates remain separate.
+
+## Previous transport note (P18 packet 2 E88)
 
 [E88](../../../docs/completion/p18_activity_evidence.md) adds strict typed
 activity pagination and minimal saved action/undo/cleanup facts. The task feed

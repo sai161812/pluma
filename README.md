@@ -6,11 +6,11 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-11-02):** P20 is in progress. Its bounded saved-task History browser now supports authenticated redacted search and stable paging ([E95](docs/completion/p20_saved_history.md)); task/action details, selected undo, conflict handling and remaining Activity entry wiring are next. P19's scoped gate retains the owner's explicit physical C-02 timing retest deferral to P25 ([E94](docs/completion/p19_overlay_acceptance.md)). This is not full-product release or independent Sol approval. See [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-11-02):** P20's scoped gate is complete: saved History search/paging, task/action detail, confirmed evidence-based selected undo, conflicts and Activity tray/command entry ([E95](docs/completion/p20_saved_history.md), [E96](docs/completion/p20_detail_undo.md)). Affected verification passes 631 Python checks and the authorized Windows gate, including 285 IPC and 214 native UI checks. P21 awaits owner instruction; independent Sol approval is not assumed. P19's owner-approved physical C-02 timing retest deferral to P25 remains ([E94](docs/completion/p19_overlay_acceptance.md)). This is not full-product release. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
-Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP and material approval are connected; voice and factual live events are connected; history details/undo and settings connections remain in progress.
+Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP, material approval, voice, factual live events and saved history/detail/undo are connected. Settings and later health/perception surfaces retain their next milestones.
 
 A real interaction recording should be added here once that UI path is complete. Until then, the repository evidence is the implementation, tests, release artifacts, and verification logs rather than a mocked interface.
 

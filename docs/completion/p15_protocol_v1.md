@@ -295,3 +295,46 @@ physical boundary-timing retest limitation; it is not a protocol pass or waiver.
   retries. Only validated pages replace prior rows/cursors. Failure clears stale
   data; shell close cancels/joins. This is a bounded saved-task browser, not the
   remaining P20 detail/undo/conflict contract or a live event stream.
+
+## P20 saved detail and selected actions (E96)
+
+[E96](p20_detail_undo.md) completes these additional v1 messages without changing
+the existing history/task/event contracts. All new models forbid extra fields;
+the authenticated frame remains bounded to 1 MiB. Missing nullable response
+fields, wrong correlation, invalid identities/order and contradictory evidence
+fail closed in the native parser.
+
+- `task_detail_query`: canonical `request_id` and `task_id`, nonnegative
+  `after_action_id` (default 0), `limit` 1-10 (default 10). `task_detail` returns
+  exact task/request identities, original transcript/app/window context where
+  safely available, cleanup completeness/unresolved count/residual codes, up to
+  ten ordered saved actions and a replacement-page continuation. Missing legacy
+  facts are null, never inferred from the current desktop. Arguments are a
+  bounded redacted JSON object string; timings, verification, policy, rollback,
+  claim, non-undoable effect and conflict facts derive from saved evidence.
+- An available selection contains exact `target_task_id`, positive `action_id`,
+  64-lowercase-hex `revision` and captured `material` (at most 4096 UTF-8 bytes).
+  The same strict shared model is used by IPC and registered `undo_last`.
+  Private inverse recipes/volatile content are withheld. Changed evidence,
+  incomplete original cleanup, outstanding claims, unsupported guarded inverses
+  or later available actions refuse selection. Legacy private input is masked
+  using actual tool identity before search/display.
+- `undo_submit` carries a canonical request identity and the exact
+  selection. It returns the existing submission acknowledgement and uses the
+  same pre-ack STOP fence, deduplication, task lifecycle and terminal readback.
+  The server constructs only an exact typed one-step FAST `undo_last` plan;
+  natural language is not an inverse selector. Policy confirms captured
+  material; an atomic claim revalidates it. Only verified consumption succeeds.
+  Interrupted claims and journaled uncertain effects remain factual and cannot
+  repeat automatically; a completed undo has no automatic redo.
+- `history_folder_submit` binds the original task/action and one recorded
+  current/target conflict side. The backend derives the saved parent path and
+  admits only the registered `open_folder` utility. Actual Shell location and
+  visibility are independently verified. A non-undoable view intent is retained;
+  shared Explorer/pre-existing windows are never terminated by task cleanup.
+- The shell owns and joins the saved-detail reader. Four ordinary slots remain,
+  with background readers limited to three and mutations admitted as foreground;
+  STOP retains its separate slot. Bounded Busy-only read retries preserve
+  observation/approval leases. Only proven unwritten Busy decisions retry;
+  unknown acknowledgements never replay. Selection/request identity is retained
+  through confirmation, navigation, STOP and shutdown.

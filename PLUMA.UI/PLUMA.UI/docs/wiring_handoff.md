@@ -1,5 +1,17 @@
 # UI wiring handoff
 
+**Current progress (2026-11-02, E96):** P20's scoped gate is complete on
+`p12-preparation`, native tested source `d223a32`. Saved History detail, exact
+selected undo, conflict evidence/folder actions and Activity tray/command entry
+join the existing text/STOP, confirmation, live facts and voice bindings.
+The existing dark controls/styles are preserved. The authorized Windows gate
+passes 285 IPC, 214 native UI, 663 popup and 195 formatting checks, plus the
+layout/surface/audio/copy gates, with zero-warning builds. Affected Python:
+631 passes, no skips/xfails. See [E96](../../../docs/completion/p20_detail_undo.md)
+for source/build identity, retained failures, ownership/privacy boundaries and
+recovery. P21 awaits instruction; P25 physical review and its owner-deferred
+C-02 timing retest remain separate. Earlier notes below are historical.
+
 Workspace update after the requested cleanup: active `ui-wiring` development is
 now in `D:\Workspace\DEVEL\PLUMA`. The former `PLUMA-ui-wiring` worktree is
 detached at `55b625c`, preserving its existing evidence. The original generated
@@ -8,7 +20,7 @@ See [cleanup/recovery](../../../docs/workspace_cleanup.md) and the
 [completion prompts](../../../PLUMA_COMPLETION_PROMPTS.md). Earlier workspace
 paths and branch-state descriptions below are historical preparation records.
 
-**Current progress (2026-10-27):** P17 E86 connects dashboard Enter/Run and
+**Historical progress (2026-10-27):** P17 E86 connects dashboard Enter/Run and
 independent priority Stop to the shared backend. One shell-owned controller
 preserves request/task identity across navigation; duplicate submission and
 uncertain-write replay are blocked. Terminal persistence, verification and

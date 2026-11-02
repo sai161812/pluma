@@ -1,6 +1,61 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-02, P20 saved-task browsing E95
+## Current checkpoint: 2026-11-02, P20 complete E96
+
+**P20's scoped implementation and acceptance gate is complete.**
+[E95](docs/completion/p20_saved_history.md) and
+[E96](docs/completion/p20_detail_undo.md) cover all P20 packets; no P20
+implementation packet remains. Independent Sol approval is not assumed.
+
+- Branch `p12-preparation`; final native tested source
+  `d223a32674a7d825725f0ec813da31ce328fda62`. Implementation checkpoints:
+  `9097bcf`, `a59c0cd`, `9c959d9`, `d223a32`. Recovery point:
+  `124200ab471f09f2a29541903f64426f21772656`. No merge or branch change.
+- Saved task/action detail now supplies original input/context where safely
+  available, exact sanitized tools/arguments, adapter, risk/decision, timings,
+  verification, inverse/claim/rollback outcome, cleanup and residual readback.
+  Strict bounded replacement pages agree with independent SQLite evidence.
+  Private legacy clipboard commands are masked before search/display, including
+  keyword-free content identified by the actual recorded tool.
+- Exact selected undo enters the shared typed ToolSpec/policy/confirmation,
+  TaskCapsule, ownership and STOP lifecycle. Saved identity/material are checked
+  before policy and again during an atomic durable claim. Newest-first selection,
+  verified consumption and retained uncertain claims prevent duplicate inverses.
+  STOP/timeout after claim preserves non-undoable intent and unresolved evidence;
+  there is no automatic redo or repeat of an uncertain action.
+- Native History, rollback and conflict controls bind real evidence. Conflicts
+  preserve both files and offer evidence plus a typed, verified recorded-folder
+  view; no forced overwrite. Activity is reachable from the shell-owned tray and
+  verified registered command events. Existing dark styling is preserved.
+- Pre-edit affected prerequisites: **120 passed in 20.27 s**. Final affected
+  Python: **631 passed in 107.07 s**, no skips/xfails, on `9c959d9`; `d223a32`
+  changes only CI provider installation. Exact-source
+  [Windows gate 41472068637](https://github.com/sai161812/pluma/actions/runs/41472068637)
+  passes **285 IPC / 214 native UI / 663 popup / 195 formatting** checks, plus
+  layout/surface/audio/copy gates. Builds have zero warnings/errors. Real Shell
+  folder visibility/location and closure of only the newly owned fixture window
+  pass. Source/artifact digests, commands and failed attempts are in E96.
+- E95's first-command startup observation was reproduced: background readers
+  exhausted ordinary client slots. Background work now uses at most three of
+  four slots, leaving foreground admission and the independent fifth STOP slot.
+  Bounded Busy-only reads preserve observation/approval leases; unknown writes
+  never replay. Reproduced pressure regressions and combined native flow pass.
+  A standalone policy-first import cycle is also fixed without changing public
+  core exports. Local Application Control blocks are retained as nonexecution;
+  final native acceptance is from the authorized Windows host.
+
+**Remaining P20 packets/blockers: none.** Ready for independent Sol review.
+**Next safe milestone: P21, only after owner instruction/review.** P21 has not
+started. E94's owner-approved C-02 physical timing retest deferral to P25 remains
+unchanged. Broader physical UI/accessibility, security, performance and release
+gates retain their later milestones; this is not full-product readiness.
+
+Recovery: reviewed reverts toward `124200a`, preserving unrelated work and
+SQLite data. E95's additive index may remain after downgrade. Never delete/reset
+receipts or uncertain claims to permit another inverse. No new schema migration
+or dependency is introduced by E96; no reset/clean/force-push is authorized.
+
+## Previous checkpoint: 2026-11-02, P20 saved-task browsing E95
 
 **The bounded saved-task browsing packet is complete; full P20 remains in
 progress.** [E95](docs/completion/p20_saved_history.md) records exact scope,
