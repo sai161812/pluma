@@ -115,6 +115,17 @@ def test_private_identifier_and_unknown_historical_flags_are_withheld(history):
     assert task['error_code'] is None and task['route'] is None and task['final_state'] is None
 
 
+def test_every_presented_field_matches_independent_sqlite_readback(history):
+    core, ledger, db = history
+    task = saved(ledger, final_state='STOPPED_WITH_RESIDUAL', route='SMART',
+        started_at='2026-11-02T08:00:10+00:00', completed_at='2026-11-02T08:01:00+00:00',
+        stop_reason='user_stop', error_code='OWNED_CONFLICT')
+    with closing(sqlite3.connect(db._db_path)) as reader:
+        reader.row_factory = sqlite3.Row
+        expected = dict(reader.execute('SELECT task_id, request_id, input_mode, command_text, created_at, started_at, completed_at, final_state, route, stop_reason, error_code FROM tasks WHERE task_id=?', (task,)).fetchone())
+    assert page(core)['tasks'] == [expected]
+
+
 def test_malformed_dates_fail_closed(history):
     core, ledger, _ = history
     saved(ledger, created='not-a-timestamp')

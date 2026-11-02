@@ -133,7 +133,10 @@ def main():
                         task = str(uuid4())
                         ledger.insert_task(TaskRecord(task, str(uuid4()), 'voice' if index % 2 else 'text',
                             f'Open file_预算_{index}.md', created_at='2026-11-02T08:00:00+00:00',
+                            started_at='2026-11-02T08:00:10+00:00',
                             completed_at='2026-11-02T08:01:00+00:00', route='FAST',
+                            stop_reason='user_stop' if index % 4 in (2,3) else None,
+                            error_code='FIXTURE_FAILED' if index % 4 == 1 else None,
                             final_state=('SUCCEEDED','FAILED','STOPPED','STOPPED_WITH_RESIDUAL')[index % 4]))
                     db.execute_write('UPDATE tasks SET command_text=? WHERE task_id=?',
                         ('HISTORY_PRIVATE_NATIVE_PAYLOAD in the clipboard', task))
@@ -157,8 +160,11 @@ def main():
                 rows = [row for row in rows if search in '\n'.join(str(value or '') for value in
                     (redact_command_text(row['command_text']), row['task_id'], row['final_state'], row['route'], row['input_mode'])).casefold()]
                 expected = rows[:request.get('limit',20)]
-                if ([row['task_id'] for row in reply['tasks']] != [row['task_id'] for row in expected]
-                        or [row['command_text'] for row in reply['tasks']] != [redact_command_text(row['command_text']) for row in expected]
+                fields = ('task_id','request_id','input_mode','command_text','created_at','started_at',
+                          'completed_at','final_state','route','stop_reason','error_code')
+                expected = [dict((key, redact_command_text(row[key]) if key == 'command_text' else row[key])
+                                 for key in fields) for row in expected]
+                if (reply['tasks'] != expected
                         or reply['has_more'] != (len(rows) > len(expected))):
                     raise RuntimeError("History did not agree with independent SQLite readback.")
 
