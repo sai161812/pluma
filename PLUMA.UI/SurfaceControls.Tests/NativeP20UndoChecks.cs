@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -111,6 +112,8 @@ internal static class NativeP20UndoChecks
                         // newly owned folder. Personal desktop runs do not.
                         await fixture.ControlHistoryAsync("history_prepare_folder");
                         string? prior = shell.CurrentCommandForAcceptance.RequestId;
+                        Console.WriteLine("Owned folder command before invocation: " + JsonSerializer.Serialize(shell.CurrentCommandForAcceptance));
+                        Console.WriteLine("Owned folder dialog admission enabled: " + dialog.IsSecondaryButtonEnabled);
                         Invoke(Find(dialog, "Open folder"));
                         await Until(() => shell.CurrentCommandForAcceptance.RequestId != prior && !shell.CurrentCommandForAcceptance.Pending);
                         var command = shell.CurrentCommandForAcceptance;
@@ -142,7 +145,24 @@ internal static class NativeP20UndoChecks
             await Until(() => shell.History is { IsLoaded:true });
             check(shell.History is not null, "verified registered show activity command opens the shared native History page");
         }
-        catch (Exception error) { Console.Error.WriteLine("P20 selected undo failure before teardown: " + error); Console.Error.WriteLine("Owned command outcome: " + shell.CurrentCommandForAcceptance.State + " / " + shell.CurrentCommandForAcceptance.Message); throw; }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("P20 selected undo failure before teardown: " + error);
+            var command = shell.CurrentCommandForAcceptance;
+            Console.Error.WriteLine("Owned command outcome: " + JsonSerializer.Serialize(command));
+            if (command.RequestId is not null && command.TaskId is not null)
+            {
+                try
+                {
+                    var terminal = await client.GetTerminalReadbackAsync(command.RequestId, command.TaskId, default);
+                    var detail = await client.GetTaskDetailAsync(Guid.NewGuid().ToString("D"), command.TaskId, 0, default);
+                    Console.Error.WriteLine("Owned terminal readback: " + JsonSerializer.Serialize(terminal));
+                    Console.Error.WriteLine("Owned saved detail: " + JsonSerializer.Serialize(detail));
+                }
+                catch (Exception diagnostic) { Console.Error.WriteLine("Owned failure readback unavailable: " + diagnostic.GetType().Name); }
+            }
+            throw;
+        }
         finally { shell.Close(); await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5)); }
         check(tray is { IsDisposed:true, IsAvailable:false } && shell.ObservationLifetime.IsCompleted,
             "shell shutdown removes only its own tray entry and joins saved-detail/command observers");
