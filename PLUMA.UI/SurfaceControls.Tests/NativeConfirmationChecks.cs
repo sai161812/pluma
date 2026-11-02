@@ -128,6 +128,12 @@ internal static class NativeConfirmationChecks
             await _process.StandardInput.FlushAsync();
             await WaitForEventAsync(paused ? "EVENTS_PAUSED" : "EVENTS_RESUMED");
         }
+        internal async Task ControlVoiceAsync(string command)
+        {
+            await _process.StandardInput.WriteLineAsync(command);
+            await _process.StandardInput.FlushAsync();
+            await WaitForEventAsync(command.ToUpperInvariant());
+        }
         internal async Task WaitForEventAsync(string marker)
         {
             await Until(() =>

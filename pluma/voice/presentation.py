@@ -82,10 +82,13 @@ class VoicePresentation:
             if self._finished_at is not None and self._clock() - self._finished_at >= TERMINAL_RETENTION_S:
                 self._text = ""
                 return None
-            active = boundary = None
+            active = boundary = meter = None
             if self._phase == "LISTENING":
+                live = getattr(capture, "live_observation", None)
                 observe = getattr(capture, "observation", None)
-                if callable(observe):
+                if callable(live):
+                    active, boundary, meter = live()
+                elif callable(observe):
                     active, boundary = observe()
             recognition_id, sequence, text = None, 0, self._text
             progress = capsule.recognition_progress
@@ -101,10 +104,10 @@ class VoicePresentation:
             if self._phase not in {"DECODING", "COMMITTED"}:
                 text = ""
             if self._phase != "LISTENING":
-                active = boundary = None
+                active = boundary = meter = None
             return VoiceViewV1(voice_id=self.voice_id, task_id=self.task_id,
                 task_request_id=self._request_id, phase=self._phase, code=self._code,
                 capture_active=active, boundary_complete=boundary,
-                recognition_id=recognition_id, recognition_sequence=sequence, text=text)
+                recognition_id=recognition_id, recognition_sequence=sequence, text=text, meter=meter)
         finally:
             self._lock.release()

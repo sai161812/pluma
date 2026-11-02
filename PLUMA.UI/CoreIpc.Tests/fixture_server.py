@@ -41,7 +41,11 @@ def main():
             sys.stdout.flush()
 
 
-    if mode in {"versioned", "commands"}:
+    voice_threads = []
+    voice_release = threading.Event()
+    voice_entered = threading.Event()
+    voice_paused = threading.Event()
+    if mode in {"versioned", "commands", "voice"}:
         from pluma.core.resident import ResidentCore
         from pluma.core.task_supervisor import TaskState, TaskSupervisor
         from pluma.config.loader import load_config
@@ -115,7 +119,7 @@ def main():
         core.config["brain"]["model_path"] = r"C:\fixture\planner.gguf"
         core.config["voice"]["model_path"] = r"C:\fixture\whisper.ggml"
 
-        if mode == "commands":
+        if mode in {"commands", "voice"}:
             # Actual production orchestration/policy/registry/verification/SQLite.
             # Only routing and planner waiting are fixed inert fixture adapters.
             from typing import Literal
@@ -213,7 +217,99 @@ def main():
             core.orchestrator = Orchestrator(registry=registry, supervisor=supervisor, ledger=ledger,
                 router=CommandRouter(), llm_manager=WaitingPlanner(), rollback_engine=inverse)
 
+        if mode == "voice":
+            from pluma.voice.capture import AudioCapture
+            from pluma.voice.vad import EnergyVAD
+            from pluma.voice.recognition import RecognitionProgress
+            from pluma.voice.pipeline import VoiceClarificationRequired
+            from pluma.core.request import InputMode, PlumaRequest
+            import math
+            import struct
+
+            class InertCapture(AudioCapture):
+                denied = False
+                def start(self):
+                    if self.denied:
+                        raise PermissionError("Private fixture driver details")
+                    with self._lock:
+                        self._buffer.clear(); self._vad_pending.clear()
+                        self._utterance_complete.clear()
+                        self._boundary_detector.reset()
+                        self._meter_sequence = 0
+                        self._is_recording = True
+
+            class FixtureVoicePipeline:
+                outcome = "hold"
+                def process_audio(self, audio, cancellation_token):
+                    if self.outcome == "clarify":
+                        return VoiceClarificationRequired(.1)
+                    if self.outcome == "empty":
+                        return None
+                    cap = core._current_voice_capsule
+                    cap.recognition_progress = RecognitionProgress(cap.task_id, cancellation_token)
+                    cap.recognition_progress.accept(1, "Read file_name.md " + "owned transcript " * 120)
+                    voice_entered.set()
+                    while not voice_release.wait(.01):
+                        cancellation_token.raise_if_cancelled()
+                    cancellation_token.raise_if_cancelled()
+                    return PlumaRequest(input_mode=InputMode.VOICE, text="fixture:read", original_transcript="fixture:read")
+
+            core.audio_capture = InertCapture(vad=EnergyVAD())
+            core.voice_pipeline = FixtureVoicePipeline()
+            voice_tone = struct.pack('<16000h', *(int(8000*math.sin(2*math.pi*440*i/16000)) for i in range(16000)))
+
+            def begin_voice():
+                old = getattr(core, "_voice_session", None)
+                if old is not None and old.capsule.cancellation_token.is_cancelled:
+                    core._on_voice_release()
+                core._on_voice_press()
+                if not core._current_voice_capsule.cancellation_token.is_cancelled:
+                    core.audio_capture.feed(voice_tone)
+
+            def voice_control(command):
+                if command == "voice_begin":
+                    voice_release.clear(); voice_entered.clear()
+                    core.voice_pipeline.outcome = "hold"; begin_voice()
+                elif command == "voice_silence":
+                    core.audio_capture.feed(bytes(3200))
+                elif command == "voice_decode":
+                    thread = threading.Thread(target=core._on_voice_release, name="OwnedVoiceFixture")
+                    voice_threads.append(thread); thread.start()
+                    if not voice_entered.wait(3):
+                        raise RuntimeError("Fixture decoding was not observed.")
+                elif command == "voice_more":
+                    progress = core._current_voice_capsule.recognition_progress
+                    progress.accept(progress.snapshot().sequence + 1, "additional owned speech " * 100)
+                elif command == "voice_commit":
+                    voice_release.set()
+                    for thread in voice_threads:
+                        thread.join(3)
+                        if thread.is_alive():
+                            raise RuntimeError("Owned voice caller remains active.")
+                elif command in {"voice_clarify", "voice_empty"}:
+                    core.voice_pipeline.outcome = "clarify" if command == "voice_clarify" else "empty"
+                    begin_voice(); core._on_voice_release()
+                elif command == "voice_deny":
+                    core.audio_capture.denied = True
+                    begin_voice()
+                    core.audio_capture.denied = False
+                elif command == "voice_timeout":
+                    from pluma.core.cancellation import StopReason
+                    begin_voice()
+                    core._current_voice_capsule.cancellation_token.cancel(StopReason.TASK_TIMEOUT)
+                    core._on_voice_release()
+                elif command == "voice_pause":
+                    voice_paused.set()
+                elif command == "voice_resume":
+                    voice_paused.clear()
+                else:
+                    raise RuntimeError("Unknown owned voice fixture command.")
+                report_event(command.upper())
+
         def handler(request):
+            if request.get("message_type") == "voice_query" and voice_paused.is_set():
+                return {"protocol_version": 1, "message_type": "protocol_error", "error_code": "FIXTURE_PAUSED",
+                        "message": "Owned fixture voice connection is unavailable."}
             if request.get("message_type") == "events_query" and paused_events.is_set():
                 return {"protocol_version": 1, "message_type": "protocol_error", "error_code": "FIXTURE_PAUSED",
                         "message": "Owned fixture event connection is unavailable."}
@@ -245,6 +341,8 @@ def main():
         for line in sys.stdin:
             if line.strip() == "stop":
                 break
+            if mode == "voice" and line.strip().startswith("voice_"):
+                voice_control(line.strip())
             if line.strip() == "pause_events":
                 paused_events.set(); report_event("EVENTS_PAUSED")
             if line.strip() == "resume_events":
@@ -264,6 +362,11 @@ def main():
         if db is not None:
             broker.close()
             supervisor.stop_all_active_tasks()
+            voice_release.set()
+            for thread in voice_threads:
+                thread.join(3)
+                if thread.is_alive():
+                    raise RuntimeError("Owned voice fixture did not exit.")
             for thread in list(getattr(core, "_submission_threads", {}).values()):
                 thread.join(timeout=2)
                 if thread.is_alive():
@@ -273,7 +376,7 @@ def main():
                 raise RuntimeError("Unapproved or duplicate fixture executor entry.")
             if len(command_calls) != len(set(command_calls)):
                 raise RuntimeError("Duplicate command fixture executor entry.")
-            if mode == "commands":
+            if mode in {"commands", "voice"}:
                 import sqlite3
                 from contextlib import closing
                 with closing(sqlite3.connect("file:" + owned_db.as_posix() + "?mode=ro", uri=True)) as readback:

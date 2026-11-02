@@ -71,6 +71,11 @@ namespace PLUMA.UI
         public string DisplayText => _message.Text;
         internal ScrollViewer MessageScroll => _scroll;
         internal TextBlock MessageBlock => _message;
+        internal void ResetReading()
+        {
+            _scroll.ChangeView(null, 0, null, true);
+            _followPending = FollowTail;
+        }
 
         private static void OnTextChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
         {

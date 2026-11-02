@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 import sys
 import time
+from uuid import uuid4
 
 from pluma.app import PlumaApplicationRuntime
 from pluma.config.loader import load_config
@@ -84,6 +85,13 @@ def run_acceptance(model_path: Path, report_path: Path) -> dict:
         import sounddevice as sd
         report["physical_input_device"] = sd.query_devices(sd.default.device[0])["name"]
         time.sleep(0.35)
+        live = core.handle_ipc_command(dict(protocol_version=1, message_type="voice_query", request_id=str(uuid4())))["voice"]
+        _assert(live["task_id"] == first_capsule.task_id and live["phase"] == "LISTENING"
+                and live["capture_active"] is True and live["meter"] is not None
+                and len(live["meter"]["bands"]) == 32 and live["text"] == "",
+                "Physical capture did not expose scoped measured P19 readback.")
+        report["p19_live_capture_readback"] = {"same_capsule": True, "measured_band_count": 32,
+                                                "no_transcript": True}
         activation.trigger_release()
         first_cleanup = _cleanup(runtime, first_capsule)
         _assert(capture.capture_closed, "PTT release left the physical input stream open.")
@@ -119,6 +127,9 @@ def run_acceptance(model_path: Path, report_path: Path) -> dict:
                 "Capture STOP passed audio to voice processing after the latch.")
         _assert(ActivityQuery(runtime.db).task_by_id(stop_capsule.task_id) is None,
                 "Capture STOP unexpectedly admitted a command task.")
+        stopped = core.handle_ipc_command(dict(protocol_version=1, message_type="voice_query", request_id=str(uuid4())))["voice"]
+        _assert(stopped["phase"] == "CANCELLED" and stopped["text"] == "" and stopped["meter"] is None,
+                "Physical capture STOP left live voice UI data.")
         worker_entries = [entry for entry in stop_cleanup.get("entries", [])
                           if entry.get("kind") == "worker"]
         _assert(any(entry.get("code") == "VOICE_OWNER_CLOSED" and entry.get("verified")

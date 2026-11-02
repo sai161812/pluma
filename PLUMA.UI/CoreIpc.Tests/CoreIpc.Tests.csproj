@@ -15,6 +15,7 @@
     <Compile Include="../PLUMA.UI/CoreActivityProtocol.cs" Link="CoreActivityProtocol.cs" />
     <Compile Include="../PLUMA.UI/CoreRuntimeProtocol.cs" Link="CoreRuntimeProtocol.cs" />
     <Compile Include="../PLUMA.UI/CoreVoiceProtocol.cs" Link="CoreVoiceProtocol.cs" />
+    <Compile Include="../PLUMA.UI/VoiceController.cs" Link="VoiceController.cs" />
     <Compile Include="../PLUMA.UI/RuntimeController.cs" Link="RuntimeController.cs" />
     <Compile Include="../PLUMA.UI/ActivitySurfaceFact.cs" Link="ActivitySurfaceFact.cs" />
     <Compile Include="../PLUMA.UI/ConfirmationController.cs" Link="ConfirmationController.cs" />

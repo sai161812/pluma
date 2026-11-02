@@ -45,6 +45,7 @@ class AudioCapture:
         self._lock = threading.Lock()
         self._operation = threading.RLock()
         self._generation = 0
+        self._meter_sequence = 0
         self._stream: Any = None
         self._is_recording = False
         self._utterance_complete = threading.Event()
@@ -77,10 +78,31 @@ class AudioCapture:
         finally:
             self._lock.release()
 
+    def live_observation(self):
+        """Copy at most one PCM window, then analyze outside the capture lock."""
+        from pluma.voice.meter import analyze
+        if not self._lock.acquire(timeout=.02):
+            raise TimeoutError("Capture observation is busy.")
+        try:
+            active, complete = self._is_recording, self._utterance_complete.is_set()
+            sequence = self._meter_sequence
+            pcm = bytes(self._buffer[-2048:]) if active else b""
+            detector = self._boundary_detector
+            speech = bool(active and detector is not None and detector.speech_started
+                          and detector.trailing_silence_frames_seen == 0)
+            progress = (min(1., detector.trailing_silence_frames_seen / detector.trailing_silence_frames)
+                        if detector is not None and detector.speech_frames >= detector.min_speech_frames else 0.)
+        finally:
+            self._lock.release()
+        amplitude, bands = analyze(pcm)
+        return active, complete, dict(amplitude=amplitude, bands=bands,
+                                     speech_active=speech, silence_progress=progress, sample_sequence=sequence)
+
     def _append_audio_locked(self, chunk: bytes) -> bool:
         """Append bounded audio; return true when the stream must stop now."""
         if not self._is_recording or not chunk:
             return False
+        self._meter_sequence += len(chunk) // (2 * self.channels)
         detector = self._boundary_detector
         if detector is None:
             remaining = self.max_buffer_bytes - len(self._buffer)
@@ -120,6 +142,7 @@ class AudioCapture:
             if self._boundary_detector is not None:
                 self._boundary_detector.reset()
             self._generation += 1
+            self._meter_sequence = 0
             generation = self._generation
             self._is_recording = True
 

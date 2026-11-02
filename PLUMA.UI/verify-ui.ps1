@@ -118,7 +118,7 @@ try {
     $controlsExecutable = Join-Path $repositoryRoot 'PLUMA.UI/SurfaceControls.Tests/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/SurfaceControls.Tests.exe'
     $controls = Start-OwnedProcess $controlsExecutable @() 'native-controls'
     try {
-        if (-not $controls.Process.WaitForExit(45000)) { throw 'Native control checks exceeded 45 seconds.' }
+        if (-not $controls.Process.WaitForExit(75000)) { throw 'Native control checks exceeded 75 seconds.' }
         if ($controls.Process.ExitCode -ne 0) { throw "Native control runner failed with exit code $($controls.Process.ExitCode)." }
     }
     finally {

@@ -213,6 +213,7 @@ namespace PLUMA.UI.Tests
             await NativeCommandChecks.RunAsync(root, Check);
             await NativeEventFeedChecks.RunAsync(root, Check);
             await NativeP18ShellChecks.RunAsync(Check);
+            await NativeP19VoiceChecks.RunAsync(Check);
         }
 
         private sealed class FakeCoreStatusClient : ICoreStatusClient

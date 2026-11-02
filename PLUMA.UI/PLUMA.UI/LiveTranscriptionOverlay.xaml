@@ -14,5 +14,5 @@
         VerticalAlignment="Top"
         FontFamily="Segoe UI Variable"
         FontSize="15"
-        Foreground="{ThemeResource TextFillColorPrimaryBrush}" FollowTail="True" MaxHeight="64" />
+        Foreground="{ThemeResource TextFillColorPrimaryBrush}" FollowTail="True" PreserveLiteralText="True" MaxHeight="64" />
 </UserControl>

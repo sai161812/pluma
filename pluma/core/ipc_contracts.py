@@ -100,6 +100,22 @@ class VoiceQueryV1(_Envelope):
         return self
 
 
+class VoiceMeterV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, allow_inf_nan=False)
+    amplitude: float = Field(ge=0, le=1)
+    bands: list[float] = Field(min_length=32, max_length=32)
+    speech_active: StrictBool
+    silence_progress: float = Field(ge=0, le=1)
+    sample_sequence: StrictInt = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def bounded(self):
+        import math
+        if any(not math.isfinite(x) or not 0 <= x <= 1 for x in self.bands):
+            raise ValueError("Invalid measured spectrum")
+        return self
+
+
 class VoiceViewV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     voice_id: StrictStr
@@ -114,6 +130,7 @@ class VoiceViewV1(BaseModel):
     recognition_id: Optional[StrictStr]
     recognition_sequence: StrictInt = Field(ge=0, le=128)
     text: StrictStr
+    meter: Optional[VoiceMeterV1] = None
 
     @model_validator(mode="after")
     def consistent(self):
@@ -125,6 +142,7 @@ class VoiceViewV1(BaseModel):
                 or self.phase not in {"DECODING", "COMMITTED"} and self.text
                 or len(self.text.encode("utf-8")) > 16384
                 or self.phase != "LISTENING" and (self.capture_active is not None or self.boundary_complete is not None)
+                or self.phase != "LISTENING" and self.meter is not None
                 or self.recognition_id is None and self.recognition_sequence != 0
                 or (self.phase == "CLARIFICATION") != (self.code == "LOW_CONFIDENCE_MATERIAL_TARGET")
                 or self.phase == "ERROR" and self.code not in {"CAPTURE_DENIED", "CAPTURE_UNAVAILABLE", "VOICE_FAILED"}

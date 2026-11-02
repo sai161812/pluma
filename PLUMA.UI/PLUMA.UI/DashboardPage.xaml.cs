@@ -16,6 +16,8 @@ namespace PLUMA.UI
         private ICoreStatusClient? _core;
         private CancellationTokenSource? _healthLifetime;
         private Task _healthTask = Task.CompletedTask;
+        private readonly TaskCompletionSource _initialHealthReadback = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal Task InitialHealthReadback => _initialHealthReadback.Task;
         private bool _preview;
         private CancellationToken _ownerLifetime;
         private CommandController? _commands;
@@ -166,7 +168,11 @@ namespace PLUMA.UI
             }
             catch (OperationCanceledException) { }
             catch (ObjectDisposedException) { if (IsLoaded && !token.IsCancellationRequested) ApplyStatus(CoreStatusResult.Failed(CoreConnectionFailure.Unavailable)); }
-            finally { if (!token.IsCancellationRequested && IsLoaded) CoreRefreshButton.IsEnabled = true; }
+            finally
+            {
+                _initialHealthReadback.TrySetResult();
+                if (!token.IsCancellationRequested && IsLoaded) CoreRefreshButton.IsEnabled = true;
+            }
         }
 
         private void ApplyStatus(CoreStatusResult result)

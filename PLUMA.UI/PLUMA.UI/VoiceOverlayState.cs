@@ -10,6 +10,8 @@ namespace PLUMA.UI
         ListeningSilence,
         ListeningSpeech,
         SilenceTimeout,
-        Committed
+        Committed,
+        Recognizing,
+        Outcome
     }
 }

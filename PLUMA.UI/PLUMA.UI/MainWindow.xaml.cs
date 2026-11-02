@@ -62,6 +62,8 @@ namespace PLUMA.UI
             _runtime = new RuntimeController(_coreStatus.GetRuntimeAsync);
             _runtime.Changed += OnRuntimeChanged;
             _runtime.WorkerTerminated += OnWorkerTerminated;
+            _voice = new VoiceController(_coreStatus.GetVoiceAsync);
+            _voice.Changed += OnVoiceChanged;
 
             // Extend content into the title bar so we can show a subtle app title
             // while retaining the native caption buttons. Register the AppTitleBar
@@ -79,6 +81,7 @@ namespace PLUMA.UI
                 _confirmationTask = _confirmations.RunAsync(_healthLifetime.Token);
                 _eventTask = _events.RunAsync(_healthLifetime.Token);
                 _runtimeTask = _runtime.RunAsync(_healthLifetime.Token);
+                _voiceTask = ObserveVoiceAsync(Dashboard?.InitialHealthReadback ?? Task.CompletedTask, _healthLifetime.Token);
             };
             Closed += async (_, _) =>
             {
@@ -88,10 +91,12 @@ namespace PLUMA.UI
                 _events.Surface -= OnActivitySurface;
                 _runtime.Changed -= OnRuntimeChanged;
                 _runtime.WorkerTerminated -= OnWorkerTerminated;
+                _voice.Changed -= OnVoiceChanged;
                 await _commands.DisposeAsync();
                 await _confirmationTask;
                 await _eventTask;
                 await _runtimeTask;
+                await _voiceTask;
                 await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
                 _closedDrain.TrySetResult();
             };
@@ -110,6 +115,37 @@ namespace PLUMA.UI
         }
 
         private readonly RuntimeController _runtime;
+        private readonly VoiceController _voice;
+        private Task _voiceTask = Task.CompletedTask;
+        private async Task ObserveVoiceAsync(Task initialHealth, CancellationToken token)
+        {
+            try
+            {
+                // The three existing observers plus initial health occupy all
+                // ordinary slots. Voice begins after that bounded read drains.
+                await initialHealth.WaitAsync(token);
+                await _voice.RunAsync(token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        }
+        private void OnVoiceChanged(VoiceObservation observation)
+        {
+            if (!_dispatcher.HasThreadAccess)
+            { _dispatcher.TryEnqueue(() => OnVoiceChanged(_voice.View)); return; }
+            if (_closed) return;
+            if (observation.Voice is not { } value)
+            {
+                _popups?.Update("voice", control => ((VoiceOverlay)control).ClearTransient());
+                _popups?.Dismiss("voice");
+                return;
+            }
+            if (!Popups.Update("voice", control => ((VoiceOverlay)control).ApplyVoice(value)) &&
+                Popups.Count < PopupStackState.Capacity - 1)
+            {
+                var overlay = new VoiceOverlay(); overlay.ApplyVoice(value);
+                Popups.Present("voice", 11, overlay, persistent: true);
+            }
+        }
         internal Task ObservationLifetime => _closedDrain.Task;
         internal event Action<string, int, bool>? NotificationPresented;
         internal DashboardPage? Dashboard => ContentFrame.Content as DashboardPage;

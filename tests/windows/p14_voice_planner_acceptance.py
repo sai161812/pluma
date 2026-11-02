@@ -295,6 +295,23 @@ def run_acceptance(model_path: Path, stt_model_path: Path,
         _map_fixture_drive(fixture_dir)
         mapped = True
         capsule = runtime.supervisor.create_task_capsule()
+        from pluma.voice.presentation import VoicePresentation
+        from uuid import uuid4
+        capsule.voice_presentation = VoicePresentation(capsule.task_id, capsule.cancellation_token)
+        capsule.voice_presentation.listening(); capsule.voice_presentation.decoding()
+        runtime.resident_core._current_voice_capsule = capsule
+        def voice_view():
+            return runtime.resident_core.handle_ipc_command(dict(protocol_version=1, message_type="voice_query", request_id=str(uuid4())))["voice"]
+        committed_readback = []
+        original_commit = capsule.voice_presentation.committed
+        def observed_commit(request, *, capsule):
+            original_commit(request, capsule=capsule)
+            view = voice_view()
+            _assert(view["phase"] == "COMMITTED" and view["task_id"] == capsule.task_id
+                    and view["task_request_id"] == str(request.request_id),
+                    "Native speech request commitment did not read back from the same capsule.")
+            committed_readback.append(True)
+        capsule.voice_presentation.committed = observed_commit
         observed = _ObservedLifecycle(runtime.voice_lifecycle)
         pipeline = VoicePipeline(
             lifecycle_manager=observed,
@@ -317,6 +334,8 @@ def run_acceptance(model_path: Path, stt_model_path: Path,
         _assert(runtime.voice_lifecycle.state == "COLD",
                 "Native Whisper did not return to COLD before planning.")
         capsule.request_id = str(voice_request.request_id)
+        _assert(voice_view()["phase"] == "DECODING" and voice_view()["task_request_id"] is None,
+                "Actual native recognition fabricated request commitment before orchestrator admission.")
         typed_request = PlumaRequest.from_text(voice_request.text)
 
         report = {
@@ -348,6 +367,8 @@ def run_acceptance(model_path: Path, stt_model_path: Path,
         report["tasks"]["voice"] = _run_task(
             runtime, voice_request, "voice", fixture_dir, expected_capsule=capsule
         )
+        _assert(committed_readback == [True], "Native voice did not publish exactly one commitment.")
+        report["p19_native_commitment_readback"] = True
         report["tasks"]["text"] = _run_task(
             runtime, typed_request, "text", fixture_dir
         )
