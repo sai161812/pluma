@@ -1,6 +1,51 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-03, E97 audit test-environment repairs; P20 remains complete E96
+## Current checkpoint: 2026-11-03, E98 verified repairs; integration stopped at native P20 gate
+
+**Main integration is blocked. P20's native conflict-folder gate is reopened;
+P21 is not eligible and has not started.** [E98](docs/completion/e98_verified_integration.md)
+records source identities, commands, preserved failed native evidence and the
+explicit decision not to push the candidate to main.
+
+- Verified development repairs are pushed on `p12-preparation`: `c1b49c3`
+  makes fresh-logon clipboard acceptance self-contained and audit reports unique;
+  `e1e0d84` declares the required JSON-Schema validator and removes its optional
+  test skip. No product source or dark styling change is applied by these repairs.
+- Fresh owned native catalog: **1,302 passed**; fresh-logon clipboard regression:
+  **303 passed**, unchanged interactive clipboard sequence and zero owned
+  processes remaining; browser native: **12 passed**. Failed direct clipboard
+  creation is retained as evidence of the logon-station collision, not reused.
+- Merged-candidate checks pass **500 prerequisites / 352 contracts / 244 P12 /
+  16 P13 units / 331 P19 / 631 P20** and **285 native C#/Python IPC** checks.
+  The new declared environment exposed a missing `jsonschema` dependency
+  (**15 failed / 617 passed**); after repair it passes **209 focused / 632 P20 /
+  500 prerequisites** with no skips/xfails and no dependency conflicts. Collection
+  and fixtures are not full native/model/device acceptance.
+- Final recheck of the actual development repair checkout: **229 passed**, no
+  skips/xfails; matrix validation passes **298 source items / 334 rows** and
+  `git diff --check` passes. Native folder acceptance remains failed.
+- Fresh Windows native runs **41506014340 / 41507711110 / 41509078768 failed**
+  on the actual conflict-folder operation. Diagnostics prove a newly admitted
+  `open_folder` task times out, with verification false and retained uncertain
+  non-undoable effects. A ten-second attempt also fails. Builds, IPC, popup and
+  formatting checks pass, but no complete native UI pass is claimed. E96's
+  historical pass does not supersede this current failure.
+- Remote main is unchanged at `26dc279`. Candidate merge `81abc3c`, diagnostics
+  `5a9f6a3`, unverified timeout attempt `d0e2160` and dependency repair `b28c2ec`
+  are preserved on pushed branch `integration/verified-p00-p20-20261103`, in
+  `D:/Workspace/DEVEL/PLUMA-verified-integration-20261103`. The unverified timeout
+  change is deliberately separate from the development repairs.
+- Recovery branches are pushed: `recovery/pre-integration-20261103-67ad1c1`
+  and `recovery/main-before-p12-p20-20261103`. Other worktrees are preserved.
+  No reset, clean, force-push, UI redesign or security-policy change occurred.
+
+Next safe packet: isolate the real Shell COM/Explore/location-readback hang on
+the disposable host and fix its reproduced cause; pass native visibility,
+ledger, owned-window closure and affected STOP checks before retrying integration.
+Physical timing remains owner-deferred to P25; installation, recovery,
+performance/quality, security and later UI milestones remain open.
+
+## Previous checkpoint: 2026-11-03, E97 audit test-environment repairs; P20 remained complete E96
 
 **E97 repairs test compatibility and dependency setup only; it does not start
 P21 or close any physical, install, recovery or product-wide gate.**
