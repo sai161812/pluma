@@ -377,7 +377,7 @@ commands:
   no_ocr: true
   normalized_args:
     app_name: notepad
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-029
@@ -391,7 +391,7 @@ commands:
   no_ocr: true
   normalized_args:
     app_name: calc
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-030
@@ -719,7 +719,7 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args: {}
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-055
@@ -732,7 +732,7 @@ commands:
   no_llm: true
   no_ocr: true
   normalized_args: {}
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-056
@@ -1093,7 +1093,7 @@ commands:
   normalized_args:
     source: C:\PLUMA_Corpus\a.txt
     destination: C:\PLUMA_Corpus\b.txt
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-083
@@ -1108,7 +1108,7 @@ commands:
   normalized_args:
     path: C:\PLUMA_Corpus\old.txt
     new_name: new.txt
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-084
@@ -1181,7 +1181,7 @@ commands:
   normalized_args:
     source: C:\PLUMA_Corpus\a
     destination: C:\PLUMA_Corpus\b
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-089
@@ -1196,7 +1196,7 @@ commands:
   normalized_args:
     path: C:\PLUMA_Corpus\sample.log
     new_name: sample.txt
-  expected_policy_decision: ALLOW
+  expected_policy_decision: REQUIRE_CONFIRMATION
   expected_execution_status: SUCCEEDED
   expected_postcondition_present: true
 - id: GC-090

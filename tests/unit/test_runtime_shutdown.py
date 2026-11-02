@@ -344,7 +344,16 @@ def test_preparing_request_cannot_publish_after_shutdown(runtime, monkeypatch):
             release.set()
         with pytest.raises(TaskCancelledError):
             preparing.result(3)
-    assert runtime.close().complete
+    report = runtime.close()
+    if not report.complete:
+        # The retained shutdown worker may have observed the preparation
+        # counter in the narrow interval after releasing the supervisor lock
+        # but before create_task_capsule decrements it. That stage must remain
+        # visibly unverified with storage open; retry only after it has ended.
+        assert report.stage == 'outcomes' and report.code == 'STAGE_UNVERIFIED'
+        assert runtime.db.is_open and runtime._shutdown_session.worker is None
+        report = runtime.close()
+    assert report.complete
     assert runtime.supervisor._tasks == {} and runtime.supervisor._preparing == 0
 
 

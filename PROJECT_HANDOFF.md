@@ -1,6 +1,30 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-02, P20 complete E96
+## Current checkpoint: 2026-11-03, E97 audit test-environment repairs; P20 remains complete E96
+
+**E97 repairs test compatibility and dependency setup only; it does not start
+P21 or close any physical, install, recovery or product-wide gate.**
+[E97](docs/completion/e97_test_environment_audit_repairs.md) records fresh
+P01–P13 prerequisite (500), contract (352), P12 (244), P13 (16), focused (131)
+and inspected owned native fixture results, plus the clipboard/browser limits.
+The previous ignored `output/p01-p13-audit/catalog-final.txt` is unavailable
+after the aborted legacy runner overwrite and was not reconstructed.
+
+- The rollback `Job` fixture now delegates worker assignment and cleanup to a
+  real Windows Job Object. The obsolete app alias import was replaced with
+  current schema contract coverage. Dev/test dependencies now include the
+  required media and Windows adapter packages. Golden medium-risk expectations
+  and the current 86-tool registry selector were corrected without changing
+  product policy or the Section 21 catalog.
+- The isolated native clipboard fixture still cannot create its logon-derived
+  station (`WinError 183`) and refuses station reuse before touching clipboard
+  data. Browser acceptance remains unrerun because ownership of an isolated
+  profile process left by the interrupted prior run could not be established.
+  No process was terminated.
+- `pip check` reports unrelated pre-existing global `google-genai` conflicts
+  with installed `httpx` and Pydantic versions. No global upgrade was made.
+  Full unit execution, physical timing, install/recovery and later matrix gates
+  remain open. P20's scoped E95/E96 completion and its P21 hold are unchanged.
 
 **P20's scoped implementation and acceptance gate is complete.**
 [E95](docs/completion/p20_saved_history.md) and

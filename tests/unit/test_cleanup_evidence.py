@@ -31,26 +31,35 @@ from tests.unit.test_worker_cancellation import EmptyArgs, OwnedProbe, await_fil
 
 
 class Job:
-    """Inert owned job with separately observable failure/readback state."""
+    """Observable fixture wrapper that retains real Windows process containment."""
     def __init__(self, **kwargs):
+        # Keep the native Job Object underneath the test-observable facade.
+        # Worker fixtures must retain kernel process containment so a passing
+        # rollback case cannot conceal an ownership regression.
+        self._native = WindowsJobObject(**kwargs)
         self.active = 0
         self.closed = False
         self.fail = None
         self.terminated = 0
 
+    def assign_process(self, process):
+        self._native.assign_process(process)
+
     def terminate(self, **kwargs):
         self.terminated += 1
         if self.fail == "terminate":
             raise OSError("password=not-for-ledger")
+        self._native.terminate(**kwargs)
 
     def active_process_count(self):
         if self.fail == "query":
             raise OSError("secret=not-for-ledger")
-        return self.active
+        return max(self.active, self._native.active_process_count())
 
     def close(self):
         if self.fail == "close":
             raise OSError("token=not-for-ledger")
+        self._native.close()
         self.closed = True
 
     @property
