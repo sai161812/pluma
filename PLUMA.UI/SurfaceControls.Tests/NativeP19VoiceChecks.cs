@@ -43,11 +43,26 @@ internal static class NativeP19VoiceChecks
             await Until(() => text.MessageScroll.ScrollableHeight > 10);
             check(text.DisplayText.Contains("file_name.md") && text.MessageScroll.ActualHeight <= 64.5,
                 "literal transcript wraps inside the existing fixed voice viewport");
+            await Until(() => text.MessageScroll.ScrollableHeight - text.MessageScroll.VerticalOffset < 2);
+            int queuedLength = overlay.PartialTranscript.Length;
+            // Order a real viewport move immediately after the next genuine
+            // fixture update, before native layout consumes pending follow.
+            long scrollHook = overlay.RegisterPropertyChangedCallback(VoiceOverlay.PartialTranscriptProperty,
+                (_, _) => text.MessageScroll.ChangeView(null, 0, null, true));
+            try
+            {
+                await fixture.ControlVoiceAsync("voice_more");
+                await Until(() => overlay.PartialTranscript.Length > queuedLength && text.MessageScroll.VerticalOffset < 1);
+                await Task.Delay(80);
+                check(text.MessageScroll.VerticalOffset < 1, "manual reading cancels a queued native tail follow");
+            }
+            finally { overlay.UnregisterPropertyChangedCallback(VoiceOverlay.PartialTranscriptProperty, scrollHook); }
             text.MessageScroll.ChangeView(null, 0, null, true);
             await Until(() => text.MessageScroll.VerticalOffset < 1);
             double offset = text.MessageScroll.VerticalOffset;
+            int earlierLength = overlay.PartialTranscript.Length;
             await fixture.ControlVoiceAsync("voice_more");
-            await Until(() => overlay.PartialTranscript.Length > 3000);
+            await Until(() => overlay.PartialTranscript.Length > earlierLength);
             await Task.Delay(80);
             Console.WriteLine($"Owned voice reader: same={ReferenceEquals(Overlay(), overlay)}, before={offset}, after={text.MessageScroll.VerticalOffset}, extent={text.MessageScroll.ScrollableHeight}");
             check(ReferenceEquals(Overlay(), overlay) && Math.Abs(text.MessageScroll.VerticalOffset - offset) < 1,

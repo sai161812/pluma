@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
 
 namespace PLUMA.UI
 {
@@ -23,6 +24,7 @@ namespace PLUMA.UI
         private readonly TextBlock _message;
         private readonly ScrollViewer _scroll;
         private bool _followPending;
+        private double _lastVerticalOffset;
 
         public PopupMessageText()
         {
@@ -54,6 +56,27 @@ namespace PLUMA.UI
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 ZoomMode = ZoomMode.Disabled, IsTabStop = true
             };
+            _scroll.ViewChanged += (_, _) =>
+            {
+                double offset = _scroll.VerticalOffset;
+                // Content extent can grow between text updates and layout.
+                // Preserve pending follow only until the reader actually moves
+                // away from the tail; their scroll wins over queued layout.
+                if (offset != _lastVerticalOffset && _scroll.ScrollableHeight - offset >= 2)
+                    _followPending = false;
+                _lastVerticalOffset = offset;
+            };
+            _scroll.AddHandler(UIElement.PointerWheelChangedEvent,
+                new PointerEventHandler((_, _) => _followPending = false), true);
+            _scroll.AddHandler(UIElement.PointerPressedEvent,
+                new PointerEventHandler((_, _) => _followPending = false), true);
+            _scroll.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, args) =>
+            {
+                if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or
+                    Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or
+                    Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End)
+                    _followPending = false;
+            }), true);
             Content = _scroll;
             Loaded += (_, _) => _followPending = FollowTail;
             LayoutUpdated += (_, _) =>
