@@ -17,8 +17,9 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
+from pluma.memory.selection_contract import UndoSelection
 from pluma.tools.base import AdapterPriority, RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.verify.common import verify_noop
 from pluma.tools.power_actions import POWER_ACTION_SPECS
@@ -47,7 +48,43 @@ class ShowActivityArgs(BaseModel):
 
 class UndoLastArgs(BaseModel):
     """Arguments for undo_last."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "strict": True}
+    selection: Optional[UndoSelection] = None
+
+    @model_serializer
+    def serialize(self):
+        return {} if self.selection is None else {"selection": self.selection.model_dump()}
+
+
+class OpenFolderArgs(BaseModel):
+    model_config = {"extra": "forbid", "strict": True}
+    path: str = Field(min_length=1, max_length=2048)
+
+
+def folder_view_intent(args, context):
+    from pluma.adapters.commands import _literal_path
+    path = _literal_path(args['path'])
+    context.cancellation_token.raise_if_cancelled()
+    if not path.is_dir(): raise ValueError('Recorded folder is unavailable.')
+    return {'action': 'non_undoable_folder_view', 'guard_version': 1, 'non_undoable': True, 'path': str(path)}
+
+
+def execute_open_folder(args, context):
+    from pluma.adapters.folder_view import open_view
+    try:
+        return ToolResult.success('open_folder', data=open_view(args['path'], context.cancellation_token),
+            verified=False, factual_message='Opened the recorded folder view.', adapter_used='shell_folder_api')
+    except Exception:
+        return ToolResult.failure('open_folder', 'Folder visibility could not be verified. A view may have opened.', 'FOLDER_VIEW_UNVERIFIED')
+
+
+def verify_open_folder(result):
+    from pluma.adapters.folder_view import verify_view
+    try:
+        ok = result.ok and result.data.get('visible') is True and verify_view(result.data['path'])
+    except Exception:
+        ok = False
+    return VerifyResult(ok=ok, method='shell_folder_readback', detail='Recorded folder visibility read back.' if ok else 'Folder visibility was not verified.')
 
 
 class BatteryStatusArgs(BaseModel):
@@ -270,7 +307,7 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
         binding = getattr(task_context, 'execution_binding', None) or {}
         private = binding.get('clipboard_private')
         screen_text_private = binding.get('screen_text_private')
-        receipt = claim_latest(path, task_context.task_id, private, screen_text_private)
+        receipt = claim_latest(path, task_context.task_id, private, screen_text_private, selected=args.get("selection"))
     except Exception:
         return ToolResult.failure("undo_last", "No safe unclaimed undo record is available.", "UNDO_UNAVAILABLE")
     try:
@@ -285,7 +322,7 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
         inverse = RollbackRecipes().apply(state['action'], payload)
         if state['action'] == 'clipboard_restore' and inverse.ok:
             receipt['clipboard_restore_proof'] = inverse.data['clipboard_inverse_proof']
-        finish(receipt, inverse.ok)
+        finish(receipt, inverse.ok, inverse.error)
         if not inverse.ok or not verify(receipt):
             raise ValueError("Inverse or consumption was not verified.")
         # Worker snapshots are reconciled in the parent only after proof/history.
@@ -524,3 +561,8 @@ SYSTEM_TOOL_SPECS.append(ToolSpec(
     executor=execute_network_status, verifier=verify_network_status,
     adapter_priority=[AdapterPriority.NATIVE_API], cancellable=True,
 ))
+
+SYSTEM_TOOL_SPECS.append(ToolSpec(name="open_folder",
+    description="Open an explicit folder through the Windows Shell and read back its visible location.",
+    args_schema=OpenFolderArgs, risk_class=RiskClass.LOW, timeout_s=5, process_isolated=True, non_undoable=True,
+    executor=execute_open_folder, verifier=verify_open_folder, undo_builder=folder_view_intent))

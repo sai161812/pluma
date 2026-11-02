@@ -24,6 +24,8 @@
     <Page Include="../PLUMA.UI/DashboardPage.xaml" Link="DashboardPage.xaml" />
     <Page Include="../PLUMA.UI/PolicyBlockNotice.xaml" Link="PolicyBlockNotice.xaml" />
     <Page Include="../PLUMA.UI/RiskApprovalDialog.xaml" Link="RiskApprovalDialog.xaml" />
+    <Page Include="../PLUMA.UI/ConflictAlertPopup.xaml" Link="ConflictAlertPopup.xaml" />
+    <Compile Include="../PLUMA.UI/ConflictAlertPopup.xaml.cs" Link="ConflictAlertPopup.xaml.cs" />
     <Compile Include="../PLUMA.UI/SettingsPage.xaml.cs" Link="SettingsPage.xaml.cs" />
     <Compile Include="../PLUMA.UI/DashboardPage.xaml.cs" Link="DashboardPage.xaml.cs" />
     <Compile Include="../PLUMA.UI/CoreStatus.cs" Link="CoreStatus.cs" />
@@ -72,7 +74,9 @@
     <Compile Include="../PLUMA.UI/CoreVoiceProtocol.cs" Link="CoreVoiceProtocol.cs" />
     <Compile Include="../PLUMA.UI/VoiceController.cs" Link="VoiceController.cs" />
     <Compile Include="../PLUMA.UI/CoreHistoryProtocol.cs" Link="CoreHistoryProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreSavedDetailProtocol.cs" Link="CoreSavedDetailProtocol.cs" />
     <Compile Include="../PLUMA.UI/HistoryController.cs" Link="HistoryController.cs" />
+    <Compile Include="../PLUMA.UI/SavedDetailController.cs" Link="SavedDetailController.cs" />
     <Compile Include="../PLUMA.UI/RuntimeController.cs" Link="RuntimeController.cs" />
     <Compile Include="../PLUMA.UI/RuntimePresentation.cs" Link="RuntimePresentation.cs" />
     <Compile Include="../PLUMA.UI/TaskRunningPopup.xaml.cs" Link="TaskRunningPopup.xaml.cs" />
@@ -87,6 +91,7 @@
   <ItemGroup>
     <Page Include="../PLUMA.UI/MainWindow.xaml" Link="MainWindow.xaml" />
     <Compile Include="../PLUMA.UI/MainWindow.xaml.cs" Link="MainWindow.xaml.cs" />
+    <Compile Include="../PLUMA.UI/NativeActivityTray.cs" Link="NativeActivityTray.cs" />
     <Page Include="../PLUMA.UI/HistoryPage.xaml" Link="HistoryPage.xaml" />
     <Compile Include="../PLUMA.UI/HistoryPage.xaml.cs" Link="HistoryPage.xaml.cs" />
     <Page Include="../PLUMA.UI/CancellationAnimation.xaml" Link="CancellationAnimation.xaml" />

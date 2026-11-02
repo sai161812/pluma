@@ -20,8 +20,15 @@ def _is_legacy_without_guard(state):
         and state.get('guard_version') != 1)
 
 
-def _latest_available(db):
+def _latest_available(db, selected=None):
     """Return the newest current undo record, leaving unsafe legacy rows intact."""
+    if selected is not None:
+        from pluma.memory.history_detail import selection
+        if selection(db, selected['target_task_id'], selected['action_id']) != selected:
+            raise ValueError('Selected undo material changed.')
+        record = db.execute('SELECT action_id,undo_json FROM undo_records WHERE action_id=?',
+                            (selected['action_id'],)).fetchone()
+        return record, json.loads(record['undo_json'])
     records = db.execute(
         'SELECT action_id, undo_json FROM undo_records WHERE available=1 ORDER BY action_id DESC'
     ).fetchall()
@@ -37,7 +44,7 @@ def _latest_available(db):
 
 def peek_clipboard_ref(args, context):
     with connect(context.storage_path) as db:
-        latest = _latest_available(db)
+        latest = _latest_available(db, args.get("selection"))
         state = latest[1] if latest else {}
         return {'action': 'private_clipboard_lookup',
                 'undo_ref': state.get('undo_ref') if state.get('action') == 'clipboard_restore' else None}
@@ -45,17 +52,17 @@ def peek_clipboard_ref(args, context):
 
 def peek_screen_text_ref(args, context):
     with connect(context.storage_path) as db:
-        latest = _latest_available(db)
+        latest = _latest_available(db, args.get("selection"))
         state = latest[1] if latest else {}
         return {'action': 'private_screen_text_lookup',
                 'undo_ref': state.get('undo_ref') if state.get('action') == 'screen_control_text' else None}
 
 
-def claim_latest(path, task_id, clipboard_private=None, screen_text_private=None):
+def claim_latest(path, task_id, clipboard_private=None, screen_text_private=None, selected=None):
     with connect(path, write=True) as db:
         db.execute('BEGIN IMMEDIATE')
         try:
-            record, state = _latest_available(db)
+            record, state = _latest_available(db, selected)
             if record is None:
                 raise ValueError('No undo record is available.')
             if state.get('action') not in SUPPORTED_ACTIONS:
@@ -117,7 +124,7 @@ def claim_latest(path, task_id, clipboard_private=None, screen_text_private=None
     return result
 
 
-def finish(receipt, ok):
+def finish(receipt, ok, error_code=None):
     with connect(receipt['storage_path'], write=True) as db:
         db.execute('BEGIN IMMEDIATE')
         try:
@@ -126,7 +133,7 @@ def finish(receipt, ok):
             if owned is None or owned['state'] != 'claimed':
                 raise ValueError('Undo claim does not belong to this operation.')
             db.execute('UPDATE undo_records SET available=?,rollback_attempted=1,rollback_ok=?,rollback_result_json=? WHERE action_id=?',
-                (0 if ok else 1, int(ok), json.dumps({'verified': ok}), receipt['action_id']))
+                (0 if ok else 1, int(ok), json.dumps({'verified': ok, 'error_code': error_code}), receipt['action_id']))
             db.execute('UPDATE undo_claims SET state=? WHERE action_id=?',
                 ('verified' if ok else 'unverified', receipt['action_id']))
             db.execute('COMMIT')

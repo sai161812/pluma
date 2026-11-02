@@ -146,7 +146,17 @@ class Orchestrator:
         with self._supervisor.execution_gate.enter():
             return self._execute_request(request, capsule)
 
-    def _execute_request(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None) -> TaskExecutionResult:
+    def execute_typed_plan(self, request, capsule, plan):
+        """UI-selected saved action through the same owned FAST lifecycle."""
+        from pluma.core.router import RouteResult
+        from pluma.brain.schemas import RouteMode
+        if (plan.route != RouteMode.FAST or len(plan.steps) != 1 or
+                plan.steps[0].tool not in ('undo_last', 'open_folder') or not plan.steps[0].arguments):
+            raise ValueError('Only an exact selected history action is admitted here.')
+        with self._supervisor.execution_gate.enter():
+            return self._execute_request(request, capsule, selected_plan=plan)
+
+    def _execute_request(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None, selected_plan=None) -> TaskExecutionResult:
         wall_start = time.perf_counter()
 
         # 1. Use provided Task Capsule or create one
@@ -192,7 +202,8 @@ class Orchestrator:
         # 3. Classify route
         if request.input_mode == InputMode.VOICE and capsule.voice_presentation is not None:
             capsule.voice_presentation.committed(request, capsule=capsule)
-        route_result: RouteResult = self._router.route(request)
+        route_result: RouteResult = (RouteResult(route=RouteMode.FAST, reason="Selected saved action.", plan=selected_plan)
+                                     if selected_plan is not None else self._router.route(request))
         if redact_command_text(request.text) == "[REDACTED CLIPBOARD COMMAND]":
             route_result.reason = "Clipboard-related command routed; private text omitted."
         else:

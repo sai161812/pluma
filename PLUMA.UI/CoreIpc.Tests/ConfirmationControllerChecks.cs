@@ -15,7 +15,7 @@ internal static class ConfirmationControllerChecks
         string formatted = ConfirmationPresentation.Arguments(raw);
         check(formatted.Contains("预算_2026—final.md") && formatted.Contains("a  b") && formatted.Contains("file path:"),
             "approval display formats keys while preserving literal Unicode filenames and argument whitespace");
-        foreach (string scenario in new[] { "approve", "deny", "stop", "changed", "expiry", "disconnect", "close", "uncertain", "fault" })
+        foreach (string scenario in new[] { "approve", "deny", "stop", "changed", "expiry", "disconnect", "close", "uncertain", "fault", "busy" })
         {
             var source = new Client { Pending = View(scenario == "expiry" ? 0.15 : 3), Uncertain = scenario == "uncertain" };
             var presenter = new Presenter();
@@ -24,21 +24,28 @@ internal static class ConfirmationControllerChecks
             Task run = owner.RunAsync(lifetime.Token);
             await presenter.Shown.Task.WaitAsync(TimeSpan.FromSeconds(1));
             string originalClient = owner.ClientId;
-            if (scenario is "approve" or "uncertain") presenter.Decision.TrySetResult(true);
+            if (scenario == "busy")
+            {
+                source.Busy = true; await Task.Delay(150);
+                check(!presenter.Cancelled && owner.ClientId == originalClient && source.Disconnections == 0,
+                    "temporary approval read pressure preserves the displayed material and logical lease");
+                source.Busy = false; presenter.Decision.TrySetResult(true);
+            }
+            else if (scenario is "approve" or "uncertain") presenter.Decision.TrySetResult(true);
             else if (scenario == "deny") presenter.Decision.TrySetResult(false);
             else if (scenario == "stop") source.Pending = null;
             else if (scenario == "changed") source.Pending = source.Pending! with { Prompt = "A different operation" };
             else if (scenario == "disconnect") source.Unavailable = true;
             else if (scenario == "fault") presenter.Decision.TrySetException(new InvalidOperationException("fixture-only fault"));
             else if (scenario == "close") lifetime.Cancel();
-            if (scenario is "approve" or "deny" or "uncertain")
+            if (scenario is "approve" or "deny" or "uncertain" or "busy")
                 await Until(() => source.Decisions.Count == 1);
             else if (scenario is "stop" or "changed" or "expiry" or "disconnect")
                 await Until(() => presenter.Cancelled);
             else if (scenario == "fault") await Until(() => owner.LastFailure is not null);
             await Task.Delay(35);
             lifetime.Cancel(); await run.WaitAsync(TimeSpan.FromSeconds(2));
-            bool expected = scenario is "approve" or "deny" or "uncertain";
+            bool expected = scenario is "approve" or "deny" or "uncertain" or "busy";
             check(source.Decisions.Count == (expected ? 1 : 0) && presenter.Count == 1 && source.Disconnections > 0,
                 "window approval owner has one dialog, no stale/duplicate decision and owned cleanup: " + scenario);
             if (expected)
@@ -119,11 +126,12 @@ internal static class ConfirmationControllerChecks
     private sealed class Client : IConfirmationClient
     {
         internal volatile CoreRequestProtocol.ConfirmationView? Pending;
-        internal volatile bool Unavailable, Uncertain;
+        internal volatile bool Unavailable, Uncertain, Busy;
         internal int Disconnections;
         internal readonly System.Collections.Concurrent.ConcurrentQueue<CoreRequestProtocol.ConfirmationDecisionRequest> Decisions = new();
         public Task<CoreRequestResult<CoreRequestProtocol.ConfirmationList>> QueryAsync(string requestId, string clientId, CancellationToken token) =>
-            Task.FromResult(Unavailable ? CoreRequestResult<CoreRequestProtocol.ConfirmationList>.Failed(CoreConnectionFailure.Unavailable)
+            Task.FromResult(Busy ? CoreRequestResult<CoreRequestProtocol.ConfirmationList>.Failed(CoreConnectionFailure.Busy)
+                : Unavailable ? CoreRequestResult<CoreRequestProtocol.ConfirmationList>.Failed(CoreConnectionFailure.Unavailable)
                 : new CoreRequestResult<CoreRequestProtocol.ConfirmationList>(new(1, "confirmation_list", requestId, clientId,
                     Pending is null ? [] : [Pending]), CoreConnectionFailure.None, false, null, null));
         public Task<CoreRequestResult<CoreRequestProtocol.ConfirmationAck>> DecideAsync(CoreRequestProtocol.ConfirmationDecisionRequest request, CancellationToken token)

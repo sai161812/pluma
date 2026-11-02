@@ -48,9 +48,13 @@ internal sealed class ConfirmationController(IConfirmationClient client, IConfir
         if (Interlocked.Exchange(ref _running, 1) != 0) throw new InvalidOperationException("Confirmation owner already running.");
         try
         {
+            int busyQueries = 0;
             while (!token.IsCancellationRequested)
             {
                 var response = await client.QueryAsync(Id(), ClientId, token);
+                if (response.Failure == CoreConnectionFailure.Busy && busyQueries++ < 8)
+                { await Task.Delay(50, token); continue; } // Local pressure is not a lost approval lease.
+                if (response.IsSuccess) busyQueries = 0;
                 if (!response.IsSuccess)
                 {
                     LastFailure = "Approval connection unavailable.";

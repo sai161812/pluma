@@ -8,6 +8,12 @@ namespace PLUMA.UI;
 internal interface ICommandClient
 {
     Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitAsync(string request, string text, CancellationToken token);
+    Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitUndoAsync(string request,
+        CoreRequestProtocol.UndoSelection selected, CancellationToken token) =>
+        Task.FromResult(CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol));
+    Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitFolderAsync(string request,
+        CoreRequestProtocol.FolderSelection selected, CancellationToken token) =>
+        Task.FromResult(CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol));
     Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.StopAck>> StopAsync(string request, string? submissionRequest, CancellationToken token);
@@ -33,6 +39,24 @@ internal sealed class CoreCommandClient(CoreIpcClient client) : ICommandClient
             // a submission write. This cancellation occurred before that write.
             return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Timeout);
         }
+    }
+    public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitUndoAsync(string request,
+        CoreRequestProtocol.UndoSelection selected, CancellationToken token)
+    {
+        var capability = await client.GetSettingsAsync(Guid.NewGuid().ToString("D"), token);
+        if (!capability.IsSuccess || capability.Response is not { SubmissionStopFence: true })
+            return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
+        token.ThrowIfCancellationRequested();
+        return await client.SubmitUndoAsync(request, selected, token);
+    }
+    public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitFolderAsync(string request,
+        CoreRequestProtocol.FolderSelection selected, CancellationToken token)
+    {
+        var capability = await client.GetSettingsAsync(Guid.NewGuid().ToString("D"), token);
+        if (!capability.IsSuccess || capability.Response is not { SubmissionStopFence: true })
+            return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
+        token.ThrowIfCancellationRequested();
+        return await client.SubmitHistoryFolderAsync(request, selected, token);
     }
     public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token) =>
         client.GetTerminalReadbackAsync(request, task, token);
@@ -77,7 +101,7 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         Publish();
     }
 
-    internal Task SubmitAsync(string text)
+    internal Task SubmitAsync(string text, CoreRequestProtocol.UndoSelection? selected = null, CoreRequestProtocol.FolderSelection? folder = null)
     {
         lock (_gate)
         {
@@ -89,14 +113,14 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
                 _requestId = Id(); _taskId = null; _pending = true; _stopMessage = null;
                 _state = "Submitting"; _message = "Sending the request. Execution is not yet confirmed."; _route = "Unavailable";
                 _submission = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-                _work = SubmitAndObserveAsync(text, _requestId, _submission);
+                _work = SubmitAndObserveAsync(text, _requestId, _submission, selected, folder);
             }
         }
         Publish();
         lock (_gate) return _work;
     }
 
-    private async Task SubmitAndObserveAsync(string text, string request, CancellationTokenSource submission)
+    private async Task SubmitAndObserveAsync(string text, string request, CancellationTokenSource submission, CoreRequestProtocol.UndoSelection? selected, CoreRequestProtocol.FolderSelection? folder)
     {
         await Task.Yield(); // Publish/own the operation before any client call, including synchronous fixtures.
         bool attempted = false;
@@ -104,7 +128,9 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         {
             submission.Token.ThrowIfCancellationRequested();
             attempted = true;
-            var result = await client.SubmitAsync(request, text, submission.Token);
+            var result = folder is not null ? await client.SubmitFolderAsync(request, folder, submission.Token) :
+                selected is null ? await client.SubmitAsync(request, text, submission.Token) :
+                await client.SubmitUndoAsync(request, selected, submission.Token);
             if (result.OutcomeUnknown)
             {
                 Uncertain("The submission outcome is unknown. Checking saved task identity.");
@@ -182,9 +208,13 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
             task = matches[0].TaskId;
             lock (_gate) _taskId = task;
         }
+        int busyReads = 0;
         while (!token.IsCancellationRequested)
         {
             var result = await client.ReadAsync(request, task, token);
+            if (result.Failure == CoreConnectionFailure.Busy && busyReads++ < 8)
+            { await Task.Delay(50, token); continue; } // Read only; never replay admission.
+            if (result.IsSuccess) busyReads = 0;
             if (!result.IsSuccess)
             { Uncertain("Task connection lost. Refresh to read its outcome without resubmitting."); return; }
             var actual = result.Response!;

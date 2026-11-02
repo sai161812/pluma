@@ -32,9 +32,15 @@ namespace PLUMA.UI
         private readonly CancellationTokenSource _healthLifetime = new();
         private bool _closed;
         private ConfirmationController? _confirmations;
-        private Task _confirmationTask = Task.CompletedTask;
+        private NativeConfirmationPresenter? _confirmationPresenter;
+        internal CommandView CurrentCommandForAcceptance => _commands.View;
+        internal RiskApprovalDialog? ApprovalForAcceptance => _confirmationPresenter?.ActiveDialog;
+        private Task _confirmationTask = Task.CompletedTask, _observerStartupTask = Task.CompletedTask;
         private readonly EventFeedController _events;
-        private Task _eventTask = Task.CompletedTask;
+        private Task _eventTask = Task.CompletedTask, _activityNavigationTask = Task.CompletedTask;
+        private NativeActivityTray? _activityTray;
+        private readonly HashSet<string> _activityRequests = new();
+        private readonly Queue<string> _activityRequestOrder = new();
         private readonly TaskCompletionSource _closedDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CommandController _commands;
         private readonly DispatcherQueue _dispatcher;
@@ -65,6 +71,7 @@ namespace PLUMA.UI
             _voice = new VoiceController(_coreStatus.GetVoiceAsync);
             _voice.Changed += OnVoiceChanged;
             _history = new HistoryController(_coreStatus.GetHistoryPageAsync);
+            _savedDetail = new SavedDetailController(_coreStatus);
 
             // Extend content into the title bar so we can show a subtle app title
             // while retaining the native caption buttons. Register the AppTitleBar
@@ -77,16 +84,14 @@ namespace PLUMA.UI
             ContentFrame.Loaded += (_, _) =>
             {
                 if (_closed || _confirmations is not null) return;
-                _confirmations = new ConfirmationController(new CoreConfirmationClient(_coreStatus),
-                    new NativeConfirmationPresenter(() => ContentFrame.XamlRoot));
-                _confirmationTask = _confirmations.RunAsync(_healthLifetime.Token);
-                _eventTask = _events.RunAsync(_healthLifetime.Token);
-                _runtimeTask = _runtime.RunAsync(_healthLifetime.Token);
-                _voiceTask = ObserveVoiceAsync(Dashboard?.InitialHealthReadback ?? Task.CompletedTask, _healthLifetime.Token);
+                _confirmationPresenter = new NativeConfirmationPresenter(() => ContentFrame.XamlRoot);
+                _confirmations = new ConfirmationController(new CoreConfirmationClient(_coreStatus), _confirmationPresenter);
+                _activityTray = new NativeActivityTray(this, OpenActivity);
+                _observerStartupTask = StartObserversAsync(Dashboard?.InitialHealthReadback ?? Task.CompletedTask, _healthLifetime.Token);
             };
             Closed += async (_, _) =>
             {
-                _closed = true; _healthLifetime.Cancel(); _popups?.Dispose();
+                _closed = true; _healthLifetime.Cancel(); _popups?.Dispose(); _activityTray?.Dispose();
                 _commands.Changed -= OnCommandChanged;
                 _events.Notice -= OnEventNotice;
                 _events.Surface -= OnActivitySurface;
@@ -94,11 +99,14 @@ namespace PLUMA.UI
                 _runtime.WorkerTerminated -= OnWorkerTerminated;
                 _voice.Changed -= OnVoiceChanged;
                 await _commands.DisposeAsync();
+                await _observerStartupTask;
                 await _confirmationTask;
                 await _eventTask;
                 await _runtimeTask;
                 await _voiceTask;
+                await _activityNavigationTask;
                 await _history.DisposeAsync();
+                await _savedDetail.DisposeAsync();
                 await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
                 _closedDrain.TrySetResult();
             };
@@ -118,23 +126,29 @@ namespace PLUMA.UI
 
         private readonly RuntimeController _runtime;
         private readonly HistoryController _history;
+        private readonly SavedDetailController _savedDetail;
         internal HistoryPage? History => ContentFrame.Content as HistoryPage;
         internal void NavigateHistoryForAcceptance() => NavigateHistory();
         private void NavigateHistory()
         {
             ContentFrame.Navigate(typeof(HistoryPage));
             if (ContentFrame.Content is HistoryPage page) page.AttachHistory(_history, _healthLifetime.Token);
+            if (ContentFrame.Content is HistoryPage history) history.AttachDetail(_savedDetail, _commands);
         }
         private readonly VoiceController _voice;
         private Task _voiceTask = Task.CompletedTask;
-        private async Task ObserveVoiceAsync(Task initialHealth, CancellationToken token)
+        private async Task StartObserversAsync(Task initialHealth, CancellationToken token)
         {
             try
             {
-                // The three existing observers plus initial health occupy all
-                // ordinary slots. Voice begins after that bounded read drains.
+                // Initial admission health is user-facing. Drain it before the
+                // four ordinary background readers contend for the same slots.
                 await initialHealth.WaitAsync(token);
-                await _voice.RunAsync(token);
+                token.ThrowIfCancellationRequested();
+                _confirmationTask = _confirmations!.RunAsync(token);
+                _eventTask = _coreStatus.RunBackgroundAsync(() => _events.RunAsync(token));
+                _runtimeTask = _coreStatus.RunBackgroundAsync(() => _runtime.RunAsync(token));
+                _voiceTask = _coreStatus.RunBackgroundAsync(() => _voice.RunAsync(token));
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         }
@@ -207,11 +221,27 @@ namespace PLUMA.UI
             _runtimeKeys.Clear(); foreach (string key in current) _runtimeKeys.Add(key);
         }
 
+        internal NativeActivityTray? ActivityTrayForAcceptance => _activityTray;
+        private void OpenActivity()
+        {
+            if (_closed) return;
+            Activate(); NavigateHistory();
+            if (_activityNavigationTask.IsCompleted)
+                _activityNavigationTask = _history.RefreshAsync(_history.View.Search, _healthLifetime.Token);
+        }
+
         private void OnActivitySurface(ActivitySurfaceFact fact)
         {
             if (!_dispatcher.HasThreadAccess)
             { _dispatcher.TryEnqueue(() => OnActivitySurface(fact)); return; }
             if (_closed) return;
+            if (fact.Action is { Tool: "show_activity", Verified: true, ErrorRecorded: false, PolicyDenied: false } action &&
+                _activityRequests.Add(fact.TaskId + "/" + action.ActionId))
+            {
+                _activityRequestOrder.Enqueue(fact.TaskId + "/" + action.ActionId);
+                if (_activityRequestOrder.Count > 512) _activityRequests.Remove(_activityRequestOrder.Dequeue());
+                OpenActivity();
+            }
             PresentNotification(fact.Key, fact.Surface, ActivitySurfacePresentation.Create(fact), TimeSpan.FromSeconds(fact.Surface == 6 ? 2 : 4));
         }
 

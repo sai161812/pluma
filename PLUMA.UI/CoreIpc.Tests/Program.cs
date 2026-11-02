@@ -57,6 +57,7 @@ internal static class Program
         VoiceChecks.Run(Check);
         await VoiceControllerChecks.RunAsync(Check);
         await HistoryChecks.RunAsync(Check);
+            SavedDetailChecks.Run(Check);
         ActivityChecks.Run(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))
@@ -199,6 +200,20 @@ internal static class Program
             await client.DisposeAsync();
             try { await client.GetStatusAsync(default); throw new Exception("Disposed client reused."); }
             catch (ObjectDisposedException) { Check(true, "disposed client rejects new work and repeated disposal is safe"); }
+        }
+
+        await using (var server = new LocalServer(PipeName(), Healthy, "stall"))
+        {
+            var client=new CoreIpcClient(Options(server.Name));
+            Task[] background=Enumerable.Range(0,3).Select(_=>client.RunBackgroundAsync(async()=> { await client.GetStatusAsync(default); })).ToArray();
+            CoreStatusResult? refused=null;
+            await client.RunBackgroundAsync(async()=> { refused=await client.GetStatusAsync(default); });
+            Check(refused?.Failure==CoreConnectionFailure.Busy,"background observers cannot consume the fourth ordinary client slot");
+            Task foreground=client.GetStatusAsync(default);
+            Check(!foreground.IsCompleted,"foreground readback retains admission while three background readers stall");
+            await client.DisposeAsync();
+            foreach(Task backgroundCall in background.Append(foreground))
+            { try { await backgroundCall; throw new Exception("Disposed background call returned health."); } catch(OperationCanceledException) { } }
         }
 
         string reconnect = PipeName();

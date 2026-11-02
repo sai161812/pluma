@@ -8,20 +8,20 @@
     PrimaryButtonText="View conflict" SecondaryButtonText="Open folder" CloseButtonText="Close"
     DefaultButton="Close" PrimaryButtonClick="OnViewConflict" SecondaryButtonClick="OnOpenFolder">
     <StackPanel MaxWidth="440" MinWidth="0" Spacing="16">
-        <local:PopupMessageText Text="PLUMA could not safely restore this file automatically."
+        <local:PopupMessageText Text="Restoration was not verified. Current files and captured evidence are retained."
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         <Border Padding="12,10" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="4">
             <StackPanel Spacing="4">
                 <TextBlock Text="Current path" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <local:PopupMessageText x:Name="CurrentPathText" Text="Downloads\quarterly report.pdf" />
+                <local:PopupMessageText x:Name="CurrentPathText" Text="No recorded file path" />
             </StackPanel>
         </Border>
         <Border Padding="12,10" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="4">
             <StackPanel Spacing="4">
                 <TextBlock Text="Conflict path" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <local:PopupMessageText x:Name="ConflictPathText" Text="Downloads\quarterly report.restored.pdf" />
+                <local:PopupMessageText x:Name="ConflictPathText" Text="No recorded file path" />
             </StackPanel>
         </Border>
     </StackPanel>

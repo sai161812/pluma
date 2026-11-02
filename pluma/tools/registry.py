@@ -1042,6 +1042,17 @@ class ToolRegistry:
             db = getattr(ledger, "_db", None)
             if task_context is not None and db is not None:
                 task_context.storage_path = db._db_path if db.is_open and db._db_path != ":memory:" else None
+        if tool_name == 'undo_last' and validated_args.get('selection') is not None:
+            from pluma.memory.history_detail import selection
+            from pluma.memory.tool_store import connect
+            selected = validated_args['selection']
+            try:
+                with connect(getattr(task_context, 'storage_path', None)) as connection:
+                    current = selection(connection, selected['target_task_id'], selected['action_id'])
+                if current != selected:
+                    raise ValueError('Selected undo material changed.')
+            except Exception:
+                raise ToolArgumentError('Selected undo is stale, claimed or unavailable.') from None
         token = getattr(task_context, "cancellation_token", None)
         if token is not None:
             token.raise_if_cancelled()

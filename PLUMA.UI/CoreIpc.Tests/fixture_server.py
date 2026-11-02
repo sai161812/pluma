@@ -11,6 +11,8 @@ def main():
     os.environ["LOCALAPPDATA"] = sys.argv[2]
     mode = sys.argv[3] if len(sys.argv) > 3 else "status"
     saturate_status = len(sys.argv) > 4 and sys.argv[4] == "saturate"
+    startup_control = mode == "history_undo"
+    if startup_control: mode = "history"
 
     from pluma.core.ipc import IpcServer
 
@@ -45,6 +47,10 @@ def main():
     voice_release = threading.Event()
     voice_entered = threading.Event()
     voice_paused = threading.Event()
+    initial_status_read = threading.Event()
+    initial_status_pending = threading.Event()
+    initial_status_release = threading.Event()
+    early_observation = threading.Event()
     if mode in {"versioned", "commands", "voice", "history"}:
         from pluma.core.resident import ResidentCore
         from pluma.core.task_supervisor import TaskState, TaskSupervisor
@@ -125,8 +131,28 @@ def main():
             from uuid import uuid4
             from pluma.memory.activity import TaskRecord
             from pluma.memory.redaction import redact_command_text
+            from pluma.core.orchestrator import Orchestrator
+            from pluma.tools.system import SYSTEM_TOOL_SPECS
+            from pluma.tools.files import FILE_TOOL_SPECS
+            from pluma.ui.confirmations import AutoApproveConfirmationContract
+            for spec in SYSTEM_TOOL_SPECS + FILE_TOOL_SPECS:
+                if spec.name in ('undo_last', 'show_activity', 'move_file', 'open_folder'):
+                    registry.register(spec)
+            core.orchestrator = Orchestrator(registry=registry, supervisor=supervisor, ledger=ledger)
+            history_files = []
+            history_pair = None
+            prior_folder_windows = None
             def history_control(command):
-                if command == "history_seed":
+                nonlocal history_pair, prior_folder_windows
+                if command == "history_assert_pending":
+                    if not initial_status_pending.is_set() or initial_status_read.is_set() or early_observation.is_set():
+                        raise RuntimeError('Background observers ran while first admission read was pending.')
+                elif command == "history_release_startup":
+                    initial_status_release.set()
+                elif command == "history_assert_startup":
+                    if not initial_status_read.is_set() or early_observation.is_set():
+                        raise RuntimeError('Background observers raced initial admission health.')
+                elif command == "history_seed":
                     if db.execute_read_one('SELECT COUNT(*) AS n FROM tasks')['n'] != 0:
                         raise RuntimeError("Fixture history was already seeded.")
                     for index in range(75):
@@ -140,6 +166,68 @@ def main():
                             final_state=('SUCCEEDED','FAILED','STOPPED','STOPPED_WITH_RESIDUAL')[index % 4]))
                     db.execute_write('UPDATE tasks SET command_text=? WHERE task_id=?',
                         ('HISTORY_PRIVATE_NATIVE_PAYLOAD in the clipboard', task))
+                elif command == "history_move":
+                    from uuid import uuid4
+                    from pluma.memory.activity import TaskRecord
+                    original = Path(sys.argv[2]) / ('p20-original-' + str(len(history_files)) + '.txt')
+                    moved = original.with_name(original.name.replace('original', 'moved'))
+                    if original.exists() or moved.exists(): raise RuntimeError('Owned move fixture already exists.')
+                    original.write_text('Owned P20 file', encoding='utf-8')
+                    history_files.extend((original, moved)); history_pair = (original, moved)
+                    cap = supervisor.create_task_capsule(request_id=str(uuid4()))
+                    ledger.insert_task(TaskRecord(cap.task_id, cap.request_id, 'text', 'Owned P20 file move'))
+                    supervisor.start_task(cap.task_id)
+                    policy = registry._policy_engine
+                    previous = policy.confirmation_contract
+                    try:
+                        policy.confirmation_contract = AutoApproveConfirmationContract()
+                        result = registry.execute('move_file', {'source': str(original), 'destination': str(moved)}, cap, ledger)
+                    finally:
+                        policy.confirmation_contract = previous
+                    if not result.ok or not result.verified: raise RuntimeError('Owned native move failed.')
+                    supervisor.finalize_task(cap.task_id, TaskState.SUCCEEDED)
+                elif command == "history_conflict":
+                    original, moved = history_pair
+                    if original.exists() or not moved.exists(): raise RuntimeError('Owned conflict fixture is not ready.')
+                    original.write_text('New owner edit', encoding='utf-8')
+                elif command == "history_assert_unchanged":
+                    original, moved = history_pair
+                    if original.exists() or moved.read_text(encoding='utf-8') != 'Owned P20 file':
+                        raise RuntimeError('Denied or stopped selected inverse changed owned files.')
+                elif command == "history_assert_restored":
+                    original, moved = history_pair
+                    if original.read_text(encoding='utf-8') != 'Owned P20 file' or moved.exists():
+                        raise RuntimeError('Owned inverse postcondition was not read back.')
+                    with closing(sqlite3.connect('file:' + owned_db.as_posix() + '?mode=ro', uri=True)) as reader:
+                        verified = reader.execute("SELECT COUNT(*) FROM undo_claims WHERE state='verified'").fetchone()[0]
+                        if verified != 1: raise RuntimeError('Owned inverse atomic consumption was not read back.')
+                elif command == "history_prepare_folder":
+                    import pythoncom
+                    import win32com.client
+                    pythoncom.CoInitialize()
+                    try:
+                        windows = win32com.client.Dispatch('Shell.Application').Windows()
+                        if windows.Count > 256: raise RuntimeError('Fixture folder enumeration exceeded its bound.')
+                        prior_folder_windows = {int(windows.Item(i).HWND) for i in range(windows.Count)}
+                    finally: pythoncom.CoUninitialize()
+                elif command == "history_assert_folder":
+                    import pythoncom
+                    import win32com.client
+                    pythoncom.CoInitialize()
+                    try:
+                        windows = win32com.client.Dispatch('Shell.Application').Windows()
+                        if windows.Count > 256 or prior_folder_windows is None: raise RuntimeError('Owned folder lease is unavailable.')
+                        uri = Path(sys.argv[2]).as_uri().casefold().rstrip('/')
+                        owned = [windows.Item(i) for i in range(windows.Count)
+                            if str(windows.Item(i).LocationURL).casefold().rstrip('/') == uri
+                            and int(windows.Item(i).HWND) not in prior_folder_windows]
+                        if len(owned) != 1 or not bool(owned[0].Visible): raise RuntimeError('New owned folder view was not verified.')
+                        owned[0].Quit()
+                    finally: pythoncom.CoUninitialize()
+                elif command == "history_assert_conflict":
+                    original, moved = history_pair
+                    if original.read_text(encoding='utf-8') != 'New owner edit' or moved.read_text(encoding='utf-8') != 'Owned P20 file':
+                        raise RuntimeError('Owned conflict was overwritten.')
                 elif command == "history_close": db.close()
                 elif command == "history_reopen": db.open()
                 else: raise RuntimeError("Unknown owned history fixture command.")
@@ -356,6 +444,8 @@ def main():
                 report_event(command.upper())
 
         def handler(request):
+            if mode == 'history' and request.get('message_type') in ('confirmation_query','events_query','runtime_query','voice_query') and not initial_status_read.is_set():
+                early_observation.set()
             if request.get("message_type") == "voice_query" and voice_paused.is_set():
                 return {"protocol_version": 1, "message_type": "protocol_error", "error_code": "FIXTURE_PAUSED",
                         "message": "Owned fixture voice connection is unavailable."}
@@ -366,7 +456,12 @@ def main():
                 if saturate_status:
                     report_event("STATUS_ENTERED")
                     release_status.wait(8)
-                return status(request)
+                if startup_control and not initial_status_read.is_set():
+                    initial_status_pending.set(); report_event('INITIAL_STATUS_PENDING')
+                    if not initial_status_release.wait(2): raise RuntimeError('Owned startup read was not released.')
+                result = status(request)
+                initial_status_read.set()
+                return result
             if request.get("message_type") == "stop":
                 release_status.set()
             reply = core.handle_ipc_command(request)
@@ -404,6 +499,7 @@ def main():
         # Release any test-only blocking handler before asking the production IPC
         # server to drain its owned client threads.
         release_status.set()
+        initial_status_release.set()
         try:
             server.stop(timeout_s=4.0)
         except Exception:
@@ -442,6 +538,11 @@ def main():
             if conflict.parent != Path(sys.argv[2]) or not conflict.name.startswith("p17-conflict-"):
                 raise RuntimeError("Owned conflict cleanup path was not verified.")
             conflict.unlink(missing_ok=True)
+        if mode == "history":
+            for file in history_files:
+                if file.parent != Path(sys.argv[2]) or not file.name.startswith('p20-'):
+                    raise RuntimeError('Owned history cleanup path failed validation.')
+                file.unlink(missing_ok=True)
         if owned_read is not None:
             owned_read.unlink()
         if owned_db is not None:

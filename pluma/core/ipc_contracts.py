@@ -243,6 +243,95 @@ class HistoryPageV1(BaseModel):
         return self
 
 
+class TaskDetailQueryV1(_Envelope):
+    message_type: Literal["task_detail_query"]
+    request_id: StrictStr
+    task_id: StrictStr
+    after_action_id: StrictInt = Field(default=0, ge=0, le=9223372036854775807)
+    limit: StrictInt = Field(default=10, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def ids(self):
+        _validate_id("request_id", self.request_id)
+        _validate_id("task_id", self.task_id)
+        return self
+
+
+from pluma.memory.selection_contract import UndoSelection as UndoSelectionV1
+
+
+class UndoSubmitV1(_Envelope):
+    message_type: Literal["undo_submit"]
+    request_id: StrictStr
+    selection: UndoSelectionV1
+
+    @model_validator(mode="after")
+    def ids(self):
+        _validate_id("request_id", self.request_id)
+        return self
+
+
+class HistoryFolderSubmitV1(_Envelope):
+    message_type: Literal["history_folder_submit"]
+    request_id: StrictStr
+    task_id: StrictStr
+    action_id: StrictInt = Field(ge=1, le=9223372036854775807)
+    location: Literal["current", "target"] = "current"
+
+    @model_validator(mode="after")
+    def ids(self):
+        _validate_id("request_id", self.request_id)
+        _validate_id("task_id", self.task_id)
+        return self
+
+
+class SavedActionV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, allow_inf_nan=False)
+    action_id: StrictInt = Field(ge=1)
+    step_index: StrictInt = Field(ge=0)
+    tool: StrictStr = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    arguments: StrictStr = Field(max_length=65536)
+    adapter: Optional[StrictStr]
+    risk: Literal["READ", "LOW", "MEDIUM", "HIGH", "ADMIN", "DENY"]
+    approval: Optional[StrictStr]
+    started_at: Optional[StrictStr]
+    ended_at: Optional[StrictStr]
+    duration_ms: Optional[float] = Field(ge=0)
+    factual_message: Optional[StrictStr]
+    policy_reason: Optional[StrictStr]
+    error_code: Optional[StrictStr]
+    verified: StrictBool
+    verification_method: Optional[StrictStr]
+    verification_detail: Optional[StrictStr]
+    undo_available: StrictBool
+    rollback_attempted: StrictBool
+    rollback_ok: Optional[StrictBool]
+    rollback_code: Optional[StrictStr]
+    claim_state: Optional[Literal["claimed", "verified", "unverified"]]
+    effect_state: Optional[Literal["committed", "unknown", "not_executed"]]
+    conflict_current: Optional[StrictStr]
+    conflict_target: Optional[StrictStr]
+    selection: Optional[UndoSelectionV1]
+
+
+class TaskDetailV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = PROTOCOL_VERSION
+    message_type: Literal["task_detail"] = "task_detail"
+    request_id: StrictStr
+    task_id: StrictStr
+    task_request_id: StrictStr
+    original_transcript: Optional[StrictStr]
+    active_process: Optional[StrictStr]
+    active_window: Optional[StrictStr]
+    cleanup_complete: Optional[StrictBool]
+    cleanup_unresolved: Optional[StrictInt] = Field(ge=0, le=512)
+    residual_codes: list[StrictStr] = Field(max_length=512)
+    actions: list[SavedActionV1] = Field(max_length=10)
+    has_more: StrictBool
+    next_action_id: StrictInt = Field(ge=0)
+
+
 class ActivityQueryV1(_Envelope):
     message_type: Literal["activity_query"]
     request_id: StrictStr
@@ -750,6 +839,12 @@ def parse_versioned_request(payload: dict):
             return VoiceQueryV1.model_validate(payload)
         if kind == "history_query":
             return HistoryQueryV1.model_validate(payload)
+        if kind == "task_detail_query":
+            return TaskDetailQueryV1.model_validate(payload)
+        if kind == "history_folder_submit":
+            return HistoryFolderSubmitV1.model_validate(payload)
+        if kind == "undo_submit":
+            return UndoSubmitV1.model_validate(payload)
         if kind == "history_page_query":
             return HistoryPageQueryV1.model_validate(payload)
         if kind == "activity_query":

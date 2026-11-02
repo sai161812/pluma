@@ -46,7 +46,8 @@ namespace PLUMA.UI
         private TaskCompletionSource _idle = CompletedSource();
         private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _active;
-        private int _normalActive;
+        private int _normalActive, _backgroundActive;
+        private readonly AsyncLocal<bool> _background = new();
         private int _stopActive;
         private bool _disposed;
 
@@ -68,10 +69,10 @@ namespace PLUMA.UI
         public async Task<CoreStatusResult> GetStatusAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!TryEnterCall(priority: false, out CancellationToken lifetime))
+            if (!TryEnterCall(priority: false, out CancellationToken lifetime, out bool background))
                 return CoreStatusResult.Failed(CoreConnectionFailure.Busy);
             try { return await QueryAsync(cancellationToken, lifetime).ConfigureAwait(false); }
-            finally { ExitCall(priority: false); }
+            finally { ExitCall(priority: false, background); }
         }
 
         private async Task<CoreStatusResult> QueryAsync(CancellationToken caller, CancellationToken lifetime)
@@ -148,27 +149,35 @@ namespace PLUMA.UI
             }
         }
 
-        private bool TryEnterCall(bool priority, out CancellationToken lifetime)
+        internal async Task RunBackgroundAsync(Func<Task> work)
+        {
+            bool prior = _background.Value;
+            try { _background.Value = true; await work(); }
+            finally { _background.Value = prior; }
+        }
+
+        private bool TryEnterCall(bool priority, out CancellationToken lifetime, out bool background)
         {
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 // Four ordinary calls are bounded independently from one reserved
                 // STOP call, so a slow status/history response cannot consume STOP's client slot.
-                if (priority ? _stopActive >= 1 : _normalActive >= 4)
+                background = !priority && _background.Value;
+                if (priority ? _stopActive >= 1 : _normalActive >= 4 || background && _backgroundActive >= 3)
                 { lifetime = default; return false; }
-                if (priority) _stopActive++; else _normalActive++;
+                if (priority) _stopActive++; else { _normalActive++; if (background) _backgroundActive++; }
                 if (_active++ == 0) _idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 lifetime = _lifetime.Token;
                 return true;
             }
         }
 
-        private void ExitCall(bool priority)
+        private void ExitCall(bool priority, bool background)
         {
             lock (_gate)
             {
-                if (priority) _stopActive--; else _normalActive--;
+                if (priority) _stopActive--; else { _normalActive--; if (background) _backgroundActive--; }
                 if (--_active == 0) _idle.TrySetResult();
             }
         }
@@ -188,6 +197,26 @@ namespace PLUMA.UI
             string requestId, string? taskId, CancellationToken cancellationToken, string? submissionRequestId = null) =>
             VersionedCallAsync(new CoreRequestProtocol.StopRequest(requestId, taskId, submissionRequestId).ToMessage(), requestId,
                 true, true, bytes => CoreRequestProtocol.StopAck.Parse(bytes), value => value.RequestId, cancellationToken);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SavedTaskDetail>> GetTaskDetailAsync(
+            string request, string task, long after, CancellationToken token)
+        {
+            byte[] message = new CoreRequestProtocol.SavedDetailRequest(request, task, after).ToMessage();
+            return VersionedCallAsync(message, request, false, false, bytes => CoreRequestProtocol.SavedTaskDetail.Parse(bytes),
+                value => value.RequestId, token, value => value.TaskId == task && value.Actions.All(a => a.ActionId > after));
+        }
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitUndoAsync(
+            string request, CoreRequestProtocol.UndoSelection selected, CancellationToken token)
+        {
+            byte[] message = new CoreRequestProtocol.UndoSubmission(request, selected).ToMessage();
+            return VersionedCallAsync(message, request, false, true, bytes => CoreRequestProtocol.SubmissionAck.Parse(bytes),
+                value => value.RequestId, token);
+        }
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitHistoryFolderAsync(
+            string request, CoreRequestProtocol.FolderSelection selected, CancellationToken token) =>
+            VersionedCallAsync(selected.ToMessage(request), request, false, true,
+                bytes => CoreRequestProtocol.SubmissionAck.Parse(bytes), value => value.RequestId, token);
 
         internal Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> GetActivityAsync(
             CoreRequestProtocol.ActivityQueryRequest request, CancellationToken token) =>
@@ -266,7 +295,7 @@ namespace PLUMA.UI
             CancellationToken caller, Func<T, bool>? additionalCorrelation = null) where T : class
         {
             caller.ThrowIfCancellationRequested();
-            if (!TryEnterCall(priority, out CancellationToken lifetime))
+            if (!TryEnterCall(priority, out CancellationToken lifetime, out bool background))
                 return CoreRequestResult<T>.Failed(CoreConnectionFailure.Busy);
             try
             {
@@ -294,7 +323,7 @@ namespace PLUMA.UI
                 catch (Exception error) when (error is JsonException or InvalidDataException)
                 { return CoreRequestResult<T>.Failed(CoreConnectionFailure.Protocol, true); }
             }
-            finally { ExitCall(priority); }
+            finally { ExitCall(priority, background); }
         }
 
         private static async Task<byte[]> ReadSecretAsync(string path, CancellationToken token)

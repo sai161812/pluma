@@ -339,7 +339,7 @@ class ResidentCore:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
             VoiceQueryV1,
-            HistoryPageQueryV1,
+            HistoryPageQueryV1, TaskDetailQueryV1, UndoSubmitV1, HistoryFolderSubmitV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
             ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
@@ -368,6 +368,12 @@ class ResidentCore:
             return self._settings_query_v1(request)
         if isinstance(request, HistoryQueryV1):
             return self._history_query_v1(request)
+        if isinstance(request, TaskDetailQueryV1):
+            return self._task_detail_v1(request)
+        if isinstance(request, HistoryFolderSubmitV1):
+            return self._history_folder_v1(request, SubmissionAckV1)
+        if isinstance(request, UndoSubmitV1):
+            return self._undo_submit_v1(request, SubmissionAckV1)
         if isinstance(request, HistoryPageQueryV1):
             return self._history_page_v1(request)
         if isinstance(request, ActivityQueryV1):
@@ -434,7 +440,7 @@ class ResidentCore:
         with self._submission_fence_lock:
             return self._submission_admission_paused or request_id in self._stopped_submission_ids
 
-    def _submit_text_v1(self, request, ack_type):
+    def _submit_text_v1(self, request, ack_type, selected=None):
         from pluma.memory.activity import ActivityQuery, TaskRecord
 
         ack = lambda **values: ack_type(
@@ -443,7 +449,7 @@ class ResidentCore:
         if self.orchestrator is None or self.ledger is None:
             return ack(accepted=False, error_code="CORE_UNAVAILABLE",
                        message="The request could not be accepted by the core.")
-        digest = hashlib.sha256(request.text.encode("utf-8")).hexdigest()
+        digest = hashlib.sha256((request.text + (json.dumps(selected, sort_keys=True) if selected else "")).encode("utf-8")).hexdigest()
         lock = self._submission_state()
         with lock:
             # Once a stopped request has durable terminal history, the existing
@@ -511,7 +517,7 @@ class ResidentCore:
             record = {"digest": digest, "task_id": capsule.task_id,
                       "request_id": request.request_id, "capsule": capsule,
                       "terminal": None, "route": None, "duration_ms": None,
-                      "message": "Execution is in progress."}
+                      "message": "Execution is in progress.", "selection": selected}
             self._submission_records[request.request_id] = record
             thread = threading.Thread(
                 target=self._run_text_submission_v1,
@@ -554,7 +560,16 @@ class ResidentCore:
 
     def _run_text_submission_v1(self, request, capsule, request_id: str) -> None:
         try:
-            result = self.orchestrator.execute(request, capsule=capsule)
+            selected = self._submission_records[request_id].get("selection")
+            if selected is None:
+                result = self.orchestrator.execute(request, capsule=capsule)
+            else:
+                from pluma.brain.schemas import Plan, RouteMode, ToolCall
+                plan = Plan(task_id=capsule.task_id, route=RouteMode.FAST, steps=[ToolCall(
+                    tool="open_folder" if 'folder' in selected else "undo_last",
+                    arguments={"path": selected['folder']} if 'folder' in selected else {"selection": selected},
+                    purpose="Execute the selected history action.")])
+                result = self.orchestrator.execute_typed_plan(request, capsule, plan)
             projection = {
                 "terminal": bool(capsule.terminal_ready.is_set()),
                 "final_state": str(result.final_state),
@@ -739,6 +754,40 @@ class ResidentCore:
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "SETTINGS_UNAVAILABLE",
                     "message": "Current settings do not match the supported settings view."}
+
+    def _task_detail_v1(self, request):
+        from pluma.memory.history_detail import read_detail
+        from pluma.core.ipc_contracts import ProtocolErrorV1
+        try:
+            reply = read_detail(self, request).model_dump(mode="json")
+            if len(json.dumps(reply).encode()) > MAX_IPC_MESSAGE_SIZE:
+                raise ValueError("Oversized task detail.")
+            return reply
+        except Exception:
+            return ProtocolErrorV1(error_code="TASK_DETAIL_UNAVAILABLE",
+                message="Saved task detail is unavailable.").model_dump(mode="json")
+
+    def _history_folder_v1(self, request, ack_type):
+        from pluma.core.ipc_contracts import SubmitTextV1
+        from pluma.memory.history_detail import conflict_folder
+        try:
+            folder = conflict_folder(self.ledger._db, request.task_id, request.action_id, request.location)
+        except Exception:
+            return ack_type(request_id=request.request_id, accepted=False, error_code="FOLDER_UNAVAILABLE",
+                message="The recorded conflict folder is unavailable.").model_dump(mode="json")
+        task_request = SubmitTextV1(protocol_version=1, message_type="submit_text", request_id=request.request_id,
+            text="Open recorded conflict folder for action " + str(request.action_id) + " of task " + request.task_id)
+        return self._submit_text_v1(task_request, ack_type, selected={'folder': folder})
+
+    def _undo_submit_v1(self, request, ack_type):
+        from pluma.core.ipc_contracts import SubmitTextV1
+        # No natural language parsing or planner authority at this boundary.
+        # The registry revalidates saved material before policy and atomic claim.
+        selected = request.selection.model_dump()
+        task_request = SubmitTextV1(protocol_version=1, message_type="submit_text",
+            request_id=request.request_id, text="Undo saved action " + str(selected['action_id'])
+            + " of task " + selected['target_task_id'])
+        return self._submit_text_v1(task_request, ack_type, selected=selected)
 
     def _history_page_v1(self, request):
         from pluma.memory.history import read_page, HistoryCursorUnavailable

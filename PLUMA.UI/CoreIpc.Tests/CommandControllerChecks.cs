@@ -37,6 +37,17 @@ internal static class CommandControllerChecks
             check(owner.View.State == "Stopped" && owner.View.CanSubmit, "saved STOP terminal readback closes the command without success");
         }
 
+        {
+            int reads=0;
+            var source=new Client { Read=(request,task,token)=>Task.FromResult(++reads <= 3
+                ? CoreRequestResult<CoreRequestProtocol.TerminalReadback>.Failed(CoreConnectionFailure.Busy)
+                : Ok(Terminal(request,task))) };
+            await using var owner=new CommandController(source);
+            owner.SetConnected(true); await owner.SubmitAsync("owned readback pressure");
+            check(owner.View.State=="Completed" && source.Submissions==1 && reads==4,
+                "temporary readback pressure never loses or resubmits the admitted command");
+        }
+
         foreach (var scenario in new[] { ("SUCCEEDED", true, false, true, "Completed"),
             ("SUCCEEDED", false, false, true, "Unverified"), ("FAILED", false, false, true, "Failed"),
             ("ABORTED_BY_CRASH", false, false, true, "Failed"), ("STOPPED_WITH_RESIDUAL", false, true, true, "Remaining effects"),

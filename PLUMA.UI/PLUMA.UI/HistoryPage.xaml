@@ -6,14 +6,14 @@
         <Grid HorizontalAlignment="Stretch" MaxWidth="1100" Padding="32,24,32,32" RowSpacing="20">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Text="History" Style="{StaticResource TitleTextBlockStyle}"/>
             <AutoSuggestBox x:Name="HistorySearch" Grid.Row="1" PlaceholderText="Search saved history"
                             HorizontalAlignment="Stretch" MaxWidth="720" QuerySubmitted="OnSearchSubmitted"/>
             <TextBlock x:Name="HistoryStatus" Grid.Row="2" Text="Refresh to read saved history."
                        TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            <ListView x:Name="HistoryRecords" Grid.Row="3" SelectionMode="None" IsItemClickEnabled="False" BorderThickness="0"
+            <ListView x:Name="HistoryRecords" Grid.Row="3" SelectionMode="Single" SelectionChanged="OnTaskSelected" IsItemClickEnabled="False" BorderThickness="0"
                       HorizontalContentAlignment="Stretch">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:HistoryRow">
@@ -36,6 +36,28 @@
             <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12">
                 <Button x:Name="HistoryRefresh" Content="Refresh" Click="OnRefresh" IsEnabled="False"/>
                 <Button x:Name="HistoryOlder" Content="Older tasks" Click="OnOlder" IsEnabled="False"/>
+            </StackPanel>
+            <StackPanel Grid.Row="5" Spacing="12">
+                <TextBlock Text="Task details" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock x:Name="DetailStatus" Text="Select a saved task." TextWrapping="Wrap"/>
+                <TextBlock x:Name="DetailContext" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                <ListView x:Name="DetailActions" SelectionMode="Single" SelectionChanged="OnActionSelected" HorizontalContentAlignment="Stretch">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:SavedActionRow">
+                            <StackPanel Spacing="8" Padding="0,12">
+                                <TextBlock Text="{x:Bind Heading}" TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                <TextBlock Text="{x:Bind Facts}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                <TextBlock Text="{x:Bind Arguments}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button x:Name="DetailMore" Content="More actions" IsEnabled="False" Click="OnMoreActions"/>
+                    <Button x:Name="DetailUndo" Content="Undo selected action" IsEnabled="False" Click="OnUndoSelected"/>
+                    <Button x:Name="DetailConflict" Content="View conflict" IsEnabled="False" Click="OnViewConflict"/>
+                </StackPanel>
+                <TextBlock x:Name="UndoStatus" TextWrapping="Wrap"/>
             </StackPanel>
         </Grid>
     </ScrollViewer>

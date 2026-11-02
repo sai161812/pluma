@@ -19,7 +19,7 @@ internal static class RuntimePresentation
         var keys = new List<(string, int)> { ("runtime-task-" + task.TaskId, 4) };
         if (task.Step is not null) keys.Add(("runtime-step-" + task.TaskId, 5));
         if (task.Tool is not null && task.State == "RUNNING") keys.Add(("runtime-tool-" + task.TaskId, 7));
-        if (task.State == "ROLLING_BACK") keys.Add(("runtime-rollback-" + task.TaskId, 9));
+        if (task.State == "ROLLING_BACK" || (task.State == "RUNNING" && task.Tool == "undo_last" && task.Phase is "EXECUTING" or "VERIFYING" or "RECORDING")) keys.Add(("runtime-rollback-" + task.TaskId, 9));
         return keys;
     }
 
@@ -60,8 +60,8 @@ internal static class RuntimePresentation
         }
         else if (surface == 9)
         {
-            State("RollbackStatus", "Rolling back"); Text("RollbackHeading", "Undoing reversible actions");
-            Text("RollbackStep", task.RollbackStep is null ? "Waiting for inverse evidence" : $"Inverse {task.RollbackStep} of {task.RollbackTotal}");
+            State("RollbackStatus", task.State == "ROLLING_BACK" ? "Rolling back" : "Restoring selected action"); Text("RollbackHeading", "Undoing reversible actions");
+            Text("RollbackStep", task.RollbackStep is null ? "Waiting for saved inverse verification" : $"Inverse {task.RollbackStep} of {task.RollbackTotal}");
             var progress = (ProgressBar)control.FindName("RollbackProgress"); progress.IsIndeterminate = true;
             Text("RollbackRecipe", PopupText.Label(task.RollbackRecipe ?? "Recipe unavailable"));
             Text("RollbackCompleted", "Completed inverses require saved verification."); Text("RollbackPending", "Rollback outcome pending");

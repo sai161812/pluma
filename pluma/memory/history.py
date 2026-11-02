@@ -58,7 +58,7 @@ def read_page(db, request):
                        CASE WHEN route IN ('FAST','SMART','SCREEN','DEEP') THEN route END AS route,
                        CASE WHEN length(CAST(stop_reason AS BLOB)) <= 64 THEN stop_reason END AS stop_reason,
                        CASE WHEN length(CAST(error_code AS BLOB)) <= 64 THEN error_code END AS error_code,
-                       pluma_history_command(CASE WHEN length(CAST(command_text AS BLOB)) <= ? THEN command_text END) AS command_text
+                       pluma_history_command(CASE WHEN EXISTS(SELECT 1 FROM actions private_action WHERE private_action.task_id=tasks.task_id AND (private_action.tool LIKE '%clipboard%' OR private_action.tool IN ('paste','paste_text'))) THEN '[REDACTED CLIPBOARD COMMAND]' WHEN length(CAST(command_text AS BLOB)) <= ? THEN command_text END) AS command_text
                 FROM tasks
                 WHERE (? IS NULL OR created_at < ? OR (created_at = ? AND task_id < ?))
             )
