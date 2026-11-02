@@ -134,6 +134,12 @@ internal static class NativeConfirmationChecks
             await _process.StandardInput.FlushAsync();
             await WaitForEventAsync(command.ToUpperInvariant());
         }
+        internal async Task ControlHistoryAsync(string command)
+        {
+            await _process.StandardInput.WriteLineAsync(command);
+            await _process.StandardInput.FlushAsync();
+            await WaitForEventAsync(command.ToUpperInvariant());
+        }
         internal async Task WaitForEventAsync(string marker)
         {
             await Until(() =>

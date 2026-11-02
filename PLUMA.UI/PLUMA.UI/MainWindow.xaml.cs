@@ -64,6 +64,7 @@ namespace PLUMA.UI
             _runtime.WorkerTerminated += OnWorkerTerminated;
             _voice = new VoiceController(_coreStatus.GetVoiceAsync);
             _voice.Changed += OnVoiceChanged;
+            _history = new HistoryController(_coreStatus.GetHistoryPageAsync);
 
             // Extend content into the title bar so we can show a subtle app title
             // while retaining the native caption buttons. Register the AppTitleBar
@@ -97,6 +98,7 @@ namespace PLUMA.UI
                 await _eventTask;
                 await _runtimeTask;
                 await _voiceTask;
+                await _history.DisposeAsync();
                 await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
                 _closedDrain.TrySetResult();
             };
@@ -115,6 +117,14 @@ namespace PLUMA.UI
         }
 
         private readonly RuntimeController _runtime;
+        private readonly HistoryController _history;
+        internal HistoryPage? History => ContentFrame.Content as HistoryPage;
+        internal void NavigateHistoryForAcceptance() => NavigateHistory();
+        private void NavigateHistory()
+        {
+            ContentFrame.Navigate(typeof(HistoryPage));
+            if (ContentFrame.Content is HistoryPage page) page.AttachHistory(_history, _healthLifetime.Token);
+        }
         private readonly VoiceController _voice;
         private Task _voiceTask = Task.CompletedTask;
         private async Task ObserveVoiceAsync(Task initialHealth, CancellationToken token)
@@ -260,7 +270,7 @@ namespace PLUMA.UI
                         NavigateDashboard();
                         break;
                     case "history":
-                        ContentFrame.Navigate(typeof(HistoryPage));
+                        NavigateHistory();
                         break;
                 }
             }

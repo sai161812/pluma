@@ -43,10 +43,13 @@ internal static class NativeP19VoiceChecks
             await Until(() => text.MessageScroll.ScrollableHeight > 10);
             check(text.DisplayText.Contains("file_name.md") && text.MessageScroll.ActualHeight <= 64.5,
                 "literal transcript wraps inside the existing fixed voice viewport");
-            text.MessageScroll.ChangeView(null, 0, null, true); await Task.Delay(80);
+            text.MessageScroll.ChangeView(null, 0, null, true);
+            await Until(() => text.MessageScroll.VerticalOffset < 1);
             double offset = text.MessageScroll.VerticalOffset;
             await fixture.ControlVoiceAsync("voice_more");
             await Until(() => overlay.PartialTranscript.Length > 3000);
+            await Task.Delay(80);
+            Console.WriteLine($"Owned voice reader: same={ReferenceEquals(Overlay(), overlay)}, before={offset}, after={text.MessageScroll.VerticalOffset}, extent={text.MessageScroll.ScrollableHeight}");
             check(ReferenceEquals(Overlay(), overlay) && Math.Abs(text.MessageScroll.VerticalOffset - offset) < 1,
                 "new speech preserves the same overlay and earlier-text reading position");
             text.MessageScroll.ChangeView(null, text.MessageScroll.ScrollableHeight, null, true); await Task.Delay(80);
@@ -89,6 +92,7 @@ internal static class NativeP19VoiceChecks
             await Until(() => ((PopupStatusIndicator)Overlay()!.FindName("StatusHost")).Label == "Voice cancelled");
             check(Overlay()!.PartialTranscript == "", "priority STOP during recognition prevents final text revival");
         }
+        catch (Exception error) { Console.Error.WriteLine("P19 voice failure before fixture teardown: " + error); throw; }
         finally { shell.Close(); await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5)); }
         check(shell.ObservationLifetime.IsCompleted, "shell shutdown joins its voice observer and native popup lifetime");
     }

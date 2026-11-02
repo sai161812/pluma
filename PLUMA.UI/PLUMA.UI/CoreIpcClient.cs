@@ -229,6 +229,12 @@ namespace PLUMA.UI
                 false, false, bytes => CoreRequestProtocol.HistoryReply.Parse(bytes), value => value.RequestId, cancellationToken,
                 value => value.TaskId == taskId);
 
+        internal Task<CoreRequestResult<CoreRequestProtocol.HistoryPageReply>> GetHistoryPageAsync(
+            CoreRequestProtocol.HistoryPageRequest request, CancellationToken token) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, false,
+                bytes => CoreRequestProtocol.HistoryPageReply.Parse(bytes), value => value.RequestId, token,
+                value => value.BeforeTaskId == request.BeforeTaskId && value.Tasks.Length <= request.Limit);
+
         internal Task<CoreRequestResult<CoreRequestProtocol.ConfirmationList>> GetConfirmationsAsync(
             string requestId, string clientId, CancellationToken cancellationToken) =>
             VersionedCallAsync(new CoreRequestProtocol.ConfirmationQueryRequest(requestId, clientId).ToMessage(), requestId,

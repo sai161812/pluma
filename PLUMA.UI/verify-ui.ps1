@@ -125,6 +125,8 @@ try {
         Finish-OwnedProcess $controls
         $controlsLog = Join-Path (Split-Path $controlsExecutable -Parent) 'control-tests.txt'
         if (Test-Path $controlsLog) { Copy-Item -LiteralPath $controlsLog -Destination (Join-Path $runDirectory 'control-tests.txt') }
+        $historyRender = Join-Path (Split-Path $controlsExecutable -Parent) 'history-page-saved-dark.png'
+        if (Test-Path $historyRender) { Copy-Item -LiteralPath $historyRender -Destination (Join-Path $runDirectory 'history-page-saved-dark.png') }
     }
     $controlReport = Assert-Report (Join-Path $runDirectory 'control-tests.txt') '(?m)^\d+ UI checks passed\.'
     $summary.controlsResult = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''

@@ -24,7 +24,12 @@ namespace PLUMA.UI.Tests
                 var root = new StackPanel { Spacing = 12 };
                 _window = new Window { Title = "PLUMA UI contract checks", Content = root };
                 _window.Activate();
-                await RunChecks(root);
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-history") >= 0)
+                    await NativeP20HistoryChecks.RunAsync(Check);
+                else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p19-voice") >= 0)
+                    await NativeP19VoiceChecks.RunAsync(Check);
+                else
+                    await RunChecks(root);
                 Console.WriteLine($"{_checks} UI checks passed.");
                 if (Array.IndexOf(Environment.GetCommandLineArgs(), "--visual-review") >= 0)
                     await VisualReview.RenderAsync(_window);
@@ -214,6 +219,7 @@ namespace PLUMA.UI.Tests
             await NativeEventFeedChecks.RunAsync(root, Check);
             await NativeP18ShellChecks.RunAsync(Check);
             await NativeP19VoiceChecks.RunAsync(Check);
+            await NativeP20HistoryChecks.RunAsync(Check);
         }
 
         private sealed class FakeCoreStatusClient : ICoreStatusClient

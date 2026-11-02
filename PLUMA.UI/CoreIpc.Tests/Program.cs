@@ -56,6 +56,7 @@ internal static class Program
         await RuntimeChecks.RunAsync(Check);
         VoiceChecks.Run(Check);
         await VoiceControllerChecks.RunAsync(Check);
+        await HistoryChecks.RunAsync(Check);
         ActivityChecks.Run(Check);
         string absent = Path.Combine(Root, "not-created", "ipc_secret.key");
         await using (var client = new CoreIpcClient(Options(PipeName(), absent)))

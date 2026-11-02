@@ -45,7 +45,7 @@ def main():
     voice_release = threading.Event()
     voice_entered = threading.Event()
     voice_paused = threading.Event()
-    if mode in {"versioned", "commands", "voice"}:
+    if mode in {"versioned", "commands", "voice", "history"}:
         from pluma.core.resident import ResidentCore
         from pluma.core.task_supervisor import TaskState, TaskSupervisor
         from pluma.config.loader import load_config
@@ -118,6 +118,49 @@ def main():
         core.config = load_config(Path(sys.argv[2]) / "no-user-settings.json")
         core.config["brain"]["model_path"] = r"C:\fixture\planner.gguf"
         core.config["voice"]["model_path"] = r"C:\fixture\whisper.ggml"
+
+        if mode == "history":
+            import sqlite3
+            from contextlib import closing
+            from uuid import uuid4
+            from pluma.memory.activity import TaskRecord
+            from pluma.memory.redaction import redact_command_text
+            def history_control(command):
+                if command == "history_seed":
+                    if db.execute_read_one('SELECT COUNT(*) AS n FROM tasks')['n'] != 0:
+                        raise RuntimeError("Fixture history was already seeded.")
+                    for index in range(75):
+                        task = str(uuid4())
+                        ledger.insert_task(TaskRecord(task, str(uuid4()), 'voice' if index % 2 else 'text',
+                            f'Open file_预算_{index}.md', created_at='2026-11-02T08:00:00+00:00',
+                            completed_at='2026-11-02T08:01:00+00:00', route='FAST',
+                            final_state=('SUCCEEDED','FAILED','STOPPED','STOPPED_WITH_RESIDUAL')[index % 4]))
+                    db.execute_write('UPDATE tasks SET command_text=? WHERE task_id=?',
+                        ('HISTORY_PRIVATE_NATIVE_PAYLOAD in the clipboard', task))
+                elif command == "history_close": db.close()
+                elif command == "history_reopen": db.open()
+                else: raise RuntimeError("Unknown owned history fixture command.")
+                report_event(command.upper())
+
+            def assert_history_page(request, reply):
+                # Independent connection and Python ordering/filtering verify the
+                # production bounded SQL projection, never the other way round.
+                with closing(sqlite3.connect('file:' + owned_db.as_posix() + '?mode=ro', uri=True)) as reader:
+                    reader.row_factory = sqlite3.Row
+                    rows = [dict(row) for row in reader.execute('SELECT * FROM tasks')]
+                rows.sort(key=lambda row: (row['created_at'], row['task_id']), reverse=True)
+                before = request.get('before_task_id')
+                if before is not None:
+                    key = next((row['created_at'], row['task_id']) for row in rows if row['task_id'] == before)
+                    rows = [row for row in rows if (row['created_at'], row['task_id']) < key]
+                search = request.get('search','').casefold()
+                rows = [row for row in rows if search in '\n'.join(str(value or '') for value in
+                    (redact_command_text(row['command_text']), row['task_id'], row['final_state'], row['route'], row['input_mode'])).casefold()]
+                expected = rows[:request.get('limit',20)]
+                if ([row['task_id'] for row in reply['tasks']] != [row['task_id'] for row in expected]
+                        or [row['command_text'] for row in reply['tasks']] != [redact_command_text(row['command_text']) for row in expected]
+                        or reply['has_more'] != (len(rows) > len(expected))):
+                    raise RuntimeError("History did not agree with independent SQLite readback.")
 
         if mode in {"commands", "voice"}:
             # Actual production orchestration/policy/registry/verification/SQLite.
@@ -321,6 +364,8 @@ def main():
             if request.get("message_type") == "stop":
                 release_status.set()
             reply = core.handle_ipc_command(request)
+            if mode == "history" and reply.get('message_type') == 'history_page':
+                assert_history_page(request, reply)
             if (request.get("message_type") == "confirmation_decision" and request.get("approved") is True
                     and reply.get("accepted") is True):
                 approved_calls.add(request["task_id"])
@@ -343,6 +388,8 @@ def main():
                 break
             if mode == "voice" and line.strip().startswith("voice_"):
                 voice_control(line.strip())
+            if mode == "history" and line.strip().startswith("history_"):
+                history_control(line.strip())
             if line.strip() == "pause_events":
                 paused_events.set(); report_event("EVENTS_PAUSED")
             if line.strip() == "resume_events":

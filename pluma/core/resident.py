@@ -339,6 +339,7 @@ class ResidentCore:
         from pluma.core.ipc_contracts import (
             ProtocolErrorV1, SubmissionAckV1,
             VoiceQueryV1,
+            HistoryPageQueryV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
             ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
@@ -367,6 +368,8 @@ class ResidentCore:
             return self._settings_query_v1(request)
         if isinstance(request, HistoryQueryV1):
             return self._history_query_v1(request)
+        if isinstance(request, HistoryPageQueryV1):
+            return self._history_page_v1(request)
         if isinstance(request, ActivityQueryV1):
             return self._activity_query_v1(request)
         if isinstance(request, ActionVerificationQueryV1):
@@ -736,6 +739,23 @@ class ResidentCore:
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "SETTINGS_UNAVAILABLE",
                     "message": "Current settings do not match the supported settings view."}
+
+    def _history_page_v1(self, request):
+        from pluma.memory.history import read_page, HistoryCursorUnavailable
+        from pluma.core.ipc_contracts import ProtocolErrorV1
+        try:
+            if self.ledger is None or not hasattr(self.ledger, "_db"):
+                raise ValueError("History storage is unavailable.")
+            reply = read_page(self.ledger._db, request).model_dump(mode="json")
+            if len(json.dumps(reply, separators=(",", ":")).encode("utf-8")) > MAX_IPC_MESSAGE_SIZE:
+                raise ValueError("History page exceeds the transport bound.")
+            return reply
+        except HistoryCursorUnavailable:
+            return ProtocolErrorV1(error_code="HISTORY_CURSOR_UNAVAILABLE",
+                message="Saved history changed. Refresh to read it again.").model_dump(mode="json")
+        except Exception:
+            return ProtocolErrorV1(error_code="HISTORY_UNAVAILABLE",
+                message="Saved history is unavailable. Refresh to try again.").model_dump(mode="json")
 
     def _history_query_v1(self, request):
         from pluma.core.ipc_contracts import ActionHistoryV1, HistoryReplyV1, TaskSummaryV1

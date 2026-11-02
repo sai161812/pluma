@@ -181,6 +181,68 @@ class HistoryQueryV1(_Envelope):
         return self
 
 
+class HistoryPageQueryV1(_Envelope):
+    message_type: Literal["history_page_query"]
+    request_id: StrictStr
+    search: StrictStr = Field(default="", max_length=256)
+    before_task_id: Optional[StrictStr] = None
+    limit: StrictInt = Field(default=20, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def ids(self):
+        _validate_id("request_id", self.request_id)
+        if self.before_task_id is not None:
+            _validate_id("before_task_id", self.before_task_id)
+        return self
+
+
+class SavedHistoryTaskV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    task_id: StrictStr
+    request_id: StrictStr
+    input_mode: Literal["text", "voice"]
+    command_text: Optional[StrictStr]
+    created_at: StrictStr
+    started_at: Optional[StrictStr]
+    completed_at: Optional[StrictStr]
+    final_state: Optional[Literal["CREATED", "RUNNING", "STOPPING", "ROLLING_BACK", "SUCCEEDED", "FAILED",
+                                  "STOPPED", "STOPPED_WITH_RESIDUAL", "DEFERRED", "ABORTED_BY_CRASH"]]
+    route: Optional[Literal["FAST", "SMART", "SCREEN", "DEEP"]]
+    stop_reason: Optional[StrictStr]
+    error_code: Optional[StrictStr]
+
+    @model_validator(mode="after")
+    def bounded(self):
+        _validate_id("task_id", self.task_id)
+        _validate_id("request_id", self.request_id)
+        if self.command_text is not None and len(self.command_text.encode("utf-8")) > 8192:
+            raise ValueError("Oversized saved command.")
+        return self
+
+
+class HistoryPageV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = PROTOCOL_VERSION
+    message_type: Literal["history_page"] = "history_page"
+    request_id: StrictStr
+    before_task_id: Optional[StrictStr]
+    tasks: list[SavedHistoryTaskV1] = Field(max_length=20)
+    has_more: StrictBool
+    next_before_task_id: Optional[StrictStr]
+
+    @model_validator(mode="after")
+    def consistent(self):
+        _validate_id("request_id", self.request_id)
+        for value in (self.before_task_id, self.next_before_task_id):
+            if value is not None:
+                _validate_id("cursor", value)
+        if (self.has_more != (self.next_before_task_id is not None)
+                or self.has_more and (not self.tasks or self.next_before_task_id != self.tasks[-1].task_id)
+                or len({item.task_id for item in self.tasks}) != len(self.tasks)):
+            raise ValueError("Inconsistent saved history page.")
+        return self
+
+
 class ActivityQueryV1(_Envelope):
     message_type: Literal["activity_query"]
     request_id: StrictStr
@@ -688,6 +750,8 @@ def parse_versioned_request(payload: dict):
             return VoiceQueryV1.model_validate(payload)
         if kind == "history_query":
             return HistoryQueryV1.model_validate(payload)
+        if kind == "history_page_query":
+            return HistoryPageQueryV1.model_validate(payload)
         if kind == "activity_query":
             return ActivityQueryV1.model_validate(payload)
         if kind == "action_detail_query":
