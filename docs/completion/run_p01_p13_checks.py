@@ -4,6 +4,7 @@ Native microphone, physical focus/audio/power and release tests are not selected
 Selections reuse the checked-in P12 manifest plus the remaining P13 modules.
 """
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -13,18 +14,31 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 MODES = ("prerequisites", "catalog", "contracts", "p12", "native", "p13")
 
 
+def new_output_directory(requested=None):
+    """Reserve fresh ignored evidence; never truncate a previous audit."""
+    parent = (ROOT / "output").resolve()
+    out = (Path(requested).resolve() if requested else parent / "p01-p13-audit" /
+           (datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]))
+    if not out.is_relative_to(parent) or out == parent:
+        raise ValueError("Audit reports must use a fresh directory under ignored output.")
+    out.mkdir(parents=True, exist_ok=False)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=MODES)
-    mode = parser.parse_args().mode
-    out = ROOT / "output/p01-p13-audit"
-    out.mkdir(parents=True, exist_ok=True)
+    parser.add_argument("--output-dir", help="Fresh directory under ignored output; reuse is refused.")
+    options = parser.parse_args()
+    mode = options.mode
+    out = new_output_directory(options.output_dir)
     manifest = json.loads((ROOT / "docs/completion/p12_check_manifest.json").read_text(encoding="utf-8"))
     manifest["p13"] = ["-m", "pytest", "tests/unit/test_brain_llama_cpp_adapter.py",
         "tests/unit/test_planner_target_admission.py", "tests/unit/test_planner_route_replan.py", "-q"]
@@ -37,7 +51,7 @@ def main():
         directory.mkdir()
         env[key] = str(directory)
     env["PYTHONIOENCODING"] = "utf-8"
-    metadata = {"commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+    metadata = {"output_dir": str(out), "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "mode": mode, "command": command, "windows": platform.platform(), "python": sys.version.split()[0],
         "source_hashes": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
             for directory in ("pluma", "tests") for path in (ROOT / directory).rglob("*.py")}}

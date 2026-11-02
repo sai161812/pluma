@@ -5,14 +5,89 @@ account creation, real credentials or network access is involved.
 """
 import ctypes as c
 from ctypes import wintypes as w
+import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+import tempfile
 from types import SimpleNamespace
 import uuid
+import xml.etree.ElementTree as ET
+
+
+ROOT = Path(__file__).resolve().parents[2]
+REGRESSION = ("test_clipboard_native.py", "test_clipboard_write.py", "test_tools_clipboard.py",
+    "test_brain_prompt_builder.py", "test_brain_tool_subset.py", "test_redaction.py",
+    "test_policy_boundary.py", "test_tool_runner_ledger.py", "test_executor_admission.py",
+    "test_worker_cancellation.py", "test_runtime_shutdown.py", "test_manual_undo.py",
+    "test_memory_tools.py", "test_rollback_engine.py", "test_rollback_recipes.py",
+    "test_mutation_journal.py", "test_verification_ownership.py")
+
+
+def validate_label(label):
+    if not label.startswith(('clipboard-focused-', 'clipboard-regression-')) or not label.replace('-', '').isalnum():
+        raise ValueError('Only the closed clipboard test suites are supported.')
+
+
+def new_output_directory(label, output_dir=None):
+    validate_label(label)
+    parent = (ROOT / 'output').resolve()
+    base = Path(output_dir).resolve() if output_dir else parent / 'clipboard-acceptance'
+    if not base.is_relative_to(parent):
+        raise ValueError('Clipboard reports must remain under ignored output.')
+    directory = base / label
+    directory.mkdir(parents=True, exist_ok=False)
+    return directory
+
+
+def accepted_test_exit(code, suites):
+    """A skip, xfail, empty report or inconsistent JUnit is never acceptance."""
+    if code != 0:
+        return code
+    if not suites or sum(int(row.get('tests', 0)) for row in suites) == 0:
+        return 1
+    return 1 if any(int(row.get(key, 0)) for row in suites
+                    for key in ('skipped', 'failures', 'errors')) else 0
+
+
+def run_checks(label, directory):
+    """Closed child selection, executed only inside the parent's owned Job."""
+    validate_label(label)
+    directory = Path(directory).resolve()
+    if not directory.is_relative_to((ROOT / 'output').resolve()) or directory.name != label:
+        raise ValueError('An owned clipboard evidence directory is required.')
+    targets = REGRESSION if label.startswith('clipboard-regression-') else ('test_clipboard_native.py',)
+    command = [sys.executable, '-m', 'pytest', *('tests/unit/' + name for name in targets),
+        '-q', '--runxfail', '-o', 'junit_family=xunit1', '-p', 'no:cacheprovider',
+        '-W', 'error::pytest.PytestUnhandledThreadExceptionWarning',
+        '--junitxml=' + str(directory / 'tests.xml')]
+    environment = {key: value for key, value in os.environ.items() if not key.startswith('PLUMA_')}
+    private = Path(tempfile.mkdtemp(prefix='pluma-clipboard-'))
+    for key in ('APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP'):
+        path = private / key
+        path.mkdir()
+        environment[key] = str(path)
+    started = time.monotonic()
+    metadata = {'command': command, 'source_commit': subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'source_hashes': {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for folder in ('pluma', 'tests') for path in (ROOT / folder).rglob('*.py')}}
+    try:
+        with (directory / 'tests.txt').open('x', encoding='utf-8') as log:
+            result = subprocess.run(command, cwd=ROOT, env=environment,
+                stdout=log, stderr=subprocess.STDOUT, timeout=240)
+        suites = [row.attrib for row in ET.parse(directory / 'tests.xml').getroot().iter('testsuite')]
+        metadata.update(exit=accepted_test_exit(result.returncode, suites), pytest_exit=result.returncode, junit=suites)
+    except subprocess.TimeoutExpired:
+        metadata.update(exit=124, error='CLIPBOARD_SUITE_TIMEOUT')
+    metadata['wall_seconds'] = round(time.monotonic() - started, 3)
+    with (directory / 'tests.json').open('x', encoding='utf-8') as report:
+        json.dump(metadata, report, indent=2)
+    return metadata['exit']
 
 
 def token_state(process):
@@ -36,9 +111,8 @@ def recorded_test_exit(path):
     return code
 
 
-def run(label):
-    if not label.startswith(('clipboard-focused-', 'clipboard-regression-')) or not label.replace('-', '').isalnum():
-        raise ValueError('Only the closed clipboard test suites are supported.')
+def run(label, output_dir=None):
+    directory = new_output_directory(label, output_dir)
     import win32api
     from pluma.core.job_object import owned_process_creation_time
     from pluma.core.task_supervisor import ResourceOwnership, TaskSupervisor, TaskState
@@ -46,11 +120,9 @@ def run(label):
     user, _ = _api()
     original_clipboard_sequence = user.GetClipboardSequenceNumber()
     original_token = token_state(win32api.GetCurrentProcess())
-    root = Path.cwd()
-    output = root / 'output/p11_power_actions' / (label + '-logon.json')
-    test_report = output.with_name(label + '.json')
-    if test_report.exists():
-        raise ValueError('Use a fresh evidence label; refusing a stale test report.')
+    root = ROOT
+    output = directory / 'logon.json'
+    test_report = directory / 'tests.json'
     supervisor = TaskSupervisor()
     capsule = supervisor.create_task('p11-native-clipboard-logon-fixture')
     supervisor.start_task(capsule.task_id)
@@ -74,7 +146,7 @@ def run(label):
     kernel.CloseHandle.argtypes, kernel.CloseHandle.restype = [w.HANDLE], w.BOOL
     kernel.TerminateProcess.argtypes, kernel.TerminateProcess.restype = [w.HANDLE, w.UINT], w.BOOL
     command = c.create_unicode_buffer(subprocess.list2cmdline([sys.executable,
-        str(root / 'output/p11_power_actions/run_checks.py'), label]))
+        '-m', 'tests.fixtures.clipboard_logon', label, '--child', '--output-dir', str(directory)]))
     environment = c.create_unicode_buffer('\0'.join(key + '=' + value for key, value in
         sorted(os.environ.items(), key=lambda item: item[0].upper())) + '\0\0')
     startup, process = Startup(), Process()
@@ -129,7 +201,8 @@ def run(label):
             resource.released_at = datetime.now(timezone.utc)
         capsule.close_resources()
         metadata['interactive_clipboard_sequence_unchanged'] = user.GetClipboardSequenceNumber() == original_clipboard_sequence
-        output.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+        with output.open('x', encoding='utf-8') as report:
+            json.dump(metadata, report, indent=2)
         assert metadata['interactive_clipboard_sequence_unchanged']
     passed = metadata['runner_exit'] == 0 and metadata['test_exit'] == 0
     supervisor.finalize_task(capsule.task_id, TaskState.SUCCEEDED if passed else TaskState.FAILED)
@@ -138,4 +211,10 @@ def run(label):
 
 
 if __name__ == '__main__':
-    raise SystemExit(run(sys.argv[1]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('label')
+    parser.add_argument('--output-dir')
+    parser.add_argument('--child', action='store_true', help=argparse.SUPPRESS)
+    options = parser.parse_args()
+    raise SystemExit(run_checks(options.label, options.output_dir) if options.child
+                     else run(options.label, options.output_dir))
