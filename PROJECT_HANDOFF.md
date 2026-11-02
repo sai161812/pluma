@@ -1,6 +1,54 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-02, P19 typed lifecycle bridge E93
+## Current checkpoint: 2026-11-02, P19 completion E94
+
+**P19's scoped implementation and acceptance gate is complete, with the
+owner-approved physical boundary-timing retest deferred to P25.**
+[E94](docs/completion/p19_overlay_acceptance.md) records exact scope, commands,
+source/build identities, failed attempts, approval and recovery.
+
+- Tested source `7a56915ad82595265d71352ebb92531af7fa9b36`, on
+  `p12-preparation`; recovery `fe5888d24d0257a8fb1c193acd522a71158d7b1e`.
+- E92/E93's real recognition and typed lifecycle now bind to one shell-owned
+  observer and one existing overlay for surfaces 11-14. Navigation shares it;
+  close cancels/joins it. New generations reset text; disconnect clears before
+  dismissal. Reading earlier text and tail following are preserved. Final text
+  and the existing received banner appear only after actual request admission.
+- Measured 32-band PCM analysis, sample identities and actual VAD silence frames
+  drive the existing visualizer/bar. Polling cannot manufacture speech or keep
+  an old sample fresh. No raw audio or previews enter logs/history/feed.
+- A native startup conflict was reproduced and fixed by starting voice after
+  initial status readback drains. Four ordinary slots and priority STOP remain.
+  Denial, clarification, empty input, timeout, capture/STT STOP and shutdown pass.
+- Pre-edit prerequisites: **144 passed in 14.11 s**. Final affected Python:
+  **331 passed in 39.22 s**, no skips/xfails. Exact-source
+  [Windows gate 41403835475](https://github.com/sai161812/pluma/actions/runs/41403835475)
+  passed **247 IPC / 176 native UI / 663 native popup / 195 formatting** checks,
+  plus layout/surface/audio/copy gates. Builds have zero warnings/errors.
+  Artifact digest and inspected dark voice renders are recorded in E94.
+- Actual native Whisper callbacks/STOP/deadline, CPU-STT STOP (0.1875 observed
+  worker CPU seconds), material clarification, and Whisper -> Qwen read-only
+  file voice/text parity pass with owned absence and independent ledger readback.
+  Same-capsule native request commitment is read back; no fixture transcript is
+  injected into the native-model run. Parent inference bindings remain cold.
+- Physical PTT capture, measured voice readback and capture STOP/closure pass.
+  Fresh C-02 speaker-to-microphone timing did not pass: insufficient captured
+  speech on MME; WASAPI refused 16 kHz. Thresholds and Windows settings were not
+  changed. The owner explicitly approved: **"Defer this physical timing retest
+  to P25"**. E78 remains historical evidence, not a fresh pass. P25 owns three
+  passing physical timing/closure trials using an audible speech/device route.
+
+**Remaining P19 implementation packets: none.** The specific approved physical
+timing limitation remains visible in the matrix for P25. Broader scenarios,
+human-speech quality, physical taskbar/DPI/accessibility, security and release
+retain their later gates. Ready for independent Sol review; approval is not
+assumed. Next safe milestone is P20 (history/details/undo/conflicts), only on
+owner instruction. P20 has not started; no merge was performed.
+
+Recovery: preserve unrelated work and use a reviewed revert toward `fe5888d`;
+never reset, clean, switch branches or force-push automatically.
+
+## Previous checkpoint: 2026-11-02, P19 typed lifecycle bridge E93
 
 **This bounded bridge packet is complete; P19 remains in progress.**
 [E93](docs/completion/p19_voice_lifecycle.md) records exact scope and evidence.

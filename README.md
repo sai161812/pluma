@@ -6,7 +6,7 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-11-02):** P18's scoped gate is complete ([E91](docs/completion/p18_live_runtime.md)). P19's native recognition prerequisite ([E92](docs/completion/p19_recognition_segments.md)) and typed Python/C# voice lifecycle bridge ([E93](docs/completion/p19_voice_lifecycle.md)) are verified bounded packets. P19 remains in progress: existing overlay/controller bindings, measured audio/VAD progress and native UI/device acceptance remain. Earlier gates retain their documented limitations. Next is overlay/controller binding; independent Sol approval is not assumed. See [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-11-02):** P19's scoped voice-overlay gate is complete ([E94](docs/completion/p19_overlay_acceptance.md)), with the owner's explicit approval to defer the failed fresh physical boundary-timing retest to P25. Existing gates retain their documented limits. Native UI, actual Whisper/Qwen parity and physical capture/STOP evidence are recorded; this is not full-product release or independent Sol approval. Next is P20 (history/details/undo/conflicts), only after owner instruction. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 

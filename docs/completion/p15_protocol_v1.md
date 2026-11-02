@@ -240,3 +240,28 @@ state on null/failure/reset and cancel their lifetime on shutdown. Recognition
 preview is not durable Activity/history/feed data or an execution API. Measured
 waveform/silence-progress telemetry and actual overlay consumer remain later
 P19 work; no synthetic waveform or countdown is authorized by this contract.
+
+## P19 measured voice overlay binding (E94)
+
+[E94](p19_overlay_acceptance.md) closes E93's remaining overlay/measurement work.
+The unreleased P19 voice view adds nullable `meter`, emitted on every current
+reply and accepted only in LISTENING. Its fields are `amplitude`, 32 `bands`,
+`speech_active`, `silence_progress` and nonnegative `sample_sequence`. Levels
+and progress must be finite 0..1 values. Unknown/inconsistent fields fail closed.
+Current UI/core must use this matching P19 schema; older strict consumers reject
+the extension instead of interpreting absent telemetry as measured values.
+
+Capture copies one 1024-sample window and detector counters under a bounded lock,
+then analyzes outside it. PCM never enters IPC. Silence progress comes from
+actual frames after sufficient speech; reading/waiting cannot advance it. The
+consumer refreshes spectrum freshness only when the sample sequence changes.
+Outside capture, meter is null. No synthetic amplitude or countdown is used.
+
+One shell-owned serialized observer starts after the initial dashboard status
+read, preserving the four normal/one STOP slots. It owns cancellation, rejects
+wrong correlation, regressing phases/sequences or changed ownership, clears on
+failure and joins on close. One `voice` popup updates the same reader; generation
+changes reset its viewport, earlier reading is preserved and only a reader at
+the tail follows new speech. Actual admitted final text and the received banner
+remain separate from task verification/success. P25 owns the explicitly approved
+physical boundary-timing retest limitation; it is not a protocol pass or waiver.
