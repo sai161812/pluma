@@ -139,7 +139,7 @@ class PolicyEngine:
                         if tool_name == 'terminate_process' else
                         f"Ask process {arguments.get('pid')} to close? It may prompt to save work. A completed close cannot be undone.")
                 if tool_name == 'undo_last' and arguments.get('selection') is not None:
-                    prompt = 'Restore this selected saved action? Newer changes will be preserved if restoration conflicts. An uncertain inverse will not be repeated. A completed inverse has no automatic inverse-of-the-inverse.'
+                    prompt = 'Restore this selected saved action? Newer changes will be preserved if restoration conflicts. An uncertain inverse will not be repeated. PLUMA cannot automatically redo a completed undo.'
                     summary = arguments['selection']['material']
                 if tool_name == 'safe_delete':
                     # This tool always recycles; the confirmation must state

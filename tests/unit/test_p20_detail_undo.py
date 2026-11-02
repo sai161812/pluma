@@ -155,7 +155,7 @@ def test_actual_selected_undo_stop_during_material_confirmation_never_claims(run
 def test_legacy_clipboard_evidence_never_exposes_raw_spoken_value(runtime, monkeypatch):
     cap = saved(runtime, monkeypatch)
     secret = 'P20_PRIVATE_CLIPBOARD_PAYLOAD'
-    runtime.db.execute_write('UPDATE tasks SET command_text=?,original_transcript=? WHERE task_id=?', (secret,secret,cap.task_id))
+    runtime.db.execute_write('UPDATE tasks SET command_text=?,original_transcript=?,active_window=? WHERE task_id=?', (secret,secret,secret,cap.task_id))
     runtime.db.execute_write('UPDATE actions SET tool=?,args_json_sanitized=?,verification_json=? WHERE task_id=?',
         ('clipboard_set',json.dumps({'text':secret}),json.dumps({'ok':True,'method':'clipboard_readback','detail':secret}),cap.task_id))
     result = detail(runtime,cap)

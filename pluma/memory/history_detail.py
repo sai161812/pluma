@@ -143,6 +143,8 @@ def read_detail(core, request):
                 if row[field] is not None and (len(row[field]) > 64 or datetime.fromisoformat(row[field].replace('Z','+00:00')).tzinfo is None):
                     raise ValueError('Invalid saved action timestamp.')
             view = decode_presentation(row['tool'], row['presentation_json'])
+            if view['policy_reason'] is not None and row['approval_state'] not in ('DENY','denied'):
+                raise ValueError('Policy denial reason lacks a recorded denial.')
             proof = json.loads(row['verification_json']) if row['verification_json'] else None
             if proof is not None and (type(proof.get('ok')) is not bool or int(proof['ok']) != row['verified']):
                 raise ValueError('Contradictory verifier evidence.')
@@ -178,7 +180,7 @@ def read_detail(core, request):
                 rollback_code=rollback_code, claim_state=row['claim_state'], effect_state=effect, conflict_current=current, conflict_target=target, selection=selected))
         return TaskDetailV1(request_id=request.request_id, task_id=raw['task_id'], task_request_id=raw['request_id'],
             original_transcript=('[REDACTED CLIPBOARD COMMAND]' if raw['private_input'] and raw['original_transcript'] is not None else text(raw['original_transcript'], 8192)), active_process=text(raw['active_process']),
-            active_window=text(raw['active_window']), cleanup_complete=complete, cleanup_unresolved=unresolved, residual_codes=residual,
+            active_window=None if raw['private_input'] else text(raw['active_window']), cleanup_complete=complete, cleanup_unresolved=unresolved, residual_codes=residual,
             actions=actions, has_more=len(rows)>request.limit,
             next_action_id=actions[-1].action_id if actions else request.after_action_id)
 

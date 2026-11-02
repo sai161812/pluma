@@ -68,7 +68,10 @@ internal static class NativeP20HistoryChecks
             check(list.Items.Cast<HistoryRow>().All(row => row.CommandText.Contains("file_预算_")),
                 "native Unicode case-insensitive search uses redacted saved values");
             var ids = list.Items.Cast<HistoryRow>().Select(row => row.TaskId).ToArray();
-            shell.NavigateForAcceptance(true); shell.NavigateHistoryForAcceptance();
+            shell.NavigateForAcceptance(true);
+            await Until(() => shell.Dashboard is { IsLoaded:true });
+            check(true,"native navigation loads the intermediate dashboard before returning to saved History");
+            shell.NavigateHistoryForAcceptance();
             await Until(() => shell.History is { IsLoaded: true });
             page = shell.History!; list = (ListView)page.FindName("HistoryRecords");
             check(list.Items.Cast<HistoryRow>().Select(row => row.TaskId).SequenceEqual(ids),

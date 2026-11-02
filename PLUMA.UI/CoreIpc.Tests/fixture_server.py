@@ -167,8 +167,6 @@ def main():
                     db.execute_write('UPDATE tasks SET command_text=? WHERE task_id=?',
                         ('HISTORY_PRIVATE_NATIVE_PAYLOAD in the clipboard', task))
                 elif command == "history_move":
-                    from uuid import uuid4
-                    from pluma.memory.activity import TaskRecord
                     original = Path(sys.argv[2]) / ('p20-original-' + str(len(history_files)) + '.txt')
                     moved = original.with_name(original.name.replace('original', 'moved'))
                     if original.exists() or moved.exists(): raise RuntimeError('Owned move fixture already exists.')
