@@ -13,10 +13,10 @@ namespace PLUMA.UI.Tests;
 
 internal static class NativeP20UndoChecks
 {
-    private static async Task Until(Func<bool> ready)
+    private static async Task Until(Func<bool> ready, int seconds = 6)
     {
         var timer = Stopwatch.StartNew();
-        while (!ready() && timer.Elapsed.TotalSeconds < 6) await Task.Delay(15);
+        while (!ready() && timer.Elapsed.TotalSeconds < seconds) await Task.Delay(15);
         if (!ready()) throw new TimeoutException("Owned saved-undo UI condition was not observed.");
     }
     private static void Invoke(Button button) => ((IInvokeProvider)FrameworkElementAutomationPeer.CreatePeerForElement(button)
@@ -115,9 +115,13 @@ internal static class NativeP20UndoChecks
                         Console.WriteLine("Owned folder command before invocation: " + JsonSerializer.Serialize(shell.CurrentCommandForAcceptance));
                         Console.WriteLine("Owned folder dialog admission enabled: " + dialog.IsSecondaryButtonEnabled);
                         Invoke(Find(dialog, "Open folder"));
-                        await Until(() => shell.CurrentCommandForAcceptance.RequestId != prior && !shell.CurrentCommandForAcceptance.Pending);
+                        // The registered cold Shell operation has a ten-second
+                        // deadline. Allow its terminal readback two seconds;
+                        // every other condition retains its six-second bound.
+                        await Until(() => shell.CurrentCommandForAcceptance.RequestId != prior && !shell.CurrentCommandForAcceptance.Pending, 12);
                         var command = shell.CurrentCommandForAcceptance;
                         var folder = await client.GetTaskDetailAsync(Guid.NewGuid().ToString("D"), command.TaskId!, 0, default);
+                        Console.WriteLine("Owned folder saved timing and verifier: " + JsonSerializer.Serialize(folder.Response));
                         check(folder.IsSuccess && folder.Response!.Actions.Single().Tool == "open_folder" && folder.Response.Actions.Single().Verified,
                             "actual conflict folder command has native Shell visibility and saved verifier readback");
                         await fixture.ControlHistoryAsync("history_assert_folder");

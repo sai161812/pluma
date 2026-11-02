@@ -242,3 +242,30 @@ def test_stop_after_real_claim_preserves_uncertain_intent_and_owned_absence(runt
     assert tool_store.read(str(runtime.paths.db_path),'preference','p20.key0')[0]=='owned'
     assert inverse_owner.worker_controller is None or inverse_owner.worker_controller.verify_cleanup()
     marker.unlink()
+
+
+def test_folder_launch_stop_preserves_intent_and_drains_owned_worker(runtime, monkeypatch, tmp_path):
+    """A blocked Shell call remains interruptible independently of its budget."""
+    from concurrent.futures import ThreadPoolExecutor
+    from tests.unit.test_worker_cancellation import OwnedProbe, await_file
+    from pluma.core.ownership import subprocess_absent
+    approved(runtime, monkeypatch)
+    spec = runtime.tool_registry.lookup('open_folder')
+    monkeypatch.setattr(spec, 'executor', OwnedProbe(str(tmp_path)))
+    cap = task(runtime)
+    with ThreadPoolExecutor(1) as pool:
+        pending = pool.submit(runtime.tool_registry.execute, 'open_folder', {'path': str(tmp_path)}, cap, runtime.ledger)
+        await_file(tmp_path / 'entered', pending)
+        worker = cap.worker_controller
+        identity = dict(worker.worker_identity)
+        started = time.monotonic()
+        runtime.supervisor.request_stop(cap.task_id)
+        result = pending.result(timeout=4)
+        assert cap.terminal_ready.wait(4)
+        assert time.monotonic() - started < 4
+    assert not result.ok and not result.verified and result.error_code == 'TASK_CANCELLED'
+    assert worker.verify_cleanup() and subprocess_absent(identity['pid'], identity['creation_time'])
+    assert not (tmp_path / 'late').exists()
+    saved = detail(runtime, cap)['actions'][-1]
+    assert not saved['verified'] and saved['effect_state'] == 'unknown' and saved['selection'] is None
+    assert 'NON_UNDOABLE_EFFECT_REMAINS' in detail(runtime, cap)['residual_codes']
