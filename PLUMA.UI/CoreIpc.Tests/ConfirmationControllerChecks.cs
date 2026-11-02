@@ -15,9 +15,10 @@ internal static class ConfirmationControllerChecks
         string formatted = ConfirmationPresentation.Arguments(raw);
         check(formatted.Contains("预算_2026—final.md") && formatted.Contains("a  b") && formatted.Contains("file path:"),
             "approval display formats keys while preserving literal Unicode filenames and argument whitespace");
-        foreach (string scenario in new[] { "approve", "deny", "stop", "changed", "expiry", "disconnect", "close", "uncertain", "fault", "busy" })
+        foreach (string scenario in new[] { "approve", "deny", "stop", "changed", "expiry", "disconnect", "close", "uncertain", "fault", "busy", "decision_busy" })
         {
             var source = new Client { Pending = View(scenario == "expiry" ? 0.15 : 3), Uncertain = scenario == "uncertain" };
+            if (scenario == "decision_busy") source.DecisionBusyRemaining = 2;
             var presenter = new Presenter();
             var owner = new ConfirmationController(source, presenter, TimeSpan.FromMilliseconds(10));
             using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(3));
@@ -31,21 +32,21 @@ internal static class ConfirmationControllerChecks
                     "temporary approval read pressure preserves the displayed material and logical lease");
                 source.Busy = false; presenter.Decision.TrySetResult(true);
             }
-            else if (scenario is "approve" or "uncertain") presenter.Decision.TrySetResult(true);
+            else if (scenario is "approve" or "uncertain" or "decision_busy") presenter.Decision.TrySetResult(true);
             else if (scenario == "deny") presenter.Decision.TrySetResult(false);
             else if (scenario == "stop") source.Pending = null;
             else if (scenario == "changed") source.Pending = source.Pending! with { Prompt = "A different operation" };
             else if (scenario == "disconnect") source.Unavailable = true;
             else if (scenario == "fault") presenter.Decision.TrySetException(new InvalidOperationException("fixture-only fault"));
             else if (scenario == "close") lifetime.Cancel();
-            if (scenario is "approve" or "deny" or "uncertain" or "busy")
+            if (scenario is "approve" or "deny" or "uncertain" or "busy" or "decision_busy")
                 await Until(() => source.Decisions.Count == 1);
             else if (scenario is "stop" or "changed" or "expiry" or "disconnect")
                 await Until(() => presenter.Cancelled);
             else if (scenario == "fault") await Until(() => owner.LastFailure is not null);
             await Task.Delay(35);
             lifetime.Cancel(); await run.WaitAsync(TimeSpan.FromSeconds(2));
-            bool expected = scenario is "approve" or "deny" or "uncertain" or "busy";
+            bool expected = scenario is "approve" or "deny" or "uncertain" or "busy" or "decision_busy";
             check(source.Decisions.Count == (expected ? 1 : 0) && presenter.Count == 1 && source.Disconnections > 0,
                 "window approval owner has one dialog, no stale/duplicate decision and owned cleanup: " + scenario);
             if (expected)
@@ -55,6 +56,8 @@ internal static class ConfirmationControllerChecks
                     actual.Binding == presenter.View.Binding && actual.Approved == (scenario != "deny"),
                     "decision uses the exact displayed task/call/binding: " + scenario);
             }
+            if (scenario == "decision_busy") check(source.DecisionAttempts == 3,
+                "only proven unwritten busy decisions retry; one exact decision enters the broker");
             if (scenario == "disconnect") check(originalClient != owner.ClientId, "reconnect uses a new logical approval client identity");
         }
     }
@@ -127,7 +130,7 @@ internal static class ConfirmationControllerChecks
     {
         internal volatile CoreRequestProtocol.ConfirmationView? Pending;
         internal volatile bool Unavailable, Uncertain, Busy;
-        internal int Disconnections;
+        internal int Disconnections, DecisionBusyRemaining, DecisionAttempts;
         internal readonly System.Collections.Concurrent.ConcurrentQueue<CoreRequestProtocol.ConfirmationDecisionRequest> Decisions = new();
         public Task<CoreRequestResult<CoreRequestProtocol.ConfirmationList>> QueryAsync(string requestId, string clientId, CancellationToken token) =>
             Task.FromResult(Busy ? CoreRequestResult<CoreRequestProtocol.ConfirmationList>.Failed(CoreConnectionFailure.Busy)
@@ -136,6 +139,9 @@ internal static class ConfirmationControllerChecks
                     Pending is null ? [] : [Pending]), CoreConnectionFailure.None, false, null, null));
         public Task<CoreRequestResult<CoreRequestProtocol.ConfirmationAck>> DecideAsync(CoreRequestProtocol.ConfirmationDecisionRequest request, CancellationToken token)
         {
+            DecisionAttempts++;
+            if (DecisionBusyRemaining-- > 0)
+                return Task.FromResult(CoreRequestResult<CoreRequestProtocol.ConfirmationAck>.Failed(CoreConnectionFailure.Busy));
             Decisions.Enqueue(request);
             return Task.FromResult(Uncertain ? CoreRequestResult<CoreRequestProtocol.ConfirmationAck>.Failed(CoreConnectionFailure.Timeout, true)
                 : new CoreRequestResult<CoreRequestProtocol.ConfirmationAck>(new(1, "confirmation_ack", request.RequestId, request.ConfirmationId,

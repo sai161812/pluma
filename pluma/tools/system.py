@@ -286,12 +286,24 @@ def execute_show_activity(args: Dict[str, Any], task_context: Any = None) -> Too
     return result.model_copy(update={"verified": proof.ok, "verify_detail": proof})
 
 
+def selected_undo_intent(args, context):
+    selected = UndoSelection.model_validate(args['selection'])
+    context.cancellation_token.raise_if_cancelled()
+    return {'action': 'selected_inverse_intent', 'guard_version': 1, 'non_undoable': True,
+            'target_task_id': selected.target_task_id, 'action_id': selected.action_id,
+            'revision': selected.revision}
+
+
 def verify_undo_last(result: ToolResult) -> VerifyResult:
     from pluma.memory.undo import verify
     try:
         receipt = result.private_context["undo_receipt"]
         valid = (result.ok and result.tool == "undo_last"
-                 and result.data == {"action_row_id": receipt["action_id"], "action": receipt["undo_data"]["action"]}
+                 and result.data.get("action_row_id") == receipt["action_id"]
+                 and result.data.get("action") == receipt["undo_data"]["action"]
+                 and set(result.data) <= {"action_row_id", "action", "non_undoable", "effect_state"}
+                 and ("non_undoable" not in result.data or result.data["non_undoable"] is True
+                      and result.data.get("effect_state") == "committed")
                  and verify(receipt))
     except Exception:
         valid = False

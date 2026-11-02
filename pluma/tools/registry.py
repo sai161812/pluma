@@ -1043,6 +1043,10 @@ class ToolRegistry:
             if task_context is not None and db is not None:
                 task_context.storage_path = db._db_path if db.is_open and db._db_path != ":memory:" else None
         if tool_name == 'undo_last' and validated_args.get('selection') is not None:
+            from pluma.tools.system import selected_undo_intent
+            # Undo has no captured inverse-of-the-inverse. Journal its selected
+            # reference before worker entry so interrupted claims remain residual.
+            spec = spec.model_copy(update={'non_undoable': True, 'undo_builder': selected_undo_intent})
             from pluma.memory.history_detail import selection
             from pluma.memory.tool_store import connect
             selected = validated_args['selection']

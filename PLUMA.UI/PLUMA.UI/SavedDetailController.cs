@@ -24,7 +24,7 @@ public sealed class SavedActionRow
         (Original.EffectState is null ? "" : "Non-undoable effect: " + PopupText.Label(Original.EffectState) + "\n") +
         $"Undo evidence reference: action {Original.ActionId}\n" +
         $"Undo: {(Original.Selection is not null ? "Available with confirmation" : Original.ClaimState is not null ? PopupText.Label(Original.ClaimState) : Original.UndoAvailable ? "Unavailable or later actions remain" : "No available inverse")}\n" +
-        $"Rollback: {(!Original.RollbackAttempted ? "Not attempted" : Original.RollbackOk is true ? "Verified" : "Unverified; retained for manual resolution")}" +
+        $"Rollback: {(!Original.RollbackAttempted ? Original.ClaimState == "claimed" ? "Outcome unavailable; claim retained" : "Not attempted" : Original.RollbackOk is true ? "Verified" : "Unverified; retained for manual resolution")}" +
         (Original.RollbackCode is null ? "" : "\nRollback result: " + PopupText.Label(Original.RollbackCode));
     public string Arguments => Original.Arguments;
 }

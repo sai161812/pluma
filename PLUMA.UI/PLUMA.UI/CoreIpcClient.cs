@@ -156,14 +156,14 @@ namespace PLUMA.UI
             finally { _background.Value = prior; }
         }
 
-        private bool TryEnterCall(bool priority, out CancellationToken lifetime, out bool background)
+        private bool TryEnterCall(bool priority, out CancellationToken lifetime, out bool background, bool foreground = false)
         {
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 // Four ordinary calls are bounded independently from one reserved
                 // STOP call, so a slow status/history response cannot consume STOP's client slot.
-                background = !priority && _background.Value;
+                background = !priority && !foreground && _background.Value;
                 if (priority ? _stopActive >= 1 : _normalActive >= 4 || background && _backgroundActive >= 3)
                 { lifetime = default; return false; }
                 if (priority) _stopActive++; else { _normalActive++; if (background) _backgroundActive++; }
@@ -295,7 +295,7 @@ namespace PLUMA.UI
             CancellationToken caller, Func<T, bool>? additionalCorrelation = null) where T : class
         {
             caller.ThrowIfCancellationRequested();
-            if (!TryEnterCall(priority, out CancellationToken lifetime, out bool background))
+            if (!TryEnterCall(priority, out CancellationToken lifetime, out bool background, foreground: mutation))
                 return CoreRequestResult<T>.Failed(CoreConnectionFailure.Busy);
             try
             {

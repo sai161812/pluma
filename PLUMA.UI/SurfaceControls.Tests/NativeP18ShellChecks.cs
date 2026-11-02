@@ -158,7 +158,7 @@ internal static class NativeP18ShellChecks
             await Until(() => host.Windows.Any(window => window.HostedContent is TaskRunningPopup card &&
                 ((PopupMessageText)card.FindName("TaskIdentity")).Text == closeTask.TaskId));
         }
-        catch (Exception error) { Console.Error.WriteLine("P18 shell failure before fixture teardown: " + error); throw; }
+        catch (Exception error) { Console.Error.WriteLine("P18 shell failure before fixture teardown: " + error); Console.Error.WriteLine($"Owned startup health: loaded={shell.Dashboard?.IsLoaded}, drained={shell.Dashboard?.InitialHealthReadback.IsCompleted}, failure={shell.Dashboard?.LastHealthFailure}, command={shell.CurrentCommandForAcceptance}, run={(shell.Dashboard?.FindName("CommandRunButton") as Button)?.IsEnabled}"); throw; }
         finally
         {
             shell.Close(); await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(4));

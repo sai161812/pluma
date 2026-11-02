@@ -18,6 +18,7 @@ namespace PLUMA.UI
         private Task _healthTask = Task.CompletedTask;
         private readonly TaskCompletionSource _initialHealthReadback = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal Task InitialHealthReadback => _initialHealthReadback.Task;
+        internal CoreConnectionFailure? LastHealthFailure { get; private set; }
         private bool _preview;
         private CancellationToken _ownerLifetime;
         private CommandController? _commands;
@@ -164,6 +165,7 @@ namespace PLUMA.UI
             try
             {
                 CoreStatusResult result = await core.GetStatusAsync(token);
+                LastHealthFailure = result.Failure;
                 if (!token.IsCancellationRequested && IsLoaded) ApplyStatus(result);
             }
             catch (OperationCanceledException) { }

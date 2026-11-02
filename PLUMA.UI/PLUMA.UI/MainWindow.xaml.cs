@@ -145,7 +145,7 @@ namespace PLUMA.UI
                 // four ordinary background readers contend for the same slots.
                 await initialHealth.WaitAsync(token);
                 token.ThrowIfCancellationRequested();
-                _confirmationTask = _confirmations!.RunAsync(token);
+                _confirmationTask = _coreStatus.RunBackgroundAsync(() => _confirmations!.RunAsync(token));
                 _eventTask = _coreStatus.RunBackgroundAsync(() => _events.RunAsync(token));
                 _runtimeTask = _coreStatus.RunBackgroundAsync(() => _runtime.RunAsync(token));
                 _voiceTask = _coreStatus.RunBackgroundAsync(() => _voice.RunAsync(token));

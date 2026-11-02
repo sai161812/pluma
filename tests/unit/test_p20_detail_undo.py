@@ -209,3 +209,36 @@ def test_changed_selected_material_cannot_reuse_admitted_request(runtime,monkeyp
     changed = dict(request,selection=dict(selected,material='Different material'))
     refused = core.handle_ipc_command(changed)
     assert refused['accepted'] is False and refused['error_code'] == 'REQUEST_ID_REUSED'
+
+
+@pytest.mark.parametrize("interruption", ["stop", "timeout"])
+def test_stop_after_real_claim_preserves_uncertain_intent_and_owned_absence(runtime,monkeypatch,interruption):
+    from concurrent.futures import ThreadPoolExecutor
+    from tests.fixtures.p20_inverse import claim_and_wait
+    cap = saved(runtime,monkeypatch)
+    selected = detail(runtime,cap)['actions'][0]['selection']
+    inverse_owner = task(runtime,'p20-interrupted-inverse')
+    spec = runtime.tool_registry.lookup('undo_last')
+    runtime.tool_registry.register(spec.model_copy(update={'executor':claim_and_wait, 'timeout_s':3 if interruption=='timeout' else 10}),overwrite=True)
+    marker = runtime.paths.db_path.parent / ('p20-claimed-'+inverse_owner.task_id+'.marker')
+    with ThreadPoolExecutor(1) as pool:
+        pending = pool.submit(runtime.tool_registry.execute,'undo_last',{'selection':selected},inverse_owner,runtime.ledger)
+        deadline=time.monotonic()+5
+        while not marker.exists() and time.monotonic()<deadline: time.sleep(.01)
+        assert marker.read_text(encoding='ascii') == inverse_owner.task_id
+        if interruption == 'stop': runtime.supervisor.stop_task(inverse_owner.task_id)
+        try:
+            result = pending.result(timeout=6)
+            assert not result.ok
+        except Exception as error:
+            from pluma.core.cancellation import TaskCancelledError
+            assert isinstance(error,TaskCancelledError),error
+    if interruption == 'timeout': runtime.supervisor.fail_task_with_rollback(inverse_owner.task_id)
+    assert inverse_owner.stop_latch_set and inverse_owner.cleanup_pending
+    assert inverse_owner.state in (TaskState.STOPPED_WITH_RESIDUAL, TaskState.FAILED)
+    unknown = detail(runtime,inverse_owner)['actions'][-1]
+    assert unknown['effect_state'] == 'unknown' and unknown['selection'] is None
+    assert runtime.db.execute_read_one('SELECT state FROM undo_claims')['state']=='claimed'
+    assert tool_store.read(str(runtime.paths.db_path),'preference','p20.key0')[0]=='owned'
+    assert inverse_owner.worker_controller is None or inverse_owner.worker_controller.verify_cleanup()
+    marker.unlink()

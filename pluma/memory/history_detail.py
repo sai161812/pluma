@@ -153,7 +153,7 @@ def read_detail(core, request):
                 except ValueError:
                     pass
             current = target = None
-            if row['rollback_attempted'] and row['rollback_ok'] == 0 and row['undo_json']:
+            if (row['claim_state'] == 'claimed' or row['rollback_attempted'] and row['rollback_ok'] == 0) and row['undo_json']:
                 inverse = json.loads(row['undo_json'])
                 if inverse.get('action') in ('move_file', 'rename_file'):
                     current = text(inverse.get('destination', inverse.get('new_path')))
@@ -162,6 +162,10 @@ def read_detail(core, request):
             rollback_code = _identifier(rollback_result.get('error_code', rollback_result.get('error')))
             result_data = json.loads(row['result_json']) if row['result_json'] else {}
             effect = result_data.get('effect_state') if result_data.get('non_undoable') is True else None
+            if effect is None and row['undo_json']:
+                intent = json.loads(row['undo_json'])
+                if intent.get('non_undoable') is True:
+                    effect = intent.get('effect_state', 'unknown')
             actions.append(SavedActionV1(action_id=row['id'], step_index=row['step_index'], tool=row['tool'],
                 arguments=sanitise_args_for_ledger(row['tool'], json.loads(row['args_json'])),
                 adapter=_identifier(row['adapter']), risk=row['risk'], approval=_identifier(row['approval_state']),
@@ -183,7 +187,8 @@ def conflict_folder(db, task_id, action_id, location):
     from pathlib import Path
     with db.read_snapshot() as connection:
         row = connection.execute('SELECT u.undo_json FROM actions a JOIN undo_records u ON u.action_id=a.id '
-            'WHERE a.task_id=? AND a.id=? AND u.rollback_attempted=1 AND u.rollback_ok=0 '
+            'LEFT JOIN undo_claims c ON c.action_id=a.id '
+            'WHERE a.task_id=? AND a.id=? AND ((u.rollback_attempted=1 AND u.rollback_ok=0) OR c.state=\'claimed\') '
             'AND length(CAST(u.undo_json AS BLOB))<=65536', (task_id, action_id)).fetchone()
         if row is None:
             raise ValueError('No saved conflict.')

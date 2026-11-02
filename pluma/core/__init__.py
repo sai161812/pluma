@@ -1,29 +1,34 @@
-"""pluma.core — Resident core, task lifecycle, routing, multi-step execution and IPC."""
+"""Public core contracts, loaded on access to avoid registry/import cycles."""
+from importlib import import_module
 
-from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
-from pluma.core.job_object import WindowsJobObject
-from pluma.core.multi_step import (
-    DEFAULT_MAX_REPLANS,
-    HARD_CAP_MAX_REPLANS,
-    MultiStepExecutionResult,
-    MultiStepOrchestrator,
-    StepExecutionRecord,
-)
-from pluma.core.orchestrator import Orchestrator, StepRecord, TaskExecutionResult
-from pluma.core.ownership import OwnershipRegistry, get_process_creation_time
-from pluma.core.recovery import CrashRecoveryManager, CrashRecoveryResult
-from pluma.core.request import InputMode, PlumaRequest
-from pluma.core.resident import ResidentCore
-from pluma.core.router import RouteResult, Router
-from pluma.core.task_supervisor import (
-    InvalidTaskTransition,
-    OwnedResource,
-    ResourceOwnership,
-    TaskCapsule,
-    TaskState,
-    TaskStep,
-    TaskSupervisor,
-)
+_EXPORT_MODULES = {'CancellationToken': 'pluma.core.cancellation',
+ 'StopReason': 'pluma.core.cancellation',
+ 'TaskCancelledError': 'pluma.core.cancellation',
+ 'WindowsJobObject': 'pluma.core.job_object',
+ 'DEFAULT_MAX_REPLANS': 'pluma.core.multi_step',
+ 'HARD_CAP_MAX_REPLANS': 'pluma.core.multi_step',
+ 'MultiStepExecutionResult': 'pluma.core.multi_step',
+ 'MultiStepOrchestrator': 'pluma.core.multi_step',
+ 'StepExecutionRecord': 'pluma.core.multi_step',
+ 'Orchestrator': 'pluma.core.orchestrator',
+ 'StepRecord': 'pluma.core.orchestrator',
+ 'TaskExecutionResult': 'pluma.core.orchestrator',
+ 'OwnershipRegistry': 'pluma.core.ownership',
+ 'get_process_creation_time': 'pluma.core.ownership',
+ 'CrashRecoveryManager': 'pluma.core.recovery',
+ 'CrashRecoveryResult': 'pluma.core.recovery',
+ 'InputMode': 'pluma.core.request',
+ 'PlumaRequest': 'pluma.core.request',
+ 'ResidentCore': 'pluma.core.resident',
+ 'RouteResult': 'pluma.core.router',
+ 'Router': 'pluma.core.router',
+ 'InvalidTaskTransition': 'pluma.core.task_supervisor',
+ 'OwnedResource': 'pluma.core.task_supervisor',
+ 'ResourceOwnership': 'pluma.core.task_supervisor',
+ 'TaskCapsule': 'pluma.core.task_supervisor',
+ 'TaskState': 'pluma.core.task_supervisor',
+ 'TaskStep': 'pluma.core.task_supervisor',
+ 'TaskSupervisor': 'pluma.core.task_supervisor'}
 
 __all__ = [
     # Cancellation & Request
@@ -59,3 +64,16 @@ __all__ = [
     "CrashRecoveryResult",
     "ResidentCore",
 ]
+
+
+def __getattr__(name):
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return sorted(set(globals()) | set(__all__))

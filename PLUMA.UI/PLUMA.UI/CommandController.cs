@@ -21,13 +21,20 @@ internal interface ICommandClient
 
 internal sealed class CoreCommandClient(CoreIpcClient client) : ICommandClient
 {
+    private async Task<CoreRequestResult<CoreRequestProtocol.SettingsSnapshot>> ReadCapabilityAsync(CancellationToken token)
+    {
+        var reply=await client.GetSettingsAsync(Guid.NewGuid().ToString("D"),token);
+        for(int retry=0;reply.Failure==CoreConnectionFailure.Busy && retry<8;retry++)
+        { await Task.Delay(50,token); reply=await client.GetSettingsAsync(Guid.NewGuid().ToString("D"),token); }
+        return reply;
+    }
     public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitAsync(string request, string text, CancellationToken token)
     {
         // A legacy status reply alone cannot establish that this core supports
         // fencing a not-yet-acknowledged submission. Probe read-only first.
         try
         {
-            var capability = await client.GetSettingsAsync(Guid.NewGuid().ToString("D"), token);
+            var capability = await ReadCapabilityAsync(token);
             if (!capability.IsSuccess || capability.Response is not { SubmissionStopFence: true })
                 return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
             token.ThrowIfCancellationRequested();
@@ -43,7 +50,7 @@ internal sealed class CoreCommandClient(CoreIpcClient client) : ICommandClient
     public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitUndoAsync(string request,
         CoreRequestProtocol.UndoSelection selected, CancellationToken token)
     {
-        var capability = await client.GetSettingsAsync(Guid.NewGuid().ToString("D"), token);
+        var capability = await ReadCapabilityAsync(token);
         if (!capability.IsSuccess || capability.Response is not { SubmissionStopFence: true })
             return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
         token.ThrowIfCancellationRequested();
@@ -52,7 +59,7 @@ internal sealed class CoreCommandClient(CoreIpcClient client) : ICommandClient
     public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitFolderAsync(string request,
         CoreRequestProtocol.FolderSelection selected, CancellationToken token)
     {
-        var capability = await client.GetSettingsAsync(Guid.NewGuid().ToString("D"), token);
+        var capability = await ReadCapabilityAsync(token);
         if (!capability.IsSuccess || capability.Response is not { SubmissionStopFence: true })
             return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
         token.ThrowIfCancellationRequested();

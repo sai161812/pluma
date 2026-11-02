@@ -80,7 +80,8 @@ namespace PLUMA.UI
         {
             var action = (DetailActions.SelectedItem as SavedActionRow)?.Original;
             DetailUndo.IsEnabled = _detail?.View.Busy == false && action?.Selection is not null && _commands?.View.CanSubmit == true;
-            DetailConflict.IsEnabled = action?.RollbackAttempted == true && action.RollbackOk is false;
+            DetailConflict.IsEnabled = action?.ClaimState == "claimed" || action?.RollbackAttempted == true && action.RollbackOk is false;
+            DetailConflict.Content = action?.ClaimState == "claimed" ? "View unresolved effect" : "View conflict";
         }
         private async void OnTaskSelected(object sender, SelectionChangedEventArgs args)
         { if (_detail is not null && HistoryRecords.SelectedItem is HistoryRow task) await _detail.ReadAsync(task.TaskId); }

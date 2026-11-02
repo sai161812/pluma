@@ -80,8 +80,14 @@ internal sealed class ConfirmationController(IConfirmationClient client, IConfir
                     {
                         // This fresh query still contains the exact displayed call. The
                         // broker and registry independently recheck STOP and the binding.
-                        var result = await client.DecideAsync(new(Id(), ClientId, view.TaskId,
-                            view.ConfirmationId, view.Binding, approved.Value), token);
+                        var decision = new CoreRequestProtocol.ConfirmationDecisionRequest(Id(), ClientId, view.TaskId,
+                            view.ConfirmationId, view.Binding, approved.Value);
+                        var result = await client.DecideAsync(decision, token);
+                        // Busy means this client never admitted/wrote the call.
+                        // Uncertain acknowledgements are never replayed.
+                        for(int retry=0;result.Failure==CoreConnectionFailure.Busy && !result.OutcomeUnknown &&
+                            IsLive(view,DateTimeOffset.UtcNow) && retry<8;retry++)
+                        { await Task.Delay(50,token); result=await client.DecideAsync(decision,token); }
                         if (!result.IsSuccess || !result.Response!.Accepted)
                             LastFailure = "Approval could not be recorded. Check task history.";
                     }
