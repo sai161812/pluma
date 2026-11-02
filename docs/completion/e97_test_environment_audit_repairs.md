@@ -78,6 +78,9 @@ directory above.
   gates remain open. P21 has not started. No P00–P20 product-wide completion
   is inferred from these test repairs.
 
-The final tracked changes are committed in the E97 checkpoint; successful
-verification commands above were run against the same source/test state. The
-commit changes only tests, test dependency declarations and completion records.
+The tested source/test state is commit
+`3fee9de654febaaa2b3880fced3c873439e9347c` on `p12-preparation`; successful
+verification commands above ran against that exact source/test content. This
+follow-up documentation commit only records the tested SHA. The repair changes
+tests, test dependency declarations and completion records; no product source
+or UI styling changed.
