@@ -24,9 +24,28 @@
     <Page Include="../PLUMA.UI/DashboardPage.xaml" Link="DashboardPage.xaml" />
     <Page Include="../PLUMA.UI/PolicyBlockNotice.xaml" Link="PolicyBlockNotice.xaml" />
     <Page Include="../PLUMA.UI/RiskApprovalDialog.xaml" Link="RiskApprovalDialog.xaml" />
+    <Page Include="../PLUMA.UI/ConflictAlertPopup.xaml" Link="ConflictAlertPopup.xaml" />
+    <Compile Include="../PLUMA.UI/ConflictAlertPopup.xaml.cs" Link="ConflictAlertPopup.xaml.cs" />
     <Compile Include="../PLUMA.UI/SettingsPage.xaml.cs" Link="SettingsPage.xaml.cs" />
     <Compile Include="../PLUMA.UI/DashboardPage.xaml.cs" Link="DashboardPage.xaml.cs" />
     <Compile Include="../PLUMA.UI/CoreStatus.cs" Link="CoreStatus.cs" />
+    <Compile Include="../PLUMA.UI/CoreIpcClient.cs" Link="CoreIpcClient.cs" />
+    <Compile Include="../PLUMA.UI/CoreRequestProtocol.cs" Link="CoreRequestProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreContractProtocol.cs" Link="CoreContractProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreActivityProtocol.cs" Link="CoreActivityProtocol.cs" />
+    <Compile Include="../PLUMA.UI/ActivitySurfaceFact.cs" Link="ActivitySurfaceFact.cs" />
+    <Compile Include="../PLUMA.UI/ActivitySurfacePresentation.cs" Link="ActivitySurfacePresentation.cs" />
+    <Page Include="../PLUMA.UI/RouteBadgePopup.xaml" Link="RouteBadgePopup.xaml" />
+    <Compile Include="../PLUMA.UI/RouteBadgePopup.xaml.cs" Link="RouteBadgePopup.xaml.cs" />
+    <Page Include="../PLUMA.UI/ToolResultCard.xaml" Link="ToolResultCard.xaml" />
+    <Compile Include="../PLUMA.UI/ToolResultCard.xaml.cs" Link="ToolResultCard.xaml.cs" />
+    <Page Include="../PLUMA.UI/PopupStatusIndicator.xaml" Link="PopupStatusIndicator.xaml" />
+    <Compile Include="../PLUMA.UI/PopupStatusIndicator.cs" Link="PopupStatusIndicator.cs" />
+    <Compile Include="../PLUMA.UI/ConfirmationController.cs" Link="ConfirmationController.cs" />
+    <Compile Include="../PLUMA.UI/CommandController.cs" Link="CommandController.cs" />
+    <Compile Include="../PLUMA.UI/EventFeedController.cs" Link="EventFeedController.cs" />
+    <Compile Include="../PLUMA.UI/EventNoticePresentation.cs" Link="EventNoticePresentation.cs" />
+    <Compile Include="../PLUMA.UI/NativeConfirmationPresenter.cs" Link="NativeConfirmationPresenter.cs" />
     <Compile Include="../PLUMA.UI/PolicyBlockNotice.xaml.cs" Link="PolicyBlockNotice.xaml.cs" />
     <Compile Include="../PLUMA.UI/RiskApprovalDialog.xaml.cs" Link="RiskApprovalDialog.xaml.cs" />
     <Page Include="../PLUMA.UI/LiveMessageFeed.xaml" Link="LiveMessageFeed.xaml" />
@@ -49,5 +68,54 @@
     <Compile Include="../PLUMA.UI/PopupMessageText.cs" Link="PopupMessageText.cs" />
     <Compile Include="../PLUMA.UI/IHostedPopup.cs" Link="IHostedPopup.cs" />
     <Compile Include="../PLUMA.UI/PopupText.cs" Link="PopupText.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../PLUMA.UI/CoreRuntimeProtocol.cs" Link="CoreRuntimeProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreVoiceProtocol.cs" Link="CoreVoiceProtocol.cs" />
+    <Compile Include="../PLUMA.UI/VoiceController.cs" Link="VoiceController.cs" />
+    <Compile Include="../PLUMA.UI/CoreHistoryProtocol.cs" Link="CoreHistoryProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreSavedDetailProtocol.cs" Link="CoreSavedDetailProtocol.cs" />
+    <Compile Include="../PLUMA.UI/HistoryController.cs" Link="HistoryController.cs" />
+    <Compile Include="../PLUMA.UI/SavedDetailController.cs" Link="SavedDetailController.cs" />
+    <Compile Include="../PLUMA.UI/RuntimeController.cs" Link="RuntimeController.cs" />
+    <Compile Include="../PLUMA.UI/RuntimePresentation.cs" Link="RuntimePresentation.cs" />
+    <Compile Include="../PLUMA.UI/TaskRunningPopup.xaml.cs" Link="TaskRunningPopup.xaml.cs" />
+    <Compile Include="../PLUMA.UI/StepProgressPopup.xaml.cs" Link="StepProgressPopup.xaml.cs" />
+    <Compile Include="../PLUMA.UI/ToolCallCard.xaml.cs" Link="ToolCallCard.xaml.cs" />
+    <Compile Include="../PLUMA.UI/RollbackPopup.xaml.cs" Link="RollbackPopup.xaml.cs" />
+    <Page Include="../PLUMA.UI/TaskRunningPopup.xaml" Link="TaskRunningPopup.xaml" />
+    <Page Include="../PLUMA.UI/StepProgressPopup.xaml" Link="StepProgressPopup.xaml" />
+    <Page Include="../PLUMA.UI/ToolCallCard.xaml" Link="ToolCallCard.xaml" />
+    <Page Include="../PLUMA.UI/RollbackPopup.xaml" Link="RollbackPopup.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="../PLUMA.UI/MainWindow.xaml" Link="MainWindow.xaml" />
+    <Compile Include="../PLUMA.UI/MainWindow.xaml.cs" Link="MainWindow.xaml.cs" />
+    <Compile Include="../PLUMA.UI/NativeActivityTray.cs" Link="NativeActivityTray.cs" />
+    <Page Include="../PLUMA.UI/HistoryPage.xaml" Link="HistoryPage.xaml" />
+    <Compile Include="../PLUMA.UI/HistoryPage.xaml.cs" Link="HistoryPage.xaml.cs" />
+    <Page Include="../PLUMA.UI/CancellationAnimation.xaml" Link="CancellationAnimation.xaml" />
+    <Compile Include="../PLUMA.UI/CancellationAnimation.xaml.cs" Link="CancellationAnimation.xaml.cs" />
+    <Page Include="../PLUMA.UI/WorkerTerminationFlash.xaml" Link="WorkerTerminationFlash.xaml" />
+    <Compile Include="../PLUMA.UI/WorkerTerminationFlash.xaml.cs" Link="WorkerTerminationFlash.xaml.cs" />
+    <Page Include="../PLUMA.UI/VoiceOverlay.xaml" Link="VoiceOverlay.xaml" />
+    <Compile Include="../PLUMA.UI/VoiceOverlay.xaml.cs" Link="VoiceOverlay.xaml.cs" />
+    <Page Include="../PLUMA.UI/VoiceListeningRing.xaml" Link="VoiceListeningRing.xaml" />
+    <Compile Include="../PLUMA.UI/VoiceListeningRing.xaml.cs" Link="VoiceListeningRing.xaml.cs" />
+    <Page Include="../PLUMA.UI/LiveTranscriptionOverlay.xaml" Link="LiveTranscriptionOverlay.xaml" />
+    <Compile Include="../PLUMA.UI/LiveTranscriptionOverlay.xaml.cs" Link="LiveTranscriptionOverlay.xaml.cs" />
+    <Page Include="../PLUMA.UI/VoiceCommittedBanner.xaml" Link="VoiceCommittedBanner.xaml" />
+    <Compile Include="../PLUMA.UI/VoiceCommittedBanner.xaml.cs" Link="VoiceCommittedBanner.xaml.cs" />
+    <Page Include="../PLUMA.UI/VoiceSilenceTimeoutIndicator.xaml" Link="VoiceSilenceTimeoutIndicator.xaml" />
+    <Compile Include="../PLUMA.UI/VoiceSilenceTimeoutIndicator.xaml.cs" Link="VoiceSilenceTimeoutIndicator.xaml.cs" />
+    <Compile Include="../PLUMA.UI/PopupCardWindow.cs" Link="PopupCardWindow.cs" />
+    <Compile Include="../PLUMA.UI/PopupDesktopPlacement.cs" Link="PopupDesktopPlacement.cs" />
+    <Compile Include="../PLUMA.UI/PopupSizing.cs" Link="PopupSizing.cs" />
+    <Compile Include="../PLUMA.UI/PopupStackHost.cs" Link="PopupStackHost.cs" />
+    <Compile Include="../PLUMA.UI/PopupStackLayout.cs" Link="PopupStackLayout.cs" />
+    <Compile Include="../PLUMA.UI/PopupStackState.cs" Link="PopupStackState.cs" />
+    <Compile Include="../PLUMA.UI/VoiceOverlayState.cs" Link="VoiceOverlayState.cs" />
+    <Compile Include="../PLUMA.UI/VoiceWaveformMotion.cs" Link="VoiceWaveformMotion.cs" />
+    <Compile Include="../PLUMA.UI/AudioSpectrumAnalyzer.cs" Link="AudioSpectrumAnalyzer.cs" />
   </ItemGroup>
 </Project>

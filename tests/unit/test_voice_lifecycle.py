@@ -84,3 +84,15 @@ def test_shutdown_unloads_immediately() -> None:
     mgr.shutdown()
     assert mgr.state == "COLD"
     assert mock_adapter.unload.called
+
+
+def test_path_validation_does_not_claim_task_owned_model_is_warm(tmp_path) -> None:
+    model_path = tmp_path / "fixture.ggml"
+    model_path.write_bytes(b"fixture model path only")
+    adapter = WhisperSttAdapter(registry=object())
+    mgr = VoiceLifecycleManager(adapter=adapter, model_path=str(model_path))
+
+    mgr.ensure_loaded()
+
+    assert mgr.state == "COLD"
+    assert not adapter.is_loaded

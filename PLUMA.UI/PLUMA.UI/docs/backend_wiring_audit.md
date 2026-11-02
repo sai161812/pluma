@@ -1,6 +1,12 @@
 # Backend audit before action wiring
 
-Current P11 app launch update: [E46](../../../docs/completion/p11_app_launch.md)
+Current revalidation: [E73 P01–P13 audit](../../../docs/completion/p01_p13_overall_audit.md)
+passes the 15 original BA assertions and current native/fixture regressions after
+its recorded source repairs. P01–P13 covered gates pass with the existing owner
+physical-test deferrals; P14 has not started. Historical findings/counts below
+retain their dates and do not override E73 or the current requirements matrix.
+
+Historical P11 app launch update: [E46](../../../docs/completion/p11_app_launch.md)
 adds parent-owned native launches, success-only promotion and safe instance undo.
 261 affected / 16 final focused passes. Non-P12 catalog: 39 implemented, 7 missing,
 1 defective, 10 unverified. Broker handoffs without proof remain unsupported;

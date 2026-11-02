@@ -94,6 +94,67 @@ namespace PLUMA.UI
             StatusHost.Label = PopupText.Message(status);
         }
 
+        private string? _voiceId;
+        private long _meterSequence = -1;
+        internal void ApplyVoice(CoreRequestProtocol.VoiceView value)
+        {
+            if (_voiceId != value.VoiceId)
+            {
+                ClearTranscript();
+                _voiceId = value.VoiceId;
+                _meterSequence = -1;
+            }
+            var meter = value.Meter;
+            VoiceState = value.Phase switch
+            {
+                "LISTENING" when meter?.SilenceProgress > 0 => VoiceOverlayState.SilenceTimeout,
+                "LISTENING" when meter?.SpeechActive == true => VoiceOverlayState.ListeningSpeech,
+                "LISTENING" or "STARTING" => VoiceOverlayState.ListeningSilence,
+                "DECODING" => VoiceOverlayState.Recognizing,
+                "COMMITTED" => VoiceOverlayState.Committed,
+                _ => VoiceOverlayState.Outcome
+            };
+            FinalTranscript = value.Phase == "COMMITTED" ? value.Text : string.Empty;
+            PartialTranscript = value.Phase == "DECODING" ? value.Text : string.Empty;
+            SilenceProgress = meter?.SilenceProgress ?? 0;
+            if (meter is null || meter.SampleSequence != _meterSequence)
+            {
+                SetAudioSpectrum(new AudioSpectrumFrame(meter?.Amplitude ?? 0, meter?.Bands ?? new double[32]));
+                _meterSequence = meter?.SampleSequence ?? -1;
+            }
+            IsAnimating = value.Phase == "LISTENING" && value.CaptureActive == true;
+            SetPreviewStatus(value.Phase switch
+            {
+                "STARTING" => "Starting microphone",
+                "LISTENING" when value.BoundaryComplete == true => "Speech ended",
+                "LISTENING" when value.CaptureActive == false => "Capture ended",
+                "LISTENING" when meter?.SilenceProgress > 0 => "Finishing",
+                "LISTENING" => "Listening",
+                "DECODING" => "Recognizing speech",
+                "COMMITTED" => "Command received",
+                "CLARIFICATION" => "Please repeat the command",
+                "EMPTY" => "No speech detected",
+                "CANCELLED" => "Voice cancelled",
+                "TIMED_OUT" => "Voice timed out",
+                _ when value.Code == "CAPTURE_DENIED" => "Microphone access denied",
+                _ when value.Code == "CAPTURE_UNAVAILABLE" => "Microphone unavailable",
+                _ => "Voice unavailable"
+            });
+        }
+
+        private void ClearTranscript()
+        {
+            FinalTranscript = PartialTranscript = string.Empty;
+            LiveTranscriptHost.ResetReading();
+        }
+
+        internal void ClearTransient()
+        {
+            ClearTranscript(); _voiceId = null;
+            SilenceProgress = 0; SetAudioSpectrum(new AudioSpectrumFrame(0, new double[32]));
+            VoiceState = VoiceOverlayState.Hidden; IsAnimating = false;
+        }
+
         public bool IsAnimating
         {
             get => (bool)GetValue(IsAnimatingProperty);
@@ -253,6 +314,7 @@ namespace PLUMA.UI
                 VoiceOverlayState.ListeningSpeech => "ListeningSpeech",
                 VoiceOverlayState.SilenceTimeout => "SilenceTimeout",
                 VoiceOverlayState.Committed => "Committed",
+                VoiceOverlayState.Recognizing or VoiceOverlayState.Outcome => "ListeningSilence",
                 _ => "Hidden"
             };
 

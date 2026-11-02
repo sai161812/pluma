@@ -1,5 +1,17 @@
 # UI wiring handoff
 
+**Current progress (2026-11-02, E96):** P20's scoped gate is complete on
+`p12-preparation`, native tested source `d223a32`. Saved History detail, exact
+selected undo, conflict evidence/folder actions and Activity tray/command entry
+join the existing text/STOP, confirmation, live facts and voice bindings.
+The existing dark controls/styles are preserved. The authorized Windows gate
+passes 285 IPC, 214 native UI, 663 popup and 195 formatting checks, plus the
+layout/surface/audio/copy gates, with zero-warning builds. Affected Python:
+631 passes, no skips/xfails. See [E96](../../../docs/completion/p20_detail_undo.md)
+for source/build identity, retained failures, ownership/privacy boundaries and
+recovery. P21 awaits instruction; P25 physical review and its owner-deferred
+C-02 timing retest remain separate. Earlier notes below are historical.
+
 Workspace update after the requested cleanup: active `ui-wiring` development is
 now in `D:\Workspace\DEVEL\PLUMA`. The former `PLUMA-ui-wiring` worktree is
 detached at `55b625c`, preserving its existing evidence. The original generated
@@ -8,17 +20,25 @@ See [cleanup/recovery](../../../docs/workspace_cleanup.md) and the
 [completion prompts](../../../PLUMA_COMPLETION_PROMPTS.md). Earlier workspace
 paths and branch-state descriptions below are historical preparation records.
 
-**Current progress:** the owner authorized wiring after this preparation.
-Step 1 now implements authenticated read-only dashboard status; see
-[the implementation and checks](wiring_status_connection.md) and
-[the pushed recovery checkpoint](wiring_recovery.md). A subsequent
-[bounded backend audit](backend_wiring_audit.md) reproduced nine findings;
-273 existing regressions and four audit controls pass, while eleven required
-behavior assertions fail. Keep action entry disabled until the recorded STOP,
-cleanup, voice/shutdown and credential issues are addressed. This audit does
-not certify the whole backend. Full wiring and physical/release acceptance
-remain open. The original preparation below is
-retained with its original baseline and branch state.
+**Historical progress (2026-10-27):** P17 E86 connects dashboard Enter/Run and
+independent priority Stop to the shared backend. One shell-owned controller
+preserves request/task identity across navigation; duplicate submission and
+uncertain-write replay are blocked. Terminal persistence, verification and
+residual facts govern the displayed outcome. P16 native material approval
+remains connected. P15 query/event contracts remain authoritative.
+
+Latest P18 packet native checks: **171 authenticated IPC/protocol**, **105 native UI**,
+**663 popup** and **195 formatting**, plus layout/surface/audio/copy gates and
+zero-warning builds. [E88](../../../docs/completion/p18_activity_evidence.md) records
+exact source/build identity, fixture boundaries and recovery. P17 remains
+recorded in [E86](../../../docs/completion/p17_command_submission.md). See the
+[command wiring contract](wiring_command_submission.md).
+
+P18 [E87](../../../docs/completion/p18_event_feed.md) adds the shell-owned task feed/terminal notice bridge; detailed event surfaces remain open. P19-P23 retain
+voice, history/undo, settings, health/recovery and perception surfaces. No push
+subscription or heartbeat is implemented. Historical descriptions below retain
+their dates and do not override the current handoff/matrix. P25 physical/owner
+appearance and later release gates remain separate.
 
 Prepared 2026-10-19 before wiring. This is repository preparation and a source
 inventory, not an implementation of the IPC adapter or a release-completion claim.

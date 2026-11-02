@@ -43,7 +43,7 @@ def test_moved_window_rejected(monkeypatch):
     import pluma.tools.ui
     monkeypatch.setattr(pluma.tools.ui, "ActiveWindowContext", FakeContext)
     
-    args = {"snapshot_id": "snap-1", "target_ref": "snap-1::btn1"}
+    args = {"snapshot_id": "snap-1", "target_ref": "snap-1::btn1", "expected_enabled": False}
     ctx = MockTaskContext()
     
     res = execute_click_element(args, ctx)
@@ -61,7 +61,7 @@ def test_changed_hwnd_rejected(monkeypatch):
     import pluma.tools.ui
     monkeypatch.setattr(pluma.tools.ui, "ActiveWindowContext", FakeContext)
     
-    args = {"snapshot_id": "snap-1", "target_ref": "snap-1::btn1"}
+    args = {"snapshot_id": "snap-1", "target_ref": "snap-1::btn1", "expected_enabled": False}
     ctx = MockTaskContext()
     
     res = execute_click_element(args, ctx)

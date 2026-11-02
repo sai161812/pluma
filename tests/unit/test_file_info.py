@@ -10,6 +10,7 @@ from pluma.brain.schemas import Plan, RouteMode, ToolCall
 from pluma.brain.tool_subset import ToolSubsetSelector
 from pluma.core import job_object
 from pluma.core.cancellation import StopReason
+from pluma.core.ownership import subprocess_absent
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult
 from pluma.core.stop_protocol import StopReply, StopOutcome
@@ -213,7 +214,9 @@ def test_blocked_metadata_worker_is_owned_and_bounded(runtime, monkeypatch, tmp_
         finally:
             if not running.done():
                 runtime.supervisor.stop_task(cap.task_id, grace_s=0)
-    assert not result.success and not proc.is_alive() and controller.verify_cleanup() is True
+    assert not result.success and proc._closed and controller._proc is None
+    assert subprocess_absent(warmed_identity['pid'], warmed_identity['creation_time']) is True
+    assert controller.verify_cleanup() is True
     assert result.final_state == ('STOPPED' if stop else 'FAILED')
     if not stop:
         assert 'user request' not in (result.error or '').lower()

@@ -10,6 +10,15 @@ namespace PLUMA.UI
         public event EventHandler? ViewConflictRequested;
         public event EventHandler? OpenFolderRequested;
 
+        internal void BindSavedConflict(string? current, string? target)
+        {
+            CurrentPathText.PreserveLiteralText = ConflictPathText.PreserveLiteralText = true;
+            CurrentPathText.IsTextSelectionEnabled = ConflictPathText.IsTextSelectionEnabled = true;
+            CurrentPathText.Text = current ?? "No recorded file path";
+            ConflictPathText.Text = target ?? "No recorded file path";
+            IsSecondaryButtonEnabled = current is not null || target is not null;
+        }
+
         private void OnViewConflict(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
             args.Cancel = true;

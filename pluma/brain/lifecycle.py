@@ -12,7 +12,11 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from pluma.brain.interface import PlannerCancelledError, PlannerError
-from pluma.brain.llama_cpp_adapter import LlamaCppAdapter, LlamaCppBackend
+from pluma.brain.llama_cpp_adapter import (
+    DEFAULT_INFERENCE_TIMEOUT_S,
+    LlamaCppAdapter,
+    LlamaCppBackend,
+)
 from pluma.brain.schemas import Plan, RouteMode
 from pluma.core.cancellation import CancellationToken
 from pluma.perception.element_refs import ScreenSnapshot
@@ -42,11 +46,15 @@ class LlmLifecycleManager:
         custom_backend: Optional[LlamaCppBackend] = None,
         registry: Optional[ToolRegistry] = None,
         idle_unload_seconds: float = DEFAULT_MODEL_IDLE_UNLOAD_SECONDS,
+        max_plan_steps: int = 8,
+        inference_timeout_s: float = DEFAULT_INFERENCE_TIMEOUT_S,
     ) -> None:
         self.adapter = adapter or LlamaCppAdapter(
             model_path=model_path,
             custom_backend=custom_backend,
             registry=registry,
+            max_plan_steps=max_plan_steps,
+            inference_timeout_s=inference_timeout_s,
         )
         self.idle_unload_seconds = idle_unload_seconds
         self._state = LlmLifecycleState.COLD
@@ -54,6 +62,7 @@ class LlmLifecycleManager:
         self._idle_timer: Optional[threading.Timer] = None
         self._closing = False
         self._timers = set()
+        self._active_native_generations = 0
 
     @property
     def state(self) -> LlmLifecycleState:
@@ -73,6 +82,41 @@ class LlmLifecycleManager:
         """Ensure model is warm and execute planning under lifecycle guard."""
         if cancellation_token is not None and cancellation_token.is_cancelled:
             raise PlannerCancelledError("Planning cancelled before model warm-up.")
+
+        if self.adapter.uses_task_owned_native_runtime:
+            with self._lock:
+                if self._closing:
+                    raise PlannerCancelledError("Planner lifecycle is shutting down.")
+                self._cancel_idle_timer()
+            try:
+                # This validates configuration only. Native weights are loaded
+                # and released inside the task-owned process for each generation.
+                self.adapter.load()
+            except Exception:
+                with self._lock:
+                    self._state = LlmLifecycleState.COLD
+                raise
+            with self._lock:
+                self._active_native_generations += 1
+                self._state = LlmLifecycleState.GENERATING
+            try:
+                return self.adapter.plan(
+                    command=command,
+                    context=context,
+                    permitted_tool_specs=permitted_tool_specs,
+                    screen_snapshot=screen_snapshot,
+                    prior_step_results=prior_step_results,
+                    cancellation_token=cancellation_token,
+                    route=route,
+                )
+            finally:
+                with self._lock:
+                    self._active_native_generations = max(0, self._active_native_generations - 1)
+                    self._state = (
+                        LlmLifecycleState.GENERATING
+                        if self._active_native_generations
+                        else LlmLifecycleState.COLD
+                    )
 
         self._ensure_warm()
 

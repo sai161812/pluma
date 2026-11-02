@@ -205,7 +205,9 @@ def test_native_stop_reconciles_rollback_processes_history_and_shutdown(
         assert len(query.available_undo_records_for_task(cap.task_id)) == int(conflict)
         assert len(cap.undo_stack) == int(conflict)
         assert _winapi.WaitForSingleObject(child_handle, 1000) == _winapi.WAIT_OBJECT_0
-        assert subprocess_absent(child, child_created) and not root.is_alive()
+        assert subprocess_absent(child, child_created)
+        assert subprocess_absent(identity['pid'], identity['creation_time'])
+        assert root._closed and controller._proc is None
         assert controller.verify_cleanup() is True and native_job.is_closed is True
         assert cap.worker_controller is cap.job_object is None
         record_property('request_to_latch_seconds', latched[0] - started)

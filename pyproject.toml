@@ -38,15 +38,31 @@ media = [
     "numpy>=1.26.0",
     "pillow>=10.2.0",
 ]
+stt = [
+    "numpy>=1.26.0,<3",
+    "pywhispercpp>=1.5.1,<2",
+]
+ocr = [
+    "paddleocr==3.7.0",
+    "onnxruntime==1.31.0",
+    "numpy>=1.26.0,<3",
+    "pillow>=10.2.0",
+]
 dev = [
     "pytest>=8.2.0",
     "pytest-timeout>=2.3.1",
+    "numpy>=1.26.0,<3",
+    "pillow>=10.2.0",
+    "sounddevice>=0.4.6",
+    "pywin32>=306; platform_system=='Windows'",
+    "pycaw>=20240210; platform_system=='Windows'",
+    "comtypes>=1.4.0; platform_system=='Windows'",
     "pyinstaller>=6.5.0",
     "wheel>=0.43.0",
     "build>=1.2.0",
 ]
 all = [
-    "pluma[windows,media,dev]",
+    "pluma[windows,media,stt,dev]",
 ]
 
 [project.scripts]

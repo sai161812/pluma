@@ -115,7 +115,7 @@ namespace PLUMA.UI.Tests
             grid.Children.Add(panel);
         }
 
-        private static async Task CaptureAsync(FrameworkElement element, string path)
+        internal static async Task CaptureAsync(FrameworkElement element, string path)
         {
             await Task.Delay(250);
             element.UpdateLayout();

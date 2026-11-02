@@ -75,6 +75,48 @@ def test_verify_control_invoked_not_found() -> None:
     assert "failed" in v_res.detail
 
 
+def test_verify_control_enabled_reads_back_expected_state() -> None:
+    mock_uia = MagicMock(spec=UiaAdapter)
+    mock_uia.find_control.return_value = ControlInfo(
+        automation_id="btnSubmit",
+        name="Submit",
+        control_type="Button",
+        class_name="Button",
+        is_enabled=False,
+        is_visible=True,
+        rect=Rect(0, 0, 80, 30),
+    )
+
+    verifier = ScreenVerifier(uia_adapter=mock_uia)
+    result = verifier.verify_control_enabled(
+        hwnd=123, expected_enabled=False, auto_id="btnSubmit"
+    )
+
+    assert result.ok
+    assert "read back as False" in result.detail
+
+
+def test_verify_control_enabled_rejects_mismatched_state() -> None:
+    mock_uia = MagicMock(spec=UiaAdapter)
+    mock_uia.find_control.return_value = ControlInfo(
+        automation_id="btnSubmit",
+        name="Submit",
+        control_type="Button",
+        class_name="Button",
+        is_enabled=True,
+        is_visible=True,
+        rect=Rect(0, 0, 80, 30),
+    )
+
+    verifier = ScreenVerifier(uia_adapter=mock_uia)
+    result = verifier.verify_control_enabled(
+        hwnd=123, expected_enabled=False, auto_id="btnSubmit"
+    )
+
+    assert not result.ok
+    assert "expected False, got True" in result.detail
+
+
 def test_verify_window_active_success() -> None:
     mock_win32 = MagicMock(spec=Win32Adapter)
     mock_win32.get_foreground_window.return_value = WindowInfo(

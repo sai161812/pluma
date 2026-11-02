@@ -12,7 +12,7 @@ from pluma.brain.schemas import Plan, RouteMode, ToolCall
 from pluma.brain.tool_subset import ToolSubsetSelector
 from pluma.core import job_object
 from pluma.core.cancellation import StopReason
-from pluma.core.ownership import get_process_creation_time
+from pluma.core.ownership import get_process_creation_time, subprocess_absent
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult
 from pluma.memory.activity import ActivityQuery
@@ -199,7 +199,9 @@ def test_blocked_owned_reads_stop_or_timeout_without_late_effect(runtime, monkey
     assert result.final_state == ('STOPPED' if stop else 'FAILED') and not result.success
     assert result.steps[0].result.error_code == ('TASK_CANCELLED' if stop else 'TOOL_TIMEOUT')
     assert cap.cancellation_token.reason == (StopReason.USER_STOP if stop else StopReason.TASK_TIMEOUT)
-    assert not proc.is_alive() and controller.verify_cleanup() is True
+    assert proc._closed and controller._proc is None
+    assert subprocess_absent(identity['pid'], identity['creation_time']) is True
+    assert controller.verify_cleanup() is True
     assert not (tmp_path / 'late').exists() and not cap.undo_stack
     assert runtime.close(3).complete
     reopened(runtime, cap)

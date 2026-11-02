@@ -6,6 +6,7 @@ import pytest
 
 from pluma.brain.schemas import RouteMode
 from pluma.brain.tool_subset import (
+    BROWSER_TOOLS,
     FILE_TOOLS,
     ROUTE_TOOL_MAP,
     SYSTEM_CLIPBOARD_TOOLS,
@@ -29,6 +30,31 @@ def test_tool_subset_smart_route_default() -> None:
     assert "clipboard_read" in names
     # Perception tools should NOT be in SMART by default
     assert "inspect_active_window" not in names
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        (
+            "Find report.pdf in downloads and move it to archive",
+            FILE_TOOLS,
+        ),
+        (
+            "Move the PDF I downloaded yesterday to my Documents folder",
+            FILE_TOOLS,
+        ),
+        ("Open Downloads", FILE_TOOLS),
+        ("Download report.pdf from the website", BROWSER_TOOLS),
+        ("Download report.pdf from https://example.com/report.pdf", BROWSER_TOOLS),
+        ("Check browser download status", BROWSER_TOOLS),
+    ],
+)
+def test_smart_route_selects_file_or_explicit_browser_tools(
+    command: str, expected: list[str]
+) -> None:
+    names = ToolSubsetSelector().get_tool_names_for_route(RouteMode.SMART, command)
+
+    assert names == expected
 
 
 def test_tool_subset_screen_route() -> None:

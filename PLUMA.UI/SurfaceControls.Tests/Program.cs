@@ -19,8 +19,8 @@ namespace PLUMA.UI.Tests
                 Console.WriteLine("Starting WinUI control checks");
                 _ = System.Threading.Tasks.Task.Run(async () =>
                 {
-                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(30));
-                    Console.Error.WriteLine("FAIL UI checks exceeded the 30 second timeout");
+                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(60));
+                    Console.Error.WriteLine("FAIL UI checks exceeded the 60 second timeout");
                     Environment.Exit(1);
                 });
                 WinRT.ComWrappersSupport.InitializeComWrappers();

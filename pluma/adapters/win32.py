@@ -96,16 +96,26 @@ class Win32Adapter:
         """Get the bounding rectangle of a window."""
         if not self.is_window(hwnd):
             raise WindowNotFoundError(f"Invalid window handle: {hwnd}")
-        rect = _RECT()
-        ok = self._user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect))
-        if not ok:
-            raise AdapterError(f"Failed to get window rect for HWND {hwnd}")
-        return Rect(
-            left=int(rect.left),
-            top=int(rect.top),
-            right=int(rect.right),
-            bottom=int(rect.bottom),
-        )
+        # GetWindowRect is DPI-virtualized according to the calling thread.
+        # Match the target window's own awareness context and restore the
+        # caller's context so snapshots stay comparable across owned workers.
+        from pluma.adapters.window_geometry import _window_coordinates
+
+        try:
+            with _window_coordinates(hwnd) as (c, w, user):
+                rect = w.RECT()
+                if not user.GetWindowRect(w.HWND(hwnd), c.byref(rect)):
+                    raise c.WinError()
+                return Rect(
+                    left=int(rect.left),
+                    top=int(rect.top),
+                    right=int(rect.right),
+                    bottom=int(rect.bottom),
+                )
+        except WindowNotFoundError:
+            raise
+        except Exception as exc:
+            raise AdapterError(f"Failed to get window rect for HWND {hwnd}: {exc}") from exc
 
     def get_window_state(self, hwnd: int) -> WindowState:
         """Determine the current display state of the window."""

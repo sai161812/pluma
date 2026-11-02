@@ -26,15 +26,25 @@ class PlanValidationError(ValueError):
 class PlanValidator:
     """Performs strict validation of Plan instances and raw model JSON output."""
 
-    def __init__(self, registry: Optional[ToolRegistry] = None) -> None:
+    def __init__(
+        self,
+        registry: Optional[ToolRegistry] = None,
+        max_steps: int = 8,
+    ) -> None:
+        if (isinstance(max_steps, bool) or not isinstance(max_steps, int)
+                or max_steps < 1 or max_steps > MAX_PLAN_STEPS_HARD_CAP):
+            raise ValueError(
+                f"max_steps must be an integer from 1 to {MAX_PLAN_STEPS_HARD_CAP}."
+            )
         self._registry = registry
+        self.max_steps = max_steps
 
     def validate_plan(
         self,
         plan: Plan,
         registry: Optional[ToolRegistry] = None,
         permitted_tool_specs: Optional[List[Dict[str, Any]]] = None,
-        max_steps: int = MAX_PLAN_STEPS_HARD_CAP,
+        max_steps: Optional[int] = None,
     ) -> Plan:
         """Validate an instantiated Plan against registry tools and schemas.
 
@@ -46,7 +56,13 @@ class PlanValidator:
             raise ValueError("A ToolRegistry must be provided to validate plan tools.")
 
         # 1. Step count check
-        effective_max = min(max_steps, MAX_PLAN_STEPS_HARD_CAP)
+        configured_max = self.max_steps if max_steps is None else max_steps
+        if (isinstance(configured_max, bool) or not isinstance(configured_max, int)
+                or configured_max < 1 or configured_max > MAX_PLAN_STEPS_HARD_CAP):
+            raise PlanValidationError(
+                f"Maximum plan steps must be from 1 to {MAX_PLAN_STEPS_HARD_CAP}."
+            )
+        effective_max = min(configured_max, MAX_PLAN_STEPS_HARD_CAP)
         if not plan.steps:
             raise PlanValidationError("Plan must contain at least one step.")
         if len(plan.steps) > effective_max:
@@ -92,7 +108,7 @@ class PlanValidator:
         raw_text: str,
         registry: Optional[ToolRegistry] = None,
         permitted_tool_specs: Optional[List[Dict[str, Any]]] = None,
-        max_steps: int = MAX_PLAN_STEPS_HARD_CAP,
+        max_steps: Optional[int] = None,
     ) -> Plan:
         """Parse raw JSON output from the model, handling markdown fences, and validate.
 
@@ -108,10 +124,9 @@ class PlanValidator:
 
         try:
             payload = json.loads(cleaned)
-        except json.JSONDecodeError as json_err:
-            raise PlanValidationError(
-                f"Model output is not valid JSON: {json_err}. Raw text: {raw_text[:200]!r}"
-            ) from json_err
+        except json.JSONDecodeError:
+            # Never copy raw model text into errors; it may echo sensitive context.
+            raise PlanValidationError("Model output is not valid JSON.") from None
 
         if not isinstance(payload, dict):
             raise PlanValidationError(
@@ -120,8 +135,9 @@ class PlanValidator:
 
         try:
             plan = Plan.model_validate(payload)
-        except ValidationError as val_err:
-            raise PlanValidationError(f"Plan structure invalid: Schema validation failed: {val_err}") from val_err
+        except ValidationError:
+            # Pydantic errors can include offending values, so keep this factual and fixed.
+            raise PlanValidationError("Plan structure invalid: schema validation failed.") from None
 
         return self.validate_plan(
             plan,

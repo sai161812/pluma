@@ -60,6 +60,33 @@ def test_uia_find_control_mocked() -> None:
             assert ctrl.is_enabled is True
 
 
+def test_uia_find_control_reads_edit_value_separately_from_accessible_name() -> None:
+    adapter = UiaAdapter()
+    mock_rect = MagicMock(left=10, top=20, right=100, bottom=50)
+    mock_wrapper = MagicMock()
+    mock_wrapper.rectangle.return_value = mock_rect
+    mock_wrapper.is_enabled.return_value = True
+    mock_wrapper.is_visible.return_value = True
+    mock_wrapper.is_password.return_value = False
+    mock_wrapper.get_value.return_value = "current edit value"
+    mock_wrapper.element_info.automation_id = "edit_name"
+    mock_wrapper.element_info.name = "Name"
+    mock_wrapper.element_info.control_type = "Edit"
+    mock_wrapper.element_info.class_name = "Edit"
+    mock_wrapper.element_info.handle = 12345
+    mock_elem = MagicMock()
+    mock_elem.exists.return_value = True
+    mock_elem.wrapper_object.return_value = mock_wrapper
+    mock_win = MagicMock()
+    mock_win.child_window.return_value = mock_elem
+
+    with patch.object(adapter._win32, "is_window", return_value=True):
+        with patch.object(adapter, "_get_app_window", return_value=mock_win):
+            control = adapter.find_control(12345, name="Name", control_type="Edit")
+    assert control.name == "Name"
+    assert control.text_value == "current edit value"
+
+
 def test_uia_find_control_not_found() -> None:
     """Verify ElementNotFoundError when element does not exist."""
     adapter = UiaAdapter()
@@ -92,3 +119,30 @@ def test_uia_invoke_disabled_control() -> None:
         with patch.object(adapter, "_get_app_window", return_value=mock_win):
             with pytest.raises(ElementUnavailableError):
                 adapter.invoke_control(12345, name="DisabledBtn")
+
+
+def test_missing_invoke_pattern_does_not_guess_a_pixel_click():
+    adapter = UiaAdapter()
+    wrapper = MagicMock()
+    wrapper.is_enabled.return_value = True
+    wrapper.iface_invoke.Invoke.side_effect = RuntimeError("Pattern unsupported")
+    window = MagicMock()
+    window.child_window.return_value.wrapper_object.return_value = wrapper
+    with patch.object(adapter._win32, "is_window", return_value=True), patch.object(adapter, "_get_app_window", return_value=window):
+        with pytest.raises(AdapterError):
+            adapter.invoke_control(500, auto_id="field")
+    wrapper.click_input.assert_not_called()
+
+
+def test_native_password_property_and_value_pattern_keep_text_literal():
+    from types import SimpleNamespace
+    adapter = UiaAdapter()
+    wrapper = MagicMock()
+    wrapper.element_info.element.CurrentIsPassword = False
+    wrapper.iface_value.CurrentIsReadOnly = False
+    window = MagicMock()
+    window.child_window.return_value.wrapper_object.return_value = wrapper
+    with patch.object(adapter._win32, "is_window", return_value=True), patch.object(adapter, "_get_app_window", return_value=window):
+        assert adapter.set_control_text(500, "{ENTER}^a", auto_id="field")
+    wrapper.iface_value.SetValue.assert_called_once_with("{ENTER}^a")
+    wrapper.type_keys.assert_not_called()

@@ -6,11 +6,11 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-10-19):** the dark native UI and read-only dashboard status connection are implemented. A bounded backend audit reproduced nine open safety/lifecycle findings. Action entry stays disabled while these are repaired; full backend, wiring and release acceptance remain open. Start with [the completion prompts](PLUMA_COMPLETION_PROMPTS.md), [the current audit](PLUMA.UI/PLUMA.UI/docs/backend_wiring_audit.md) and [the live handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-11-02):** P20's scoped gate is complete: saved History search/paging, task/action detail, confirmed evidence-based selected undo, conflicts and Activity tray/command entry ([E95](docs/completion/p20_saved_history.md), [E96](docs/completion/p20_detail_undo.md)). Affected verification passes 631 Python checks and the authorized Windows gate, including 285 IPC and 214 native UI checks. P21 awaits owner instruction; independent Sol approval is not assumed. P19's owner-approved physical C-02 timing retest deferral to P25 remains ([E94](docs/completion/p19_overlay_acceptance.md)). This is not full-product release. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
-Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production action, voice, events, history and settings connections remain in progress.
+Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP, material approval, voice, factual live events and saved history/detail/undo are connected. Settings and later health/perception surfaces retain their next milestones.
 
 A real interaction recording should be added here once that UI path is complete. Until then, the repository evidence is the implementation, tests, release artifacts, and verification logs rather than a mocked interface.
 
@@ -24,7 +24,7 @@ flowchart TD
     C -->|FAST| D[Deterministic plan<br/>LLM remains cold]
     C -->|SMART| P[Wake local LLM planner]
     C -->|SCREEN| E[Capture UIA snapshot]
-    C -->|DEEP| F[Capture UIA + OCR snapshot]
+    C -->|DEEP| F[Inspect registered UIA context]
 
     E --> P
     F --> P
@@ -63,12 +63,11 @@ That keeps model inference out of the deterministic FAST path and avoids loading
 
 ### UIA is the primary screen-grounding path
 
-The current SCREEN and DEEP routes do not use perception in exactly the same way.
+SCREEN and DEEP begin with the same registered semantic observation path.
 
-- **SCREEN:** captures a UI Automation snapshot first with OCR disabled, then passes that context to the planner. If the resulting plan uses `click_ocr_text`, OCR is loaded on demand for that tool call.
-- **DEEP:** captures both UIA controls and OCR text before planning by calling the snapshot builder with `include_ocr=True`.
+- **SCREEN and DEEP:** obtain a UIA snapshot through the registered, owned inspection tool and register it to the task before planning. Failed or denied inspection stops the route. OCR remains cold until a later target-scoped tool needs it.
 - **Semantic UI actions:** `click_element` and `type_into_element` require a snapshot ID and grounded target reference. Before acting, they re-check window identity, PID/process identity, DPI, and geometry.
-- **OCR actions:** `click_ocr_text` captures only the target window or region, runs OCR through its lifecycle manager, rejects missing or ambiguous matches, revalidates the target immediately before clicking, and performs a post-action visual verification.
+- **OCR actions:** semantic UIA targets take priority even when OCR was explicitly requested. OCR input requires one exact label match with at least 0.90 confidence, a current observation and unchanged target identity/geometry/DPI, followed by transition readback. The planner cannot lower that confidence floor. Uncertain targets are refused.
 
 The OCR lifecycle starts cold, loads only when OCR is actually invoked, and schedules an unload after 10 seconds of inactivity. Screen-capture bytes are used in memory and are not persisted as screenshots by these paths; the OCR click tool explicitly clears its capture buffer after recognition.
 
@@ -183,13 +182,23 @@ python -m venv .venv
 pip install -e ".[windows,media,dev]"
 ```
 
+Install the optional PaddleOCR/ONNX Runtime path when OCR is needed:
+
+```powershell
+pip install -e ".[ocr]"
+```
+
+The OCR model files download to the local PaddleX cache on first use. Image
+captures remain in memory; model files and OCR runtimes are not bundled in the
+repository.
+
 Start the resident process:
 
 ```powershell
 pluma --debug
 ```
 
-The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR. Their model files/runtime packages are not vendored in this repository and must be installed and configured separately before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions.
+The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR through ONNX Runtime when the OCR extra is installed. Their model files/runtime packages are not vendored in this repository and must be installed before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions. Install voice capture and STT support with `python -m pip install -e ".[media,stt]"`, then place a whisper.cpp GGML model at `%LOCALAPPDATA%\Pluma\models\whisper\ggml-base.en.bin` or set `voice.model_path` to its local path. PLUMA does not download model files automatically.
 
 For packaged installation, the release bundle contains the wheel, `pluma.exe`, installer scripts, configuration, and SHA-256 manifest:
 

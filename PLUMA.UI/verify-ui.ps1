@@ -118,13 +118,15 @@ try {
     $controlsExecutable = Join-Path $repositoryRoot 'PLUMA.UI/SurfaceControls.Tests/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/SurfaceControls.Tests.exe'
     $controls = Start-OwnedProcess $controlsExecutable @() 'native-controls'
     try {
-        if (-not $controls.Process.WaitForExit(45000)) { throw 'Native control checks exceeded 45 seconds.' }
+        if (-not $controls.Process.WaitForExit(75000)) { throw 'Native control checks exceeded 75 seconds.' }
         if ($controls.Process.ExitCode -ne 0) { throw "Native control runner failed with exit code $($controls.Process.ExitCode)." }
     }
     finally {
         Finish-OwnedProcess $controls
         $controlsLog = Join-Path (Split-Path $controlsExecutable -Parent) 'control-tests.txt'
         if (Test-Path $controlsLog) { Copy-Item -LiteralPath $controlsLog -Destination (Join-Path $runDirectory 'control-tests.txt') }
+        $historyRender = Join-Path (Split-Path $controlsExecutable -Parent) 'history-page-saved-dark.png'
+        if (Test-Path $historyRender) { Copy-Item -LiteralPath $historyRender -Destination (Join-Path $runDirectory 'history-page-saved-dark.png') }
     }
     $controlReport = Assert-Report (Join-Path $runDirectory 'control-tests.txt') '(?m)^\d+ UI checks passed\.'
     $summary.controlsResult = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''

@@ -57,6 +57,63 @@ def test_task_lifecycle_writes_and_queries(memory_db):
     assert t2["started_at"] == "2026-08-22T00:00:01Z"
 
 
+def test_task_context_is_redacted_on_insert_and_update(memory_db):
+    ledger = ActivityLedger(memory_db)
+    query = ActivityQuery(memory_db)
+    secret = "sk-pluma-context-fixture-7d31f0-secretvalue"
+    task_id = "task-context-redact-1"
+    ledger.insert_task(TaskRecord(
+        task_id=task_id,
+        request_id="req-context-redact",
+        input_mode="text",
+        command_text="List files in Downloads",
+        original_transcript=f"List files in Downloads; token={secret}",
+        active_window=f"Settings api_key={secret}",
+    ))
+
+    inserted = query.task_by_id(task_id)
+    assert inserted is not None
+    assert secret not in json.dumps(inserted)
+    assert "[REDACTED]" in inserted["active_window"]
+    assert secret not in inserted["original_transcript"]
+    assert "[REDACTED]" in inserted["original_transcript"]
+
+    ledger.update_task(task_id, active_window=f"Browser token={secret}")
+    updated = query.task_by_id(task_id)
+    assert updated is not None
+    assert secret not in json.dumps(updated)
+    assert "[REDACTED]" in updated["active_window"]
+
+
+@pytest.mark.parametrize("utterance_template", [
+    "Set clipboard to {payload}",
+    "Paste {payload} into the open field",
+])
+def test_spoken_clipboard_content_is_removed_from_command_and_original_transcript(
+    memory_db, utterance_template,
+):
+    ledger = ActivityLedger(memory_db)
+    query = ActivityQuery(memory_db)
+    payload = "clipboard-private-fixture-91a2@example.test"
+    utterance = utterance_template.format(payload=payload)
+
+    ledger.insert_task(TaskRecord(
+        task_id="voice-clipboard-redaction-" + ("paste" if utterance_template.startswith("Paste") else "set"),
+        request_id="voice-clipboard-redaction-request",
+        input_mode="voice",
+        command_text=utterance,
+        original_transcript=utterance,
+    ))
+
+    stored = query.task_by_id(
+        "voice-clipboard-redaction-" + ("paste" if utterance_template.startswith("Paste") else "set")
+    )
+    assert stored is not None
+    assert payload not in json.dumps(stored)
+    assert stored["command_text"] == "[REDACTED CLIPBOARD COMMAND]"
+    assert stored["original_transcript"] == "[REDACTED CLIPBOARD COMMAND]"
+
+
 def test_action_records_and_redaction(memory_db):
     ledger = ActivityLedger(memory_db)
     query = ActivityQuery(memory_db)

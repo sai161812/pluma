@@ -124,3 +124,5 @@ class ControlInfo:
     is_visible: bool
     rect: Optional[Rect] = None
     handle: Optional[int] = None
+    is_password: Optional[bool] = None
+    text_value: Optional[str] = None

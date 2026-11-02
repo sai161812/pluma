@@ -23,8 +23,11 @@ SYSTEM_PROMPT_TEMPLATE = """You are the PLUMA planning engine. Your job is to tr
 RULES:
 1. Propose ONLY tools from the PERMITTED TOOLS list below. Never invent new tool names.
 2. Every tool call MUST include all required arguments matching the tool schema.
-3. Keep plans short, concise, and direct (max 20 steps).
-4. Output MUST be valid JSON conforming exactly to the following Plan JSON schema:
+3. Keep plans short and concise. Never exceed the configured step limit in the schema.
+4. Always include both `mode` and `arguments` in the JSON. Use `mode: "direct"`
+   for exactly one step and `mode: "multi_step"` for two or more steps. Use an
+   empty object for a tool that needs no arguments.
+5. Output MUST be valid JSON conforming exactly to the following Plan JSON schema:
 {{
   "route": "SMART" | "SCREEN" | "DEEP",
   "mode": "direct" | "multi_step",
@@ -36,7 +39,7 @@ RULES:
     }}
   ]
 }}
-5. Do NOT include markdown code blocks, conversational text, explanations, or commentary. Output raw JSON only.
+6. Do NOT include markdown code blocks, conversational text, explanations, or commentary. Output raw JSON only.
 
 PERMITTED TOOLS:
 {tools_description}
@@ -80,11 +83,19 @@ class PromptBuilder:
         if screen_snapshot and not screen_snapshot.is_expired:
             elem_summaries = []
             for c in screen_snapshot.controls[:30]:  # Limit to 30 controls to avoid token bloat
+                password = c.metadata.get("is_password")
+                control_type = (c.control_type or "").casefold()
+                if (password is True or "password" in control_type
+                        or (control_type in {"edit", "document", "combobox"}
+                            and password is not False)):
+                    continue
                 elem_summaries.append(
-                    f"[{c.control_type or 'Control'}] label='{c.label}' auto_id='{c.uia_automation_id or ''}'"
+                    f"[{redact_sensitive_data(c.control_type or 'Control')}] "
+                    f"label='{redact_sensitive_data(c.label)}' "
+                    f"auto_id='{redact_sensitive_data(c.uia_automation_id or '')}'"
                 )
             for w in screen_snapshot.ocr_words[:20]:  # Limit to 20 OCR words
-                elem_summaries.append(f"[OCR] '{w.label}' (conf={w.confidence:.2f})")
+                elem_summaries.append(f"[OCR] '{redact_sensitive_data(w.label)}' (conf={w.confidence:.2f})")
 
             if elem_summaries:
                 sections.append("VISIBLE SCREEN ELEMENTS:\n" + "\n".join(elem_summaries))

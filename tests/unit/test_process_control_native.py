@@ -189,6 +189,16 @@ def test_intent_is_durable_before_close_and_stop_preserves_unrelated_target(runt
                     pytest.fail(str(running.result()))
                 time.sleep(.01)
             assert journal and journal['available'] == 0 and json.loads(journal['undo_json'])['non_undoable']
+            # Journal visibility alone does not prove dispatch: STOP before
+            # admission correctly removes an unexecuted intent. This case tests
+            # STOP after the real owned window received its close request.
+            close_requested = tmp_path / 'target' / 'ready.close-requested'
+            deadline = time.monotonic() + 3
+            while not close_requested.exists() and time.monotonic() < deadline:
+                if running.done():
+                    pytest.fail(str(running.result()))
+                time.sleep(.01)
+            assert close_requested.exists(), 'Owned window did not acknowledge WM_CLOSE.'
             cap.cancellation_token.cancel(StopReason.USER_STOP)
             result = running.result(3)
         assert not result.ok and cap.undo_stack[-1]['non_undoable']

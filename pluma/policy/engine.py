@@ -118,7 +118,7 @@ class PolicyEngine:
         # Without a trusted exact-call intent proof, MEDIUM requires explicit
         # approval too. Natural language and planner arguments cannot grant it.
         if risk in (RiskClass.MEDIUM, RiskClass.HIGH):
-            if self.confirmation_contract is None:
+            if self.confirmation_contract is None or not getattr(self.confirmation_contract, "is_available", True):
                 return PolicyEvaluationResult(PolicyDecision.REQUIRE_CONFIRMATION, risk,
                     "Explicit approval is required for this operation.", requires_confirmation=True)
             if not isinstance(task_id, str) or not task_id.strip():
@@ -138,6 +138,9 @@ class PolicyEngine:
                         f"Force process {arguments.get('pid')} to exit? Unsaved work can be lost. This cannot be undone."
                         if tool_name == 'terminate_process' else
                         f"Ask process {arguments.get('pid')} to close? It may prompt to save work. A completed close cannot be undone.")
+                if tool_name == 'undo_last' and arguments.get('selection') is not None:
+                    prompt = 'Restore this selected saved action? Newer changes will be preserved if restoration conflicts. An uncertain inverse will not be repeated. PLUMA cannot automatically redo a completed undo.'
+                    summary = arguments['selection']['material']
                 if tool_name == 'safe_delete':
                     # This tool always recycles; the confirmation must state
                     # the actual recovery path and must never imply permanent

@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes
 import logging
+import sys
 import time
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -156,23 +157,15 @@ class InputAdapter:
         sent = self._user32.SendInput(n, arr, cb_size)
         if sent != n:
             err = ctypes.GetLastError()
-            logger.warning("SendInput partial failure: sent %d of %d, error=%d", sent, n, err)
+            raise AdapterError(
+                f"Windows accepted {sent} of {n} input events (error {err}); input was not completed.",
+                error_code="INPUT_INJECTION_FAILED",
+            )
         return int(sent)
 
     def press_key(self, key: Union[str, int], duration_s: float = 0.05) -> None:
         """Simulate pressing and releasing a single key."""
-        vk = self._resolve_vk(key)
-
-        inp_down = _INPUT(type=INPUT_KEYBOARD)
-        inp_down.u.ki = _KEYBDINPUT(wVk=vk, wScan=0, dwFlags=0, time=0, dwExtraInfo=0)
-
-        inp_up = _INPUT(type=INPUT_KEYBOARD)
-        inp_up.u.ki = _KEYBDINPUT(wVk=vk, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
-
-        self._send_inputs([inp_down])
-        if duration_s > 0:
-            time.sleep(duration_s)
-        self._send_inputs([inp_up])
+        self.send_hotkey([], key, duration_s=duration_s)
 
     def send_hotkey(
         self,
@@ -186,38 +179,45 @@ class InputAdapter:
         """
         mod_vks = [self._resolve_vk(m) for m in modifiers]
         main_vk = self._resolve_vk(key)
-
+        attempted = []
         try:
             # Press modifiers in order
             for mvk in mod_vks:
+                attempted.append(mvk)
                 inp = _INPUT(type=INPUT_KEYBOARD)
                 inp.u.ki = _KEYBDINPUT(wVk=mvk, wScan=0, dwFlags=0, time=0, dwExtraInfo=0)
                 self._send_inputs([inp])
 
             # Press and release main key
             inp_down = _INPUT(type=INPUT_KEYBOARD)
+            attempted.append(main_vk)
             inp_down.u.ki = _KEYBDINPUT(wVk=main_vk, wScan=0, dwFlags=0, time=0, dwExtraInfo=0)
             self._send_inputs([inp_down])
 
             if duration_s > 0:
                 time.sleep(duration_s)
 
-            inp_up = _INPUT(type=INPUT_KEYBOARD)
-            inp_up.u.ki = _KEYBDINPUT(wVk=main_vk, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
-            self._send_inputs([inp_up])
-
         finally:
-            # Release modifiers in reverse order
-            for mvk in reversed(mod_vks):
+            # Try every release even when Windows rejects one. Preserve the
+            # original dispatch error while still releasing the remaining keys.
+            original_error = sys.exception()
+            release_error = None
+            for mvk in reversed(attempted):
                 inp = _INPUT(type=INPUT_KEYBOARD)
                 inp.u.ki = _KEYBDINPUT(wVk=mvk, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
-                self._send_inputs([inp])
+                try:
+                    self._send_inputs([inp])
+                except Exception as exc:
+                    release_error = release_error or exc
+            if release_error is not None and original_error is None:
+                raise release_error
 
     def send_text(self, text: str) -> None:
         """Send unicode text characters directly."""
         inputs: List[_INPUT] = []
-        for char in text:
-            code = ord(char)
+        encoded = text.encode("utf-16-le")
+        for offset in range(0, len(encoded), 2):
+            code = int.from_bytes(encoded[offset:offset + 2], "little")
             inp_down = _INPUT(type=INPUT_KEYBOARD)
             inp_down.u.ki = _KEYBDINPUT(
                 wVk=0,
@@ -236,7 +236,16 @@ class InputAdapter:
             )
             inputs.extend([inp_down, inp_up])
 
-        self._send_inputs(inputs)
+        try:
+            self._send_inputs(inputs)
+        except Exception:
+            # A partial Unicode packet can end on a key-down event. Release
+            # packets without retyping any character, then preserve failure.
+            try:
+                self._send_inputs(inputs[1::2])
+            except Exception:
+                logger.warning("Windows also rejected Unicode key-release cleanup.")
+            raise
 
     def mouse_move(self, x: int, y: int, bounding_rect: Optional[Rect] = None) -> None:
         """Move mouse cursor to coordinate (x, y) with optional boundary checking."""
@@ -279,7 +288,14 @@ class InputAdapter:
             d.u.mi = _MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=down_flag, time=0, dwExtraInfo=0)
             u = _INPUT(type=INPUT_MOUSE)
             u.u.mi = _MOUSEINPUT(dx=0, dy=0, mouseData=0, dwFlags=up_flag, time=0, dwExtraInfo=0)
-            self._send_inputs([d, u])
+            try:
+                self._send_inputs([d, u])
+            except Exception:
+                try:
+                    self._send_inputs([u])
+                except Exception:
+                    logger.warning("Windows also rejected mouse-button release cleanup.")
+                raise
 
         _click_once()
         if double:

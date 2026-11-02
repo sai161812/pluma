@@ -151,7 +151,7 @@ def test_registered_production_inspection_dispatches_actual_declared_adapters(mo
     snapshot.model_dump.return_value = {}
     monkeypatch.setattr(ui, "UiaSnapshotBuilder", lambda **kwargs: builder)
     registry = ToolRegistry()
-    registry.register(INSPECT_ACTIVE_WINDOW_SPEC)
+    registry.register(INSPECT_ACTIVE_WINDOW_SPEC.model_copy(update={"process_isolated": False}))
     try:
         result = registry.execute("inspect_active_window", {"include_controls": controls})
     finally:

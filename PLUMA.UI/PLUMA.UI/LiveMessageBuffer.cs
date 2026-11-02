@@ -32,5 +32,6 @@ namespace PLUMA.UI
         }
 
         public void Clear() => _entries.Clear();
+        internal void RemoveOldest() { if (_entries.Count > 0) _entries.RemoveAt(0); }
     }
 }

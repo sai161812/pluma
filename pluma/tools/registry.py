@@ -41,7 +41,8 @@ _GLOBAL_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 )
 
 # Multiprocessing context for isolated execution (spawn avoids fork hazards on Windows)
-_MP_CONTEXT = multiprocessing.get_context("spawn")
+from pluma.adapters.worker_process import worker_context
+_MP_CONTEXT = worker_context()
 
 
 @dataclass
@@ -58,6 +59,8 @@ class WorkerRequest:
     storage_path: Optional[str] = None
     supervisor_pid: Optional[int] = None
     execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    screen_snapshot: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    recognition_updates: bool = False
 
 
 @dataclass
@@ -133,12 +136,31 @@ class WorkerTaskContext:
         )
 
 
+class _ExecutorContextOverlay:
+    """Expose per-call UI grounding without mutating the shared task context."""
+
+    __slots__ = ("_source", "grounded_ui_target")
+
+    def __init__(self, source: Any, grounded_ui_target: Dict[str, Any]) -> None:
+        object.__setattr__(self, "_source", source)
+        object.__setattr__(self, "grounded_ui_target", grounded_ui_target)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_source"), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in {"_source", "grounded_ui_target"}:
+            object.__setattr__(self, name, value)
+            return
+        setattr(object.__getattribute__(self, "_source"), name, value)
+
+
 def _invoke_executor(
     executor_fn: Callable[..., Any],
     args: Dict[str, Any],
     task_context: Any,
     admission: Any,
-    observation: Optional[Dict[str, bool]] = None,
+    observation: Optional[Dict[str, Any]] = None,
 ) -> ToolResult:
     """Worker-side entry: finish preparation, then admit immediately at invocation.
 
@@ -150,6 +172,9 @@ def _invoke_executor(
         admission.admit_executor()
     if observation is not None:
         observation["started"] = True
+        entered = observation.get("on_entered")
+        if entered is not None:
+            entered(time.monotonic())
     if takes_context:
         return executor_fn(args, task_context)
     return executor_fn(args)
@@ -174,6 +199,10 @@ def _worker_process_loop(
             if getattr(worker_req, "env_overrides", None):
                 os.environ.update(worker_req.env_overrides)
             worker_ctx = WorkerTaskContext(task_id=worker_req.task_id)
+            if worker_req.recognition_updates:
+                if worker_req.tool_name != "voice_stt":
+                    raise ValueError("Recognition updates require the voice worker.")
+                worker_ctx.publish_recognition = lambda sequence, text: conn.send(("recognition", (sequence, text)))
             if admission is not None:
                 worker_ctx.cancellation_token = WorkerCancellationView(admission)
             worker_ctx.undo_stack = list(worker_req.undo_stack)
@@ -181,8 +210,16 @@ def _worker_process_loop(
             worker_ctx.storage_path = worker_req.storage_path
             worker_ctx.supervisor_pid = worker_req.supervisor_pid
             worker_ctx.execution_binding = worker_req.execution_binding
+            if worker_req.screen_snapshot is not None:
+                from pluma.perception.element_refs import ScreenSnapshot
+                from pluma.perception.snapshot_registry import SnapshotRegistry
+                worker_ctx.snapshot_registry = SnapshotRegistry()
+                worker_ctx.snapshot_registry.register(
+                    ScreenSnapshot.model_validate(worker_req.screen_snapshot)
+                )
             
-            res = _invoke_executor(executor_fn, args, worker_ctx, admission)
+            res = _invoke_executor(executor_fn, args, worker_ctx, admission,
+                {"on_entered": lambda started: conn.send(("entered", started))})
                 
             undo_data = worker_ctx.undo_stack[-1] if worker_ctx.undo_stack else None
             resp = WorkerResponse(
@@ -328,11 +365,16 @@ class TaskWorkerController:
                     raise RuntimeError("Owned worker exit was not verified; cleanup retained.")
                 if self.worker_identity is not None:
                     self.worker_identity["exit_code"] = proc.exitcode
+            if proc is not None:
+                close_process = getattr(proc, "close", None)
+                if callable(close_process):
+                    close_process()
+                    self._proc = None
             if conn is not None:
                 conn.close()
                 self._conn = None
-            # Retain the exited Process for identity/readback. Its native handles
-            # follow its normal multiprocessing finalizer/object lifetime.
+            # Keep PID/creation/exit facts in worker_identity, but close the
+            # multiprocessing process handles as part of task cleanup.
         finally:
             self._cleanup_lock.release()
 
@@ -357,11 +399,16 @@ class TaskWorkerController:
         timeout_s: float,
         job_object: Any = None,
         cancellation_token: Optional[CancellationToken] = None,
+        on_entered: Optional[Callable[[float], None]] = None,
+        on_recognition: Optional[Callable[[int, str], None]] = None,
     ) -> Tuple[str, Any]:
         from pluma.adapters.worker_pipe import WorkerPipe, WorkerIOCancelled
 
         if worker_req.task_id is not None and worker_req.task_id != self.task_id:
             return ("error", "Worker request does not belong to this task.")
+        if worker_req.recognition_updates and (worker_req.tool_name != "voice_stt" or on_recognition is None):
+            return ("error", "Recognition updates require a voice observation owner.")
+        recognition_sequence = 0
         deadline = time.monotonic() + timeout_s
         admission = cancellation_token.process_admission() if cancellation_token is not None else None
         while True:
@@ -403,6 +450,24 @@ class TaskWorkerController:
                         response = conn.recv(deadline) if isinstance(conn, WorkerPipe) else conn.recv()
                         if self._is_stopped():
                             raise WorkerIOCancelled()
+                        if response[0] == "recognition":
+                            from pluma.voice.recognition import validate_segment
+                            if not worker_req.recognition_updates or not isinstance(response[1], tuple) or len(response[1]) != 2:
+                                raise ValueError("Unexpected recognition evidence.")
+                            sequence, text = response[1]
+                            validate_segment(sequence, text)
+                            if sequence != recognition_sequence + 1:
+                                raise ValueError("Recognition sequence is not contiguous.")
+                            recognition_sequence = sequence
+                            on_recognition(sequence, text)
+                            continue
+                        if response[0] == "entered":
+                            if on_entered is not None:
+                                started = response[1]
+                                if type(started) is not float or not 0 <= started <= time.monotonic():
+                                    raise ValueError("Invalid worker entry evidence")
+                                on_entered(started)
+                            continue
                         return response
             except WorkerIOCancelled:
                 self.terminate_and_join()
@@ -430,7 +495,12 @@ class TaskWorkerController:
             if _cancel_parent and self._cancellation_token is not None:
                 self._cancellation_token.cancel()
             if self._admission is not None:
-                self._admission.cancel()
+                try:
+                    if not self._admission.is_closed:
+                        self._admission.cancel()
+                except RuntimeError:
+                    if not self._admission.is_closed:
+                        raise
         self._terminate_internal()
 
     def dispose_owned_worker(self) -> None:
@@ -472,14 +542,16 @@ def _check_postcondition(args, context, *, verifier, tool):
         return ToolResult.failure(tool, "Postcondition verification failed.", "POSTCONDITION_FAILED")
 
 
-def _record_no_execution(ledger, task_context, step_index, tool_name, arguments, risk, decision, result):
+def _record_no_execution(ledger, task_context, step_index, tool_name, arguments, risk, decision, result, *, policy_reason=None):
     if ledger is not None and task_context is not None:
         from pluma.memory.activity import ActionRecord
         try:
             ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
                 tool=tool_name, args_raw=arguments, risk=risk.value, adapter="policy",
                 approval_state=decision, verified=False, result_data={"executed": False},
-                error_detail={"code": result.error_code, "error": result.error}), _timeout_s=2.0)
+                error_detail={"code": result.error_code, "error": result.error},
+                factual_message=result.factual_message,
+                policy_reason=policy_reason), _timeout_s=2.0)
         except Exception:
             return ToolResult.failure(tool_name, "Action history could not be verified. No action was executed.",
                                       error_code="LEDGER_WRITE_FAILED")
@@ -512,6 +584,7 @@ class ToolRegistry:
         self._worker_controllers: Dict[str, TaskWorkerController] = {}
         self._idle_workers: List[TaskWorkerController] = []
         self._clipboard_undo_cache: Dict[str, Any] = {}
+        self._screen_text_undo_cache: Dict[str, Any] = {}
         self.clipboard_task_resolver = None
         from pluma.core.shutdown import WorkGate
         self.work_gate = WorkGate()
@@ -583,6 +656,7 @@ class ToolRegistry:
             if failures:
                 raise RuntimeError("Owned worker cleanup remains unverified.")
             self._clipboard_undo_cache.clear()
+            self._screen_text_undo_cache.clear()
 
     def restore_clipboard(self, state, capsule):
         from copy import deepcopy
@@ -608,6 +682,29 @@ class ToolRegistry:
                     if previous['after_proof'] == entry['before_proof']:
                         previous['after_proof'] = dict(restored_proof)
 
+    def restore_screen_control_text(self, state, capsule):
+        """Apply a private, identity-bound screen-text inverse after STOP drain."""
+        from copy import deepcopy
+        from pluma.rollback.owned import apply_owned
+        from pluma.rollback.recipes import RollbackStepResult
+        from pluma.tools.screen_catalog import SCREEN_TEXT_UNDO_TTL_S
+        reference = state.get('undo_ref')
+        with self._lock:
+            entry = deepcopy(self._screen_text_undo_cache.get(reference))
+        if (capsule is None or not entry or entry.get('record') != state
+                or entry.get('undo_ref') != reference
+                or entry.get('after_value') is None
+                or time.monotonic() - entry.get('created_monotonic', 0) > SCREEN_TEXT_UNDO_TTL_S):
+            return RollbackStepResult(ok=False, action='screen_control_text',
+                message='Private screen-text undo is unavailable or its effect is uncertain.',
+                error='SCREEN_TEXT_UNDO_UNAVAILABLE')
+        outcome = apply_owned('screen_control_text',
+            dict(state, screen_text_private=entry), capsule)
+        if outcome.ok:
+            with self._lock:
+                self._screen_text_undo_cache.pop(reference, None)
+        return outcome
+
     def begin_shutdown(self) -> None:
         self.work_gate.begin_shutdown()
 
@@ -625,11 +722,27 @@ class ToolRegistry:
         try:
             if spec.process_isolated:
                 import pickle
+                screen_snapshot = None
+                snapshot_id = arguments.get("snapshot_id")
+                if snapshot_id:
+                    snapshot_registry = getattr(context, "snapshot_registry", None)
+                    if snapshot_registry is None:
+                        return ToolResult.failure(spec.name,
+                            "Screen pre-state cannot be captured without this task's snapshot registry.",
+                            error_code="STALE_SNAPSHOT")
+                    try:
+                        screen_snapshot = snapshot_registry.resolve(snapshot_id).model_dump(
+                            mode="json", exclude={"image_ref", "is_expired"})
+                    except Exception as snapshot_error:
+                        return ToolResult.failure(spec.name,
+                            f"Screen pre-state snapshot is stale: {snapshot_error}",
+                            error_code="STALE_SNAPSHOT")
                 request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
                     storage_path=getattr(context, "storage_path", None),
                     supervisor_pid=os.getpid(),
                     execution_binding=execution_binding,
-                    env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")})
+                    env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")},
+                    screen_snapshot=screen_snapshot)
                 # Required isolation fails closed before calling any builder.
                 try:
                     pickle.dumps((capture, arguments, request))
@@ -890,9 +1003,13 @@ class ToolRegistry:
         ledger: Any = None,
         step_index: int = 0,
         policy_engine: Any = None,
+        planner_target_ref: Optional[str] = None,
     ) -> ToolResult:
         with self.work_gate.enter():
-            return self._execute_call(tool_name, arguments, task_context, ledger, step_index, policy_engine)
+            return self._execute_call(
+                tool_name, arguments, task_context, ledger, step_index, policy_engine,
+                planner_target_ref=planner_target_ref,
+            )
 
     def _execute_call(
         self,
@@ -902,6 +1019,7 @@ class ToolRegistry:
         ledger: Any = None,
         step_index: int = 0,
         policy_engine: Any = None,
+        planner_target_ref: Optional[str] = None,
     ) -> ToolResult:
         """Execute a tool call with validation, policy check, cancellation check, verification, and undo capture."""
         from pluma.core.cancellation import TaskCancelledError
@@ -924,6 +1042,21 @@ class ToolRegistry:
             db = getattr(ledger, "_db", None)
             if task_context is not None and db is not None:
                 task_context.storage_path = db._db_path if db.is_open and db._db_path != ":memory:" else None
+        if tool_name == 'undo_last' and validated_args.get('selection') is not None:
+            from pluma.tools.system import selected_undo_intent
+            # Undo has no captured inverse-of-the-inverse. Journal its selected
+            # reference before worker entry so interrupted claims remain residual.
+            spec = spec.model_copy(update={'non_undoable': True, 'undo_builder': selected_undo_intent})
+            from pluma.memory.history_detail import selection
+            from pluma.memory.tool_store import connect
+            selected = validated_args['selection']
+            try:
+                with connect(getattr(task_context, 'storage_path', None)) as connection:
+                    current = selection(connection, selected['target_task_id'], selected['action_id'])
+                if current != selected:
+                    raise ValueError('Selected undo material changed.')
+            except Exception:
+                raise ToolArgumentError('Selected undo is stale, claimed or unavailable.') from None
         token = getattr(task_context, "cancellation_token", None)
         if token is not None:
             token.raise_if_cancelled()
@@ -949,16 +1082,78 @@ class ToolRegistry:
                     ledger.insert_action(ActionRecord(task_id=task_context.task_id, step_index=step_index,
                         tool=tool_name, args_raw=validated_args, risk=spec.risk_class.value,
                         approval_state="PRIORITY_STOP", adapter="supervisor", result_data=result.data,
-                        verified=result.verified, error_detail={"code": result.error_code} if not result.ok else None),
+                        verified=result.verified, error_detail={"code": result.error_code} if not result.ok else None,
+                        factual_message=result.factual_message),
                         _timeout_s=2.0)
                 except Exception:
                     return ToolResult.failure(tool_name, "STOP history could not be verified.", "LEDGER_WRITE_FAILED")
             return result
 
+        if task_context is not None and hasattr(task_context, "tool_registry"):
+            task_context.tool_registry = self
+
+        if planner_target_ref is not None:
+            refused = self._validate_planner_target_ref(
+                tool_name, planner_target_ref, validated_args, task_context
+            )
+            if refused is not None:
+                return _record_no_execution(
+                    ledger, task_context, step_index, tool_name, validated_args,
+                    spec.risk_class, "NOT_EVALUATED", refused,
+                )
+
         if task_context is not None and hasattr(task_context, "next_action_index"):
             with task_context.work_lock:
                 step_index = max(step_index, task_context.next_action_index)
                 task_context.next_action_index = step_index + 1
+
+        # Parent UI Grounding for action workers
+        grounded_ui_target = None
+        if tool_name in ("click_element", "type_into_element") and task_context:
+            snapshot_id = validated_args.get("snapshot_id")
+            target_ref = validated_args.get("target_ref")
+            if snapshot_id and target_ref:
+                snapshot_registry = getattr(task_context, "snapshot_registry", None)
+                if snapshot_registry:
+                    try:
+                        snapshot = snapshot_registry.resolve(snapshot_id)
+                        element_id = target_ref.split("::")[-1]
+                        element = snapshot_registry.resolve_element(snapshot_id, element_id)
+                        label_key = element.label.strip().casefold()
+                        same_source_matches = [
+                            candidate
+                            for candidate in (*snapshot.controls, *snapshot.ocr_words)
+                            if candidate.source == element.source
+                            and candidate.label.strip().casefold() == label_key
+                        ]
+                        if label_key and len(same_source_matches) > 1:
+                            return ToolResult.failure(
+                                tool_name,
+                                (
+                                    f"Parent UI grounding refused ambiguous label {element.label!r}: "
+                                    f"{len(same_source_matches)} {element.source.value} elements match. "
+                                    "Use a unique target or ask for clarification."
+                                ),
+                                error_code="UI_AMBIGUOUS_TARGET",
+                            )
+                        grounded_ui_target = {
+                            "snapshot_hwnd": snapshot.hwnd,
+                            "snapshot_pid": snapshot.pid,
+                            "snapshot_creation_time_ns": snapshot.process_creation_time_ns,
+                            "snapshot_dpi_scale": snapshot.dpi_scale,
+                            "snapshot_rect_left": snapshot.window_rect.left if snapshot.window_rect else 0,
+                            "snapshot_rect_top": snapshot.window_rect.top if snapshot.window_rect else 0,
+                            "snapshot_rect_right": snapshot.window_rect.right if snapshot.window_rect else 0,
+                            "snapshot_rect_bottom": snapshot.window_rect.bottom if snapshot.window_rect else 0,
+                            "auto_id": element.uia_automation_id,
+                            "name": element.label,
+                            "control_type": element.control_type,
+                        }
+                    except Exception as e:
+                        # Fail early in parent
+                        return ToolResult.failure(tool_name, f"Parent UI Grounding failed: {e}")
+                else:
+                    return ToolResult.failure(tool_name, "Parent UI Grounding rejected: no snapshot registry on task_context.")
 
         # Policy work is admitted and retained on the same capsule. A late
         # approval after STOP/deadline is ignored; it cannot dispatch an action.
@@ -1041,7 +1236,8 @@ class ToolRegistry:
             elif approval_state != "ALLOW":
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
-                        "Blocked by policy: " + policy_eval.reason, error_code="POLICY_DENIED"))
+                        "Blocked by policy: " + policy_eval.reason, error_code="POLICY_DENIED"),
+                    policy_reason=policy_eval.reason)
             if tool_name == 'run_project_command':
                 execution_binding = getattr(policy_eval, 'execution_binding', None)
 
@@ -1120,6 +1316,37 @@ class ToolRegistry:
                     return _record_no_execution(ledger, task_context, step_index, tool_name,
                         validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
                             'Private clipboard undo could not be retained. No write was executed.', 'CLIPBOARD_UNDO_UNAVAILABLE'))
+            if tool_name in ('set_control_text', 'type_text', 'type_into_element'):
+                try:
+                    from copy import deepcopy
+                    from pluma.tools.screen_catalog import (
+                        SCREEN_TEXT_UNDO_MAX, SCREEN_TEXT_UNDO_TTL_S, seal_screen_text_capture,
+                    )
+                    pre_undo_data, captured = seal_screen_text_capture(pre_undo_data)
+                    with self._lock:
+                        expired = [reference for reference, entry in self._screen_text_undo_cache.items()
+                            if time.monotonic() - entry['created_monotonic'] > SCREEN_TEXT_UNDO_TTL_S]
+                        for reference in expired:
+                            self._screen_text_undo_cache.pop(reference, None)
+                        if len(self._screen_text_undo_cache) >= SCREEN_TEXT_UNDO_MAX:
+                            raise ValueError('Private screen-text undo capacity is full.')
+                        private_entry = {
+                            'record': deepcopy(pre_undo_data),
+                            'undo_ref': pre_undo_data['undo_ref'],
+                            'before_value': captured['before_value'],
+                            'after_value': (validated_args['screen_input'] if tool_name == 'set_control_text'
+                                else ((captured['before_value'] if not validated_args.get('clear_existing', True) else '')
+                                      + validated_args['text']) if tool_name == 'type_into_element'
+                                else validated_args['expected_control_text']),
+                            'created_monotonic': time.monotonic(),
+                        }
+                        self._screen_text_undo_cache[private_entry['undo_ref']] = deepcopy(private_entry)
+                    execution_binding = {'screen_text_private': private_entry}
+                except Exception:
+                    return _record_no_execution(ledger, task_context, step_index, tool_name,
+                        validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                            'Private screen-text undo could not be retained. No text change was executed.',
+                            'SCREEN_TEXT_UNDO_UNAVAILABLE'))
             if spec.non_undoable and pre_undo_data.get("non_undoable") is not True:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
@@ -1157,6 +1384,30 @@ class ToolRegistry:
                     validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
                         'Undo lookup exhausted the tool deadline. No inverse was executed.', 'TOOL_TIMEOUT'))
 
+        if tool_name == 'undo_last' and self._screen_text_undo_cache:
+            from copy import deepcopy
+            from pluma.memory.undo import peek_screen_text_ref
+            from pluma.tools.screen_catalog import SCREEN_TEXT_UNDO_TTL_S
+            lookup_started = time.perf_counter()
+            lookup_spec = spec.model_copy(update={'undo_builder': peek_screen_text_ref})
+            lookup = self._owned_prestate(lookup_spec, validated_args, task_context, token, timeout_s)
+            if not lookup.ok:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, lookup)
+            reference = lookup.data['pre_state'].get('undo_ref')
+            with self._lock:
+                entry = deepcopy(self._screen_text_undo_cache.get(reference))
+            if entry and time.monotonic() - entry.get('created_monotonic', 0) <= SCREEN_TEXT_UNDO_TTL_S:
+                execution_binding = dict(execution_binding or {}, screen_text_private=entry)
+            timeout_s -= time.perf_counter() - lookup_started
+            if timeout_s <= 0:
+                from pluma.core.cancellation import StopReason
+                if token is not None:
+                    token.cancel(StopReason.TASK_TIMEOUT)
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        'Undo lookup exhausted the tool deadline. No inverse was executed.', 'TOOL_TIMEOUT'))
+
         # 4. Execution with killable process isolation, timeout enforcement and duration measurement
         result: Optional[ToolResult] = None
 
@@ -1176,36 +1427,38 @@ class ToolRegistry:
             if k.startswith("PLUMA_")
         }
         
-        # Parent UI Grounding for action workers
-        grounded_ui_target = None
-        if tool_name in ("click_element", "type_into_element") and task_context:
-            snapshot_id = validated_args.get("snapshot_id")
-            target_ref = validated_args.get("target_ref")
-            if snapshot_id and target_ref:
-                snapshot_registry = getattr(task_context, "snapshot_registry", None)
-                if snapshot_registry:
-                    try:
-                        snapshot = snapshot_registry.resolve(snapshot_id)
-                        element_id = target_ref.split("::")[-1]
-                        element = snapshot_registry.resolve_element(snapshot_id, element_id)
-                        grounded_ui_target = {
-                            "snapshot_hwnd": snapshot.hwnd,
-                            "snapshot_pid": snapshot.pid,
-                            "snapshot_creation_time_ns": snapshot.process_creation_time_ns,
-                            "snapshot_dpi_scale": snapshot.dpi_scale,
-                            "snapshot_rect_left": snapshot.window_rect.left if snapshot.window_rect else 0,
-                            "snapshot_rect_top": snapshot.window_rect.top if snapshot.window_rect else 0,
-                            "snapshot_rect_right": snapshot.window_rect.right if snapshot.window_rect else 0,
-                            "snapshot_rect_bottom": snapshot.window_rect.bottom if snapshot.window_rect else 0,
-                            "auto_id": element.uia_automation_id,
-                            "name": element.label,
-                            "control_type": element.control_type,
-                        }
-                    except Exception as e:
-                        # Fail early in parent
-                        return ToolResult.failure(tool_name, f"Parent UI Grounding failed: {e}")
-                else:
-                    return ToolResult.failure(tool_name, "Parent UI Grounding rejected: no snapshot registry on task_context.")
+        # Process-isolated screen tools receive only the resolved, short-lived
+        # metadata for the requested snapshot. They do not inherit the parent's
+        # in-memory registry, and a missing/expired reference must fail closed.
+        screen_snapshot = None
+        snapshot_id = validated_args.get("snapshot_id")
+        if snapshot_id:
+            snapshot_registry = getattr(task_context, "snapshot_registry", None)
+            if snapshot_registry is None:
+                return _record_no_execution(
+                    ledger, task_context, step_index, tool_name, validated_args,
+                    effective_risk, approval_state,
+                    ToolResult.failure(
+                        tool_name,
+                        "Screen snapshot cannot be verified because this task has no snapshot registry.",
+                        error_code="STALE_SNAPSHOT",
+                    ),
+                )
+            try:
+                snapshot = snapshot_registry.resolve(snapshot_id)
+                screen_snapshot = snapshot.model_dump(
+                    mode="json", exclude={"image_ref", "is_expired"}
+                )
+            except Exception as snapshot_error:
+                return _record_no_execution(
+                    ledger, task_context, step_index, tool_name, validated_args,
+                    effective_risk, approval_state,
+                    ToolResult.failure(
+                        tool_name,
+                        f"Screen snapshot freshness check failed: {snapshot_error}",
+                        error_code="STALE_SNAPSHOT",
+                    ),
+                )
 
         worker_req = WorkerRequest(
             task_id=task_id,
@@ -1218,6 +1471,7 @@ class ToolRegistry:
             storage_path=getattr(task_context, "storage_path", None),
             supervisor_pid=os.getpid(),
             execution_binding=execution_binding,
+            screen_snapshot=screen_snapshot,
         )
 
 
@@ -1267,6 +1521,7 @@ class ToolRegistry:
                 prepared = ActionRecord(task_id=task_context.task_id, step_index=step_index,
                     tool=tool_name, args_raw=validated_args, risk=effective_risk.value,
                     approval_state=approval_state, result_data={"executed": None, "non_undoable": spec.non_undoable},
+                    factual_message="Execution outcome has not been observed.",
                     error_detail={"code": "MUTATION_OUTCOME_PENDING",
                                   "error": "Execution outcome has not been observed."})
                 try:
@@ -1288,6 +1543,8 @@ class ToolRegistry:
         # slow ledger cannot cause an expired tool call to start late.
         timeout_s = min(timeout_s, max(0.0, call_deadline - time.monotonic()))
         execution_started = time.perf_counter()
+        live = getattr(task_context, "live_presentation", None)
+        live_generation = live.dispatch(tool_name, effective_risk.value, validated_args) if live is not None else None
         if timeout_s <= 0:
             from pluma.core.cancellation import StopReason
             if token is not None:
@@ -1317,6 +1574,7 @@ class ToolRegistry:
                     timeout_s,
                     job_object=getattr(task_context, "job_object", None) if task_context else None,
                     cancellation_token=token,
+                    on_entered=(lambda started: live.entered(live_generation, started)) if live is not None else None,
                 )
                 if status == "ok" and isinstance(payload, WorkerResponse):
                     result = payload.result
@@ -1364,16 +1622,30 @@ class ToolRegistry:
                             except Exception:
                                 result = ToolResult.failure(tool_name,
                                     'Worker resource ownership could not be recorded.', 'RESOURCE_OWNERSHIP_FAILED')
-                    # Propagate snapshot
-                    if tool_name == "inspect_active_window" and result.ok and task_context:
+                    # Promote internal snapshot payloads to the task-scoped
+                    # registry, then remove them before the action ledger can
+                    # retain a full screen tree or OCR dump.
+                    if tool_name in {
+                        "inspect_active_window", "inspect_window_controls",
+                        "refresh_screen_snapshot", "read_visible_text",
+                        "find_visible_text", "wait_for_control",
+                    } and result.ok and task_context:
                         registry = getattr(task_context, "snapshot_registry", None)
-                        if registry and "raw_snapshot" in result.data:
+                        if "raw_snapshot" in result.data:
                             try:
                                 from pluma.perception.element_refs import ScreenSnapshot
-                                raw = result.data.pop("raw_snapshot")
+                                result_data = dict(result.data)
+                                raw = result_data.pop("raw_snapshot")
+                                if registry is None:
+                                    raise ValueError("task snapshot registry is unavailable")
                                 registry.register(ScreenSnapshot.model_validate(raw))
+                                result = result.model_copy(update={"data": result_data})
                             except Exception:
-                                pass
+                                result = ToolResult.failure(
+                                    tool_name,
+                                    "Fresh screen snapshot could not be registered to this task.",
+                                    error_code="SNAPSHOT_REGISTRATION_FAILED",
+                                )
                     # A stale worker snapshot must not erase a retained journal.
                     # Failed undo must not pop its pre-state in the parent.
                     if payload.final_undo_stack is not None and task_context and hasattr(task_context, "undo_stack"):
@@ -1421,11 +1693,15 @@ class ToolRegistry:
 
         if result is None and not use_process_isolation:
             # Execute in-process with thread pool executor and timeout enforcement
-            observation = {"started": False}
+            observation = {"started": False, "on_entered":
+                (lambda started: live.entered(live_generation, started)) if live is not None else None}
             future = None
             try:
+                executor_context = task_context
+                if grounded_ui_target is not None and task_context is not None:
+                    executor_context = _ExecutorContextOverlay(task_context, grounded_ui_target)
                 future = self.submit_owned(
-                    _invoke_executor, spec.executor, validated_args, task_context, token, observation,
+                    _invoke_executor, spec.executor, validated_args, executor_context, token, observation,
                     task_id=getattr(task_context, "task_id", None), _task_context=task_context,
                 )
                 try:
@@ -1479,10 +1755,14 @@ class ToolRegistry:
 
 
         # 5. Postcondition verification
+        if live is not None:
+            live.recording(live_generation)
         verified = result.verified
         verify_detail = result.verify_detail
         verification_error = None
         if result.ok and spec.verifier:
+            if live is not None:
+                live.verifying(live_generation)
             from pluma.verify.common import verify_noop
             if verified is False and spec.verifier is verify_noop:
                 pass
@@ -1524,6 +1804,8 @@ class ToolRegistry:
                 effect_state="not_executed" if execution_not_admitted else "committed" if result.ok and verified else "unknown")
 
         # 7. Build final consolidated result
+        if live is not None:
+            live.recording(live_generation)
         final_result = ToolResult(
             ok=result.ok and verified,
             tool=tool_name,
@@ -1553,6 +1835,7 @@ class ToolRegistry:
                     adapter=final_result.adapter_used,
                     duration_ms=duration_ms,
                     result_data=final_result.data,
+                    factual_message=final_result.factual_message,
                     verified=verified,
                     verification_detail=verify_detail.model_dump() if verify_detail else None,
                     error_detail={"error": final_result.error, "code": final_result.error_code} if final_result.error else None,
@@ -1566,6 +1849,8 @@ class ToolRegistry:
                         ledger.insert_undo_record(UndoRecord(action_row_id=row_id, undo_data=undo_record), _timeout_s=2.0)
             except Exception:
                 logging.getLogger(__name__).error("Execution history could not be verified.")
+                if live is not None:
+                    live.complete(live_generation)
                 return ToolResult.failure(tool_name,
                     "Execution history could not be verified. Effects may remain.", error_code="LEDGER_WRITE_FAILED")
 
@@ -1590,6 +1875,11 @@ class ToolRegistry:
             state = receipt.get('undo_data', {})
             if state.get('action') == 'clipboard_restore':
                 self._consume_clipboard_undo(state.get('undo_ref'), receipt['clipboard_restore_proof'])
+            elif state.get('action') == 'screen_control_text':
+                with self._lock:
+                    self._screen_text_undo_cache.pop(state.get('undo_ref'), None)
+        if live is not None:
+            live.complete(live_generation)
         return final_result
 
     # ------------------------------------------------------------------
@@ -1624,6 +1914,40 @@ class ToolRegistry:
                 "cancellable": spec.cancellable,
             })
         return result
+
+    @staticmethod
+    def _validate_planner_target_ref(
+        tool_name: str,
+        target_ref: str,
+        arguments: Dict[str, Any],
+        task_context: Any,
+    ) -> Optional[ToolResult]:
+        """Reject stale or mismatched planner references before policy/dispatch."""
+        def refusal() -> ToolResult:
+            return ToolResult.failure(
+                tool_name,
+                "Planner target reference is unknown, expired, or mismatched. No action was executed.",
+                error_code="STALE_TARGET_REF",
+            )
+
+        if not isinstance(target_ref, str):
+            return refusal()
+        snapshot_id, separator, element_id = target_ref.partition("::")
+        if not separator or not snapshot_id or not element_id or "::" in element_id:
+            return refusal()
+        argument_snapshot_id = arguments.get("snapshot_id")
+        argument_target_ref = arguments.get("target_ref")
+        if ((argument_snapshot_id is not None and argument_snapshot_id != snapshot_id)
+                or (argument_target_ref is not None and argument_target_ref != target_ref)):
+            return refusal()
+        snapshot_registry = getattr(task_context, "snapshot_registry", None)
+        if snapshot_registry is None:
+            return refusal()
+        try:
+            snapshot_registry.resolve_element(snapshot_id, element_id)
+        except Exception:
+            return refusal()
+        return None
 
     # Alias for convenience
     schemas_for_planner = schema_for_planner

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
 
 namespace PLUMA.UI
 {
@@ -13,6 +14,9 @@ namespace PLUMA.UI
             nameof(Text), typeof(string), typeof(PopupMessageText), new PropertyMetadata(string.Empty, OnTextChanged));
         public static readonly DependencyProperty FollowTailProperty = DependencyProperty.Register(
             nameof(FollowTail), typeof(bool), typeof(PopupMessageText), new PropertyMetadata(false));
+        public static readonly DependencyProperty PreserveLiteralTextProperty = DependencyProperty.Register(
+            nameof(PreserveLiteralText), typeof(bool), typeof(PopupMessageText), new PropertyMetadata(false,
+                (sender, args) => ((PopupMessageText)sender).RefreshText()));
         public static readonly DependencyProperty IsTextSelectionEnabledProperty = DependencyProperty.Register(
             nameof(IsTextSelectionEnabled), typeof(bool), typeof(PopupMessageText), new PropertyMetadata(false,
                 (sender, args) => ((PopupMessageText)sender)._message.IsTextSelectionEnabled = (bool)args.NewValue));
@@ -20,6 +24,7 @@ namespace PLUMA.UI
         private readonly TextBlock _message;
         private readonly ScrollViewer _scroll;
         private bool _followPending;
+        private double _lastVerticalOffset;
 
         public PopupMessageText()
         {
@@ -51,6 +56,27 @@ namespace PLUMA.UI
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 ZoomMode = ZoomMode.Disabled, IsTabStop = true
             };
+            _scroll.ViewChanged += (_, _) =>
+            {
+                double offset = _scroll.VerticalOffset;
+                // Content extent can grow between text updates and layout.
+                // Preserve pending follow only until the reader actually moves
+                // away from the tail; their scroll wins over queued layout.
+                if (offset != _lastVerticalOffset && _scroll.ScrollableHeight - offset >= 2)
+                    _followPending = false;
+                _lastVerticalOffset = offset;
+            };
+            _scroll.AddHandler(UIElement.PointerWheelChangedEvent,
+                new PointerEventHandler((_, _) => _followPending = false), true);
+            _scroll.AddHandler(UIElement.PointerPressedEvent,
+                new PointerEventHandler((_, _) => _followPending = false), true);
+            _scroll.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, args) =>
+            {
+                if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or
+                    Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or
+                    Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End)
+                    _followPending = false;
+            }), true);
             Content = _scroll;
             Loaded += (_, _) => _followPending = FollowTail;
             LayoutUpdated += (_, _) =>
@@ -63,19 +89,30 @@ namespace PLUMA.UI
 
         public string Text { get => (string)GetValue(TextProperty); set => SetValue(TextProperty, value); }
         public bool FollowTail { get => (bool)GetValue(FollowTailProperty); set => SetValue(FollowTailProperty, value); }
+        public bool PreserveLiteralText { get => (bool)GetValue(PreserveLiteralTextProperty); set => SetValue(PreserveLiteralTextProperty, value); }
         public bool IsTextSelectionEnabled { get => (bool)GetValue(IsTextSelectionEnabledProperty); set => SetValue(IsTextSelectionEnabledProperty, value); }
         public string DisplayText => _message.Text;
         internal ScrollViewer MessageScroll => _scroll;
         internal TextBlock MessageBlock => _message;
+        internal void ResetReading()
+        {
+            _scroll.ChangeView(null, 0, null, true);
+            _followPending = FollowTail;
+        }
 
         private static void OnTextChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
         {
             var control = (PopupMessageText)sender;
             bool atEnd = control._scroll.ScrollableHeight - control._scroll.VerticalOffset < 2;
             control._followPending = control.FollowTail && (control._followPending || atEnd);
-            control._message.Text = PopupText.Message(args.NewValue as string);
-            AutomationProperties.SetName(control._scroll, control._message.Text);
+            control.RefreshText();
             // Native layout coalesces rapid partial transcripts; scrolling waits for the new extent.
+        }
+        private void RefreshText()
+        {
+            if (_message is null) return;
+            _message.Text = PreserveLiteralText ? Text : PopupText.Message(Text);
+            AutomationProperties.SetName(_scroll, _message.Text);
         }
     }
 }

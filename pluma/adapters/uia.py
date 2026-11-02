@@ -12,6 +12,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from pluma.adapters.base import (
+    AccessDeniedError,
     AdapterError,
     AdapterTimeoutError,
     ControlInfo,
@@ -23,6 +24,16 @@ from pluma.adapters.base import (
 from pluma.adapters.win32 import Win32Adapter
 
 logger = logging.getLogger(__name__)
+
+
+def _uia_error(exc: Exception, message: str) -> AdapterError:
+    codes = (getattr(exc, "winerror", None), getattr(exc, "hresult", None),
+             exc.args[0] if exc.args and isinstance(exc.args[0], int) else None)
+    if isinstance(exc, (PermissionError, AccessDeniedError)) or any(
+        isinstance(code, int) and (code == 5 or code & 0xFFFFFFFF == 0x80070005) for code in codes
+    ):
+        return AccessDeniedError("Windows denied UI Automation access to the target control.")
+    return AdapterError(message)
 
 
 def _get_pywinauto() -> Any:
@@ -50,7 +61,7 @@ class UiaAdapter:
             return app.window(handle=hwnd)
         except Exception as exc:
             logger.debug("Failed to connect to window HWND %d via UIA: %s", hwnd, exc)
-            raise WindowNotFoundError(f"Window HWND {hwnd} not accessible via UIA: {exc}")
+            raise _uia_error(exc, f"Window HWND {hwnd} is not accessible through UI Automation.") from exc
 
     def find_control(
         self,
@@ -90,6 +101,16 @@ class UiaAdapter:
 
             wrapper = elem.wrapper_object()
             rect_obj = wrapper.rectangle()
+            password = self._is_password_control(wrapper)
+            control_type_value = getattr(wrapper.element_info, "control_type", "") or ""
+            text_value = None
+            if password is False and control_type_value.casefold() in {"edit", "document", "combobox"}:
+                getter = getattr(wrapper, "get_value", None)
+                if callable(getter):
+                    try:
+                        text_value = str(getter())
+                    except Exception:
+                        text_value = None
             rect = Rect(
                 left=rect_obj.left,
                 top=rect_obj.top,
@@ -100,17 +121,22 @@ class UiaAdapter:
             return ControlInfo(
                 automation_id=getattr(wrapper.element_info, "automation_id", "") or "",
                 name=getattr(wrapper.element_info, "name", "") or "",
-                control_type=getattr(wrapper.element_info, "control_type", "") or "",
+                control_type=control_type_value,
                 class_name=getattr(wrapper.element_info, "class_name", "") or "",
                 is_enabled=bool(wrapper.is_enabled()),
                 is_visible=bool(wrapper.is_visible()),
                 rect=rect,
                 handle=getattr(wrapper.element_info, "handle", None),
+                is_password=password,
+                text_value=text_value,
             )
 
         except ElementNotFoundError:
             raise
         except Exception as exc:
+            mapped = _uia_error(exc, "UIA element lookup failed.")
+            if isinstance(mapped, AccessDeniedError):
+                raise mapped from exc
             if time.perf_counter() - t0 >= timeout_s:
                 raise AdapterTimeoutError(f"UIA search timed out after {timeout_s}s: {exc}")
             raise ElementNotFoundError(f"UIA element lookup failed: {exc}")
@@ -148,17 +174,66 @@ class UiaAdapter:
             if not wrapper.is_enabled():
                 raise ElementUnavailableError(f"Control is disabled: {name or auto_id}")
 
-            # Try invoke pattern first, fallback to click
-            if hasattr(wrapper, "invoke"):
-                wrapper.invoke()
-            else:
-                wrapper.click_input()
+            # Missing semantic patterns must not silently become raw input.
+            wrapper.iface_invoke.Invoke()
             return True
 
         except (ElementNotFoundError, ElementUnavailableError):
             raise
         except Exception as exc:
-            raise AdapterError(f"Failed to invoke control: {exc}")
+            raise _uia_error(exc, "UI Automation could not invoke the target control.") from exc
+
+    @staticmethod
+    def _is_password_control(wrapper: Any) -> Optional[bool]:
+        """Read UIA's password flag; None means the provider did not expose it."""
+        try:
+            value = wrapper.element_info.element.CurrentIsPassword
+            if isinstance(value, (bool, int)):
+                return bool(value)
+        except Exception:
+            pass
+        try:
+            value = getattr(wrapper, "is_password")
+            value = value() if callable(value) else value
+            return bool(value) if isinstance(value, (bool, int)) else None
+        except Exception:
+            return None
+
+    def focus_control(
+        self,
+        hwnd: int,
+        *,
+        auto_id: Optional[str] = None,
+        name: Optional[str] = None,
+        control_type: Optional[str] = None,
+        timeout_s: float = 3.0,
+    ) -> bool:
+        """Focus one explicitly selected UIA control before stable keyboard input."""
+        if not self._win32.is_window(hwnd):
+            raise WindowNotFoundError(f"Invalid window handle: {hwnd}")
+        win = self._get_app_window(hwnd)
+        kwargs: Dict[str, Any] = {}
+        if auto_id:
+            kwargs["auto_id"] = auto_id
+        if name:
+            kwargs["title"] = name
+        if control_type:
+            kwargs["control_type"] = control_type
+        try:
+            element = win.child_window(**kwargs)
+            if not element.exists(timeout=timeout_s):
+                raise ElementNotFoundError(f"Control not found for focus: {name or auto_id}")
+            wrapper = element.wrapper_object()
+            if not wrapper.is_visible() or not wrapper.is_enabled():
+                raise ElementUnavailableError(f"Control cannot receive focus: {name or auto_id}")
+            wrapper.set_focus()
+            if not wrapper.has_keyboard_focus():
+                raise ElementUnavailableError("The target UIA control did not receive keyboard focus.")
+            return True
+        except (ElementNotFoundError, ElementUnavailableError):
+            raise
+        except Exception as exc:
+            raise _uia_error(exc, "UI Automation could not focus the target control.") from exc
 
     def set_control_text(
         self,
@@ -166,6 +241,7 @@ class UiaAdapter:
         text: str,
         auto_id: Optional[str] = None,
         name: Optional[str] = None,
+        control_type: Optional[str] = None,
         timeout_s: float = 3.0,
         clear_existing: bool = True,
     ) -> bool:
@@ -179,6 +255,8 @@ class UiaAdapter:
             kwargs["auto_id"] = auto_id
         if name:
             kwargs["title"] = name
+        if control_type:
+            kwargs["control_type"] = control_type
 
         try:
             elem = win.child_window(**kwargs)
@@ -189,19 +267,19 @@ class UiaAdapter:
             if not wrapper.is_enabled():
                 raise ElementUnavailableError(f"Edit control is disabled: {name or auto_id}")
 
-            if hasattr(wrapper, "set_edit_text"):
-                wrapper.set_edit_text(text)
-            elif hasattr(wrapper, "set_text"):
-                wrapper.set_text(text)
-            else:
-                prefix = "^a{BACKSPACE}" if clear_existing else ""
-                wrapper.type_keys(prefix + text, with_spaces=True)
+            if self._is_password_control(wrapper) is not False:
+                raise ElementUnavailableError("Password or unclassified controls cannot receive text through this tool.")
+            value = wrapper.iface_value
+            if value.CurrentIsReadOnly:
+                raise ElementUnavailableError("The target UIA value is read-only.")
+            replacement = text if clear_existing else str(wrapper.get_value()) + text
+            value.SetValue(replacement)
             return True
 
         except (ElementNotFoundError, ElementUnavailableError):
             raise
         except Exception as exc:
-            raise AdapterError(f"Failed to set control text: {exc}")
+            raise _uia_error(exc, "UI Automation could not set the target control value.") from exc
 
     def get_control_tree(self, hwnd: int, max_depth: int = 2) -> List[ControlInfo]:
         """Inspect and return a list of top-level child controls."""
@@ -231,6 +309,7 @@ class UiaAdapter:
                         is_visible=bool(child.is_visible()),
                         rect=rect,
                         handle=getattr(child.element_info, "handle", None),
+                        is_password=self._is_password_control(child),
                     )
                     controls.append(info)
                 except Exception:
