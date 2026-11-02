@@ -100,8 +100,6 @@ def test_unsupported_registered_schema_refuses_before_policy(registry, entry):
 
 @pytest.mark.parametrize('schema', [SCHEMA, Arguments], ids=['json-schema', 'pydantic'])
 def test_valid_registered_arguments_have_matching_planner_and_executor_admission(registry, schema):
-    if isinstance(schema, dict):
-        pytest.importorskip('jsonschema')
     register(registry, schema)
     args = {'count': 2, 'options': {'mode': 'read'}}
     original = json.dumps(args, sort_keys=True)

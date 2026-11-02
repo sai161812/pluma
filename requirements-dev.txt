@@ -11,3 +11,4 @@ comtypes>=1.4.0; platform_system == "Windows"
 psutil>=6.0
 pydantic>=2.7
 pyyaml>=6.0
+jsonschema>=4.22.0,<5

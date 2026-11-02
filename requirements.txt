@@ -4,3 +4,4 @@
 # by the resident core at startup.
 pydantic>=2.7
 pyyaml>=6.0
+jsonschema>=4.22.0,<5
