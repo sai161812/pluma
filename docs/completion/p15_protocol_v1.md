@@ -265,3 +265,33 @@ changes reset its viewport, earlier reading is preserved and only a reader at
 the tail follows new speech. Actual admitted final text and the received banner
 remain separate from task verification/success. P25 owns the explicitly approved
 physical boundary-timing retest limitation; it is not a protocol pass or waiver.
+
+## P20 bounded saved-task browsing (E95)
+
+[E95](p20_saved_history.md) adds an independent read-only query; the original
+`history_query` contract is unchanged. This endpoint cannot admit tools or undo.
+
+- `history_page_query`: v1 envelope, canonical `request_id`, literal `search`
+  (default empty, at most 256 Unicode characters), nullable canonical
+  `before_task_id`, and `limit` (default 20, range 1-20). Extra fields fail.
+- `history_page`: correlated `request_id`/`before_task_id`, `tasks` (at most 20),
+  `has_more` and nullable `next_before_task_id`. Continuation is exactly the last
+  returned task identity when more records exist. No guessed count is returned.
+- Each task has `task_id`, `request_id`, `input_mode`, nullable `command_text`,
+  `created_at`, nullable `started_at`/`completed_at`, nullable `final_state`,
+  `route`, `stop_reason` and `error_code`. Every field must be present. Commands
+  are canonically redacted before search/display and bounded to 8192 UTF-8 bytes;
+  oversized whole values are unavailable, never exposed prefixes. Unknown legacy
+  flags/codes are withheld. Timestamps require offsets; corrupt facts fail closed.
+- A separate read-only SQLite snapshot anchors the cursor and page in descending
+  stored `created_at`/`task_id` order. Literal casefold substring search covers
+  redacted command, task identity, state, route and input mode. Wildcards/SQL
+  syntax remain literal. No original transcript, action body or undo recipe is
+  fetched. A 250 ms VM deadline and 50 ms lock timeout bound database work.
+- Missing cursors return `HISTORY_CURSOR_UNAVAILABLE`; unavailable/corrupt
+  storage returns `HISTORY_UNAVAILABLE`, never an invented empty page. Refresh
+  restarts from newest; new inserts do not repeat records on an older page.
+- The shell owns one read, a three-second linked deadline and at most two Busy
+  retries. Only validated pages replace prior rows/cursors. Failure clears stale
+  data; shell close cancels/joins. This is a bounded saved-task browser, not the
+  remaining P20 detail/undo/conflict contract or a live event stream.

@@ -1,6 +1,55 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-02, P19 completion E94
+## Current checkpoint: 2026-11-02, P20 saved-task browsing E95
+
+**The bounded saved-task browsing packet is complete; full P20 remains in
+progress.** [E95](docs/completion/p20_saved_history.md) records exact scope,
+commands, failed attempts, source/build identity and recovery.
+
+- Source commits `523ae61`, `f348d10` and `f393b08` on `p12-preparation`;
+  recovery `8d5548e1eac0113c94f791e522bcc3e1df1aae1c`. No merge/branch switch.
+- Authenticated read-only history search/keyset paging now binds the native
+  History page to durable redacted task facts. Twenty-row replacement pages,
+  stable ordering, literal Unicode search, exact correlation, empty/unmatched
+  and unavailable storage, restart and cancelled/joined shutdown are covered.
+  All displayed DTO fields are compared with independent SQLite readback.
+- Legacy commands are completely redacted before matching/display; oversized
+  commands are withheld in full. No action body, original transcript or undo
+  recipe is fetched. The bounded independent read snapshot leaves shared
+  connection state unchanged. Additive migration 0007 preserves existing rows.
+- Production History samples are removed; existing dark native styling remains.
+  Saved state is labelled as saved state, without inventing verified success.
+- Pre-edit prerequisites: **145 passed in 21.87 s**. Affected Python:
+  **248 passed in 46.26 s**, no skips/xfails. The new shared C# reader regression
+  does not change Python source. Exact-source [Windows gate 41414630764](https://github.com/sai161812/pluma/actions/runs/41414630764)
+  passed **265 IPC / 187 native UI / 663 popup / 195 formatting** checks, plus
+  layout/surface/audio/copy gates; builds have zero warnings/errors. Artifact
+  digest and inspected dark renders are in E95. The local Application Control
+  block was not bypassed or counted as a pass.
+- Regression testing exposed a genuine queued transcript-tail race (same
+  reader, top=0 changed to 1492). Native movement/input now cancels pending
+  following; a controlled update-before-layout regression covers the race.
+  Existing earlier-reading/tail assertions and styling remain intact.
+- One final-source Windows attempt failed the existing P18 shell startup wait;
+  the unchanged full retry passed. Its root cause is not established or claimed
+  fixed. Retain this diagnostic follow-up before further command/undo admission.
+- E94's scoped P19 completion and the owner's explicit C-02 physical timing
+  retest deferral to P25 remain in force. No new device/model evidence is claimed.
+
+**Remaining P20:** task/action detail and appropriate original input/context;
+policy/verification/cleanup/rollback/residual readback; typed selected undo with
+material confirmation, ownership, STOP, reverse ordering, conflicts and atomic
+consumption; real conflict surface actions and Activity tray/command entry.
+**Next safe packet:** P20 task/action detail; inspect the retained startup
+observation before scoped selected-undo admission. P21 is not eligible and has
+not started. This bounded packet is ready for independent Sol review with the
+observation visible; approval is not assumed.
+
+Recovery: reviewed revert toward `8d5548e`, preserving unrelated work and the
+SQLite database. The additive index can remain after a source downgrade; never
+reset/clean/force-push or delete user data to recover.
+
+## Previous checkpoint: 2026-11-02, P19 completion E94
 
 **P19's scoped implementation and acceptance gate is complete, with the
 owner-approved physical boundary-timing retest deferred to P25.**

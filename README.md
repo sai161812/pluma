@@ -6,11 +6,11 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-11-02):** P19's scoped voice-overlay gate is complete ([E94](docs/completion/p19_overlay_acceptance.md)), with the owner's explicit approval to defer the failed fresh physical boundary-timing retest to P25. Existing gates retain their documented limits. Native UI, actual Whisper/Qwen parity and physical capture/STOP evidence are recorded; this is not full-product release or independent Sol approval. Next is P20 (history/details/undo/conflicts), only after owner instruction. See [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-11-02):** P20 is in progress. Its bounded saved-task History browser now supports authenticated redacted search and stable paging ([E95](docs/completion/p20_saved_history.md)); task/action details, selected undo, conflict handling and remaining Activity entry wiring are next. P19's scoped gate retains the owner's explicit physical C-02 timing retest deferral to P25 ([E94](docs/completion/p19_overlay_acceptance.md)). This is not full-product release or independent Sol approval. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
-Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP and material approval are connected; visible voice, broader events, history and settings connections remain in progress.
+Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP and material approval are connected; voice and factual live events are connected; history details/undo and settings connections remain in progress.
 
 A real interaction recording should be added here once that UI path is complete. Until then, the repository evidence is the implementation, tests, release artifacts, and verification logs rather than a mocked interface.
 
