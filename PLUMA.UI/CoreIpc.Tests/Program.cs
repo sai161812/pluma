@@ -51,6 +51,7 @@ internal static partial class Program
     {
         await ConfirmationControllerChecks.RunAsync(Check);
         await CommandControllerChecks.RunAsync(Check);
+        await SettingsControllerChecks.RunAsync(Check);
         await EventFeedChecks.RunAsync(Check);
         await SurfaceFactChecks.RunAsync(Check);
         await RuntimeChecks.RunAsync(Check);

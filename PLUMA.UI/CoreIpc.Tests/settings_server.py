@@ -19,10 +19,19 @@ def run(address, root, mode):
     server.address = "\\\\.\\pipe\\" + address
     try:
         server.start()
+        if mode == "settings_ui":
+            # Only the IPC readiness marker is required by this shell fixture.
+            # Never start resident hotkeys or the microphone on the test desktop.
+            runtime.resident_core._running = True
         print("READY", flush=True)
         for line in sys.stdin:
             if line.strip() == "stop":
                 break
+            if mode == "settings_ui" and line.strip() == "settings_external_limit_6":
+                from pluma.config.settings import SettingsStore
+                store = SettingsStore(paths.user_settings_path)
+                store.save({"agent.max_plan_steps": 6}, expected_revision=store.snapshot().revision)
+                print("SETTINGS_EXTERNAL_LIMIT_6", flush=True)
     finally:
         server.stop()
         if not runtime.close(5).complete:

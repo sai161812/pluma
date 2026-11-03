@@ -39,9 +39,9 @@ records exact tested source and native-versus-fixture boundaries.
 **Wire:** P17 CommandController owns typed submission/priority STOP and persisted terminal readback; P18 E91 adds actual current activity, bounded saved executor/task messages and measured connection readback. See [command wiring](wiring_command_submission.md) and [event/readback wiring](wiring_event_feed.md).
 
 ### 2. Settings
-**Purpose:** Configure LLM paths, hotkeys, audio emulation, tool policy overrides.  
-**Data/Actions:** Form fields bound to `config.yaml` and `PreferencesStore`; save action writes back via `SettingsContract`.  
-**Wire:** `pluma/ui/settings_contract.py`, `pluma/config/loader.py`, `pluma/memory/preferences.py`.
+**Purpose:** Read actual local configuration and edit supported settings.  
+**Data/Actions:** The P21 bounded page edits `max_plan_steps` through typed settings query/save, exact revision, shared command/STOP ownership and material confirmation. Cancel discards the draft; Reload reads persisted/effective values. Saved changes explicitly require Core restart. Model paths, hotkeys, activation, privacy defaults and policy are read-only until their lifecycle gates pass. No audio-emulation or safety-bypass toggle is exposed.  
+**Wire:** Native `MainWindow.NavigateSettings`, `SettingsPage`, `SettingsController`, `CoreSettingsProtocol`; backend `SettingsStore` JSON v1, registered `save_settings` and independent ledger/verifier. `pluma/ui/settings_contract.py` remains an abstract alternate-host boundary, not a second native implementation.
 
 ### 3. History / Activity Ledger
 **Purpose:** Browse all completed tasks.  

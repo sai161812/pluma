@@ -28,6 +28,8 @@ namespace PLUMA.UI.Tests
                     for(int iteration=0;iteration<5;iteration++) await NativeP18ShellChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-undo") >= 0)
                     await NativeP20UndoChecks.RunAsync(Check);
+                else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p21-settings") >= 0)
+                    await NativeP21SettingsChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-history") >= 0)
                     await NativeP20HistoryChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p19-voice") >= 0)
@@ -225,6 +227,7 @@ namespace PLUMA.UI.Tests
             await NativeP19VoiceChecks.RunAsync(Check);
             await NativeP20HistoryChecks.RunAsync(Check);
             await NativeP20UndoChecks.RunAsync(Check);
+            await NativeP21SettingsChecks.RunAsync(Check);
         }
 
         private sealed class FakeCoreStatusClient : ICoreStatusClient

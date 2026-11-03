@@ -24,6 +24,7 @@
     <Compile Include="../PLUMA.UI/ActivitySurfaceFact.cs" Link="ActivitySurfaceFact.cs" />
     <Compile Include="../PLUMA.UI/ConfirmationController.cs" Link="ConfirmationController.cs" />
     <Compile Include="../PLUMA.UI/CommandController.cs" Link="CommandController.cs" />
+    <Compile Include="../PLUMA.UI/SettingsController.cs" Link="SettingsController.cs" />
     <Compile Include="../PLUMA.UI/EventFeedController.cs" Link="EventFeedController.cs" />
   </ItemGroup>
 </Project>

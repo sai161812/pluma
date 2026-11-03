@@ -14,6 +14,9 @@ internal interface ICommandClient
     Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitFolderAsync(string request,
         CoreRequestProtocol.FolderSelection selected, CancellationToken token) =>
         Task.FromResult(CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol));
+    Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitSettingsAsync(string request, string revision,
+        CoreRequestProtocol.SettingsEdits edits, CancellationToken token) =>
+        Task.FromResult(CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol));
     Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.StopAck>> StopAsync(string request, string? submissionRequest, CancellationToken token);
@@ -67,6 +70,20 @@ internal sealed class CoreCommandClient(CoreIpcClient client) : ICommandClient
     }
     public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token) =>
         client.GetTerminalReadbackAsync(request, task, token);
+    public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitSettingsAsync(string request,
+        string revision, CoreRequestProtocol.SettingsEdits edits, CancellationToken token)
+    {
+        try
+        {
+            var capability = await ReadCapabilityAsync(token);
+            if (!capability.IsSuccess || capability.Response is not { SubmissionStopFence: true })
+                return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
+            token.ThrowIfCancellationRequested();
+            return await client.SaveSettingsAsync(new(request, revision, edits), token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        { return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Timeout); }
+    }
     public Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, CancellationToken token) =>
         client.GetHistoryAsync(request, null, 100, token);
     public Task<CoreRequestResult<CoreRequestProtocol.StopAck>> StopAsync(string request, string? submissionRequest, CancellationToken token) =>
@@ -108,7 +125,11 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         Publish();
     }
 
-    internal Task SubmitAsync(string text, CoreRequestProtocol.UndoSelection? selected = null, CoreRequestProtocol.FolderSelection? folder = null)
+    internal Task SubmitSettingsAsync(string revision, int limit) =>
+        SubmitAsync("Save PLUMA settings.", settings: new(limit), settingsRevision: revision);
+
+    internal Task SubmitAsync(string text, CoreRequestProtocol.UndoSelection? selected = null, CoreRequestProtocol.FolderSelection? folder = null,
+        CoreRequestProtocol.SettingsEdits? settings = null, string? settingsRevision = null)
     {
         lock (_gate)
         {
@@ -120,14 +141,15 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
                 _requestId = Id(); _taskId = null; _pending = true; _stopMessage = null;
                 _state = "Submitting"; _message = "Sending the request. Execution is not yet confirmed."; _route = "Unavailable";
                 _submission = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-                _work = SubmitAndObserveAsync(text, _requestId, _submission, selected, folder);
+                _work = SubmitAndObserveAsync(text, _requestId, _submission, selected, folder, settings, settingsRevision);
             }
         }
         Publish();
         lock (_gate) return _work;
     }
 
-    private async Task SubmitAndObserveAsync(string text, string request, CancellationTokenSource submission, CoreRequestProtocol.UndoSelection? selected, CoreRequestProtocol.FolderSelection? folder)
+    private async Task SubmitAndObserveAsync(string text, string request, CancellationTokenSource submission, CoreRequestProtocol.UndoSelection? selected,
+        CoreRequestProtocol.FolderSelection? folder, CoreRequestProtocol.SettingsEdits? settings, string? settingsRevision)
     {
         await Task.Yield(); // Publish/own the operation before any client call, including synchronous fixtures.
         bool attempted = false;
@@ -135,7 +157,8 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         {
             submission.Token.ThrowIfCancellationRequested();
             attempted = true;
-            var result = folder is not null ? await client.SubmitFolderAsync(request, folder, submission.Token) :
+            var result = settings is not null ? await client.SubmitSettingsAsync(request, settingsRevision!, settings, submission.Token) :
+                folder is not null ? await client.SubmitFolderAsync(request, folder, submission.Token) :
                 selected is null ? await client.SubmitAsync(request, text, submission.Token) :
                 await client.SubmitUndoAsync(request, selected, submission.Token);
             if (result.OutcomeUnknown)

@@ -44,6 +44,7 @@
     <Compile Include="../PLUMA.UI/PopupStatusIndicator.cs" Link="PopupStatusIndicator.cs" />
     <Compile Include="../PLUMA.UI/ConfirmationController.cs" Link="ConfirmationController.cs" />
     <Compile Include="../PLUMA.UI/CommandController.cs" Link="CommandController.cs" />
+    <Compile Include="../PLUMA.UI/SettingsController.cs" Link="SettingsController.cs" />
     <Compile Include="../PLUMA.UI/EventFeedController.cs" Link="EventFeedController.cs" />
     <Compile Include="../PLUMA.UI/EventNoticePresentation.cs" Link="EventNoticePresentation.cs" />
     <Compile Include="../PLUMA.UI/NativeConfirmationPresenter.cs" Link="NativeConfirmationPresenter.cs" />

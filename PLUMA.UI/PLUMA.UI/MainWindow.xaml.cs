@@ -72,6 +72,8 @@ namespace PLUMA.UI
             _voice.Changed += OnVoiceChanged;
             _history = new HistoryController(_coreStatus.GetHistoryPageAsync);
             _savedDetail = new SavedDetailController(_coreStatus);
+            _settings = new SettingsController(_coreStatus.GetSettingsEditAsync, _coreStatus.GetSettingsAsync, _commands);
+            _commands.Changed += _settings.OnCommandChanged;
 
             // Extend content into the title bar so we can show a subtle app title
             // while retaining the native caption buttons. Register the AppTitleBar
@@ -99,6 +101,8 @@ namespace PLUMA.UI
                 _runtime.WorkerTerminated -= OnWorkerTerminated;
                 _voice.Changed -= OnVoiceChanged;
                 await _commands.DisposeAsync();
+                _commands.Changed -= _settings.OnCommandChanged;
+                await _settings.DisposeAsync();
                 await _observerStartupTask;
                 await _confirmationTask;
                 await _eventTask;
@@ -127,6 +131,14 @@ namespace PLUMA.UI
         private readonly RuntimeController _runtime;
         private readonly HistoryController _history;
         private readonly SavedDetailController _savedDetail;
+        private readonly SettingsController _settings;
+        internal SettingsPage? Settings => ContentFrame.Content as SettingsPage;
+        internal void NavigateSettingsForAcceptance() => NavigateSettings();
+        private void NavigateSettings()
+        {
+            ContentFrame.Navigate(typeof(SettingsPage));
+            if (ContentFrame.Content is SettingsPage page) page.AttachSettings(_settings, _commands, _healthLifetime.Token);
+        }
         internal HistoryPage? History => ContentFrame.Content as HistoryPage;
         internal void NavigateHistoryForAcceptance() => NavigateHistory();
         private void NavigateHistory()
@@ -174,7 +186,7 @@ namespace PLUMA.UI
         internal event Action<string, int, bool>? NotificationPresented;
         internal DashboardPage? Dashboard => ContentFrame.Content as DashboardPage;
         internal void NavigateForAcceptance(bool dashboard)
-        { if (dashboard) NavigateDashboard(); else ContentFrame.Navigate(typeof(SettingsPage)); }
+        { if (dashboard) NavigateDashboard(); else NavigateSettings(); }
         private void OnWorkerTerminated(CoreRequestProtocol.WorkerTermination proof)
         {
             if (!_dispatcher.HasThreadAccess)
@@ -288,7 +300,7 @@ namespace PLUMA.UI
         {
             if (args.IsSettingsInvoked)
             {
-                ContentFrame.Navigate(typeof(SettingsPage));
+                NavigateSettings();
                 return;
             }
 
