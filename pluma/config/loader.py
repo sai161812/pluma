@@ -17,11 +17,10 @@ No OS-automation or ML code in this module.
 
 from __future__ import annotations
 
-import json
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import yaml
 
@@ -45,26 +44,19 @@ def _merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def _user_config_path() -> Optional[Path]:
-    """Return the user config file path, or None if not found.
+def _user_config_path() -> Path:
+    """Return the selected config source, even when it has not been created.
 
     Search order:
       1. PLUMA_CONFIG environment variable (absolute path).
-      2. %%APPDATA%%\\PLUMA\\user_settings.json
+      2. PlumaPaths roaming root (including PLUMA_APPDATA overrides).
     """
     env_path = os.environ.get("PLUMA_CONFIG")
     if env_path:
-        p = Path(env_path)
-        if p.exists():
-            return p
-
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        p = Path(appdata) / "PLUMA" / "user_settings.json"
-        if p.exists():
-            return p
-
-    return None
+        # An explicit, missing source must never fall through to another profile.
+        return Path(env_path)
+    from pluma.config.paths import PlumaPaths
+    return PlumaPaths().user_settings_path
 
 
 def load_config(user_config_path: Optional[Union[Path, str]] = None) -> Dict[str, Any]:
@@ -74,18 +66,21 @@ def load_config(user_config_path: Optional[Union[Path, str]] = None) -> Dict[str
     Otherwise, standard user settings locations are checked.
     Returns a deep copy so callers cannot mutate the shared defaults.
     Raises FileNotFoundError if defaults.yaml is missing.
-    Raises yaml.YAMLError / json.JSONDecodeError on parse failures.
+    Raises yaml.YAMLError / SettingsError on parse failures. Invalid JSON
+    never silently replaces the current source with another profile/defaults.
     Does NOT import any ML library.
     """
     config = _load_yaml(_DEFAULTS_FILE)
 
     user_path = Path(user_config_path) if user_config_path is not None else _user_config_path()
     if user_path is not None and user_path.exists():
-        if user_path.suffix == ".json":
-            with open(user_path, encoding="utf-8") as fh:
-                overrides = json.load(fh)
+        if user_path.suffix.lower() == ".json":
+            from pluma.config.settings import SettingsStore
+            overrides = SettingsStore(user_path.absolute()).snapshot().overrides
         else:
             overrides = _load_yaml(user_path)
+        if not isinstance(overrides, dict):
+            raise ValueError("SETTINGS_INVALID_DOCUMENT")
         config = _merge(config, overrides)
 
     return config

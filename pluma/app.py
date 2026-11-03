@@ -54,7 +54,9 @@ class PlumaApplicationRuntime:
         db_connection: Optional[DbConnection] = None,
     ) -> None:
         self.paths = paths
-        self.config = config or load_config()
+        self.config = config if config is not None else load_config(
+            os.environ.get("PLUMA_CONFIG") or paths.user_settings_path
+        )
         self.db = db_connection or DbConnection(str(paths.db_path))
         if not self.db.is_open:
             self.db.open()
