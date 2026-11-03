@@ -107,6 +107,12 @@
                             <TextBox x:Name="SpeechModelPath" Text="Unavailable" TextChanged="OnFieldsChanged"
                                      Width="240" HorizontalAlignment="Right" />
                         </controls:SettingsCard>
+                        <controls:SettingsCard Header="Include command previews in logs" Description="Off hides text and speech previews from logs. Factual Activity history remains available." HorizontalAlignment="Stretch">
+                            <ToggleSwitch x:Name="CommandPreviews" Toggled="OnWarmChanged" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Diagnostic logging" Description="Verbose local diagnostics after restart. Sensitive values remain redacted; no raw audio or screenshots are saved." HorizontalAlignment="Stretch">
+                            <ToggleSwitch x:Name="DiagnosticLogging" Toggled="OnWarmChanged" />
+                        </controls:SettingsCard>
                         <controls:SettingsCard Header="Privacy defaults"
                                                 HorizontalAlignment="Stretch">
                             <TextBlock x:Name="PrivacyDefaults" Text="Unavailable" Width="240" TextWrapping="Wrap"
@@ -131,6 +137,9 @@
                                                 HorizontalAlignment="Stretch">
                             <TextBlock x:Name="WritePolicy" Text="Unavailable" Width="240"
                                        TextWrapping="Wrap" HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Confirm low-risk changes" Description="Adds material confirmation to low-risk changes. Required high-risk and administrator protections remain enforced." HorizontalAlignment="Stretch">
+                            <ToggleSwitch x:Name="ConfirmLowRisk" Toggled="OnWarmChanged" />
                         </controls:SettingsCard>
                         <controls:SettingsCard Header="High-risk confirmation"
                                                 HorizontalAlignment="Stretch">

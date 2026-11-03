@@ -12,6 +12,8 @@ FIELD_PATHS = {
     "ocr_idle_unload_seconds": "runtime.ocr_idle_unload_seconds",
     "allow_short_warm_grace": "runtime.allow_short_warm_grace",
     "activation_default": "voice.activation_default", "model_runtime": "brain.runtime",
+    "diagnostic_logging":"logging.debug", "include_command_previews":"logging.include_command_previews",
+    "confirm_low_risk":"policy.confirm_low_risk",
 }
 FIELDS = tuple(FIELD_PATHS)
 
@@ -27,6 +29,9 @@ class SettingsChanges(BaseModel):
     model_idle_unload_seconds: Optional[StrictInt] = Field(default=None, ge=0, le=30)
     stt_idle_unload_seconds: Optional[StrictInt] = Field(default=None, ge=0, le=30)
     ocr_idle_unload_seconds: Optional[StrictInt] = Field(default=None, ge=0, le=30)
+    diagnostic_logging: Optional[StrictBool] = None
+    include_command_previews: Optional[StrictBool] = None
+    confirm_low_risk: Optional[StrictBool] = None
     allow_short_warm_grace: Optional[StrictBool] = None
     activation_default: Optional[Literal["push_to_talk"]] = None
     model_runtime: Optional[Literal["llama_cpp"]] = None
@@ -82,6 +87,9 @@ class SettingsValues(BaseModel):
     model_idle_unload_seconds: StrictInt = Field(default=30,ge=0,le=30)
     stt_idle_unload_seconds: StrictInt = Field(default=20,ge=0,le=30)
     ocr_idle_unload_seconds: StrictInt = Field(default=10,ge=0,le=30)
+    diagnostic_logging: StrictBool = False
+    include_command_previews: StrictBool = True
+    confirm_low_risk: StrictBool = False
     allow_short_warm_grace: StrictBool = True
     activation_default: Literal["push_to_talk"] = "push_to_talk"
     model_runtime: Literal["llama_cpp"] = "llama_cpp"
@@ -94,7 +102,7 @@ class SettingsValues(BaseModel):
 
 def values(config, planner_default="", stt_default=""):
     from pluma.config.loader import get
-    defaults={"voice_hotkey":"ctrl+alt+v", "planner_model_path":planner_default, "stt_model_path":stt_default}
+    defaults={"diagnostic_logging":False,"include_command_previews":True,"confirm_low_risk":False,"voice_hotkey":"ctrl+alt+v", "planner_model_path":planner_default, "stt_model_path":stt_default}
     return SettingsValues(**{key: get(config, *path.split("."), default=defaults.get(key))
                              for key,path in FIELD_PATHS.items()})
 

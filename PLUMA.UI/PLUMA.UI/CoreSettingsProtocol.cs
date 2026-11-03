@@ -10,7 +10,8 @@ internal static partial class CoreRequestProtocol
     internal sealed record SettingsEditValues(string TextHotkey, string StopHotkey, string VoiceHotkey, int MaxPlanSteps,
         string PlannerModelPath="", string SttModelPath="", int ModelIdleUnloadSeconds=30,
         int SttIdleUnloadSeconds=20, int OcrIdleUnloadSeconds=10, bool AllowShortWarmGrace=true,
-        string ActivationDefault="push_to_talk", string ModelRuntime="llama_cpp")
+        string ActivationDefault="push_to_talk", string ModelRuntime="llama_cpp",
+        bool DiagnosticLogging=false, bool IncludeCommandPreviews=true, bool ConfirmLowRisk=false)
     {
         internal void Validate()
         {
@@ -63,12 +64,13 @@ internal static partial class CoreRequestProtocol
 
     internal static readonly string[] SettingKeys=["max_plan_steps","text_hotkey","stop_hotkey","voice_hotkey",
         "planner_model_path","stt_model_path","model_idle_unload_seconds","stt_idle_unload_seconds",
-        "ocr_idle_unload_seconds","allow_short_warm_grace","activation_default","model_runtime"];
+        "ocr_idle_unload_seconds","allow_short_warm_grace","activation_default","model_runtime",
+        "diagnostic_logging","include_command_previews","confirm_low_risk"];
 
     internal sealed record SettingsEdits(int? MaxPlanSteps=null, string? TextHotkey=null, string? StopHotkey=null,
         string? VoiceHotkey=null, string? PlannerModelPath=null, string? SttModelPath=null,
         int? ModelIdleUnloadSeconds=null, int? SttIdleUnloadSeconds=null, int? OcrIdleUnloadSeconds=null,
-        bool? AllowShortWarmGrace=null, string? ActivationDefault=null, string? ModelRuntime=null, bool? RecoverPrevious=null, [property: System.Text.Json.Serialization.JsonIgnore] string? RecoveryRevision=null)
+        bool? AllowShortWarmGrace=null, string? ActivationDefault=null, string? ModelRuntime=null, bool? DiagnosticLogging=null, bool? IncludeCommandPreviews=null, bool? ConfirmLowRisk=null, bool? RecoverPrevious=null, [property: System.Text.Json.Serialization.JsonIgnore] string? RecoveryRevision=null)
     {
         internal Dictionary<string, object> Fields()
         {

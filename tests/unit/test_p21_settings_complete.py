@@ -153,3 +153,58 @@ def test_explicit_offline_recovery_uses_owned_typed_pipeline(tmp_path,monkeypatc
     assert run_app(['--restore-previous-settings','--config',str(path),
         '--local-app-data',str(tmp_path/'local'),'--roaming-app-data',str(tmp_path/'roaming')])==0
     assert store.snapshot()==first
+
+
+def test_logging_privacy_and_stricter_policy_apply_on_restart(runtime,caplog):
+    from pluma.tools.base import RiskClass
+    args=save_args(runtime,diagnostic_logging=True,include_command_previews=False,confirm_low_risk=True)
+    result=runtime.tool_registry.execute('save_settings',args,task(runtime),runtime.ledger)
+    assert result.ok and result.verified
+    from pluma.app import PlumaApplicationRuntime
+    restarted=PlumaApplicationRuntime(runtime.paths,settings_path=runtime.settings_path)
+    try:
+        assert restarted.orchestrator.include_command_previews is False
+        assert restarted.voice_pipeline.include_command_previews is False
+        assert restarted.config['logging']['debug'] is True
+        from pluma.ui.confirmations import CallbackConfirmationContract,ConfirmationResponse
+        seen=[]
+        restarted.policy_engine.confirmation_contract=CallbackConfirmationContract(lambda request:(seen.append(request),ConfirmationResponse(approved=False))[1])
+        evaluated=restarted.policy_engine.evaluate('owned_low_risk_fixture',{},default_risk=RiskClass.LOW,task_id=str(uuid.uuid4()))
+        assert evaluated.risk_class==RiskClass.MEDIUM and seen
+        restricted=restarted.policy_engine.evaluate('owned_restricted_fixture',{},default_risk=RiskClass.RESTRICTED,task_id=str(uuid.uuid4()))
+        assert restricted.risk_class==RiskClass.RESTRICTED and len(seen)==1
+        from pluma.core.request import PlumaRequest,InputMode
+        with caplog.at_level('DEBUG'):
+            restarted.orchestrator.execute(PlumaRequest(input_mode=InputMode.TEXT,text='PRIVATE_COMMAND_PREVIEW_P21'))
+        assert 'PRIVATE_COMMAND_PREVIEW_P21' not in caplog.text
+        assert '[Command preview disabled]' in caplog.text
+    finally:
+        assert restarted.close(5).complete
+
+
+def test_persisted_diagnostic_flag_controls_actual_entry_logging_level(tmp_path):
+    import subprocess,sys
+    path=tmp_path/'logging.json'
+    SettingsStore(path).save({'logging.debug':True},expected_revision='absent')
+    code='''import logging,sys
+from pluma.app import run_app
+assert run_app(['--recover-only','--config',sys.argv[1],'--local-app-data',sys.argv[2],'--roaming-app-data',sys.argv[3]])==0
+assert logging.getLogger().level==logging.DEBUG
+'''
+    result=subprocess.run([sys.executable,'-c',code,str(path),str(tmp_path/'local'),str(tmp_path/'roaming')],
+        capture_output=True,text=True,timeout=15)
+    assert result.returncode==0,result.stdout+result.stderr
+
+
+def test_voice_preview_privacy_retains_request_but_not_logged_content(caplog):
+    from unittest.mock import MagicMock
+    from pluma.voice.pipeline import VoicePipeline
+    from pluma.voice.lifecycle import VoiceLifecycleManager
+    from pluma.voice.stt_adapter import TranscriptResult
+    from tests.unit.test_voice_pipeline import _make_pcm_tone
+    lifecycle=MagicMock(spec=VoiceLifecycleManager)
+    lifecycle.transcribe.return_value=TranscriptResult(text='read PRIVATE_VOICE_PREVIEW_P21',confidence=.99)
+    with caplog.at_level('INFO'):
+        request=VoicePipeline(lifecycle_manager=lifecycle,include_command_previews=False).process_audio(_make_pcm_tone())
+    assert request.original_transcript=='read PRIVATE_VOICE_PREVIEW_P21'
+    assert 'PRIVATE_VOICE_PREVIEW_P21' not in caplog.text and '[Command preview disabled]' in caplog.text

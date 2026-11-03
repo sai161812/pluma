@@ -46,6 +46,10 @@ def run(address, root, mode):
                     assert restarted.voice_lifecycle.model_path==str(root/"speech.bin")
                     assert restarted.llm_lifecycle.idle_unload_seconds==restarted.voice_lifecycle.idle_unload_seconds==0
                     assert restarted.resident_core.voice_activation.hotkey=="ctrl+alt+v"
+                    assert restarted.orchestrator.include_command_previews is False
+                    assert restarted.voice_pipeline.include_command_previews is False
+                    assert restarted.policy_rules.confirm_low_risk is True
+                    assert restarted.config["logging"]["debug"] is True
                     assert restarted.llm_lifecycle.state.value==restarted.voice_lifecycle.state=="COLD"
                 finally:
                     assert restarted.close(5).complete

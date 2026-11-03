@@ -25,6 +25,7 @@ EDITABLE_FIELDS = frozenset({
     "runtime.model_idle_unload_seconds", "runtime.stt_idle_unload_seconds",
     "runtime.ocr_idle_unload_seconds", "runtime.allow_short_warm_grace",
     "voice.activation_default", "brain.runtime",
+    "logging.debug", "logging.include_command_previews", "policy.confirm_low_risk",
 })
 
 
@@ -121,6 +122,9 @@ def _hotkey(value):
 def _validate(overrides):
     from pluma.config.loader import _load_yaml, _DEFAULTS_FILE, _merge, get
 
+    if any(section in overrides and not isinstance(overrides[section],dict)
+           for section in ("agent","runtime","brain","voice","perception","policy","logging","stop","memory")):
+        raise SettingsError("SETTINGS_INVALID_DOCUMENT")
     config = _merge(_load_yaml(_DEFAULTS_FILE), overrides)
     hotkeys = [_hotkey(get(config, "agent", key, default="ctrl+alt+v"))
                for key in ("text_hotkey", "stop_hotkey", "voice_hotkey")]
@@ -139,6 +143,9 @@ def _validate(overrides):
             or get(config, "voice", "activation_default") != "push_to_talk"
             or get(config, "brain", "runtime") != "llama_cpp"):
         raise SettingsError("SETTINGS_UNSUPPORTED_RUNTIME")
+    for section,key,default in (("logging","debug",False),("logging","include_command_previews",True),("policy","confirm_low_risk",False)):
+        if type(get(config,section,key,default=default)) is not bool:
+            raise SettingsError("SETTINGS_INVALID_LOGGING_POLICY")
     # Saving cannot launder legacy overrides that violate the locked runtime laws.
     required = {
         "voice.required": True, "voice.wake_phrase_enabled": False,

@@ -120,7 +120,7 @@ class SettingsEditSnapshotV1(BaseModel):
     hotkeys_registered: StrictBool = False
     previous_revision: Optional[StrictStr] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     editable_fields: list[StrictStr] = Field(default_factory=lambda: list(FIELDS))
-    restart_fields: list[StrictStr] = Field(max_length=12)
+    restart_fields: list[StrictStr] = Field(max_length=15)
 
 
 class VoiceQueryV1(_Envelope):

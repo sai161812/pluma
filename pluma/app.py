@@ -71,6 +71,7 @@ class PlumaApplicationRuntime:
         )
         self.rollback_engine.task_resolver = self.supervisor.get_task
         self.policy_rules = PolicyRules()
+        self.policy_rules.confirm_low_risk = get(self.config,"policy","confirm_low_risk",default=False)
         from pluma.ui.ipc_confirmations import IpcConfirmationBroker
         self.confirmation_broker = (IpcConfirmationBroker(self.supervisor.get_task)
                                     if confirmation_contract is None else
@@ -133,7 +134,9 @@ class PlumaApplicationRuntime:
             model_path=stt_model_path,
             idle_unload_seconds=stt_idle,
         )
-        self.voice_pipeline = VoicePipeline(lifecycle_manager=self.voice_lifecycle)
+        self.orchestrator.include_command_previews = get(self.config,"logging","include_command_previews",default=True)
+        self.voice_pipeline = VoicePipeline(lifecycle_manager=self.voice_lifecycle,
+            include_command_previews=get(self.config,"logging","include_command_previews",default=True))
 
         self.resident_core = ResidentCore(
             config=self.config,
@@ -288,7 +291,8 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
     paths.ensure_directories()
 
     # 2. Configure logging
-    setup_logging(paths.logs_dir, debug=args.debug)
+    logging_config = {} if args.restore_previous_settings else load_config(args.config)
+    setup_logging(paths.logs_dir, debug=args.debug or get(logging_config,"logging","debug",default=False))
     logger.info("Starting PLUMA v%s (PID: %d)", __version__, os.getpid())
     logger.info("Storage root: %s", paths.local_root)
 
@@ -331,7 +335,11 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
             shutdown_logging()
 
     # 4. Initialize and start Production Runtime Dependency Graph
-    custom_cfg = load_config(args.config) if args.config else None
+    custom_cfg = logging_config
+    if args.debug:
+        from copy import deepcopy
+        custom_cfg = deepcopy(custom_cfg)
+        custom_cfg.setdefault("logging", {})["debug"] = True
     runtime = PlumaApplicationRuntime(paths=paths, config=custom_cfg, settings_path=args.config)
     core = runtime.resident_core
 

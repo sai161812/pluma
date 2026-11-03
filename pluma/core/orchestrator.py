@@ -167,7 +167,7 @@ class Orchestrator:
         logger.info(
             "task=%s request=%s mode=%s text=%r",
             task_id, request.request_id, request.input_mode.value,
-            redact_command_text(request.text)[:120],
+            redact_command_text(request.text)[:120] if getattr(self,"include_command_previews",True) else "[Command preview disabled]",
         )
 
         capsule.history_expected = True
@@ -208,7 +208,7 @@ class Orchestrator:
             route_result.reason = "Clipboard-related command routed; private text omitted."
         else:
             route_result.reason = redact_command_text(route_result.reason)
-        logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason)
+        logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason if getattr(self,"include_command_previews",True) else "[Route detail disabled]")
 
         if self._ledger:
             try:

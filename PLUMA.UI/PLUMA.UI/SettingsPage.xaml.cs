@@ -60,6 +60,10 @@ namespace PLUMA.UI
                 ModelGrace.Value=view.DraftValues?.ModelIdleUnloadSeconds ?? double.NaN;
                 SpeechGrace.Value=view.DraftValues?.SttIdleUnloadSeconds ?? double.NaN;
                 OcrGrace.Value=view.DraftValues?.OcrIdleUnloadSeconds ?? double.NaN;
+                DiagnosticLogging.IsOn=view.DraftValues?.DiagnosticLogging ?? false;
+                CommandPreviews.IsOn=view.DraftValues?.IncludeCommandPreviews ?? true;
+                ConfirmLowRisk.IsOn=view.DraftValues?.ConfirmLowRisk ?? false;
+                DiagnosticLogging.IsEnabled=CommandPreviews.IsEnabled=ConfirmLowRisk.IsEnabled=view.CanEdit;
                 WarmGrace.IsOn=view.DraftValues?.AllowShortWarmGrace ?? false;
                 ModelGrace.IsEnabled=SpeechGrace.IsEnabled=OcrGrace.IsEnabled=WarmGrace.IsEnabled=view.CanEdit;
                 VoiceMode.Text = view.Runtime is null ? "Unavailable" : !view.Runtime.VoiceRequired
@@ -87,7 +91,8 @@ namespace PLUMA.UI
             _settings.SetValues(values with {TextHotkey=TextHotkey.Text,StopHotkey=StopHotkey.Text,VoiceHotkey=VoiceHotkey.Text,
                 PlannerModelPath=ModelPath.Text,SttModelPath=SpeechModelPath.Text,
                 ModelIdleUnloadSeconds=Delay(ModelGrace.Value),SttIdleUnloadSeconds=Delay(SpeechGrace.Value),
-                OcrIdleUnloadSeconds=Delay(OcrGrace.Value),AllowShortWarmGrace=WarmGrace.IsOn});
+                OcrIdleUnloadSeconds=Delay(OcrGrace.Value),AllowShortWarmGrace=WarmGrace.IsOn,
+                DiagnosticLogging=DiagnosticLogging.IsOn,IncludeCommandPreviews=CommandPreviews.IsOn,ConfirmLowRisk=ConfirmLowRisk.IsOn});
         }
         private void OnLimitChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
         { if (!_applying) _settings?.SetDraft(args.NewValue); }

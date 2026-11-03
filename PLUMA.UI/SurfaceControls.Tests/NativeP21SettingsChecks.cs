@@ -99,6 +99,9 @@ internal static class NativeP21SettingsChecks
             ((NumberBox)page.FindName("SpeechGrace")).Value=1;
             ((NumberBox)page.FindName("OcrGrace")).Value=0;
             ((ToggleSwitch)page.FindName("WarmGrace")).IsOn=false;
+            ((ToggleSwitch)page.FindName("DiagnosticLogging")).IsOn=true;
+            ((ToggleSwitch)page.FindName("CommandPreviews")).IsOn=false;
+            ((ToggleSwitch)page.FindName("ConfirmLowRisk")).IsOn=true;
             await Until(()=>save.IsEnabled); Invoke(save);
             await Until(()=>shell.ApprovalForAcceptance is {IsLoaded:true});
             Invoke(Find(shell.ApprovalForAcceptance!,"Approve"));
@@ -106,6 +109,7 @@ internal static class NativeP21SettingsChecks
             var advanced=(await client.GetSettingsEditAsync(Id(),default)).Response!;
             check(advanced.Persisted.ModelIdleUnloadSeconds==2 && advanced.Persisted.SttIdleUnloadSeconds==1 &&
                 advanced.Persisted.OcrIdleUnloadSeconds==0 && !advanced.Persisted.AllowShortWarmGrace &&
+                advanced.Persisted.DiagnosticLogging && !advanced.Persisted.IncludeCommandPreviews && advanced.Persisted.ConfirmLowRisk &&
                 advanced.Persisted.PlannerModelPath==System.IO.Path.Combine(fixture.OwnedRoot,"planner.gguf") &&
                 advanced.Effective.ModelIdleUnloadSeconds==30,
                 "native Settings edits model-format paths and bounded grace without claiming active native-model changes");
