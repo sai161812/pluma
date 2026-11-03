@@ -1247,6 +1247,9 @@ class ToolRegistry:
             if tool_name == 'run_project_command':
                 execution_binding = getattr(policy_eval, 'execution_binding', None)
 
+        if tool_name == "save_settings":
+            execution_binding=dict(execution_binding or {},active_hotkeys=list(getattr(self,"settings_owned_hotkeys",())))
+
         # 2. Check cancellation latch before starting
         # Cancellability describes in-flight work; it never exempts admission
         # from the task latch, including a STOP during a confirmation wait.

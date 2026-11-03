@@ -117,6 +117,7 @@ class SettingsEditSnapshotV1(BaseModel):
     revision: StrictStr = Field(pattern=r"^(?:absent|[0-9a-f]{64})$")
     persisted: SettingsValues
     effective: SettingsValues
+    hotkeys_registered: StrictBool = False
     previous_revision: Optional[StrictStr] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     editable_fields: list[StrictStr] = Field(default_factory=lambda: list(FIELDS))
     restart_fields: list[StrictStr] = Field(max_length=12)

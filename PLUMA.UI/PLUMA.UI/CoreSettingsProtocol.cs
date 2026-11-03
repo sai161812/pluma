@@ -22,7 +22,7 @@ internal static partial class CoreRequestProtocol
     }
 
     internal sealed record SettingsEditSnapshot(int ProtocolVersion, string MessageType, string RequestId,
-        string Revision, SettingsEditValues Persisted, SettingsEditValues Effective, string[] RestartFields, string[] EditableFields, string? PreviousRevision=null)
+        string Revision, SettingsEditValues Persisted, SettingsEditValues Effective, string[] RestartFields, string[] EditableFields, string? PreviousRevision=null, bool HotkeysRegistered=false)
     {
         internal static SettingsEditSnapshot Parse(ReadOnlySpan<byte> message)
         {

@@ -376,7 +376,7 @@ class ResidentCore:
             from pluma.core.ipc_contracts import SubmitTextV1
             selected = {"settings": request.model_dump(include={"expected_revision", "changes", "previous_revision"}, exclude_unset=True)}
             task_request = SubmitTextV1(protocol_version=1, message_type="submit_text",
-                request_id=request.request_id, text="Save PLUMA settings.")
+                request_id=request.request_id, text="Restore previous valid PLUMA settings." if request.changes.recover_previous else "Save PLUMA settings.")
             return self._submit_text_v1(task_request, SubmissionAckV1, selected=selected)
         if isinstance(request, HistoryQueryV1):
             return self._history_query_v1(request)
@@ -745,7 +745,10 @@ class ResidentCore:
                                self.default_model_path, self.default_stt_model_path)
             effective = values(self.config, self.default_model_path, self.default_stt_model_path)
             return SettingsEditSnapshotV1(request_id=request.request_id, revision=revision if previous_revision else saved.revision,
-                previous_revision=previous_revision, editable_fields=[] if previous_revision else list(FIELDS),
+                previous_revision=previous_revision,
+                hotkeys_registered=bool(self._running and getattr(self,"_hotkey_thread",None) is not None
+                    and self._hotkey_thread.is_alive() and getattr(self,"_hotkey_ready",threading.Event()).is_set()
+                    and getattr(self,"_hotkey_error",None) is None), editable_fields=[] if previous_revision else list(FIELDS),
                 persisted=persisted, effective=effective,
                 restart_fields=[key for key in FIELDS if getattr(persisted, key) != getattr(effective, key)]).model_dump(mode="json")
         except Exception:
@@ -1090,6 +1093,10 @@ class ResidentCore:
             owner.acquire([(HOTKEY_ID_STOP, get(self.config, "agent", "stop_hotkey")),
                            (HOTKEY_ID_TEXT, get(self.config, "agent", "text_hotkey")),
                            (0x3A03, get(self.config, "agent", "voice_hotkey", default="ctrl+alt+v"))])
+            registry=getattr(getattr(self,"orchestrator",None),"_registry",None)
+            if registry is not None:
+                registry.settings_owned_hotkeys=tuple(get(self.config,"agent",key,default="ctrl+alt+v")
+                    for key in ("text_hotkey","stop_hotkey","voice_hotkey"))
             self._hotkey_ready.set()
             while self._running:
                 message = owner.next()
@@ -1107,6 +1114,9 @@ class ResidentCore:
             self._running = False
             self._hotkey_ready.set()
         finally:
+            registry=getattr(getattr(self,"orchestrator",None),"_registry",None)
+            if registry is not None:
+                registry.settings_owned_hotkeys=()
             try:
                 if owner is not None:
                     owner.close()

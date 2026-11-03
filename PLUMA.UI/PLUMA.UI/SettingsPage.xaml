@@ -84,7 +84,7 @@
                         </controls:SettingsCard>
                         <controls:SettingsCard Header="Global hotkey availability"
                                                 HorizontalAlignment="Stretch">
-                            <TextBlock Text="Not verified" Width="240" TextWrapping="Wrap"
+                            <TextBlock x:Name="HotkeyStatus" Text="Not verified" Width="240" TextWrapping="Wrap"
                                        HorizontalAlignment="Right" />
                         </controls:SettingsCard>
                     </StackPanel>

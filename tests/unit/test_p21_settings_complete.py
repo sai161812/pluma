@@ -127,3 +127,29 @@ def test_immediate_unload_for_zero_grace():
     voice=VoiceLifecycleManager(adapter=Adapter(),idle_unload_seconds=0)
     voice._state='WARM';voice._schedule_unload_timer()
     assert not voice.adapter.is_loaded and voice.state=='COLD'
+
+
+def test_owned_live_hotkey_can_be_saved_back_without_probing_it(runtime,monkeypatch):
+    from pluma.tools.settings import capture_settings
+    from pluma.adapters import hotkeys
+    store=SettingsStore(runtime.settings_path)
+    store.save({'agent.stop_hotkey':'ctrl+shift+f12'},expected_revision='absent')
+    capsule=task(runtime)
+    from types import SimpleNamespace
+    context=SimpleNamespace(settings_path=runtime.settings_path,cancellation_token=capsule.cancellation_token,
+                            execution_binding={'active_hotkeys':['ctrl+alt+esc']})
+    monkeypatch.setattr(hotkeys,'probe_changed',lambda _:pytest.fail('Existing owned chord must not be re-registered.'))
+    proof=capture_settings(save_args(runtime,stop_hotkey='ctrl+alt+esc'),context)
+    assert proof['changes']=={'agent.stop_hotkey':'ctrl+alt+esc'}
+
+
+def test_explicit_offline_recovery_uses_owned_typed_pipeline(tmp_path,monkeypatch):
+    from pluma.app import run_app
+    path=tmp_path/'source.json';store=SettingsStore(path)
+    first=store.save({'agent.max_plan_steps':3},expected_revision='absent')
+    store.save({'agent.max_plan_steps':4},expected_revision=first.revision)
+    path.write_bytes(b'{owned offline recovery')
+    monkeypatch.setattr('builtins.input',lambda _: 'RESTORE')
+    assert run_app(['--restore-previous-settings','--config',str(path),
+        '--local-app-data',str(tmp_path/'local'),'--roaming-app-data',str(tmp_path/'roaming')])==0
+    assert store.snapshot()==first

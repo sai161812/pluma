@@ -103,7 +103,9 @@ def capture_settings(args, context):
     from pluma.config.settings import _hotkey
     from pluma.config.loader import _load_yaml, _DEFAULTS_FILE, _merge, get
     current = _merge(_load_yaml(_DEFAULTS_FILE), observed.overrides)
+    active_bindings={_hotkey(value) for value in (getattr(context,"execution_binding",None) or {}).get("active_hotkeys",[])}
     changed_bindings = [value for field,value in changes.items() if field.endswith("_hotkey")
+                        and _hotkey(value) not in active_bindings
                         and _hotkey(value) != _hotkey(get(current, *field.split("."), default="ctrl+alt+v"))]
     if changed_bindings:
         from pluma.adapters.hotkeys import probe_changed

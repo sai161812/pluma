@@ -38,6 +38,14 @@ class SettingsChanges(BaseModel):
             _hotkey(value)
         return value
 
+    @field_validator("planner_model_path", "stt_model_path")
+    @classmethod
+    def local_path(cls, value):
+        from pathlib import Path
+        if value is not None and (not Path(value).is_absolute() or value.startswith(("\\\\", "//")) or "\0" in value):
+            raise ValueError("A local absolute model path is required.")
+        return value
+
     @model_validator(mode="after")
     def nonempty(self):
         if not self.model_fields_set or any(getattr(self, key) is None for key in self.model_fields_set):

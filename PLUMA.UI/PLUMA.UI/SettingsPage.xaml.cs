@@ -55,6 +55,7 @@ namespace PLUMA.UI
                 SpeechModelPath.Text = view.DraftValues?.SttModelPath ?? "Unavailable";
                 TextHotkey.Text = view.DraftValues?.TextHotkey ?? "Unavailable";
                 StopHotkey.Text = view.DraftValues?.StopHotkey ?? "Unavailable";
+                HotkeyStatus.Text=view.Saved?.HotkeysRegistered==true ? "Registered by Core" : "Not verified";
                 VoiceHotkey.Text=view.DraftValues?.VoiceHotkey ?? "Unavailable";
                 ModelGrace.Value=view.DraftValues?.ModelIdleUnloadSeconds ?? double.NaN;
                 SpeechGrace.Value=view.DraftValues?.SttIdleUnloadSeconds ?? double.NaN;

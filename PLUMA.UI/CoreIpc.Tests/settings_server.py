@@ -114,6 +114,9 @@ def native_hotkeys(root, address):
     try:
         runtime.resident_core.start()
         assert runtime.resident_core._hotkey_ready.is_set() and runtime.resident_core._hotkey_error is None
+        import uuid
+        snapshot=runtime.resident_core.handle_ipc_command({"protocol_version":1,"message_type":"settings_edit_query","request_id":str(uuid.uuid4())})
+        assert snapshot["hotkeys_registered"] is True
         capsule=runtime.supervisor.create_task("owned hotkey STOP fixture")
         runtime.ledger.insert_task(TaskRecord(task_id=capsule.task_id,request_id=capsule.request_id,input_mode="text",command_text="Owned hotkey STOP fixture"))
         runtime.supervisor.start_task(capsule.task_id)
