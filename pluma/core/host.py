@@ -96,8 +96,9 @@ class CoreHost:
         with self._lock:
             if self._closing or self._recover_control or self.state not in ("READY","CONFIGURATION_ERROR","HOTKEY_ERROR","RECOVERY_ERROR") or self._restart is not None or args!=self.identity() or get_process_creation_time(self.pid)!=self.creation_time:
                 raise ValueError("Restart target is not the owned current Core.")
-            self._restart=(self.instance_id,task_id)
-        return lambda:self._restart==(args["instance_id"],task_id)
+            pending=(self.instance_id,task_id,self.runtime.supervisor._stop_generation)
+            self._restart=pending
+        return lambda:self._restart==pending
 
     def _observe_liveness(self):
         core=self.runtime.resident_core if self.runtime else None
@@ -122,10 +123,12 @@ class CoreHost:
         if pending is None:return
         capsule=self.runtime.supervisor.get_task(pending[1])
         if not capsule.terminal_ready.is_set():return
-        if capsule.stop_latch_set or capsule.state.value!="SUCCEEDED":
-            with self._lock:self._restart=None
-            return
-        self.state="RESTARTING";self.code="OWNED_DRAIN_PENDING"
+        with self.runtime.supervisor._admission_lock:
+            if capsule.stop_latch_set or capsule.state.value!="SUCCEEDED" or pending[2]!=self.runtime.supervisor._stop_generation:
+                with self._lock:self._restart=None
+                self.code="RESTART_CANCELLED"
+                return
+            self.state="RESTARTING";self.code="OWNED_DRAIN_PENDING"
         if not self.runtime.close(3).complete:return
         with self._lock:self._restart=None
         self._construct()

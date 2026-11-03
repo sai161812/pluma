@@ -30,6 +30,9 @@ internal static class HealthChecks
         backend.AfterSubmit=()=>snapshot=snapshot with {InstanceId=Id(),State="READY"};
         await health.RestartAsync(default);
         check(backend.Count==2&&health.View.Message.Contains("authenticated health was verified"),"recovery requires authenticated new-instance health from the same owned PID and creation time");
+        backend.AfterSubmit=()=>snapshot=snapshot with {Code="RESTART_CANCELLED"};
+        await health.RestartAsync(default);
+        check(health.View.Message.Contains("stopped before replacement"),"global STOP withdrawing a queued restart never reports recovery");
         backend.AfterSubmit=()=>snapshot=snapshot with {InstanceId=Id(),State="CONFIGURATION_ERROR",Code="SETTINGS_INVALID"};
         await health.RestartAsync(default);
         check(health.View.Message.Contains("did not restore")&&!health.View.CanCheck&&!health.View.CanContinue,"restart with invalid configuration never claims successful recovery");

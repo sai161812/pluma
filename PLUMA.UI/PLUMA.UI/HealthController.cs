@@ -79,6 +79,8 @@ internal sealed class HealthController(Func<string,CancellationToken,Task<CoreRe
                 {
                     if(current.Pid!=target.Pid||current.CreationTime!=target.CreationTime)
                         throw new InvalidOperationException("Owned host changed.");
+                    if(current.InstanceId==target.InstanceId&&current.Code=="RESTART_CANCELLED")
+                    {_message="Restart was stopped before replacement began. No recovery was verified.";return;}
                     if(current.InstanceId!=target.InstanceId)
                     {
                         _message=current.State=="READY"&&current.HotkeysRegistered?"Owned Core restarted and authenticated health was verified. Recheck setup for this instance.":"Restart did not restore readiness. "+PopupText.Message(current.Code);

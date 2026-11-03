@@ -184,6 +184,15 @@ def test_stop_after_queued_restart_prevents_new_graph(host):
     assert host.instance_id==before and host._restart is None
 
 
+def test_global_stop_withdraws_terminal_restart_intent(host):
+    before=host.instance_id
+    terminal(host,request(host,'core_restart',**host.identity()))
+    reply=request(host,'stop')
+    assert reply['message_type']=='stop_ack'
+    host.advance()
+    assert host.instance_id==before and host._restart is None
+
+
 def test_stale_task_reconciled_before_host_ready(host):
     from pluma.memory.activity import TaskRecord,ActivityQuery
     paths=host.paths

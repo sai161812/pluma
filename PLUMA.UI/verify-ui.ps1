@@ -126,7 +126,14 @@ try {
         $controls = Start-OwnedProcess $controlsExecutable $suite.Arguments $suite.Label
         try {
             if (-not $controls.Process.WaitForExit(75000)) { throw "$($suite.Label) exceeded 75 seconds." }
-            if ($controls.Process.ExitCode -ne 0) { throw "$($suite.Label) failed with exit code $($controls.Process.ExitCode)." }
+            if ($controls.Process.ExitCode -ne 0) {
+                # Read only crash records for this owned executable on the test host.
+                Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=$controls.Created.ToLocalTime()} -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Message -match 'SurfaceControls.Tests.exe' } |
+                    Select-Object TimeCreated,Message | Out-String |
+                    Set-Content (Join-Path $runDirectory ($suite.Label + '.crash.txt'))
+                throw "$($suite.Label) failed with exit code $($controls.Process.ExitCode)."
+            }
         }
         finally {
             Finish-OwnedProcess $controls
