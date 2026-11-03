@@ -128,7 +128,9 @@ internal static class NativeConfirmationChecks
             try
             {
                 if (File.Exists(path)) Console.Error.WriteLine("Owned folder stages:\n" + File.ReadAllText(path));
-                else Console.Error.WriteLine("Owned folder stages: no executor-stage file was produced.");
+                foreach (string stack in Directory.EnumerateFiles(_root, "folder-stack-*.txt").Take(128))
+                    if (new FileInfo(stack).Length <= 512000)
+                        Console.Error.WriteLine("Owned stack " + Path.GetFileName(stack) + ":\n" + File.ReadAllText(stack));
             }
             catch (IOException) { Console.Error.WriteLine("Owned folder stages: concurrent fixture write prevented readback."); }
         }
@@ -171,6 +173,12 @@ internal static class NativeConfirmationChecks
             Directory.CreateDirectory(value._root);
             var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("PLUMA_TEST_PYTHON") ?? "python")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            if (mode == "history_undo" && Environment.GetEnvironmentVariable("PLUMA_P20_FOLDER_TRACE") == "1")
+            {
+                string startup = Path.Combine(Directory.GetCurrentDirectory(), "tests", "fixtures", "p20_folder_startup");
+                start.Environment["PYTHONPATH"] = startup + Path.PathSeparator + (Environment.GetEnvironmentVariable("PYTHONPATH") ?? "");
+                start.Environment["PLUMA_P20_FOLDER_TRACE_ROOT"] = value._root;
+            }
             foreach (string arg in new[] { "-u", Path.Combine(Directory.GetCurrentDirectory(), "PLUMA.UI", "CoreIpc.Tests", "fixture_server.py"),
                 value.Pipe, value._root, mode, "normal" }) start.ArgumentList.Add(arg);
             value._process = Process.Start(start) ?? throw new InvalidOperationException("Owned fixture did not start.");

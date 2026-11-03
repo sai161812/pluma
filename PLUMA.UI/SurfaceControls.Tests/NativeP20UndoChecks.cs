@@ -119,6 +119,7 @@ internal static class NativeP20UndoChecks
                         var command = shell.CurrentCommandForAcceptance;
                         var folder = await client.GetTaskDetailAsync(Guid.NewGuid().ToString("D"), command.TaskId!, 0, default);
                         Console.WriteLine("Owned folder saved timing and verifier: " + JsonSerializer.Serialize(folder.Response));
+                        fixture.WriteFolderDiagnostics();
                         check(folder.IsSuccess && folder.Response!.Actions.Single().Tool == "open_folder" && folder.Response.Actions.Single().Verified,
                             "actual conflict folder command has native Shell visibility and saved verifier readback");
                         await fixture.ControlHistoryAsync("history_assert_folder");
