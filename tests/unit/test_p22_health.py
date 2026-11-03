@@ -224,6 +224,26 @@ def test_hotkey_loss_cancels_old_queued_restart_before_control_replacement(host)
     host.advance()  # No lookup of an old task in the replacement supervisor.
 
 
+def test_health_handler_is_drained_before_graph_storage_closes(host,monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    entered=threading.Event();release=threading.Event()
+    original=host.health
+    def held(request_id):
+        entered.set()
+        assert release.wait(3)
+        return original(request_id)
+    monkeypatch.setattr(host,'health',held)
+    with ThreadPoolExecutor(1) as pool:
+        pending=pool.submit(request,host,'health_query')
+        try:
+            assert entered.wait(1)
+            report=host.runtime.close(.05)
+            assert not report.complete and host.runtime.db.is_open
+        finally:release.set();pending.result(2)
+    assert host.close()
+
+
 @pytest.mark.parametrize('stop',[True,False])
 def test_setup_worker_stop_and_timeout_leave_no_worker(host,tmp_path,stop):
     from tests.unit.test_worker_cancellation import OwnedProbe

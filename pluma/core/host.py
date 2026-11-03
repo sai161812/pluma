@@ -167,6 +167,17 @@ class CoreHost:
             "setup_ready":ready,"stale_tasks_recovered":self.recovery.stale_tasks_recovered if self.recovery else 0}
 
     def handle(self,payload):
+        runtime=self.runtime
+        try:
+            if runtime is None:raise ValueError("No Core graph.")
+            with runtime.resident_core._entry_gate.enter():
+                if runtime is not self.runtime:raise ValueError("Core graph changed.")
+                return self._handle(payload)
+        except Exception:
+            return {"protocol_version":1,"message_type":"protocol_error","error_code":"HEALTH_REQUEST_UNAVAILABLE",
+                    "message":"Core is unavailable or draining. No recovery was verified."}
+
+    def _handle(self,payload):
         self._observe_liveness()
         kind=payload.get("message_type")
         try:
