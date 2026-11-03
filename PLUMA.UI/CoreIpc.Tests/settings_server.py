@@ -4,7 +4,6 @@ def run(address, root, mode):
     import sys
     from pluma.app import PlumaApplicationRuntime
     from pluma.config.paths import PlumaPaths
-    from pluma.core.ipc import IpcServer
 
     paths = PlumaPaths(root / "p21-owned" / "local", root / "p21-owned" / "roaming")
     paths.ensure_directories()
@@ -16,7 +15,8 @@ def run(address, root, mode):
     if (runtime.llm_lifecycle.adapter.max_plan_steps != expected
             or runtime.llm_lifecycle.state.value != "COLD" or runtime.voice_lifecycle.state != "COLD"):
         raise RuntimeError("Actual settings application/cold lifecycle readback disagrees.")
-    server = IpcServer(address=address, handler=runtime.resident_core.handle_ipc_command)
+    server = runtime.resident_core.ipc
+    server.address = "\\\\.\\pipe\\" + address
     try:
         server.start()
         print("READY", flush=True)

@@ -185,6 +185,18 @@ def test_explicit_source_is_used_for_runtime_read_edit_and_write(tmp_path):
         assert runtime.close(5).complete
 
 
+def test_actual_settings_wire_fixture_starts_and_joins_its_graph(tmp_path):
+    import subprocess
+    import sys
+
+    script = Path(__file__).resolve().parents[2] / "PLUMA.UI" / "CoreIpc.Tests" / "fixture_server.py"
+    result = subprocess.run([sys.executable, str(script), "pluma_p21_" + uuid.uuid4().hex,
+        str(tmp_path), "settings"], input="stop\n", text=True, capture_output=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "READY"
+    assert not (tmp_path / "p21-owned" / "roaming" / "user_settings.json").exists()
+
+
 def blocked_save(args, context):
     marker = Path(context.settings_path).with_suffix(".entered")
     marker.write_text("owned settings worker", encoding="utf-8")

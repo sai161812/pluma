@@ -49,7 +49,6 @@ internal static partial class Program
 
     private static async Task RunAsync()
     {
-        await RunSettingsAsync();
         await ConfirmationControllerChecks.RunAsync(Check);
         await CommandControllerChecks.RunAsync(Check);
         await EventFeedChecks.RunAsync(Check);
@@ -329,6 +328,9 @@ internal static partial class Program
             Check(statuses.All(result => result.Status is { Running: true }),
                 "priority STOP releases the owned stalled status fixtures cleanly");
         }
+        // Keep P09's initially absent credential precondition intact. Settings
+        // creates a real core/credential and therefore runs after that check.
+        await RunSettingsAsync();
     }
 
     private static async Task RemainingContractsAsync(CoreIpcClient client, string pipe)
