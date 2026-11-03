@@ -43,7 +43,8 @@ internal static class NativeP22HealthChecks
             await Until(()=>!shell.CurrentCommandForAcceptance.Pending&&((Button)page.FindName("RecheckButton")).IsEnabled);
             var observed=(await client.GetHealthAsync(Id(),default)).Response!;
             check(observed.Checks.Length==5&&observed.NativeVerified&&!observed.SetupReady&&
-                Array.Exists(observed.Checks,c=>c.Id=="microphone"&&c.State=="UNVERIFIED"),
+                Array.Exists(observed.Checks,c=>c.Id=="microphone"&&c.State=="UNVERIFIED")&&
+                Array.TrueForAll(new[]{"planner","speech","ocr"},id=>Array.Exists(observed.Checks,c=>c.Id==id&&c.State=="FAILED")),
                 "actual owned native probes report unavailable runtimes and unconsented microphone without enabling Continue");
             check(!((Button)page.FindName("NextButton")).IsEnabled,"native unavailable dependency results keep setup blocked");
             shell.NavigateForAcceptance(true);
