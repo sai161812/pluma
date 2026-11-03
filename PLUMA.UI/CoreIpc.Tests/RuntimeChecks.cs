@@ -11,6 +11,15 @@ internal static class RuntimeChecks
         var node = new CoreRequestProtocol.RuntimeTask(task, id, "RUNNING", 100, 1, 1, 2,
             "fixture_wait", "READ", "EXECUTING", 20, "{}", null, null, null);
         var frame = new CoreRequestProtocol.RuntimeSnapshot(1, "runtime_snapshot", id, [node], []);
+        var activation=frame with {TextActivationId=Guid.NewGuid().ToString("D"),TextActivationUtc=DateTimeOffset.UtcNow.ToString("O")};
+        var source=activation;
+        var controller=new RuntimeController((request,token)=>Task.FromResult(new CoreRequestResult<CoreRequestProtocol.RuntimeSnapshot>(
+            source with {RequestId=request},CoreConnectionFailure.None,false,null,null)));
+        int activations=0;controller.TextRequested+=_=>activations++;
+        await controller.PollOnceAsync(default);await controller.PollOnceAsync(default);
+        source=activation with {TextActivationId=Guid.NewGuid().ToString("D"),TextActivationUtc=DateTimeOffset.UtcNow.AddSeconds(-10).ToString("O")};
+        await controller.PollOnceAsync(default);
+        check(activations==1,"text activation opens once and expired readback cannot replay command entry");
         string Wire(object value) => JsonSerializer.Serialize(value, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
         check(CoreRequestProtocol.RuntimeSnapshot.Parse(Encoding.UTF8.GetBytes(Wire(frame))).Tasks.Single().Tool == "fixture_wait",
             "runtime parser retains exact owned task and actual execution phase");

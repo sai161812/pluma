@@ -493,10 +493,19 @@ class RuntimeSnapshotV1(BaseModel):
     request_id: StrictStr
     tasks: list[RuntimeTaskV1] = Field(max_length=256)
     terminations: list[WorkerTerminationV1] = Field(max_length=256)
+    text_activation_id: Optional[StrictStr] = None
+    text_activation_utc: Optional[StrictStr] = Field(default=None,max_length=64)
 
     @model_validator(mode="after")
     def consistent(self):
         _validate_id("request_id", self.request_id)
+        if (self.text_activation_id is None)!=(self.text_activation_utc is None):
+            raise ValueError("Partial text activation.")
+        if self.text_activation_id is not None:
+            _validate_id("text_activation_id",self.text_activation_id)
+            from datetime import datetime
+            if datetime.fromisoformat(self.text_activation_utc).tzinfo is None:
+                raise ValueError("Text activation requires UTC time.")
         ids = [item.task_id for item in self.tasks]
         if len(set(ids)) != len(ids):
             raise ValueError("Duplicate runtime task")

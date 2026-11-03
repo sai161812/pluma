@@ -67,6 +67,7 @@ namespace PLUMA.UI
             _events.Surface += OnActivitySurface;
             _runtime = new RuntimeController(_coreStatus.GetRuntimeAsync);
             _runtime.Changed += OnRuntimeChanged;
+            _runtime.TextRequested += OpenCommandEntry;
             _runtime.WorkerTerminated += OnWorkerTerminated;
             _voice = new VoiceController(_coreStatus.GetVoiceAsync);
             _voice.Changed += OnVoiceChanged;
@@ -98,6 +99,7 @@ namespace PLUMA.UI
                 _events.Notice -= OnEventNotice;
                 _events.Surface -= OnActivitySurface;
                 _runtime.Changed -= OnRuntimeChanged;
+                _runtime.TextRequested -= OpenCommandEntry;
                 _runtime.WorkerTerminated -= OnWorkerTerminated;
                 _voice.Changed -= OnVoiceChanged;
                 await _commands.DisposeAsync();
@@ -202,6 +204,15 @@ namespace PLUMA.UI
         private readonly System.Collections.Generic.HashSet<string> _terminalTasks = new();
         private readonly System.Collections.Generic.Queue<string> _terminalOrder = new();
         private int _runtimeOffset;
+        private void OpenCommandEntry(DateTimeOffset requested)
+        {
+            if(!_dispatcher.HasThreadAccess){_dispatcher.TryEnqueue(()=>OpenCommandEntry(requested));return;}
+            var age=DateTimeOffset.UtcNow-requested;
+            if(_closed || age<TimeSpan.Zero || age>TimeSpan.FromSeconds(3))return;
+            Activate(); NavigateDashboard();
+            if(Dashboard?.FindName("CommandInput") is Microsoft.UI.Xaml.Controls.AutoSuggestBox input)
+                input.Focus(FocusState.Programmatic);
+        }
         private void OnRuntimeChanged(RuntimeView view)
         {
             if (!_dispatcher.HasThreadAccess)

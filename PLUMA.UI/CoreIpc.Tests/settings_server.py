@@ -10,7 +10,12 @@ def run(address, root, mode):
     if paths.user_settings_path.exists() != (mode == "settings_restart"):
         raise RuntimeError("Owned settings fixture precondition changed.")
     os.environ["PLUMA_CONFIG"] = str(paths.user_settings_path)
-    runtime = PlumaApplicationRuntime(paths)
+    config=None
+    if mode=="settings_ui":
+        from pluma.config.loader import load_config
+        config=load_config(root/"absent-settings-ui.json")
+        config["agent"].update(text_hotkey="ctrl+alt+shift+f7",stop_hotkey="ctrl+alt+shift+f8",voice_hotkey="ctrl+alt+shift+f9")
+    runtime = PlumaApplicationRuntime(paths,config=config)
     expected = 4 if mode == "settings_restart" else 8
     if (runtime.llm_lifecycle.adapter.max_plan_steps != expected
             or runtime.llm_lifecycle.state.value != "COLD" or runtime.voice_lifecycle.state != "COLD"):
@@ -68,6 +73,19 @@ def run(address, root, mode):
             if mode == "settings_ui" and line.strip() == "settings_native_hotkeys":
                 native_hotkeys(root, address)
                 print("SETTINGS_NATIVE_HOTKEYS", flush=True)
+            if mode == "settings_ui" and line.strip() == "settings_text_hotkey":
+                if os.environ.get("GITHUB_ACTIONS") != "true":
+                    raise RuntimeError("Text hotkey acceptance requires the disposable desktop.")
+                import ctypes,time
+                from pluma.core.resident import HOTKEY_ID_TEXT
+                core=runtime.resident_core
+                core._running=False  # replace the IPC-only fixture readiness marker
+                core.start()  # the existing IPC endpoint is idempotent; no duplicate core
+                assert ctypes.WinDLL("user32").PostThreadMessageW(core._hotkey_thread.native_id,0x0312,HOTKEY_ID_TEXT,0)
+                end=time.monotonic()+2
+                while core._text_activation is None and time.monotonic()<end:time.sleep(.01)
+                assert core._text_activation is not None
+                print("SETTINGS_TEXT_HOTKEY",flush=True)
     finally:
         server.stop()
         unchanged = (runtime.llm_lifecycle.adapter.max_plan_steps == expected

@@ -15,6 +15,8 @@ internal sealed class RuntimeController(Func<string, CancellationToken, Task<Cor
     internal RuntimeView View { get; private set; } = new([], false, null);
     internal event Action<RuntimeView>? Changed;
     internal event Action<CoreRequestProtocol.WorkerTermination>? WorkerTerminated;
+    internal event Action<DateTimeOffset>? TextRequested;
+    private string? _lastTextActivation;
     private readonly HashSet<string> _seen = new();
     private readonly Queue<string> _seenOrder = new();
     private bool _initialized;
@@ -38,6 +40,16 @@ internal sealed class RuntimeController(Func<string, CancellationToken, Task<Cor
                         if (_seenOrder.Count > 512) _seen.Remove(_seenOrder.Dequeue());
                         if (_initialized) WorkerTerminated?.Invoke(proof);
                     }
+                var snapshot=response.Response!;
+                if(snapshot.TextActivationId is not null && snapshot.TextActivationId!=_lastTextActivation)
+                {
+                    _lastTextActivation=snapshot.TextActivationId;
+                    if(DateTimeOffset.TryParse(snapshot.TextActivationUtc,out var requested))
+                    {
+                        var age=DateTimeOffset.UtcNow-requested;
+                        if(age>=TimeSpan.Zero && age<=TimeSpan.FromSeconds(3))TextRequested?.Invoke(requested);
+                    }
+                }
                 _initialized = true;
             }
             View = response.IsSuccess ? new(response.Response!.Tasks, true, timer.Elapsed.TotalMilliseconds) : new([], false, null);

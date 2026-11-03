@@ -98,6 +98,7 @@ class ResidentCore:
 
         self._hotkey_thread: Optional[threading.Thread] = None
         self._running = False
+        self._text_activation = None
         from pluma.core.shutdown import WorkGate
         self._entry_gate = WorkGate()
         self._voice_lock = threading.Lock()
@@ -968,7 +969,10 @@ class ResidentCore:
                         terminations[(cap.task_id, item.pid, item.creation_time)] = item
                         if len(terminations) > 256:
                             del terminations[next(iter(terminations))]
+            activation=getattr(self,"_text_activation",None)
             return RuntimeSnapshotV1(request_id=request.request_id, tasks=tasks,
+                text_activation_id=activation[0] if activation else None,
+                text_activation_utc=activation[1] if activation else None,
                 terminations=list(terminations.values())).model_dump(mode="json")
         except Exception:
             logger.warning("Live task evidence could not be read safely.")
@@ -1105,7 +1109,9 @@ class ResidentCore:
                 if message == (0x0312, HOTKEY_ID_STOP):
                     self.supervisor.stop_all_active_tasks()
                 elif message == (0x0312, HOTKEY_ID_TEXT):
-                    logger.info("Global Text hotkey triggered.")
+                    from datetime import datetime, timezone
+                    from uuid import uuid4
+                    self._text_activation=(str(uuid4()),datetime.now(timezone.utc).isoformat())
         except Exception:
             self._hotkey_error = "HOTKEY_UNAVAILABLE"
             self.supervisor.begin_shutdown()

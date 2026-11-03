@@ -136,6 +136,10 @@ internal static class NativeP21SettingsChecks
             await Until(()=>shell.Settings is {IsLoaded:true} restored && ((NumberBox)restored.FindName("PlanLimit")).IsEnabled);
             check(((NumberBox)shell.Settings!.FindName("PlanLimit")).Value==6,
                 "Settings navigation retains readback through the shell-owned controller");
+            await fixture.ControlHistoryAsync("settings_text_hotkey");
+            await Until(()=>shell.Dashboard is {IsLoaded:true});
+            check(shell.Dashboard is not null && (await client.GetSettingsEditAsync(Id(),default)).Response!.HotkeysRegistered,
+                "actual native text-hotkey message crosses authenticated runtime readback and opens command entry");
         }
         finally { shell.Close(); await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5)); }
         check(shell.ObservationLifetime.IsCompleted,"native Settings shutdown joins its reads and shared task owner");

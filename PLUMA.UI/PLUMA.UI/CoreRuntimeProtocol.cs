@@ -64,12 +64,21 @@ internal static partial class CoreRequestProtocol
     }
     internal sealed record RuntimeSnapshot([property: JsonRequired] int ProtocolVersion,
         [property: JsonRequired] string MessageType, [property: JsonRequired] string RequestId,
-        [property: JsonRequired] RuntimeTask[] Tasks, [property: JsonRequired] WorkerTermination[] Terminations)
+        [property: JsonRequired] RuntimeTask[] Tasks, [property: JsonRequired] WorkerTermination[] Terminations,
+        string? TextActivationId=null, string? TextActivationUtc=null)
     {
         internal static RuntimeSnapshot Parse(ReadOnlySpan<byte> message)
         {
             var value = ReadContract<RuntimeSnapshot>(message);
             Envelope(value.ProtocolVersion, value.MessageType, "runtime_snapshot", value.RequestId);
+            if((value.TextActivationId is null)!=(value.TextActivationUtc is null))throw new JsonException("Partial text activation.");
+            if(value.TextActivationId is not null)
+            {
+                RequireId(value.TextActivationId,"text_activation_id");
+                if(!System.Text.RegularExpressions.Regex.IsMatch(value.TextActivationUtc!,@"(?:Z|[+-]\d{2}:\d{2})$",System.Text.RegularExpressions.RegexOptions.CultureInvariant) ||
+                    !DateTimeOffset.TryParse(value.TextActivationUtc,System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind,out _))throw new JsonException("Invalid activation time.");
+            }
             if (value.Terminations is null || value.Terminations.Length > 256 ||
                 value.Terminations.Any(t => t is null) || value.Terminations.Select(t => t.Key).Distinct().Count() != value.Terminations.Length)
                 throw new JsonException("Invalid termination proof set.");
