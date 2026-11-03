@@ -28,6 +28,8 @@ namespace PLUMA.UI.Tests
                     for(int iteration=0;iteration<5;iteration++) await NativeP18ShellChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-undo") >= 0)
                     await NativeP20UndoChecks.RunAsync(Check);
+                else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-folder-repeat") >= 0)
+                    for(int iteration=0;iteration<5;iteration++) await NativeP20UndoChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-history") >= 0)
                     await NativeP20HistoryChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p19-voice") >= 0)

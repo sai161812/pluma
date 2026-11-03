@@ -130,6 +130,18 @@ try {
     }
     $controlReport = Assert-Report (Join-Path $runDirectory 'control-tests.txt') '(?m)^\d+ UI checks passed\.'
     $summary.controlsResult = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''
+    if ($env:PLUMA_P20_FOLDER_TRACE -eq '1') {
+        $repeat = Start-OwnedProcess $controlsExecutable @('--p20-folder-repeat') 'p20-folder-repeat'
+        try {
+            if (-not $repeat.Process.WaitForExit(375000)) { throw 'Five native folder cycles exceeded five existing runner budgets.' }
+            if ($repeat.Process.ExitCode -ne 0) { throw "Native folder repeat failed with exit code $($repeat.Process.ExitCode)." }
+        }
+        finally {
+            Finish-OwnedProcess $repeat
+            Copy-Item -LiteralPath $controlsLog -Destination (Join-Path $runDirectory 'p20-folder-repeat.txt')
+        }
+        $null = Assert-Report (Join-Path $runDirectory 'p20-folder-repeat.txt') '(?m)^\d+ UI checks passed\.'
+    }
     $summary.status = 'passed'
     $summary.stage = 'complete'
     Write-Host 'Native popup, gallery formatting and control checks passed. Physical Windows 11 taskbar/DPI/accessibility review remains separate.'

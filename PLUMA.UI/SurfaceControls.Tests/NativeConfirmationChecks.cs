@@ -124,13 +124,19 @@ internal static class NativeConfirmationChecks
         private readonly ConcurrentQueue<string> _events = new();
         internal void WriteFolderDiagnostics()
         {
+            static string ReadShared(string file)
+            {
+                using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd();
+            }
             string path = Path.Combine(_root, "folder-stages.jsonl");
             try
             {
-                if (File.Exists(path)) Console.Error.WriteLine("Owned folder stages:\n" + File.ReadAllText(path));
+                if (File.Exists(path)) Console.Error.WriteLine("Owned folder stages:\n" + ReadShared(path));
                 foreach (string stack in Directory.EnumerateFiles(_root, "folder-stack-*.txt").Take(128))
                     if (new FileInfo(stack).Length <= 512000)
-                        Console.Error.WriteLine("Owned stack " + Path.GetFileName(stack) + ":\n" + File.ReadAllText(stack));
+                        Console.Error.WriteLine("Owned stack " + Path.GetFileName(stack) + ":\n" + ReadShared(stack));
             }
             catch (IOException) { Console.Error.WriteLine("Owned folder stages: concurrent fixture write prevented readback."); }
         }
