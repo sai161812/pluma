@@ -116,20 +116,28 @@ try {
 
     $summary.stage = 'native-controls'
     $controlsExecutable = Join-Path $repositoryRoot 'PLUMA.UI/SurfaceControls.Tests/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/SurfaceControls.Tests.exe'
-    $controls = Start-OwnedProcess $controlsExecutable @() 'native-controls'
-    try {
-        if (-not $controls.Process.WaitForExit(75000)) { throw 'Native control checks exceeded 75 seconds.' }
-        if ($controls.Process.ExitCode -ne 0) { throw "Native control runner failed with exit code $($controls.Process.ExitCode)." }
+    # Each coherent suite retains its existing 60-second native watchdog and
+    # 75-second owner budget. Both are mandatory, with separate retained reports.
+    foreach ($suite in @(
+        @{ Label = 'native-controls'; Arguments = @(); Report = 'control-tests.txt'; Result = 'controlsResult' },
+        @{ Label = 'native-p22-health'; Arguments = @('--p22-health'); Report = 'p22-health-tests.txt'; Result = 'healthControlsResult' }
+    )) {
+        $summary.stage = $suite.Label
+        $controls = Start-OwnedProcess $controlsExecutable $suite.Arguments $suite.Label
+        try {
+            if (-not $controls.Process.WaitForExit(75000)) { throw "$($suite.Label) exceeded 75 seconds." }
+            if ($controls.Process.ExitCode -ne 0) { throw "$($suite.Label) failed with exit code $($controls.Process.ExitCode)." }
+        }
+        finally {
+            Finish-OwnedProcess $controls
+            $controlsLog = Join-Path (Split-Path $controlsExecutable -Parent) 'control-tests.txt'
+            if (Test-Path $controlsLog) { Copy-Item -LiteralPath $controlsLog -Destination (Join-Path $runDirectory $suite.Report) }
+            $historyRender = Join-Path (Split-Path $controlsExecutable -Parent) 'history-page-saved-dark.png'
+            if (Test-Path $historyRender) { Copy-Item -LiteralPath $historyRender -Destination (Join-Path $runDirectory 'history-page-saved-dark.png') }
+        }
+        $controlReport = Assert-Report (Join-Path $runDirectory $suite.Report) '(?m)^\d+ UI checks passed\.'
+        $summary[$suite.Result] = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''
     }
-    finally {
-        Finish-OwnedProcess $controls
-        $controlsLog = Join-Path (Split-Path $controlsExecutable -Parent) 'control-tests.txt'
-        if (Test-Path $controlsLog) { Copy-Item -LiteralPath $controlsLog -Destination (Join-Path $runDirectory 'control-tests.txt') }
-        $historyRender = Join-Path (Split-Path $controlsExecutable -Parent) 'history-page-saved-dark.png'
-        if (Test-Path $historyRender) { Copy-Item -LiteralPath $historyRender -Destination (Join-Path $runDirectory 'history-page-saved-dark.png') }
-    }
-    $controlReport = Assert-Report (Join-Path $runDirectory 'control-tests.txt') '(?m)^\d+ UI checks passed\.'
-    $summary.controlsResult = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''
     $summary.status = 'passed'
     $summary.stage = 'complete'
     Write-Host 'Native popup, gallery formatting and control checks passed. Physical Windows 11 taskbar/DPI/accessibility review remains separate.'

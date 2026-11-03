@@ -233,7 +233,6 @@ namespace PLUMA.UI.Tests
             await NativeP20HistoryChecks.RunAsync(Check);
             await NativeP20UndoChecks.RunAsync(Check);
             await NativeP21SettingsChecks.RunAsync(Check);
-            await NativeP22HealthChecks.RunAsync(Check);
         }
 
         private sealed class FakeCoreStatusClient : ICoreStatusClient
