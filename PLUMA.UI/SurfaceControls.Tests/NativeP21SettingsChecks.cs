@@ -95,6 +95,9 @@ internal static class NativeP21SettingsChecks
             await fixture.ControlHistoryAsync("settings_prepare_models");
             ((TextBox)page.FindName("ModelPath")).Text=System.IO.Path.Combine(fixture.OwnedRoot,"planner.gguf");
             ((TextBox)page.FindName("SpeechModelPath")).Text=System.IO.Path.Combine(fixture.OwnedRoot,"speech.bin");
+            ((TextBox)page.FindName("TextHotkey")).Text="ctrl+alt+shift+f10";
+            ((TextBox)page.FindName("StopHotkey")).Text="ctrl+alt+shift+f11";
+            ((TextBox)page.FindName("VoiceHotkey")).Text="ctrl+alt+shift+f12";
             ((NumberBox)page.FindName("ModelGrace")).Value=2;
             ((NumberBox)page.FindName("SpeechGrace")).Value=1;
             ((NumberBox)page.FindName("OcrGrace")).Value=0;
@@ -110,6 +113,7 @@ internal static class NativeP21SettingsChecks
             check(advanced.Persisted.ModelIdleUnloadSeconds==2 && advanced.Persisted.SttIdleUnloadSeconds==1 &&
                 advanced.Persisted.OcrIdleUnloadSeconds==0 && !advanced.Persisted.AllowShortWarmGrace &&
                 advanced.Persisted.DiagnosticLogging && !advanced.Persisted.IncludeCommandPreviews && advanced.Persisted.ConfirmLowRisk &&
+                advanced.Persisted.VoiceHotkey=="ctrl+alt+shift+f12" && advanced.Persisted.StopHotkey=="ctrl+alt+shift+f11" &&
                 advanced.Persisted.PlannerModelPath==System.IO.Path.Combine(fixture.OwnedRoot,"planner.gguf") &&
                 advanced.Effective.ModelIdleUnloadSeconds==30,
                 "native Settings edits model-format paths and bounded grace without claiming active native-model changes");

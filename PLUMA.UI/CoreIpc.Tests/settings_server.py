@@ -40,12 +40,17 @@ def run(address, root, mode):
                 paths.user_settings_path.write_bytes(b"{owned rejected source")
                 print("SETTINGS_CORRUPT", flush=True)
             if mode == "settings_ui" and line.strip() == "settings_assert_advanced_restart":
+                if os.environ.get("GITHUB_ACTIONS") != "true":
+                    raise RuntimeError("Native hotkey restart requires the disposable CI desktop.")
                 restarted=PlumaApplicationRuntime(paths,settings_path=str(paths.user_settings_path))
                 try:
+                    restarted.resident_core.ipc.address=server.address+"-restart"
+                    restarted.resident_core.start()
                     assert restarted.llm_lifecycle.adapter.model_path==str(root/"planner.gguf")
                     assert restarted.voice_lifecycle.model_path==str(root/"speech.bin")
                     assert restarted.llm_lifecycle.idle_unload_seconds==restarted.voice_lifecycle.idle_unload_seconds==0
-                    assert restarted.resident_core.voice_activation.hotkey=="ctrl+alt+v"
+                    assert restarted.resident_core.voice_activation.hotkey=="ctrl+alt+shift+f12"
+                    assert restarted.resident_core._hotkey_ready.is_set() and restarted.resident_core._hotkey_error is None
                     assert restarted.orchestrator.include_command_previews is False
                     assert restarted.voice_pipeline.include_command_previews is False
                     assert restarted.policy_rules.confirm_low_risk is True
