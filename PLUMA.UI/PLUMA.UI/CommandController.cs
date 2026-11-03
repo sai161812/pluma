@@ -17,6 +17,8 @@ internal interface ICommandClient
     Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitSettingsAsync(string request, string revision,
         CoreRequestProtocol.SettingsEdits edits, CancellationToken token) =>
         Task.FromResult(CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol));
+    Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitHealthAsync(string request,CoreHealthProtocol.Operation operation,CancellationToken token)=>
+        Task.FromResult(CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol));
     Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request, string task, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request, CancellationToken token);
     Task<CoreRequestResult<CoreRequestProtocol.StopAck>> StopAsync(string request, string? submissionRequest, CancellationToken token);
@@ -30,6 +32,16 @@ internal sealed class CoreCommandClient(CoreIpcClient client) : ICommandClient
         for(int retry=0;reply.Failure==CoreConnectionFailure.Busy && retry<8;retry++)
         { await Task.Delay(50,token); reply=await client.GetSettingsAsync(Guid.NewGuid().ToString("D"),token); }
         return reply;
+    }
+    public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitHealthAsync(string request,CoreHealthProtocol.Operation operation,CancellationToken token)
+    {
+        var current=await client.GetHealthAsync(Guid.NewGuid().ToString("D"),token);
+        if(!current.IsSuccess||current.Response!.InstanceId!=operation.Target.InstanceId||current.Response.Pid!=operation.Target.Pid||
+            current.Response.CreationTime!=operation.Target.CreationTime||
+            (operation.IncludeMicrophone is null ? !current.Response.CanRestart : current.Response.State!="READY"))
+            return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
+        token.ThrowIfCancellationRequested();
+        return await client.SubmitHealthAsync(request,operation,token);
     }
     public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitAsync(string request, string text, CancellationToken token)
     {
@@ -111,7 +123,7 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
     internal CommandView View { get { lock (_gate) return Snapshot(); } }
     private static string Id() => Guid.NewGuid().ToString("D");
     private CommandView Snapshot() => new(_requestId, _taskId, _state, _message, _route,
-        !_closed && _connected && !_pending && !_stopPending, _pending, _stopPending, _stopMessage, _stopRequestedAt);
+        !_closed && _connected && _coreReady!=false && !_pending && !_stopPending, _pending, _stopPending, _stopMessage, _stopRequestedAt);
     private void Publish() { CommandView view; lock (_gate) view = Snapshot(); Changed?.Invoke(view); }
 
     internal void SetConnected(bool connected)
@@ -125,6 +137,13 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         Publish();
     }
 
+    private bool? _coreReady;
+    internal void SetCoreReady(bool? ready)
+    { lock(_gate){if(_coreReady==ready)return;_coreReady=ready;}Publish(); }
+    internal bool CanSubmitControl { get { lock(_gate)return !_closed&&!_pending&&!_stopPending&&_work.IsCompleted; } }
+    internal Task SubmitHealthAsync(CoreHealthProtocol.Operation operation)=>
+        SubmitAsync(operation.IncludeMicrophone is null?"Restart owned Core.":"Check setup.",health:operation);
+
     internal Task SubmitSettingsAsync(string revision, CoreRequestProtocol.SettingsEdits edits) =>
         SubmitAsync("Save PLUMA settings.", settings: edits, settingsRevision: revision);
 
@@ -132,11 +151,11 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         SubmitAsync("Save PLUMA settings.", settings: new(limit), settingsRevision: revision);
 
     internal Task SubmitAsync(string text, CoreRequestProtocol.UndoSelection? selected = null, CoreRequestProtocol.FolderSelection? folder = null,
-        CoreRequestProtocol.SettingsEdits? settings = null, string? settingsRevision = null)
+        CoreRequestProtocol.SettingsEdits? settings = null, string? settingsRevision = null,CoreHealthProtocol.Operation? health=null)
     {
         lock (_gate)
         {
-            if (!Snapshot().CanSubmit || !_work.IsCompleted) return Task.CompletedTask;
+            if ((health is {IncludeMicrophone:null} || settings is not null ? _closed||_pending||_stopPending : !Snapshot().CanSubmit) || !_work.IsCompleted) return Task.CompletedTask;
             if (string.IsNullOrWhiteSpace(text) || text.Length > 4096)
             { _message = "Enter between 1 and 4096 characters."; }
             else
@@ -144,7 +163,7 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
                 _requestId = Id(); _taskId = null; _pending = true; _stopMessage = null;
                 _state = "Submitting"; _message = "Sending the request. Execution is not yet confirmed."; _route = "Unavailable";
                 _submission = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-                _work = SubmitAndObserveAsync(text, _requestId, _submission, selected, folder, settings, settingsRevision);
+                _work = SubmitAndObserveAsync(text, _requestId, _submission, selected, folder, settings, settingsRevision, health);
             }
         }
         Publish();
@@ -152,7 +171,7 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
     }
 
     private async Task SubmitAndObserveAsync(string text, string request, CancellationTokenSource submission, CoreRequestProtocol.UndoSelection? selected,
-        CoreRequestProtocol.FolderSelection? folder, CoreRequestProtocol.SettingsEdits? settings, string? settingsRevision)
+        CoreRequestProtocol.FolderSelection? folder, CoreRequestProtocol.SettingsEdits? settings, string? settingsRevision,CoreHealthProtocol.Operation? health)
     {
         await Task.Yield(); // Publish/own the operation before any client call, including synchronous fixtures.
         bool attempted = false;
@@ -160,7 +179,7 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         {
             submission.Token.ThrowIfCancellationRequested();
             attempted = true;
-            var result = settings is not null ? await client.SubmitSettingsAsync(request, settingsRevision!, settings, submission.Token) :
+            var result = health is not null ? await client.SubmitHealthAsync(request,health,submission.Token) : settings is not null ? await client.SubmitSettingsAsync(request, settingsRevision!, settings, submission.Token) :
                 folder is not null ? await client.SubmitFolderAsync(request, folder, submission.Token) :
                 selected is null ? await client.SubmitAsync(request, text, submission.Token) :
                 await client.SubmitUndoAsync(request, selected, submission.Token);

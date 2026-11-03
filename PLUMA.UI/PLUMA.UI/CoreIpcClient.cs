@@ -252,6 +252,13 @@ namespace PLUMA.UI
             VersionedCallAsync(new CoreRequestProtocol.SettingsQueryRequest(requestId).ToMessage(), requestId,
                 false, false, bytes => CoreRequestProtocol.SettingsSnapshot.Parse(bytes), value => value.RequestId, cancellationToken);
 
+        internal Task<CoreRequestResult<CoreHealthProtocol.Snapshot>> GetHealthAsync(string request,CancellationToken token)=>
+            VersionedCallAsync(CoreHealthProtocol.Query(request),request,false,false,
+                bytes=>CoreHealthProtocol.Snapshot.Parse(bytes),value=>value.RequestId,token);
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitHealthAsync(string request,CoreHealthProtocol.Operation operation,CancellationToken token)=>
+            VersionedCallAsync(operation.Message(request),request,false,true,
+                bytes=>CoreRequestProtocol.SubmissionAck.Parse(bytes),value=>value.RequestId,token);
+
         internal Task<CoreRequestResult<CoreRequestProtocol.SettingsEditSnapshot>> GetSettingsEditAsync(
             string requestId, CancellationToken token) =>
             VersionedCallAsync(new CoreRequestProtocol.SettingsEditQuery(requestId).ToMessage(), requestId,

@@ -290,6 +290,29 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
     set_paths(paths)
     paths.ensure_directories()
 
+    if args.recover_only and args.restore_previous_settings:
+        parser.error("Choose one explicit recovery operation.")
+    if not args.recover_only and not args.restore_previous_settings:
+        from pluma.core.host import CoreHost
+        host=CoreHost(paths,config_path=args.config,debug=args.debug)
+        stopped=threading.Event()
+        signal.signal(signal.SIGINT,lambda *_:stopped.set())
+        signal.signal(signal.SIGTERM,lambda *_:stopped.set())
+        try:
+            host.start()
+            while not stopped.wait(.05):host.advance()
+        except KeyboardInterrupt:
+            stopped.set()
+        finally:
+            while not host.close():time.sleep(.1)
+            shutdown_logging()
+        return 0
+    from pluma.config.settings import _exclusive
+    with _exclusive(paths.local_root/"core.host.lock"):
+        return _run_explicit_recovery(args,paths)
+
+
+def _run_explicit_recovery(args,paths):
     # 2. Configure logging
     logging_config = {} if args.restore_previous_settings else load_config(args.config)
     setup_logging(paths.logs_dir, debug=args.debug or get(logging_config,"logging","debug",default=False))
@@ -334,46 +357,6 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
                 raise RuntimeError("Settings recovery cleanup remains unverified.")
             shutdown_logging()
 
-    # 4. Initialize and start Production Runtime Dependency Graph
-    custom_cfg = logging_config
-    if args.debug:
-        from copy import deepcopy
-        custom_cfg = deepcopy(custom_cfg)
-        custom_cfg.setdefault("logging", {})["debug"] = True
-    runtime = PlumaApplicationRuntime(paths=paths, config=custom_cfg, settings_path=args.config)
-    core = runtime.resident_core
-
-    stop_event = threading.Event()
-
-    def _signal_handler(signum: int, frame: Any) -> None:
-        logger.info("Received signal %d. Initiating clean shutdown...", signum)
-        stop_event.set()
-
-    # Register OS termination signals
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
-
-    # 5. Main loop, including startup failure cleanup.
-    try:
-        core.start()
-        logger.info("PLUMA Resident Core active and listening (Hotkeys & Named Pipe IPC ready).")
-        while not stop_event.is_set():
-            time.sleep(0.2)
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received.")
-    finally:
-        logger.info("Stopping Resident Core and releasing resources...")
-        report = runtime.close()
-        while not report.complete:
-            # Remain the resident owner while drain is unverified. Never drop
-            # live handlers/storage merely because the host loop was stopped.
-            logger.warning("Shutdown pending: stage=%s code=%s", report.stage, report.code)
-            time.sleep(0.2)
-            report = runtime.close()
-        logger.info("PLUMA shutdown cleanly.")
-        shutdown_logging()
-
-    return 0
 
 
 def main() -> None:

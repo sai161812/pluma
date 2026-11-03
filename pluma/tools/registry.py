@@ -1247,6 +1247,8 @@ class ToolRegistry:
             if tool_name == 'run_project_command':
                 execution_binding = getattr(policy_eval, 'execution_binding', None)
 
+        if tool_name == "check_setup":
+            execution_binding=getattr(self,"setup_binding",None)
         if tool_name == "save_settings":
             execution_binding=dict(execution_binding or {},active_hotkeys=list(getattr(self,"settings_owned_hotkeys",())))
 
@@ -1732,6 +1734,10 @@ class ToolRegistry:
             future = None
             try:
                 executor_context = task_context
+                if tool_name == "restart_core":
+                    from types import SimpleNamespace
+                    executor_context=SimpleNamespace(task_id=task_context.task_id,cancellation_token=token,
+                        request_core_restart=getattr(self,"core_restart_callback",None))
                 if grounded_ui_target is not None and task_context is not None:
                     executor_context = _ExecutorContextOverlay(task_context, grounded_ui_target)
                 future = self.submit_owned(
@@ -2004,6 +2010,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.system import SYSTEM_TOOL_SPECS
     from pluma.tools.processes import PROCESS_TOOL_SPECS
     from pluma.tools.settings import SETTINGS_TOOL_SPECS
+    from pluma.tools.health import HEALTH_TOOL_SPECS
     from pluma.tools.memory import MEMORY_TOOL_SPECS
     from pluma.tools.terminal import TERMINAL_TOOL_SPECS
     from pluma.tools.browser import BROWSER_TOOL_SPECS
@@ -2019,6 +2026,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + PROCESS_TOOL_SPECS
         + MEMORY_TOOL_SPECS
         + SETTINGS_TOOL_SPECS
+        + HEALTH_TOOL_SPECS
         + TERMINAL_TOOL_SPECS
         + BROWSER_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS

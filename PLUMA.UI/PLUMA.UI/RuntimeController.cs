@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace PLUMA.UI;
 
-internal sealed record RuntimeView(CoreRequestProtocol.RuntimeTask[] Tasks, bool Connected, double? RoundTripMs);
+internal sealed record RuntimeView(CoreRequestProtocol.RuntimeTask[] Tasks, bool Connected, double? RoundTripMs,string? CoreInstanceId=null,bool? CoreReady=null);
 
 /// <summary>One shell-owned observer. A missing snapshot never proves task completion.</summary>
 internal sealed class RuntimeController(Func<string, CancellationToken, Task<CoreRequestResult<CoreRequestProtocol.RuntimeSnapshot>>> read,
@@ -52,7 +52,7 @@ internal sealed class RuntimeController(Func<string, CancellationToken, Task<Cor
                 }
                 _initialized = true;
             }
-            View = response.IsSuccess ? new(response.Response!.Tasks, true, timer.Elapsed.TotalMilliseconds) : new([], false, null);
+            View = response.IsSuccess ? new(response.Response!.Tasks, true, timer.Elapsed.TotalMilliseconds,response.Response.CoreInstanceId,response.Response.CoreReady) : new([], false, null);
             Changed?.Invoke(View);
         }
         finally { Interlocked.Exchange(ref _polling, 0); }

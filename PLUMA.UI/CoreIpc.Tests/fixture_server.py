@@ -13,6 +13,9 @@ def main():
     saturate_status = len(sys.argv) > 4 and sys.argv[4] == "saturate"
     startup_control = mode == "history_undo"
     if startup_control: mode = "history"
+    if mode=="health":
+        from health_server import run
+        return run(sys.argv[1],Path(sys.argv[2]))
     if mode in {"settings", "settings_restart", "settings_ui"}:
         from settings_server import run
         return run(sys.argv[1], Path(sys.argv[2]), mode)

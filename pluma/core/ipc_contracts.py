@@ -493,6 +493,8 @@ class RuntimeSnapshotV1(BaseModel):
     request_id: StrictStr
     tasks: list[RuntimeTaskV1] = Field(max_length=256)
     terminations: list[WorkerTerminationV1] = Field(max_length=256)
+    core_instance_id: Optional[StrictStr] = None
+    core_ready: Optional[StrictBool] = None
     text_activation_id: Optional[StrictStr] = None
     text_activation_utc: Optional[StrictStr] = Field(default=None,max_length=64)
 

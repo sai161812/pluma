@@ -146,6 +146,8 @@ class PolicyEngine:
                     summary = arguments['selection']['material']
                 if tool_name == 'recover_settings':
                     prompt = 'Restore the last valid local settings? The rejected source will be preserved separately. Core restart is required. No automatic undo is available.'
+                if tool_name == 'restart_core':
+                    prompt = 'Restart this exact owned Core? Active tasks will be stopped and safe reversible changes rolled back. No automatic undo is available. Recovery must be verified by authenticated new-instance health.'
                 if tool_name == 'safe_delete':
                     # This tool always recycles; the confirmation must state
                     # the actual recovery path and must never imply permanent

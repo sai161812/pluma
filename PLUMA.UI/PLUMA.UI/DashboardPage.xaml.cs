@@ -13,6 +13,18 @@ namespace PLUMA.UI
 {
     public sealed partial class DashboardPage : Page
     {
+        private HealthController? _health;
+        internal event Action? SetupRequested;
+        internal event Action? RecoveryRequested;
+        internal void AttachHealth(HealthController health)
+        { _health=health;health.Changed+=ApplyHealth;SetupButton.IsEnabled=RecoveryButton.IsEnabled=true;ApplyHealth(health.View); }
+        private void ApplyHealth(HealthView view)
+        {
+            if(!_dispatcher.HasThreadAccess){_dispatcher.TryEnqueue(()=>{if(IsLoaded&&_health is not null)ApplyHealth(_health.View);});return;}
+            DetailedHealthText.Text=PopupText.Message(view.Message);
+        }
+        private void OnSetupClick(object sender,RoutedEventArgs args)=>SetupRequested?.Invoke();
+        private void OnRecoveryClick(object sender,RoutedEventArgs args)=>RecoveryRequested?.Invoke();
         private ICoreStatusClient? _core;
         private CancellationTokenSource? _healthLifetime;
         private Task _healthTask = Task.CompletedTask;
@@ -193,6 +205,7 @@ namespace PLUMA.UI
 
         private async void OnUnloaded(object sender, RoutedEventArgs args)
         {
+            if(_health is not null)_health.Changed-=ApplyHealth;
             if (_commands != null) _commands.Changed -= OnCommandChanged;
             if (_events != null) _events.Changed -= OnEventsChanged;
             if (_runtime != null) _runtime.Changed -= OnRuntimeChanged;

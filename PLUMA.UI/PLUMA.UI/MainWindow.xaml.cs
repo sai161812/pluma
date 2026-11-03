@@ -73,6 +73,9 @@ namespace PLUMA.UI
             _voice.Changed += OnVoiceChanged;
             _history = new HistoryController(_coreStatus.GetHistoryPageAsync);
             _savedDetail = new SavedDetailController(_coreStatus);
+            _health=new HealthController(_coreStatus.GetHealthAsync,_commands);
+            _commands.Changed+=_health.OnCommand;
+            _health.Changed+=OnHealthChanged;
             _settings = new SettingsController(_coreStatus.GetSettingsEditAsync, _coreStatus.GetSettingsAsync, _commands);
             _commands.Changed += _settings.OnCommandChanged;
 
@@ -105,6 +108,12 @@ namespace PLUMA.UI
                 await _commands.DisposeAsync();
                 _commands.Changed -= _settings.OnCommandChanged;
                 await _settings.DisposeAsync();
+                _commands.Changed-=_health.OnCommand;
+                _health.Changed-=OnHealthChanged;
+                _critical?.Hide();
+                await _health.DisposeAsync();
+                await _recoveryTask;
+                await _healthDialogTask;
                 await _observerStartupTask;
                 await _confirmationTask;
                 await _eventTask;
@@ -123,6 +132,9 @@ namespace PLUMA.UI
             ContentFrame.Navigate(typeof(DashboardPage));
             if (ContentFrame.Content is DashboardPage dashboard)
             {
+                dashboard.AttachHealth(_health);
+                dashboard.SetupRequested+=OpenSetup;
+                dashboard.RecoveryRequested+=OpenRecovery;
                 dashboard.AttachCommandController(_commands);
                 dashboard.AttachCoreClient(_coreStatus, _healthLifetime.Token);
                 dashboard.AttachEventController(_events);
@@ -130,6 +142,47 @@ namespace PLUMA.UI
             }
         }
 
+        private readonly HealthController _health;
+        private CriticalErrorDialog? _critical;
+        private Task _healthDialogTask=Task.CompletedTask,_recoveryTask=Task.CompletedTask;
+        internal SetupWizard? Setup=>ContentFrame.Content as SetupWizard;
+        internal CriticalErrorDialog? CriticalForAcceptance=>_critical;
+        internal void OpenSetupForAcceptance()=>OpenSetup();
+        private async void OpenSetup()
+        {
+            ContentFrame.Navigate(typeof(SetupWizard));
+            if(Setup is {} page)
+            {
+                page.AttachHealth(_health,_commands,_healthLifetime.Token);
+                page.ContinueRequested+=async (_,_)=>{if(await _health.VerifyContinueAsync(_healthLifetime.Token)&&!_closed)NavigateDashboard();};
+                await _health.RefreshAsync(_healthLifetime.Token);
+            }
+        }
+        private void OpenRecovery(){if(_healthDialogTask.IsCompleted)_healthDialogTask=ShowRecoveryAsync();}
+        private async Task ShowRecoveryAsync()
+        {
+            await _health.RefreshAsync(_healthLifetime.Token);
+            if(_closed||_confirmationPresenter?.ActiveDialog is not null)return;
+            var dialog=new CriticalErrorDialog{XamlRoot=ContentFrame.XamlRoot,Title="Core recovery",ErrorMessage=_health.View.Message,
+                SanitizedDetails=_health.View.Snapshot?.Code??"Authenticated Core identity unavailable. Start Core manually; no replacement is launched.",CanRestart=_health.View.CanRestart};
+            _critical=dialog;
+            dialog.RestartRequested+=(_,_)=>{if(_recoveryTask.IsCompleted)_recoveryTask=RestartFromDialog(dialog);};
+            try{await dialog.ShowAsync();}finally{if(ReferenceEquals(_critical,dialog))_critical=null;}
+        }
+        private async Task RestartFromDialog(CriticalErrorDialog dialog)
+        {
+            // Let the exact existing policy approval surface own the modal root.
+            // Dashboard health remains factual while the approval is displayed.
+            dialog.Hide();await _healthDialogTask;
+            await _health.RestartAsync(_healthLifetime.Token);
+            if(!_closed&&_health.View.Snapshot?.State!="READY")_healthDialogTask=ShowRecoveryAsync();
+        }
+        private void OnHealthChanged(HealthView view)
+        {
+            if(!_dispatcher.HasThreadAccess){_dispatcher.TryEnqueue(()=>OnHealthChanged(_health.View));return;}
+            if(_closed)return;
+            if(_critical is {} dialog){dialog.ErrorMessage=view.Message;dialog.CanRestart=view.CanRestart;}
+        }
         private readonly RuntimeController _runtime;
         private readonly HistoryController _history;
         private readonly SavedDetailController _savedDetail;
@@ -218,6 +271,8 @@ namespace PLUMA.UI
             if (!_dispatcher.HasThreadAccess)
             { _dispatcher.TryEnqueue(() => OnRuntimeChanged(_runtime.View)); return; }
             if (_closed) return;
+            if(view.CoreReady is not null)_commands.SetCoreReady(view.CoreReady);
+            _health.OnRuntime(view);
             var current = new System.Collections.Generic.HashSet<string>();
             var pending = new System.Collections.Generic.List<(string Key, int Surface, CoreRequestProtocol.RuntimeTask Task)>();
             foreach (var task in view.Tasks)

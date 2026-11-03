@@ -50,8 +50,8 @@ try { _ = new LiveMessageBuffer(0); } catch (ArgumentOutOfRangeException) { reje
 Check(rejected, "invalid buffer capacity rejected");
 
 var setup = new SetupChecklist();
-Check(setup.Checks.Count == 5 && setup.Checks.All(check => check.State == SetupCheckState.Pending),
-    "all five capability checks start unverified");
+Check(setup.Checks.Count == 6 && setup.Checks.All(check => check.State == SetupCheckState.Pending),
+    "all six capability checks start unverified");
 Check(!setup.MoveNext() && !setup.CanComplete, "pending dependencies block navigation and completion");
 foreach (var check in setup.Checks.Where(check => check.Step == 0))
     setup.Update(check.Id, SetupCheckState.Passed, "Host verified");

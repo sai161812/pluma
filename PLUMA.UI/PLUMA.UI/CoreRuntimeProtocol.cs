@@ -65,12 +65,14 @@ internal static partial class CoreRequestProtocol
     internal sealed record RuntimeSnapshot([property: JsonRequired] int ProtocolVersion,
         [property: JsonRequired] string MessageType, [property: JsonRequired] string RequestId,
         [property: JsonRequired] RuntimeTask[] Tasks, [property: JsonRequired] WorkerTermination[] Terminations,
-        string? TextActivationId=null, string? TextActivationUtc=null)
+        string? TextActivationId=null, string? TextActivationUtc=null,string? CoreInstanceId=null,bool? CoreReady=null)
     {
         internal static RuntimeSnapshot Parse(ReadOnlySpan<byte> message)
         {
             var value = ReadContract<RuntimeSnapshot>(message);
             Envelope(value.ProtocolVersion, value.MessageType, "runtime_snapshot", value.RequestId);
+            if((value.CoreInstanceId is null)!=(value.CoreReady is null))throw new JsonException("Partial Core identity.");
+            if(value.CoreInstanceId is not null)RequireId(value.CoreInstanceId,"core_instance_id");
             if((value.TextActivationId is null)!=(value.TextActivationUtc is null))throw new JsonException("Partial text activation.");
             if(value.TextActivationId is not null)
             {

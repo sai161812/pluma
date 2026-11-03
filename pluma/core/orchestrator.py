@@ -151,7 +151,7 @@ class Orchestrator:
         from pluma.core.router import RouteResult
         from pluma.brain.schemas import RouteMode
         if (plan.route != RouteMode.FAST or len(plan.steps) != 1 or
-                plan.steps[0].tool not in ('undo_last', 'open_folder', 'save_settings', 'recover_settings') or not plan.steps[0].arguments):
+                plan.steps[0].tool not in ('undo_last', 'open_folder', 'save_settings', 'recover_settings', 'check_setup', 'restart_core') or not plan.steps[0].arguments):
             raise ValueError('Only a supported exact typed action is admitted here.')
         with self._supervisor.execution_gate.enter():
             return self._execute_request(request, capsule, selected_plan=plan)

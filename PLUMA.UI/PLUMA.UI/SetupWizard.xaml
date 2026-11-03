@@ -30,9 +30,12 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            <CheckBox x:Name="MicrophoneConsent" Content="Check microphone access briefly. No audio is kept." IsChecked="False" />
+            <TextBlock x:Name="SetupStatus" Text="Connect to Core, then request checks." TextWrapping="Wrap" />
             <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="SetupStop" Content="STOP" Click="OnStopClick" IsEnabled="False" />
                 <Button x:Name="BackButton" Content="Back" Click="OnBackClick" />
-                <Button Content="Check again" Click="OnRecheckClick" />
+                <Button x:Name="RecheckButton" Content="Check again" Click="OnRecheckClick" />
                 <Button x:Name="NextButton" Content="Next" Click="OnNextClick" IsEnabled="False"
                         Style="{StaticResource AccentButtonStyle}" />
             </StackPanel>

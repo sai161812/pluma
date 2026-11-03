@@ -853,26 +853,25 @@ def test_real_runtime_shutdown_verifies_owned_tree_and_unrelated_survival(runtim
 
 def test_host_waits_for_verified_close_before_claiming_clean_shutdown(tmp_path, monkeypatch):
     from pluma import app
-    from pluma.core.shutdown import ShutdownResult
+    from pluma.core import host as host_module
     calls = []
     class Host:
-        def __init__(self, **kwargs):
-            self.resident_core = SimpleNamespace(start=lambda: None)
+        def __init__(self, *args, **kwargs):pass
+        def start(self):pass
+        def advance(self):raise KeyboardInterrupt
         def close(self):
             calls.append(1)
-            return ShutdownResult(len(calls) >= 3, 'closed' if len(calls) >= 3 else 'handlers', 'fixture')
+            return len(calls) >= 3
     sleeps = []
     def clock(delay):
         sleeps.append(delay)
-        if len(sleeps) == 1:
-            raise KeyboardInterrupt
-    monkeypatch.setattr(app, 'PlumaApplicationRuntime', Host)
+    monkeypatch.setattr(host_module, 'CoreHost', Host)
     monkeypatch.setattr(app, 'time', SimpleNamespace(sleep=clock))
     monkeypatch.setattr(app.signal, 'signal', lambda *args: None)
     try:
         assert app.run_app(['--local-app-data', str(tmp_path / 'local'),
                             '--roaming-app-data', str(tmp_path / 'roaming')]) == 0
-        assert len(calls) == 3 and len(sleeps) == 3
+        assert len(calls) == 3 and len(sleeps) == 2
     finally:
         app.shutdown_logging()
 

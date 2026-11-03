@@ -578,10 +578,19 @@ class ResidentCore:
                 result = self.orchestrator.execute(request, capsule=capsule)
             else:
                 from pluma.brain.schemas import Plan, RouteMode, ToolCall
-                plan = Plan(task_id=capsule.task_id, route=RouteMode.FAST, steps=[ToolCall(
-                    tool=("recover_settings" if selected["settings"].get("changes", {}).get("recover_previous") else "save_settings") if 'settings' in selected else "open_folder" if 'folder' in selected else "undo_last",
-                    arguments=({key:selected["settings"][key] for key in ("expected_revision","previous_revision")} if selected["settings"].get("changes",{}).get("recover_previous") else selected["settings"]) if 'settings' in selected else {"path": selected['folder']} if 'folder' in selected else {"selection": selected},
-                    purpose="Execute the selected typed action.")])
+                if "health_tool" in selected:
+                    tool,arguments=selected["health_tool"],selected["arguments"]
+                elif "settings" in selected:
+                    arguments=selected["settings"]
+                    if arguments.get("changes",{}).get("recover_previous"):
+                        tool="recover_settings"
+                        arguments={key:arguments[key] for key in ("expected_revision","previous_revision")}
+                    else:tool="save_settings"
+                elif "folder" in selected:
+                    tool,arguments="open_folder",{"path":selected["folder"]}
+                else:tool,arguments="undo_last",{"selection":selected}
+                plan=Plan(task_id=capsule.task_id,route=RouteMode.FAST,steps=[ToolCall(
+                    tool=tool,arguments=arguments,purpose="Execute the selected typed action.")])
                 result = self.orchestrator.execute_typed_plan(request, capsule, plan)
             projection = {
                 "terminal": bool(capsule.terminal_ready.is_set()),

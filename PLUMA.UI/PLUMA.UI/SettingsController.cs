@@ -44,8 +44,8 @@ internal sealed class SettingsController(
                 bool valid=Valid;
                 if(valid && dirty) { try { BuildEdits().Fields(); } catch(Exception) { valid=false; } }
                 return new(_saved, _runtime, _draft, _busy, _connected, edit,
-                    edit && dirty && valid && commands.View.CanSubmit && _saved!.EditableFields.Contains("max_plan_steps"),
-                    edit && dirty, _message, _commandMessage, _advanced, available && _saved?.PreviousRevision is not null && commands.View.CanSubmit);
+                    edit && dirty && valid && commands.CanSubmitControl && _saved!.EditableFields.Contains("max_plan_steps"),
+                    edit && dirty, _message, _commandMessage, _advanced, available && _saved?.PreviousRevision is not null && commands.CanSubmitControl);
             }
         }
     }
@@ -133,7 +133,7 @@ internal sealed class SettingsController(
             if(_saved.PreviousRevision is not null)_message="Saved source is invalid. Restore previous valid settings only after confirmation. The rejected source will be preserved.";
             if (_saveRequest is not null && commands.View.RequestId == _saveRequest) _commandMessage = commands.View.Message;
         }
-        commands.SetConnected(true);
+
     }
     internal Task RecoverAsync(CancellationToken owner)
     {
