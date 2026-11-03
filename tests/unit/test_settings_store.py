@@ -8,7 +8,8 @@ import pytest
 from pluma.config.settings import ABSENT_REVISION, SettingsError, SettingsStore
 
 
-def test_runtime_reads_its_selected_roaming_settings(tmp_path, monkeypatch):
+@pytest.mark.parametrize("supplied_config", [None, {}])
+def test_runtime_reads_its_selected_roaming_settings(tmp_path, monkeypatch, supplied_config):
     from pluma.app import PlumaApplicationRuntime
     from pluma.config.paths import PlumaPaths
 
@@ -18,7 +19,7 @@ def test_runtime_reads_its_selected_roaming_settings(tmp_path, monkeypatch):
     paths.user_settings_path.write_text(
         json.dumps({"agent": {"max_plan_steps": 3}}), encoding="utf-8"
     )
-    runtime = PlumaApplicationRuntime(paths=paths)
+    runtime = PlumaApplicationRuntime(paths=paths, config=supplied_config)
     try:
         assert runtime.config["agent"]["max_plan_steps"] == 3
         assert runtime.llm_lifecycle.adapter.max_plan_steps == 3
