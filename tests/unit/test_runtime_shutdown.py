@@ -503,19 +503,46 @@ def test_actual_writer_close_timeout_retains_read_connection(runtime):
     assert not runtime.db.is_open and not runtime.db._writer_thread.is_alive()
 
 
-def test_running_model_timer_is_retained_across_failed_close(runtime):
+@pytest.mark.parametrize('delay_capture', [False, True])
+def test_running_model_timer_is_retained_across_failed_close(runtime, monkeypatch, delay_capture):
     entered, release = threading.Event(), threading.Event()
+    capture_entered, capture_release = threading.Event(), threading.Event()
+    if delay_capture:
+        original_capture = runtime.resident_core.cancel_capture
+        def capture():
+            capture_entered.set()
+            assert capture_release.wait(3)
+            original_capture()
+        monkeypatch.setattr(runtime.resident_core, 'cancel_capture', capture)
     timer = threading.Timer(0, lambda: (entered.set(), release.wait(3)))
     timer.start()
     assert entered.wait(3)
     lifecycle = SimpleNamespace(adapter=SimpleNamespace(is_loaded=False), _idle_timer=timer)
-    lifecycle.shutdown = lambda: setattr(lifecycle, '_idle_timer', None)
+    model_entered = threading.Event()
+    def shutdown_model():
+        lifecycle._idle_timer = None
+        model_entered.set()
+    lifecycle.shutdown = shutdown_model
     runtime.llm_lifecycle = lifecycle
     try:
         report = runtime.close(0.03)
         assert not report.complete and runtime.db.is_open
+        if delay_capture:
+            assert capture_entered.wait(1) and report.stage == 'capture'
+            assert lifecycle._idle_timer is timer and timer.is_alive()
+            capture_release.set()
+        # A caller budget may expire in an earlier real shutdown stage. Resume
+        # the same session until the model stage is observed, never assume the
+        # OS scheduled all preceding workers inside the initial 30 ms.
+        deadline = time.monotonic() + 2
+        while not model_entered.is_set() and time.monotonic() < deadline:
+            assert not report.complete and runtime.db.is_open
+            report = runtime.close(0.03)
+        assert model_entered.is_set() and report.stage == 'planner'
+        assert not report.complete and runtime.db.is_open and lifecycle._idle_timer is None
         assert timer in runtime._shutdown_timers
     finally:
+        capture_release.set()
         release.set()
     assert runtime.close().complete
     assert not timer.is_alive() and not runtime._shutdown_timers
