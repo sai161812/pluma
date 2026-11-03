@@ -1,6 +1,61 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-03, E99 P20 Shell repair and verified main integration
+## Current checkpoint: 2026-11-03, E100 P21 persistence foundation
+
+**The first bounded P21 packet is implemented; full P21 remains incomplete.**
+[E100](docs/completion/e100_p21_settings_store.md) records the selected storage/
+restart scope, reproduced source-selection defects, fresh isolated evidence and
+explicit remaining lifecycle/UI work. P22 is not eligible and has not started.
+
+- Authorized branch remains `p12-preparation`; clean prerequisite/recovery head
+  is `0468a031238261bee5bc79bd04b16a3d1964a3a9`, the verified merged E99 checkpoint.
+  Recovery ref `recovery/pre-p21-e100-20261103` is pushed. No merge/branch switch,
+  history rewrite, security-policy change or dark UI styling change is made.
+- Source `6534ded` adds bounded legacy/versioned JSON storage, explicit editable
+  fields, content revisions, a non-waiting writer lock, flushed atomic writes,
+  exact prior-file backup and independent verification/restoration. Corrupt
+  sources stay intact; prior valid bytes remain readable without a silent
+  fallback. Unsupported security/privacy/grace changes are refused.
+- It also fixes two reproduced configuration-source defects: runtime startup
+  ignored its selected roaming root, and a missing explicit PLUMA_CONFIG fell
+  through to another profile. Review reproduced an empty-dictionary compatibility
+  edge; follow-up `41c45c8` preserves original fallback semantics and tests both
+  None and empty supplied configuration. No user configuration was used.
+- Existing read-only settings IPC agrees with constructed restart values for
+  limits, three configured hotkeys and model paths. Model path fixtures are not
+  real inference evidence. Lifecycles stay COLD; no native hotkey is registered
+  by the storage primitive, and verified close joins existing owned work.
+- Pre-edit **157 passed**. Final exact source/test commit
+  `41c45c818a8e5e811e05d8659b9d98fbcc66f366` passes **209 focused / 501 prerequisites
+  / 8 paths/legacy compatibility** checks; **352 contracts** pass on the prior
+  source and remain unchanged by the follow-up. Zero skips/xfails are counted.
+  [Windows run 41608724329](https://github.com/sai161812/pluma/actions/runs/41608724329)
+  passes on exact final source: **285 IPC / 214 native UI / 663 popup / 195
+  formatting / 64,537 layout / 30 surface**, audio/copy gates and zero build
+  warnings/errors. Existing P20 folder visibility, saved verifier and owned-window
+  closure pass. This is not native Settings Save acceptance. The local C# assembly
+  was blocked before execution by Application Control; that retained nonzero
+  result is not a pass and no policy was bypassed. E100 includes verified artifact
+  and executable digests. The obsolete initial CI run was cancelled, not passed.
+- Evidence is under the fresh ignored directory
+  `output/p21-e100-20261103-085246-82bc280c/`. Exact commands, source identities,
+  results and limitations are in E100 and the per-run JSON/JUnit/stdout files.
+
+**Remaining P21:** typed authenticated settings query/save with persisted versus
+effective readback and task-owned ToolSpec/policy/pre-state/STOP handling; native
+SettingsContract/surface 2 Save/Cancel/reload/errors; OS shortcut availability and
+safe registration; complete local model/runtime-path, voice activation, measured
+grace, privacy/logging and allowed policy application; controlled recovery and
+combined native save/restart/rollback acceptance. The current page remains preview.
+
+**Next safe packet:** typed owned settings Save/readback contract using this
+store, then native page binding. Do not call full P21 complete or advance to P22.
+E94's owner-approved physical C-02 timing retest deferral to P25 and all later
+physical/measurement/install/security/release scopes remain. Independent Sol
+review of this packet is ready; approval is not assumed. Restore source through
+reviewed reverts while preserving versioned settings/previous bytes; older loaders do not understand version 1.
+
+## Previous checkpoint: 2026-11-03, E99 P20 Shell repair and verified main integration
 
 **The reopened P20 native gate passes.** [E99](docs/completion/e99_p20_shell_main_integration.md)
 records the reproduced metadata RPC, bounded fix, source identities, retained
