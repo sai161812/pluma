@@ -63,7 +63,11 @@ internal static class NativeP21SettingsChecks
                 Invoke(save);
                 {
                     await Until(()=>shell.ApprovalForAcceptance is {IsLoaded:true});
-                    check(((PopupMessageText)shell.ApprovalForAcceptance!.FindName("MaterialEffectText")).DisplayText.Contains("max_plan_steps"),
+                    var dialog=shell.ApprovalForAcceptance!;
+                    using var material=System.Text.Json.JsonDocument.Parse(dialog.SanitizedArguments);
+                    check(((PopupMessageText)dialog.FindName("MaterialEffectText")).DisplayText.Contains("save settings") &&
+                        material.RootElement.GetProperty("changes").GetProperty("max_plan_steps").GetInt32()==(scenario=="approve" ? 4 : 5) &&
+                        ((PopupMessageText)dialog.FindName("SanitizedArgumentsText")).DisplayText.Contains("max plan steps",StringComparison.OrdinalIgnoreCase),
                         "native settings confirmation identifies the exact changed field: "+scenario);
                     Invoke(Find(shell.ApprovalForAcceptance!,scenario=="deny" ? "Deny" : "Approve"));
                 }

@@ -34,7 +34,11 @@ def run(address, root, mode):
                 print("SETTINGS_EXTERNAL_LIMIT_6", flush=True)
     finally:
         server.stop()
+        unchanged = (runtime.llm_lifecycle.adapter.max_plan_steps == expected
+                     and runtime.llm_lifecycle.state.value == "COLD" and runtime.voice_lifecycle.state == "COLD")
         if not runtime.close(5).complete:
             raise RuntimeError("Owned settings graph did not close.")
         if runtime.tool_registry._worker_controllers or runtime.db.is_open:
             raise RuntimeError("Settings fixture ownership/storage remains open.")
+        if not unchanged:
+            raise RuntimeError("Settings edits changed active or cold runtime state before restart.")
