@@ -62,7 +62,7 @@
                         <Setter Target="RootBorder.Opacity" Value="1" />
                         <Setter Target="RootBorder.IsHitTestVisible" Value="True" />
                         <Setter Target="StatusHost.Visibility" Value="Collapsed" />
-                        <Setter Target="LiveTranscriptHost.Visibility" Value="Collapsed" />
+                        <Setter Target="LiveTranscriptHost.Visibility" Value="Visible" />
                         <Setter Target="CommittedPanel.Visibility" Value="Visible" />
                         <Setter Target="TimeoutBar.Opacity" Value="0" />
                     </VisualState.Setters>
@@ -112,10 +112,15 @@
                 <Grid Grid.Row="2"
                       MinWidth="0"
                       Margin="0,6,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <local:LiveTranscriptionOverlay x:Name="LiveTranscriptHost"
                                                     HorizontalAlignment="Stretch"
                                                     VerticalAlignment="Stretch" />
                     <local:VoiceCommittedBanner x:Name="CommittedPanel"
+                                                Grid.Row="1"
                                                 Visibility="Collapsed"
                                                 HorizontalAlignment="Stretch"
                                                 VerticalAlignment="Center" />

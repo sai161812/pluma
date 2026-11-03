@@ -9,7 +9,7 @@ import pytest
 
 from pluma.core.cancellation import StopReason, TaskCancelledError
 from pluma.core.ownership import OwnershipRegistry
-from pluma.core.task_supervisor import TaskState, TaskSupervisor
+from pluma.core.task_supervisor import TaskCapsule, TaskState, TaskSupervisor
 
 
 @pytest.fixture
@@ -25,6 +25,34 @@ def test_create_and_start_task(supervisor: TaskSupervisor) -> None:
 
     supervisor.start_task(capsule.task_id)
     assert capsule.state == TaskState.RUNNING
+
+
+def test_quiescent_terminal_capsule_releases_native_sync_handles():
+    capsule = TaskCapsule(request_id="terminal-sync-fixture")
+    gate = capsule.cancellation_token.process_admission()
+    capsule.state = TaskState.SUCCEEDED
+    capsule.terminal_ready.set()
+
+    assert capsule.release_terminal_sync_handles()
+    assert gate.is_closed
+    assert capsule.cancellation_token._process_admission is None
+    assert capsule.terminal_ready.is_set()
+    assert capsule.terminal_ready.wait(0)
+    assert capsule.work_lock.acquire(timeout=0)
+    capsule.work_lock.release()
+    assert not capsule.cancellation_token.is_cancelled
+
+
+def test_terminal_capsule_retains_sync_handles_while_owned_work_is_pending():
+    capsule = TaskCapsule(request_id="terminal-sync-pending-fixture")
+    gate = capsule.cancellation_token.process_admission()
+    capsule.owned_work["pending"] = {"future": None, "identity": {}}
+    capsule.state = TaskState.FAILED
+    capsule.terminal_ready.set()
+
+    assert not capsule.release_terminal_sync_handles()
+    assert not gate.is_closed
+    assert capsule.cancellation_token._process_admission is gate
 
 
 def test_stop_cancels_long_running_task(supervisor: TaskSupervisor) -> None:

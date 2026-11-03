@@ -85,3 +85,39 @@ def test_build_user_prompt_with_screen_snapshot() -> None:
     )
     assert "VISIBLE SCREEN ELEMENTS:" in user_prompt
     assert "Save Settings" in user_prompt
+
+
+@pytest.mark.parametrize('through_adapter', [False, True])
+def test_screen_secrets_and_password_controls_are_excluded_without_mutating_refs(through_adapter) -> None:
+    now = datetime.now(timezone.utc)
+    box = BoundingBox(left=0, top=0, right=80, bottom=30)
+    def element(label, **kwargs):
+        return ScreenElement(snapshot_id='private-screen', source=ElementSource.UIA,
+            label=label, bounds=box, confidence=1, **kwargs)
+    secret = 'screen-private-fixture-872'
+    password = element('password=' + secret, control_type='Edit', metadata={'is_password': True})
+    unknown = element('unclassified-private-value', control_type='Edit')
+    safe = element('api_key=' + secret, control_type='Button',
+        uia_automation_id='token=' + secret)
+    ocr = element('api_key=' + secret).model_copy(update={'source': ElementSource.OCR})
+    snapshot = ScreenSnapshot(snapshot_id='private-screen', expires_at=now + timedelta(seconds=30),
+        active_process='fixture.exe', active_window_title='Fixture', window_rect=box,
+        dpi_scale=1, controls=[password, unknown, safe], ocr_words=[ocr])
+    if through_adapter:
+        from unittest.mock import MagicMock
+        from pluma.brain.llama_cpp_adapter import LlamaCppAdapter
+        from pluma.brain.schemas import RouteMode
+        backend = MagicMock()
+        backend.generate.return_value = ('{"route":"SCREEN","mode":"direct","steps":['
+            '{"tool":"get_active_window_context","arguments":{},"purpose":"Inspect"}]}')
+        adapter = LlamaCppAdapter(custom_backend=backend)
+        plan = adapter.plan('inspect the screen', screen_snapshot=snapshot, route=RouteMode.SCREEN)
+        assert plan.steps[0].tool == 'get_active_window_context'
+        prompt = backend.generate.call_args.kwargs['prompt']
+    else:
+        prompt = PromptBuilder().build_user_prompt('inspect the screen', screen_snapshot=snapshot)
+    assert secret not in prompt
+    assert 'unclassified-private-value' not in prompt
+    assert '[REDACTED]' in prompt
+    assert safe.uia_automation_id == 'token=' + secret
+    assert password in snapshot.controls and snapshot.find_element(safe.element_id) == safe

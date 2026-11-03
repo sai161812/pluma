@@ -45,6 +45,9 @@ def main():
     user.PostQuitMessage.argtypes = [c.c_int]
     def handle(hwnd, message, wp, lp):
         if message == 0x10:
+            if mode == 'refuse':
+                # A test-owned native dispatch acknowledgment; no user window.
+                marker.with_suffix('.close-requested').touch()
             if mode != 'refuse':
                 if not user.DestroyWindow(hwnd):
                     raise c.WinError()

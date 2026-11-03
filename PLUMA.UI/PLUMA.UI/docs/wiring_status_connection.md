@@ -1,5 +1,72 @@
 # Wiring step 1: authenticated read-only core status
 
+## Current transport note (P20 E96)
+
+[E96](../../../docs/completion/p20_detail_undo.md) completes bounded saved detail,
+selected-undo and recorded-conflict-folder contracts. Exact identities/material
+enter shared typed admission, confirmation, STOP, ownership and terminal
+readback; uncertain writes never replay. Four ordinary slots remain, with at
+most three background readers and a separate fifth STOP slot. Capability/readback
+and approval polling use bounded Busy-only retries; only proven unwritten Busy
+decisions may retry. This fixes the reproduced first-command capacity race.
+The authorized exact-source Windows gate passes 285 IPC and 214 native UI checks,
+including actual owned-file undo and Shell folder readback/owned closure; popup,
+formatting, layout/surface/audio/copy gates also pass. See the
+[v1 protocol](../../../docs/completion/p15_protocol_v1.md) and latest handoff.
+P21 has not started; later physical/release gates remain separate.
+
+## Previous transport note (P18 packet 2 E88)
+
+[E88](../../../docs/completion/p18_activity_evidence.md) adds strict typed
+activity pagination and minimal saved action/undo/cleanup facts. The task feed
+uses this readback for correlation instead of complete scoped history, so the
+old history cap no longer blocks it. Local IPC/protocol checks pass 171 cases;
+exact-source Windows regression passes 105 native UI, 663 popup and 195 formatting checks plus layout/surface/audio/copy gates. No additional popup binding or
+worker-termination claim is implemented by this packet.
+
+## Previous transport note (P18 packet 1 E87)
+
+P18 now has a shell-owned bounded event consumer for the dashboard task feed
+and evidence-backed terminal notices. Cursor commits follow complete readback;
+historical reset/replay does not repeat notices. Native exact-source verification
+passes 154 IPC and 105 UI checks, with the existing popup/formatting gates.
+Detailed action/state/cleanup surfaces and full event-driven desktop/backend
+acceptance remain open. See [E87](../../../docs/completion/p18_event_feed.md)
+and the [event feed contract](wiring_event_feed.md). No push subscription or
+heartbeat was introduced. The P17 transport description below remains applicable.
+
+## Previous transport note (P17 E86)
+
+`CoreIpcClient` now retains the status query and also exposes typed version 1
+text-submit, STOP, terminal-readback, settings/history, confirmation
+query/decision/disconnect and factual event-batch methods
+over the same authenticated native message-mode pipe. Text submissions are sent
+once; a timeout after write returns `OutcomeUnknown` and is never retried
+automatically. Four ordinary client operations leave one independent client
+slot for STOP. The Python server
+retains 32 authenticated client handlers, limits ordinary request dispatch to
+31 and reserves one handler for STOP, including while synchronous legacy calls
+are running. Settings are allowlisted; history is bounded and re-redacted at
+the IPC projection. See [E82](../../../docs/completion/p15_e82_authenticated_transport.md)
+and [E83](../../../docs/completion/p15_e83_settings_history.md).
+E84 completes the remaining contracts; see the implemented
+[v1 protocol](../../../docs/completion/p15_protocol_v1.md).
+
+P17 connects dashboard submission and independent STOP through the same typed
+transport. The adapter requires the resident's explicit submission-fence
+capability before sending text. Unknown writes are never replayed; Refresh
+reconciles saved request/task state. The shell owns and drains the command and
+approval controllers. Closing the UI is not an implicit backend cancellation.
+
+The full native runner passes **138 IPC checks** and **95 native UI checks**,
+including actual registered safe execution, verification/WAL readback, denial,
+planning/execution STOP, residuals, reconnect and close. P16 material approval
+remains connected. Event batches still use a durable 512-fact journal; P18 owns
+the broader visible event consumer. No push subscription or heartbeat runs.
+See [E86](../../../docs/completion/p17_command_submission.md) for source/build
+identity, exact commands and limits. Earlier status-only records below are
+historical; dashboard submission is now guarded and enabled.
+
 P09 security checkpoint (2026-10-20): the Python credential factory now uses
 private atomic Windows creation and opened-handle owner/DACL/size verification.
 Existing invalid keys are refused, never repaired or rotated for tests. The
@@ -23,7 +90,7 @@ targets `ui-polish-integration`; PR 1 and `main` remain unmerged/unchanged.
 
 ## Implemented behavior and files
 
-- `CoreIpcClient.cs`: a read-only adapter using the per-user local Windows pipe,
+- `CoreIpcClient.cs` at the original status-only step: a read-only adapter using the per-user local Windows pipe,
   same-user/elevation restriction and the existing 32-byte HMAC-SHA256 challenge,
   proof and `AUTH_OK` acknowledgement. It reads the existing credential only,
   validates its actual opened-handle owner/ACL and never creates or repairs
@@ -32,7 +99,8 @@ targets `ui-polish-integration`; PR 1 and `main` remain unmerged/unchanged.
   Secret/proof buffers are cleared and are never logged or sent as a secret.
 - Python's Windows `PipeConnection` uses native message boundaries. Each proof
   or JSON request is one native pipe message; no TCP length prefix or
-  newline-delimited/JSON-RPC protocol is invented. The backend source is unchanged.
+  newline-delimited/JSON-RPC protocol is invented. E82 extends v1 request
+  transport and dispatch capacity; E83 adds settings/history queries.
 - `CoreStatus.cs`: typed status/result projection. Missing, mistyped, negative,
   duplicate, malformed or oversized fields cannot imply connected state. Only
   supplied running/active-count/voice flags are accepted; a reachable stopped

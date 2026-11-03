@@ -21,12 +21,17 @@ from typing import Any, Dict, List, Union
 # Replacement token used wherever a value is redacted.
 REDACTED_TOKEN = "[REDACTED]"
 
+_CLIPBOARD_COMMAND_PATTERN = re.compile(
+    r"\b(?:clip\s*board|pasteboard|paste[ds]?|pasting)\b", re.IGNORECASE
+)
+
 _SENSITIVE_KEY_SUBSTRINGS = (
     "password", "passwd", "secret", "token", "api_key", "apikey",
     "auth", "bearer", "credential", "private_key", "privkey",
     "access_key", "session_token", "jwt", "client_secret",
     "clipboard", "audio_path", "raw_audio",
     "command_output",
+    "screen_input", "visible_text", "control_text", "expected_control_text",
 )
 
 
@@ -153,6 +158,21 @@ def redact_string(text: str) -> str:
     for pattern in _SECRET_VALUE_PATTERNS:
         redacted = pattern.sub(REDACTED_TOKEN, redacted)
     return redacted
+
+
+def redact_command_text(text: str) -> str:
+    """Redact command text that may contain a clipboard payload.
+
+    Clipboard operations can carry arbitrary private text without a reliable
+    secret marker (for example, "set clipboard to my address"). Keep the
+    action visible in history while dropping the utterance whenever it names
+    the clipboard or describes a paste operation.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+    if _CLIPBOARD_COMMAND_PATTERN.search(text):
+        return "[REDACTED CLIPBOARD COMMAND]"
+    return redact_string(text)
 
 
 def redact_sensitive_data(data: Any) -> Any:

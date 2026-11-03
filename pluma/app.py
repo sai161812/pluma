@@ -69,28 +69,35 @@ class PlumaApplicationRuntime:
         )
         self.rollback_engine.task_resolver = self.supervisor.get_task
         self.policy_rules = PolicyRules()
+        from pluma.ui.ipc_confirmations import IpcConfirmationBroker
+        self.confirmation_broker = (IpcConfirmationBroker(self.supervisor.get_task)
+                                    if confirmation_contract is None else
+                                    confirmation_contract if isinstance(confirmation_contract, IpcConfirmationBroker) else None)
         self.policy_engine = PolicyEngine(
             rules=self.policy_rules,
-            confirmation_contract=confirmation_contract,
+            confirmation_contract=confirmation_contract if confirmation_contract is not None else self.confirmation_broker,
             command_catalog_path=str(paths.roaming_root / 'commands.json'),
         )
         self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop)
         register_default_tools(self.tool_registry)
         self.rollback_engine.clipboard_inverse = self.tool_registry.restore_clipboard
+        self.rollback_engine.screen_text_inverse = self.tool_registry.restore_screen_control_text
         self.tool_registry.clipboard_task_resolver = self.supervisor.get_task
 
         self.router = Router()
 
         # Model & Planner Lifecycles (Zero-ML at startup; auto-unloaded on idle)
         model_name = get(self.config, "brain", "model_name", default="qwen3-4b.gguf")
-        model_path = get(self.config, "brain", "model_path", default=str(paths.models_dir / model_name))
-        idle_seconds = float(get(self.config, "brain", "idle_unload_seconds", default=30.0))
+        model_path = get(self.config, "brain", "model_path", default=str(paths.llm_models_dir / model_name))
+        idle_seconds = float(get(self.config, "runtime", "model_idle_unload_seconds", default=30.0))
+        max_plan_steps = get(self.config, "agent", "max_plan_steps", default=8)
 
         from pluma.brain.lifecycle import LlmLifecycleManager
         self.llm_lifecycle = LlmLifecycleManager(
             model_path=model_path,
             registry=self.tool_registry,
             idle_unload_seconds=idle_seconds,
+            max_plan_steps=max_plan_steps,
         )
 
         self.orchestrator = Orchestrator(
@@ -102,12 +109,19 @@ class PlumaApplicationRuntime:
             rollback_engine=self.rollback_engine,
         )
 
-        stt_model_name = get(self.config, "voice", "model_name", default="base.en.pt")
-        stt_model_path = get(self.config, "voice", "model_path", default=str(paths.models_dir / stt_model_name))
-        stt_idle = float(get(self.config, "voice", "idle_unload_seconds", default=30.0))
+        stt_model_name = get(self.config, "voice", "model_name", default="ggml-base.en.bin")
+        stt_model_path = get(
+            self.config,
+            "voice",
+            "model_path",
+            default=str(paths.whisper_models_dir / stt_model_name),
+        )
+        stt_idle = float(get(self.config, "runtime", "stt_idle_unload_seconds", default=20.0))
 
         from pluma.voice.lifecycle import VoiceLifecycleManager
+        from pluma.voice.stt_adapter import WhisperSttAdapter
         self.voice_lifecycle = VoiceLifecycleManager(
+            adapter=WhisperSttAdapter(registry=self.tool_registry),
             model_path=stt_model_path,
             idle_unload_seconds=stt_idle,
         )
@@ -120,6 +134,9 @@ class PlumaApplicationRuntime:
             orchestrator=self.orchestrator,
             ledger=self.ledger,
             ownership_registry=self.ownership_registry,
+            effective_model_path=model_path,
+            effective_stt_model_path=stt_model_path,
+            confirmation_broker=self.confirmation_broker,
         )
 
     def close(self, timeout_s: float = 5.0):

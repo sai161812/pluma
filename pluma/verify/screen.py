@@ -90,6 +90,46 @@ class ScreenVerifier:
                 detail=f"Control verification failed: {exc}",
             )
 
+    def verify_control_enabled(
+        self,
+        hwnd: int,
+        expected_enabled: bool,
+        auto_id: Optional[str] = None,
+        name: Optional[str] = None,
+        timeout_s: float = 2.0,
+    ) -> VerifyResult:
+        """Read back the enabled state of a semantic control through UIA."""
+        try:
+            ctrl = self._uia.find_control(
+                hwnd=hwnd,
+                auto_id=auto_id,
+                name=name,
+                timeout_s=timeout_s,
+            )
+            if ctrl.is_enabled is expected_enabled:
+                return VerifyResult(
+                    ok=True,
+                    method="uia",
+                    detail=(
+                        f"Control '{name or auto_id}' enabled state read back as "
+                        f"{expected_enabled}."
+                    ),
+                )
+            return VerifyResult(
+                ok=False,
+                method="uia",
+                detail=(
+                    f"Control '{name or auto_id}' enabled state mismatch: "
+                    f"expected {expected_enabled}, got {ctrl.is_enabled}."
+                ),
+            )
+        except Exception as exc:
+            return VerifyResult(
+                ok=False,
+                method="uia",
+                detail=f"Failed to read back control enabled state: {exc}",
+            )
+
     def verify_window_active(
         self,
         hwnd: int,

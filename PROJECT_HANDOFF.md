@@ -1,14 +1,918 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-10-25, P00-P11 merged into main (E61)
+## Current checkpoint: 2026-11-03, E98 verified repairs; integration stopped at native P20 gate
 
-**P00-P11 is merged into GitHub main. P12 is ready for its first bounded task and has not started.** The owner authorized the merge and P12 preparation on 2026-10-25. [E61](docs/completion/p11_main_merge.md) records the actual commits, checks, recovery points and next task. Live focus/audio acceptance remains explicitly deferred to final validation under E60; no physical pass or full-product release is claimed.
+**Main integration is blocked. P20's native conflict-folder gate is reopened;
+P21 is not eligible and has not started.** [E98](docs/completion/e98_verified_integration.md)
+records source identities, commands, preserved failed native evidence and the
+explicit decision not to push the candidate to main.
+
+- Verified development repairs are pushed on `p12-preparation`: `c1b49c3`
+  makes fresh-logon clipboard acceptance self-contained and audit reports unique;
+  `e1e0d84` declares the required JSON-Schema validator and removes its optional
+  test skip. No product source or dark styling change is applied by these repairs.
+- Fresh owned native catalog: **1,302 passed**; fresh-logon clipboard regression:
+  **303 passed**, unchanged interactive clipboard sequence and zero owned
+  processes remaining; browser native: **12 passed**. Failed direct clipboard
+  creation is retained as evidence of the logon-station collision, not reused.
+- Merged-candidate checks pass **500 prerequisites / 352 contracts / 244 P12 /
+  16 P13 units / 331 P19 / 631 P20** and **285 native C#/Python IPC** checks.
+  The new declared environment exposed a missing `jsonschema` dependency
+  (**15 failed / 617 passed**); after repair it passes **209 focused / 632 P20 /
+  500 prerequisites** with no skips/xfails and no dependency conflicts. Collection
+  and fixtures are not full native/model/device acceptance.
+- Final recheck of the actual development repair checkout: **229 passed**, no
+  skips/xfails; matrix validation passes **298 source items / 334 rows** and
+  `git diff --check` passes. Native folder acceptance remains failed.
+- Fresh Windows native runs **41506014340 / 41507711110 / 41509078768 failed**
+  on the actual conflict-folder operation. Diagnostics prove a newly admitted
+  `open_folder` task times out, with verification false and retained uncertain
+  non-undoable effects. A ten-second attempt also fails. Builds, IPC, popup and
+  formatting checks pass, but no complete native UI pass is claimed. E96's
+  historical pass does not supersede this current failure.
+- Remote main is unchanged at `26dc279`. Candidate merge `81abc3c`, diagnostics
+  `5a9f6a3`, unverified timeout attempt `d0e2160` and dependency repair `b28c2ec`
+  are preserved on pushed branch `integration/verified-p00-p20-20261103`, in
+  `D:/Workspace/DEVEL/PLUMA-verified-integration-20261103`. The unverified timeout
+  change is deliberately separate from the development repairs.
+- Recovery branches are pushed: `recovery/pre-integration-20261103-67ad1c1`
+  and `recovery/main-before-p12-p20-20261103`. Other worktrees are preserved.
+  No reset, clean, force-push, UI redesign or security-policy change occurred.
+
+Next safe packet: isolate the real Shell COM/Explore/location-readback hang on
+the disposable host and fix its reproduced cause; pass native visibility,
+ledger, owned-window closure and affected STOP checks before retrying integration.
+Physical timing remains owner-deferred to P25; installation, recovery,
+performance/quality, security and later UI milestones remain open.
+
+## Previous checkpoint: 2026-11-03, E97 audit test-environment repairs; P20 remained complete E96
+
+**E97 repairs test compatibility and dependency setup only; it does not start
+P21 or close any physical, install, recovery or product-wide gate.**
+[E97](docs/completion/e97_test_environment_audit_repairs.md) records fresh
+P01–P13 prerequisite (500), contract (352), P12 (244), P13 (16), focused (131)
+and inspected owned native fixture results, plus the clipboard/browser limits.
+The previous ignored `output/p01-p13-audit/catalog-final.txt` is unavailable
+after the aborted legacy runner overwrite and was not reconstructed.
+
+- The rollback `Job` fixture now delegates worker assignment and cleanup to a
+  real Windows Job Object. The obsolete app alias import was replaced with
+  current schema contract coverage. Dev/test dependencies now include the
+  required media and Windows adapter packages. Golden medium-risk expectations
+  and the current 86-tool registry selector were corrected without changing
+  product policy or the Section 21 catalog.
+- The isolated native clipboard fixture still cannot create its logon-derived
+  station (`WinError 183`) and refuses station reuse before touching clipboard
+  data. Browser acceptance remains unrerun because ownership of an isolated
+  profile process left by the interrupted prior run could not be established.
+  No process was terminated.
+- `pip check` reports unrelated pre-existing global `google-genai` conflicts
+  with installed `httpx` and Pydantic versions. No global upgrade was made.
+  Full unit execution, physical timing, install/recovery and later matrix gates
+  remain open. P20's scoped E95/E96 completion and its P21 hold are unchanged.
+
+**P20's scoped implementation and acceptance gate is complete.**
+[E95](docs/completion/p20_saved_history.md) and
+[E96](docs/completion/p20_detail_undo.md) cover all P20 packets; no P20
+implementation packet remains. Independent Sol approval is not assumed.
+
+- Branch `p12-preparation`; final native tested source
+  `d223a32674a7d825725f0ec813da31ce328fda62`. Implementation checkpoints:
+  `9097bcf`, `a59c0cd`, `9c959d9`, `d223a32`. Recovery point:
+  `124200ab471f09f2a29541903f64426f21772656`. No merge or branch change.
+- Saved task/action detail now supplies original input/context where safely
+  available, exact sanitized tools/arguments, adapter, risk/decision, timings,
+  verification, inverse/claim/rollback outcome, cleanup and residual readback.
+  Strict bounded replacement pages agree with independent SQLite evidence.
+  Private legacy clipboard commands are masked before search/display, including
+  keyword-free content identified by the actual recorded tool.
+- Exact selected undo enters the shared typed ToolSpec/policy/confirmation,
+  TaskCapsule, ownership and STOP lifecycle. Saved identity/material are checked
+  before policy and again during an atomic durable claim. Newest-first selection,
+  verified consumption and retained uncertain claims prevent duplicate inverses.
+  STOP/timeout after claim preserves non-undoable intent and unresolved evidence;
+  there is no automatic redo or repeat of an uncertain action.
+- Native History, rollback and conflict controls bind real evidence. Conflicts
+  preserve both files and offer evidence plus a typed, verified recorded-folder
+  view; no forced overwrite. Activity is reachable from the shell-owned tray and
+  verified registered command events. Existing dark styling is preserved.
+- Pre-edit affected prerequisites: **120 passed in 20.27 s**. Final affected
+  Python: **631 passed in 107.07 s**, no skips/xfails, on `9c959d9`; `d223a32`
+  changes only CI provider installation. Exact-source
+  [Windows gate 41472068637](https://github.com/sai161812/pluma/actions/runs/41472068637)
+  passes **285 IPC / 214 native UI / 663 popup / 195 formatting** checks, plus
+  layout/surface/audio/copy gates. Builds have zero warnings/errors. Real Shell
+  folder visibility/location and closure of only the newly owned fixture window
+  pass. Source/artifact digests, commands and failed attempts are in E96.
+- E95's first-command startup observation was reproduced: background readers
+  exhausted ordinary client slots. Background work now uses at most three of
+  four slots, leaving foreground admission and the independent fifth STOP slot.
+  Bounded Busy-only reads preserve observation/approval leases; unknown writes
+  never replay. Reproduced pressure regressions and combined native flow pass.
+  A standalone policy-first import cycle is also fixed without changing public
+  core exports. Local Application Control blocks are retained as nonexecution;
+  final native acceptance is from the authorized Windows host.
+
+**Remaining P20 packets/blockers: none.** Ready for independent Sol review.
+**Next safe milestone: P21, only after owner instruction/review.** P21 has not
+started. E94's owner-approved C-02 physical timing retest deferral to P25 remains
+unchanged. Broader physical UI/accessibility, security, performance and release
+gates retain their later milestones; this is not full-product readiness.
+
+Recovery: reviewed reverts toward `124200a`, preserving unrelated work and
+SQLite data. E95's additive index may remain after downgrade. Never delete/reset
+receipts or uncertain claims to permit another inverse. No new schema migration
+or dependency is introduced by E96; no reset/clean/force-push is authorized.
+
+## Previous checkpoint: 2026-11-02, P20 saved-task browsing E95
+
+**The bounded saved-task browsing packet is complete; full P20 remains in
+progress.** [E95](docs/completion/p20_saved_history.md) records exact scope,
+commands, failed attempts, source/build identity and recovery.
+
+- Source commits `523ae61`, `f348d10` and `f393b08` on `p12-preparation`;
+  recovery `8d5548e1eac0113c94f791e522bcc3e1df1aae1c`. No merge/branch switch.
+- Authenticated read-only history search/keyset paging now binds the native
+  History page to durable redacted task facts. Twenty-row replacement pages,
+  stable ordering, literal Unicode search, exact correlation, empty/unmatched
+  and unavailable storage, restart and cancelled/joined shutdown are covered.
+  All displayed DTO fields are compared with independent SQLite readback.
+- Legacy commands are completely redacted before matching/display; oversized
+  commands are withheld in full. No action body, original transcript or undo
+  recipe is fetched. The bounded independent read snapshot leaves shared
+  connection state unchanged. Additive migration 0007 preserves existing rows.
+- Production History samples are removed; existing dark native styling remains.
+  Saved state is labelled as saved state, without inventing verified success.
+- Pre-edit prerequisites: **145 passed in 21.87 s**. Affected Python:
+  **248 passed in 46.26 s**, no skips/xfails. The new shared C# reader regression
+  does not change Python source. Exact-source [Windows gate 41414630764](https://github.com/sai161812/pluma/actions/runs/41414630764)
+  passed **265 IPC / 187 native UI / 663 popup / 195 formatting** checks, plus
+  layout/surface/audio/copy gates; builds have zero warnings/errors. Artifact
+  digest and inspected dark renders are in E95. The local Application Control
+  block was not bypassed or counted as a pass.
+- Regression testing exposed a genuine queued transcript-tail race (same
+  reader, top=0 changed to 1492). Native movement/input now cancels pending
+  following; a controlled update-before-layout regression covers the race.
+  Existing earlier-reading/tail assertions and styling remain intact.
+- One final-source Windows attempt failed the existing P18 shell startup wait;
+  the unchanged full retry passed. Its root cause is not established or claimed
+  fixed. Retain this diagnostic follow-up before further command/undo admission.
+- E94's scoped P19 completion and the owner's explicit C-02 physical timing
+  retest deferral to P25 remain in force. No new device/model evidence is claimed.
+
+**Remaining P20:** task/action detail and appropriate original input/context;
+policy/verification/cleanup/rollback/residual readback; typed selected undo with
+material confirmation, ownership, STOP, reverse ordering, conflicts and atomic
+consumption; real conflict surface actions and Activity tray/command entry.
+**Next safe packet:** P20 task/action detail; inspect the retained startup
+observation before scoped selected-undo admission. P21 is not eligible and has
+not started. This bounded packet is ready for independent Sol review with the
+observation visible; approval is not assumed.
+
+Recovery: reviewed revert toward `8d5548e`, preserving unrelated work and the
+SQLite database. The additive index can remain after a source downgrade; never
+reset/clean/force-push or delete user data to recover.
+
+## Previous checkpoint: 2026-11-02, P19 completion E94
+
+**P19's scoped implementation and acceptance gate is complete, with the
+owner-approved physical boundary-timing retest deferred to P25.**
+[E94](docs/completion/p19_overlay_acceptance.md) records exact scope, commands,
+source/build identities, failed attempts, approval and recovery.
+
+- Tested source `7a56915ad82595265d71352ebb92531af7fa9b36`, on
+  `p12-preparation`; recovery `fe5888d24d0257a8fb1c193acd522a71158d7b1e`.
+- E92/E93's real recognition and typed lifecycle now bind to one shell-owned
+  observer and one existing overlay for surfaces 11-14. Navigation shares it;
+  close cancels/joins it. New generations reset text; disconnect clears before
+  dismissal. Reading earlier text and tail following are preserved. Final text
+  and the existing received banner appear only after actual request admission.
+- Measured 32-band PCM analysis, sample identities and actual VAD silence frames
+  drive the existing visualizer/bar. Polling cannot manufacture speech or keep
+  an old sample fresh. No raw audio or previews enter logs/history/feed.
+- A native startup conflict was reproduced and fixed by starting voice after
+  initial status readback drains. Four ordinary slots and priority STOP remain.
+  Denial, clarification, empty input, timeout, capture/STT STOP and shutdown pass.
+- Pre-edit prerequisites: **144 passed in 14.11 s**. Final affected Python:
+  **331 passed in 39.22 s**, no skips/xfails. Exact-source
+  [Windows gate 41403835475](https://github.com/sai161812/pluma/actions/runs/41403835475)
+  passed **247 IPC / 176 native UI / 663 native popup / 195 formatting** checks,
+  plus layout/surface/audio/copy gates. Builds have zero warnings/errors.
+  Artifact digest and inspected dark voice renders are recorded in E94.
+- Actual native Whisper callbacks/STOP/deadline, CPU-STT STOP (0.1875 observed
+  worker CPU seconds), material clarification, and Whisper -> Qwen read-only
+  file voice/text parity pass with owned absence and independent ledger readback.
+  Same-capsule native request commitment is read back; no fixture transcript is
+  injected into the native-model run. Parent inference bindings remain cold.
+- Physical PTT capture, measured voice readback and capture STOP/closure pass.
+  Fresh C-02 speaker-to-microphone timing did not pass: insufficient captured
+  speech on MME; WASAPI refused 16 kHz. Thresholds and Windows settings were not
+  changed. The owner explicitly approved: **"Defer this physical timing retest
+  to P25"**. E78 remains historical evidence, not a fresh pass. P25 owns three
+  passing physical timing/closure trials using an audible speech/device route.
+
+**Remaining P19 implementation packets: none.** The specific approved physical
+timing limitation remains visible in the matrix for P25. Broader scenarios,
+human-speech quality, physical taskbar/DPI/accessibility, security and release
+retain their later gates. Ready for independent Sol review; approval is not
+assumed. Next safe milestone is P20 (history/details/undo/conflicts), only on
+owner instruction. P20 has not started; no merge was performed.
+
+Recovery: preserve unrelated work and use a reviewed revert toward `fe5888d`;
+never reset, clean, switch branches or force-push automatically.
+
+## Previous checkpoint: 2026-11-02, P19 typed lifecycle bridge E93
+
+**This bounded bridge packet is complete; P19 remains in progress.**
+[E93](docs/completion/p19_voice_lifecycle.md) records exact scope and evidence.
+
+- Tested source `4d0d6cf53416e2aed6323f3822508d1bfa6a0dce` on
+  `p12-preparation`; recovery `f7df3108327951e288519140d49d2c25f8596dff`.
+- Strict authenticated `voice_query` / `voice_snapshot` now connects real
+  resident lifecycle facts to matching Python/C# DTOs and a read-only client.
+  One transient generation distinguishes capture, decoding, actual same-capsule
+  request admission, clarification, empty/error/cancelled/deadline outcomes.
+  Recognition never implies commitment or tool success. STOP suppresses previews;
+  stream/generation/reset identity and lazy terminal expiry prevent stale replay.
+- Failed capture startup can retry after verified closure; unclosed capture stays
+  owned and blocks retry. New views contain no raw audio/driver details and are
+  excluded from capsule serialization and durable Activity/feed events.
+- A reproduced shutdown-admission race now finalizes voice refused before the
+  execution gate, instead of leaving a CREATED owner and decoding view forever.
+  The failing reproduction is retained as an ordinary passing regression.
+- Pre-edit prerequisites: **212 passed in 32.11 s**. Final affected Python:
+  **324 passed in 40.45 s**, no skips/xfails, including owned ledger cleanup,
+  real orchestrator admission, strict contracts, privacy and shutdown regressions.
+- Final local Windows runner: **239 IPC checks passed**, including authenticated
+  cold-state Python/C# voice readback/reconnect and existing priority STOP under
+  saturation. IPC and native UI test-host builds have zero warnings/errors.
+  A host build is not rendered-overlay or physical microphone acceptance.
+
+Remaining P19: bind the existing single overlay (11-14), own/cancel its polling,
+preserve transcript reading/tail behavior, provide genuine measured audio/VAD
+progress where required, and run native UI/core plus permitted device acceptance.
+**Next safe packet:** overlay/controller binding and focused native host checks.
+Existing dark UI is unchanged. E92 native STT evidence retains its scope; no new
+physical/model acceptance is claimed. Ready for independent Sol review; approval
+is not assumed. P20 has not started. Recovery uses a reviewed revert toward
+`f7df310`, preserving unrelated work; no reset/clean/force-push/merge.
+
+## Previous checkpoint: 2026-11-02, P19 recognition-segment prerequisite E92
+
+**This bounded backend packet is complete; P19 remains in progress.**
+[E92](docs/completion/p19_recognition_segments.md) records scope, exact commands,
+source identity, native evidence boundaries and recovery. P20 has not started.
+
+- Tested source `196574118815ed912ef41908ec8b0ee027916aed`, following `dd405eb`,
+  on `p12-preparation`; recovery `34b67362c4429fc43a9cf9c640b0dbdd427fbc8c`.
+- Genuine Whisper segment callbacks now reach bounded, volatile, task-owned
+  recognition snapshots before final delivery. They are not committed requests,
+  ledger events or a public UI IPC endpoint. STOP/timeout suppress previews;
+  malformed frames fail closed. Existing admission/confidence policy is retained.
+- Real native checks reproduced and fixed retained model callbacks and a retired
+  cancellation-gate race. The native absence helper now converts Windows process
+  identity timestamps correctly and rejects a matching live worker.
+- Pre-edit affected prerequisites: **212 passed in 24.00 s**. Final affected
+  regressions: **282 passed in 42.63 s**, without skips/xfails. Actual Whisper
+  segment delivery, STOP after a genuine segment and an owned deadline passed
+  in **4.4788 s**, including owned absence and independent SQLite readback.
+  Fresh P14 native CPU-STOP regression also passed with corrected identity checks.
+  Parent bindings remain unloaded/COLD; no microphone or personal desktop used.
+- P00-P18 evidence retains its recorded scope. No fresh physical microphone,
+  native planner or P19 UI acceptance is inferred. Existing dark UI is unchanged.
+
+Remaining P19: typed transient lifecycle/IPC readback (capture/VAD, commit,
+clarification, errors/reset); existing single-overlay surfaces 11-14 bindings;
+then native UI/core and permitted device acceptance. **Next safe packet:** the
+typed lifecycle/readback bridge, without treating decoded text as commitment.
+This packet is ready for independent Sol review; approval is not assumed.
+No merge or automatic advancement. Recovery uses a reviewed revert of this
+packet toward `34b6736`, preserving unrelated work; never reset/clean/force-push.
+
+## Previous checkpoint: 2026-11-01, P18 completion E91
+
+**P18's scoped implementation and acceptance gate is complete.** All requested
+remaining groups 2–4 are closed; group 1 remains covered by E90.
+[E91](docs/completion/p18_live_runtime.md) records implementation, exact commands,
+source/build identities, evidence boundaries and recovery.
+
+- Tested source `b60bdeafd13a2ec6df5eb10777725886470deaa7` on branch
+  `p12-preparation`; recovery `f73bcdc5e5c9ca4f015304cc2e6e65a00d4bf58f`.
+  Source commits are pushed. Subsequent checkpoint changes are documentation only.
+- Task/step/tool/rollback surfaces use capsule-owned actual phases, validated
+  revisions and selected inverses. Dispatch is distinct from executor entry;
+  selected undo is indeterminate until verified. No sample executing/success
+  state or planner-written purpose enters these production paths.
+- Exact saved verifier proof drives surface 17, including OCR/text compatibility
+  names. Surface 21 requires verified owned absence with exact PID/creation time
+  and observed exit. Factual executor/task messages, current activity and measured
+  connection latency bind the existing dashboard controls. Extended capability
+  health remains P22; the indicator does not invent it.
+- STOP's latch/admission boundary is preserved. A reproduced cooperative tool
+  exit race now has one shared 100 ms drain budget; unknown work still blocks
+  rollback. A reproduced headless console-startup stall is fixed by a scoped
+  console-free Windows spawn adapter with unchanged ownership/Job fencing.
+  All temporary diagnostics/global patches were removed.
+- Fresh initial prerequisites: **81 passed**. Affected Python regression:
+  **341 passed in 75.47 s**. Final worker/admission/cancellation/shutdown/rollback
+  regression after the spawn fix: **178 passed in 32.37 s**, including actual
+  redirected-host process/STOP/absence/inverse/WAL evidence; no skips/xfails.
+- Exact-source [Windows gate 41335025620](https://github.com/sai161812/pluma/actions/runs/41335025620)
+  passed **215 IPC / 160 native UI / 663 popup / 195 formatting** checks, plus
+  **64,537 layout / 30 surface** checks, audio visualization and copy gates.
+  Builds have zero warnings/errors. Artifact SHA-256, preview executable identity
+  and inspected logs are recorded in E91; failed/cancelled runs are not passes.
+- Actual MainWindow/shared-host acceptance covers live identity, native replacement,
+  navigation, saturated-stack priority STOP, owned-worker termination, a real
+  owned-file inverse, result/verifier/denial delivery burst, reconnect/dedup,
+  factual feed and shutdown while backend work remains owned. Independent WAL
+  outcomes agree. No personal clipboard/files/browser/device/power state is used.
+
+**Remaining P18 work: none.** P25 physical taskbar/DPI/accessibility/owner review,
+P22 extended health and later scenario/performance/security/release gates remain
+separate. This is not full-product readiness or assumed Sol approval.
+**Next safe step:** independent Sol review of E91, then await owner authorization
+for P19. P19 has not started. No merge or automatic advancement.
+
+Recovery: preserve unrelated work and use a reviewed revert of this P18 packet
+back toward `f73bcdc`; do not reset, clean, switch branches or force-push.
+
+## Previous checkpoint: 2026-10-30, P18 factual result/reason readback E90
+
+**P18 remains in progress.** This bounded packet addresses group 1: detailed
+result/error and actual matched-policy reason readback for surfaces 8/19.
+[E90](docs/completion/p18_action_details.md) records the exact scope and checks.
+
+- Source `06db4c78e07ce29f50c35f960188500310c8b899`, following implementation
+  `c9dbf58` and wire/view separation `650805d`; recovery `3aa79ba4b6399e74fcddbdc2bc95956f57c68b4e` (E89).
+- Fresh isolated prerequisites: **66 passed in 12.09s**. Final affected Python:
+  **182 passed in 37.69s**, including 18 new detail checks, migration/ledger,
+  mutation, policy, redaction, existing v1 contracts and STOP. Additional Activity
+  view/lifecycle regressions: **17 passed in 2.25s**; no skips/xfails.
+- New nullable ledger presentation stores redacted executor copy, error code and
+  actual policy reason. Complete-value redaction precedes UTF-8 bounds;
+  secret-shaped error identities are withheld on write and read. Historical
+  absence remains unavailable. Private result/error bodies are not fetched.
+- Separate strict `action_detail_query` / `action_detail` leaves the original
+  E88 page wire unchanged. Exact detail identity and all readbacks precede batch
+  publication. Transient query IDs cannot replay unchanged presentation.
+- Result cards distinguish pending intent and recorded verification; policy
+  notices use saved reasons. Neither dismissal nor readback invokes an action.
+  Existing dark XAML/theme, sizes, host layout and motion remain unchanged.
+- Console/native-control builds have zero warnings/errors. Exact-source
+  [Windows gate 41051248953](https://github.com/sai161812/pluma/actions/runs/41051248953)
+  passed **194 IPC / 121 native UI / 663 popup / 195 formatting** checks, plus
+  layout/surface/audio/copy gates. Actual success, failure and denial tasks
+  retain independent WAL outcome comparison and no implicit cancellation.
+  Obsolete/cancelled runs are not exact-source acceptance for this correction.
+
+Remaining requested groups: (2) actual live task/step/tool/rollback displays;
+(3) verification, verified owned-worker termination, remaining live feed and
+core-health projection; (4) full multi-surface burst/reconnect/STOP/navigation/
+shutdown acceptance and capacity arbitration. P25 physical checks remain separate.
+Next safe packet establishes actual live evidence for surfaces 4/5/7/9 before
+showing executing states or totals. P19 has not started. This bounded packet is ready for independent Sol review;
+independent approval is not assumed. Do not merge or
+advance automatically.
+
+## Previous checkpoint: 2026-10-30, P18 recorded-surface bindings E89
+
+**P18 is in progress.** This packet binds route badge 6, recorded action/result
+status 8 and explicit denial notice 19 to actual readback. It removes fake
+route/result defaults and adds bounded caption wrapping. Full result detail and
+matched-policy reason contracts remain open. [E89](docs/completion/p18_recorded_surfaces.md)
+records exact scope, evidence and remaining components.
+
+- Source: `ef178524548eb43ed1c573f22959184e364785d1`, following `975cbaf`,
+  caption wrap `af5e99b` and formatter assertion `6a19059`. Recovery: `52116bad7650bf6b119a400838a3e95e1c8f729d`.
+- Fresh Python prerequisites: **127 passed in 20.14s**, no skips/xfails.
+  The unchanged E88 native executable was blocked by local Application Control
+  before Main; that attempt is not a pass. Its source exactly matches the E88
+  passing 171 IPC / 105 native UI gate, reused within its documented scope.
+- Local console/native controls/production builds and 33 XAML copy scans pass.
+  Exact-source [Windows gate 41046523711](https://github.com/sai161812/pluma/actions/runs/41046523711)
+  passed: **182 IPC / 113 native UI / 663 popup / 195 formatting**, plus
+  **64,537 layout / 30 surface** checks and the audio visualizer suite. Builds
+  have zero warnings/errors. Earlier failed/cancelled runs are not passes. No local policy bypass or alternate loading route was attempted.
+- Exact saved action IDs and all scoped readbacks precede batch publication.
+  Stable task/action keys deduplicate or replace changed material. Historical
+  reset is silent; route/action facts precede the task terminal notice in each
+  coalesced task group. A real native ordering race was reproduced and fixed
+  with a bounded journal-coherence barrier: four attempts, 22 pages per attempt,
+  within 30 seconds. Unsettled reads retain the previous view with explicit
+  stale/settling status, then retry next poll. Publication yields between callbacks.
+  Surface fingerprint state is bounded to 512 keys. Exact-source console and
+  native regressions passed without weakening assertions.
+- Result/policy messages come from fixed factual templates and saved flags.
+  Recorded evidence does not invent live execution, task success, exact policy
+  reason or worker termination. Controls retain native dark sizes/styles and
+  the shared host's placement, reading holds and dismissal behavior.
+
+Remaining components: task-running 4, step progress 5, tool-call 7, rollback 9,
+verification 17, owned-worker termination 21, remaining live-message panel 22
+and core-health projection 23 (dedicated health remains P22); richer
+result/error detail for 8 and exact matched-policy reason for 19; broader
+notices/current/recent activity panels; capacity arbitration and full event-driven
+multi-surface desktop/backend acceptance. Surface 20 STOP and 24 task notices
+remain connected. P25 physical checks retain their owner.
+
+Next safe packet: typed redacted result/error and matched-denial reason
+readback to finish surfaces 8/19, followed by actual task/step/tool/rollback
+facts. Add required facts before displaying live state or termination. P19 has
+not started. This bounded packet is ready for independent Sol review; approval
+is not assumed.
+Do not advance or merge automatically.
+
+## Previous checkpoint: 2026-10-27, P18 activity evidence packet E88
+
+**P18 is in progress.** This packet implements typed paginated task/action/
+cleanup readback and deterministic projection contracts. The production task
+feed now uses a minimal activity page for correlation, removing its dependency
+on the legacy 100-action full-history cap. [E88](docs/completion/p18_activity_evidence.md)
+records scope, commands, evidence, limitations and recovery.
+
+- Source: `65d458b8152c068e93d6419210dc7ae3bf8cfba1`, pushed on
+  `p12-preparation`. Recovery: `337a09f15818098113a5a077984da5a74d8ef47b`.
+- Fresh pre-edit **112 Python / 154 authenticated IPC** checks pass. Final
+  affected Python **239 passed in 24.58s**, including raw audit, STOP, lifecycle,
+  cleanup and rollback; final focused **15 passed in 0.54s**. No skips/xfails.
+- Final native console suite **171 checks** passes, including strict parser/
+  projection checks and four new actual authenticated activity queries with
+  independent WAL comparison. Three builds have zero warnings/errors.
+- Pages contain only saved task/route, bounded action/policy/undo flags and
+  validated cleanup summary. No commands, arguments, result/error bodies,
+  inverse recipes or process/resource identities are exposed. Policy/STOP and
+  executor/rollback behavior are unchanged. No visual/XAML changes occurred.
+- The 105-action regression preserves the old history refusal and reads every
+  action through the new pages without duplicates or cross-task rows. The
+  feed's test client rejects scoped legacy history access.
+- A recorded action does not establish live execution; cleanup completion does
+  not establish worker termination. Missing/contradictory/oversized proof fails
+  closed. Cleanup summary bounds are 65,536 characters / 512 entries.
+- [Exact-source Windows workflow 40527808375](https://github.com/sai161812/pluma/actions/runs/40527808375)
+  passes **171 IPC / 105 actual native UI / 663 popup / 195 formatting**, plus
+  layout/surface/audio/copy gates and zero-warning builds. No local Application
+  Control bypass or personal desktop/device/power mutation was attempted.
+
+This bounded packet passes its gate and is ready for independent Sol review;
+independent approval is not assumed. Overall P18 remains incomplete.
+
+Next safe packet: bind the validated action/rollback/policy/task/route facts to
+remaining existing P18 surfaces. Establish missing live-start/step/argument
+facts before displaying them, and verified owned-termination proof before
+surface 21. Remaining perception surfaces, broader notices/current/recent
+panels, capacity arbitration and full multi-surface desktop/backend acceptance
+are still open. P19 has not started. P25 physical/owner and later release gates
+remain separate. Independent Sol approval is not assumed. Do not advance/merge.
+
+## Previous checkpoint: 2026-10-27, P18 factual event feed packet E87
+
+**P18 is in progress.** This first bounded packet implements a shell-owned
+committed-event consumer, the bounded dashboard live feed and task-terminal
+notices through existing surface 24. Detailed remaining event surfaces are not
+claimed complete. [E87](docs/completion/p18_event_feed.md) and its
+[wiring contract](PLUMA.UI/PLUMA.UI/docs/wiring_event_feed.md) record scope,
+source, tests and recovery.
+
+- Source: `83417432f150f26b6e1189d8ed0cfa7e768d02c6`, pushed on
+  `p12-preparation`. Recovery: completed P17 `48b959b1ca35ba5f37d961d634cd67f6a29d353f`.
+- Fresh pre-edit **175 Python / 138 native IPC** prerequisites pass. All 23
+  recorded E80 source/test hashes still match; existing P00-P15 evidence and
+  owner-approved physical deferrals retain their documented scope.
+- Local console suite: **154 checks**, including 16 new event-consumer cases.
+  Final console/native/production builds: zero warnings/errors; 33 XAML copy
+  scans pass. Terminal-cache settling was reproduced as a failing check and
+  fixed with bounded read-only refresh, without weakening success evidence.
+- The cursor commits only after complete independent readback. Snapshot/reset
+  suppresses historical notices; replay, lost reads, gaps and private text cannot
+  fabricate completion. Display/observation bounds are 200/512 with pages of 25.
+  Window close drains the loop; notification dismissal issues no cancellation.
+- Local native execution was blocked by Application Control before Main; stale
+  output was rejected. [Windows run 40518641201](https://github.com/sai161812/pluma/actions/runs/40518641201)
+  passes on exact source: **154 IPC / 105 actual native UI / 663 popup / 195
+  formatting**, plus layout/surface/audio/copy gates and zero-warning builds.
+  No local policy bypass or personal desktop/device/power mutation occurred.
+
+This bounded packet is ready for independent Sol review; approval is not assumed.
+Its packet gate passes, while overall P18 remains incomplete.
+
+Remaining P18: detailed task/step/route/tool/result/rollback projections and
+surfaces 4-9; policy/perception surfaces 17, 19 and 22-23; evidence-backed worker
+termination surface 21; broader notice types/current/recent activity panels;
+full event-driven desktop-host/backend burst/replacement/reconnect/STOP/close
+acceptance across those surfaces. P17 surface 20 remains connected. Do not infer
+termination from an event name or resource release alone.
+
+Next safe packet: typed action/state/cleanup readback and deterministic
+projection contracts, then their affected existing surfaces. P19 has not started.
+P25 physical/owner appearance and later release gates remain separate. Independent
+Sol approval is not assumed. Do not advance or merge automatically.
+
+## Previous checkpoint: 2026-10-27, P17 dashboard submission and priority STOP E86
+
+**P17's required gate is complete.** Enter/Run now submits one typed request
+through the shared backend. The shell owns one command controller; duplicates
+are blocked, unknown writes are never replayed, and request/task identity plus
+persisted verification/residual readback govern results. STOP runs independently
+of execute replies and UI presentation; request-ID fencing prevents late
+admission after cancellation. [E86](docs/completion/p17_command_submission.md)
+and the [wiring contract](PLUMA.UI/PLUMA.UI/docs/wiring_command_submission.md)
+record exact checks and boundaries.
+
+- Clean starting/recovery commit: `af855cb97a1571effd22f9aca8f67d144dc383c0`,
+  identical tracked tree to completed P16 `8330955`. Reused the preserved P17
+  source after review; no branch switch, merge, reset or force push.
+- Verified all 23 recorded E80 source/test hashes against the current files;
+  existing P00–P15 scoped evidence and owner-approved physical limits remain.
+  Fresh pre-edit **191 Python / 117 authenticated IPC** prerequisites passed.
+- Reproduced the missing queued-submission fence: **3 failed / 5 passed** before,
+  **8 passed** after. Final affected Python **199 passed in 24.65s**; additional
+  raw audit/owned worker/undo/inert-power **100 passed in 26.81s**. No skips/xfails.
+- Native authenticated IPC **138 checks** and actual WinUI **95 checks** pass
+  against real production orchestration/registry/verification and an owned WAL
+  ledger. Fixture routing/planner waits and lost replies are explicitly injected;
+  no personal desktop/model/microphone/power/UAC operation ran.
+- Native popup **675**, formatting **195**, layout **64,537**, surface contracts
+  **30**, visualizer **15** and **33 compiled-XAML copy scans** pass. Three
+  builds have zero warnings/errors. Dark fixture renders were inspected.
+  PowerShell 7 was absent, so its combined wrapper did not run; every constituent
+  gate above ran individually, without changing security policy.
+- Tested implementation: `fc552ee04f152644da43da68a215141541185528`.
+  Full logs/build hashes remain ignored under `output/p17-authorized-*`.
+  Close drains UI observation/approval leases and does not claim backend STOP;
+  use Stop to cancel accepted work. Native policy/undo remain authoritative.
+
+No P17 gate packets remain. Ready for independent Sol review; approval is not
+assumed. **P18 is next and has not started.** Broader live notifications,
+voice/history/settings/health/perception wiring and later scenario, physical,
+performance, security and release acceptance remain with their assigned owners.
+Recovery instructions are in E86; preserve existing recovery branches. Do not
+advance or merge automatically.
+
+## Previous checkpoint: 2026-10-27, P16 native material approval E85
+
+**P16's required gate is complete.** The existing native risk dialog is wired
+through P15 to actual pending policy calls. It displays the deterministic
+material effect/target and literal redacted arguments, defaults to Deny, and
+sends one exact task/call-bound decision after fresh pending readback.
+STOP, expiry, changed/stale calls, disconnect, unknown writes and window close
+fail closed. [E85](docs/completion/p16_material_approval.md) records evidence,
+commands, source/build identities and scope; [wiring contract](PLUMA.UI/PLUMA.UI/docs/wiring_material_confirmations.md).
+
+- Before edits: **167 Python prerequisites** and **101 native IPC checks**
+  passed. Final affected regression: **191 Python tests + 54 inert power-action
+  tests**, zero skips/xfails. Only the already-declared Windows dependency was
+  added to an ignored isolated test venv; no dependency declaration changed.
+- Local actual native UI/backend run: **63 checks**. Hosted exact-source
+  [run 40472600843](https://github.com/sai161812/pluma/actions/runs/40472600843)
+  passes **117 IPC / 63 native UI / 663 native popup / 195 formatting**,
+  plus the layout/surface/audio/copy gates and zero-warning/error builds.
+  Hosted execution closes the latest local console Application Control block;
+  no security policy was bypassed or changed.
+- MainWindow owns the approval loop, dialog, expiry token and logical client.
+  It polls only while the shell is open (250 ms between bounded queries),
+  disconnects/drains on close, and retries lost connections with a fresh
+  client identity. Resident idle model/capture behavior is unchanged.
+- Current source: `429ad1a6628ac9aecd5f80b7ad8ed9d7f4cd1cbb`, following
+  implementation `c16f73c028d5238e6a40c32eb28d37dd6c673ff3`.
+  Recovery point: `05642c8dce6060c3d0f1a73277828b1aebc3be2d` on
+  `p12-preparation`. The strict fixture-schema correction preserves validation;
+  the literal-value audit still checks exact text, bounds and accessibility.
+- No destructive/power/UAC demonstration ran. Fresh inert/owned elevation
+  checks pass; E59's permitted actual DNS-only UAC proof remains separate and
+  applicable to the unchanged adapter. No permanent elevation was introduced.
+
+No P16 gate packets remain. Ready for independent Sol review; approval is not
+assumed. **P17 is the next safe milestone and has not started.** Dashboard
+submission/STOP entry stays disabled until P17. P25 physical/owner appearance
+and broader final acceptance keep their later owners. Do not advance or merge
+automatically.
+
+## Previous checkpoint: 2026-10-27, P15 contract completion E84
+
+**P15's required contract gate is complete.** E84 adds the remaining material
+confirmation query/decision/disconnect messages and durable factual event
+projections with ordering, retention, duplicate handling and reconnect/reset.
+The exact implemented semantics are in the [v1 protocol](docs/completion/p15_protocol_v1.md);
+[E84](docs/completion/p15_e84_contract_completion.md) records test commands,
+source/build hashes, native evidence and limitations.
+
+- Final isolated affected regression: **311 passed**, no skips/xfails.
+  Native authenticated Python/C# IPC: **101 checks passed**, including real
+  registry/policy execution of an owned-file read, independent verification,
+  WAL ledger readback, approval/denial/STOP/disconnect and event replay.
+  Both IPC and production WinUI builds: **0 warnings/errors**.
+- No-client policy remains REQUIRE_CONFIRMATION. Exact material decisions are
+  single-use and task/call/client bound; STOP, expiry, lost client and shutdown
+  fail closed. No approval thread/timer/device is created by the broker.
+- The committed SQLite event journal retains 512 identity-only facts, serves
+  at most 100 per page and explicitly requires snapshot reset after overflow,
+  stream change or impossible cursor. Events never imply verified completion;
+  consumers use history/terminal readback. No push/heartbeat is claimed.
+- Tested implementation: `b0f80d5ea6cfb67ab4f005e6c83510e5848704cc` on
+  `p12-preparation`. Recovery point: `a36e9596ca671c843ac4e553705ba47aeea26d16`.
+  The fixture uses only owned temp files, a private credential, native pipes
+  and a file-backed ledger. No personal desktop or inference work was run.
+
+There are no remaining P15 contract packets. Ready for independent Sol review;
+approval is not assumed. **P16 is the next safe milestone and has not started.**
+It owns the native material approval dialog and its physical acceptance.
+Production dashboard actions remain disabled; P17 owns submission/STOP wiring,
+and P18 owns the visible event consumer. Do not advance automatically.
+
+## Previous checkpoint: 2026-10-27, P15 settings/history query contracts E83
+
+**P15 remains in progress.** E83 adds authenticated, typed, read-only v1
+settings and history queries to the Python resident and C# transport. Settings
+return only an explicit allowlist, including the effective planner and STT model
+paths supplied by application composition. History returns bounded newest-first
+task summaries or one task's step-ordered actions, with sensitive fields
+redacted again at the IPC boundary and no undo recipe exposed. The dashboard
+does not call these methods; action entry remains disabled.
+
+- The full Windows C# IPC integration runner passes **64 checks**, including
+  actual authenticated C# requests against the Python resident for submission,
+  terminal readback, settings, recent/task history and priority STOP. Python
+  fixture tests verify the SQLite projection, redaction, ordering, limits and
+  malformed query refusals. Exact commands and assembly identity are in
+  [E83](docs/completion/p15_e83_settings_history.md).
+- The runner uses a private owned pipe, isolated credential and in-memory
+  ledger; no production resident, tool, inference runtime, personal files or
+  desktop state are used. The dashboard remains action-disabled. No confirmation
+  decision or factual event stream is implemented.
+- Tested implementation commit: `94b19fa9e192142be83ec385cea04bccff0f7a60`;
+  tested C# assembly SHA-256 and exact commands are recorded in E83.
+- Recovery point before E83: `4724c5e747ee4001a8aad979ac85b1d476d23ef5` on
+  `p12-preparation`.
+
+Next safe packet: define and integration-test material confirmation request and
+decision messages with stale/mismatched/duplicate refusal. Then implement
+executor-sourced factual event projections with explicit sequence, bounded
+buffering, duplicate handling and reconnect readback. P15 is not complete; do
+not start P16 automatically. Production dashboard submission/STOP wiring stays
+for its later milestone.
+
+## Previous checkpoint: 2026-10-27, P15 versioned request slice E81
+
+E81 implemented the Python version 1 text submit, independent STOP and
+terminal-readback handlers plus strict C# wire DTOs. Its then-current checks
+and limitations are recorded in [E81](docs/completion/p15_e81_versioned_requests.md).
+
+## Previous checkpoint: 2026-10-27, P00-P14 audit closure E80
+
+**The identified audit findings A1-A6 are repaired and the assigned P00-P14
+backend gates are closed with the existing recorded owner-approved physical
+limits. P15 is eligible for its first bounded contract packet and has not
+started.** [E80](docs/completion/p14_e80_audit_closure.md) records the repairs,
+reproductions, exact commands, source identities and limits.
+
+- Unknown DPI now refuses grounding. Password/unclassified editable controls
+  are excluded and retained UIA/OCR text is redacted before model prompts.
+  Voice material punctuation/internal whitespace remain literal.
+- FAST plans use the actual registry contract. Unsupported aliases and missing
+  targets refuse without guessing; all seventeen original invalid positive
+  examples remain explicit refusal regressions alongside corrected supported
+  corpus cases. The crash fixture verifies original PID/creation absence and
+  retains STOP/admission/cleanup assertions. Stale matrix claims are corrected.
+- Three additional real-router clipboard-reason leaks were reproduced and
+  repaired; no injected route masks this privacy check.
+- Current checks: **500 prerequisites, 1,236 safely selected catalog, 352
+  routing/contracts, 244 P12, 10 owned native Win32/WPF, 25 P13 and 351 P14
+  passes**, plus three clean crash repeats. Counts overlap; zero final
+  failures/errors/skips/xfails. Explicit catalog exclusions are not passes.
+- Fresh actual Whisper material clarification and generated-speech Whisper to
+  Qwen complex-file voice/text acceptance pass: same voice capsule, owned file
+  and ledger readback, worker absence and COLD cleanup. E78 physical timing and
+  unchanged E72/E73/E74 native ownership/lifecycle evidence are retained within
+  their documented scope. No new microphone, personal clipboard/profile,
+  disruptive power or UAC operation was performed.
+- Recovery point: `7ebd282adbe24c92b8d57d052ba27c01aeaf5481` on
+  `p12-preparation`. No reset, branch switch, merge or force push was used.
+
+Ready for independent Sol review; approval is not assumed. Native UI wiring,
+owner-deferred physical outcomes, full corpus/quality/performance and release
+acceptance keep their later milestone owners. Next safe packet, when instructed:
+P15 versioned request/acknowledgement/terminal-readback contracts after current
+IPC/event inspection. Do not advance automatically.
+
+## Previous checkpoint: 2026-10-26, P14 clarification/privacy closure E79
+
+**Mandatory P14 backend acceptance C-01 through C-09 is complete after the two
+post-E78 findings were reproduced and repaired.** Unresolved low-confidence
+speech now requires clarification; only complete recognized app launches and
+explicit commands with no material target are exempt. Quoted filenames,
+additional clauses and spoken amounts cannot bypass the gate. Spoken `pasting`,
+`clip board` and `pasteboard` values are redacted from INFO logs and stored
+command/original-transcript fields. Privacy sentinels no longer contain a
+trigger word that could mask a broken verb match. See
+[E79](docs/completion/p14_e79_clarification_privacy.md) for exact commands,
+tested source hashes, reproduction and evidence.
+
+- Recovery point: `299324e87ca95e620acc56e350fe0908c8ce9436` on
+  `p12-preparation`; no branch switch, reset, merge or force push was used.
+- Before repair, new regressions reproduced **24 failures / 88 passes**.
+  Final focused checks passed **113/113**; affected voice, STOP/ownership,
+  lifecycle, ledger, redaction and routing regressions passed **425/425**.
+  Zero final failures, errors, skips or xfails; counts overlap.
+- Fresh actual whisper.cpp C-06 acceptance passed at confidence 0.625466 below
+  0.65: transcript-free clarification, no command task/tool admission, COLD
+  state and cleanup readback. It used generated fixture audio, not a microphone.
+- E77 retains actual Whisper-to-Qwen complex-file voice/text parity, same
+  capsule, owned paths, file/ledger readback and worker absence. E78 retains
+  three physical C-02 passes on the AMD microphone/Realtek speaker route,
+  exactly 600 ms captured silence after speech, and verified stream closure.
+  Capture/native worker code is unchanged; those checks were not repeated.
+- C-10 is optional. P19 visible voice/clarification UI and broader quality and
+  release gates remain later work. P15 has not started.
+
+Ready for independent Sol review; approval is not assumed. Next safe milestone
+is P15's first bounded UI/core contract task. Do not advance automatically.
+
+## Previous checkpoint: 2026-10-26, P14 bounded native STT packet E74
+
+**This packet closes the task-owned native STT cancellation/unload and
+configuration wiring work for C-08/B-04. P14 remains in progress.** The P14
+worker runs local whisper.cpp only in its matching `TaskCapsule`, observes the
+shared STOP latch through the binding's abort callback, falls back to owned
+process termination, and requires cleanup readback. Each call releases its
+native model reference before returning; production STT therefore returns
+directly to COLD instead of keeping a warm model. The app now reads the locked
+`runtime.stt_idle_unload_seconds` setting and defaults to a local GGML model
+under `models/whisper`. C-09 transient audio evidence is also recorded. See
+[E74](docs/completion/p14_stt_worker.md) for exact files, commands, hashes,
+native report and limitations.
+
+- Recovery point before P14: `7e371bf730f4092daa87c0be8408071175cde259` on
+  `p12-preparation`; no branch switch, merge or reset was used.
+- Focused voice/application/worker checks passed **60/60**. The affected
+  ownership, cancellation, voice, shutdown, cleanup and ledger regression set
+  passed **246/246**, zero skips/xfails. Actual Windows `pywhispercpp 1.5.1`
+  acceptance recognized the recorded sample at confidence `0.7721`, verified
+  model release and COLD state, then stopped a CPU-active native STT worker and
+  read back worker absence and terminal cleanup in SQLite.
+- The recorded public test sample and `ggml-base.en.bin` model live only under
+  ignored `output/p14-native/`. The native run opened no microphone and touched
+  no personal recording, clipboard, window or power state. Physical C-01/C-02,
+  C-03/C-07 and material-clarification C-06 evidence remain open; CORE-STT is
+  still UNVERIFIED overall. No P15 work has started.
+
+Next safe P14 packet: C-01/C-02 user-activated microphone and speech-boundary
+verification, with fixture and device evidence kept distinct. Do not begin P15
+automatically.
+
+## Previous checkpoint: 2026-10-26, P01–P13 overall audit E73
+
+**The P01–P13 audit passes after three source repairs; P14 is eligible but has
+not started.** The owner's deferred physical checks remain deferred and are not
+counted as passes. [E73](docs/completion/p01_p13_overall_audit.md) records the
+feature/milestone reconciliation, reproductions, exact selections, limitations
+and P14 starting packet.
+
+- Source checkpoint: `a9f77da9a6263ab6c019e7ca17795e54d8444ae3` on
+  `p12-preparation`, pushed. Recovery point:
+  `ce25d711adba0ab4c9bbc13b03c47f0da7d38093`.
+- Fixed retired successful capsules admitting thread tools, loss of the native
+  admission fence during retirement, and unredacted planner-purpose logging.
+  Existing native tests now verify original PID/creation identity after handle
+  closure. The process-close fixture acknowledges actual WM_CLOSE dispatch
+  before the STOP/irreversible-residual check; assertions were preserved.
+- Fresh local checks: **443 prerequisites, 1,282 catalog, 329 routing/contracts,
+  233 P12, 10 native Win32/WPF and 16 additional P13 passes**, all zero failed/
+  error/skipped. All 15 original BA regressions ran with `--runxfail`.
+- Fresh-logon clipboard: **294 passed**, both exits zero, no owned process left
+  and personal clipboard sequence unchanged. Actual ONNX OCR: **288/288 exact
+  lines**, valid bounds, minimum confidence 0.9386066198; dependency check passes.
+  Actual llama.cpp STOP/timeout/crash, multi-step/replan, invented-tool rejection,
+  privacy and cold cleanup/ledger acceptance pass on the repaired source.
+- Local C# execution was blocked by Application Control; the existing
+  [Windows CI workflow](https://github.com/sai161812/pluma/actions/runs/40289004034)
+  passed on the exact source checkpoint, including **39 Python/C# IPC checks**.
+  No security policy was bypassed. E72's 50-cycle/ten-minute idle reports remain
+  historical measurements, not fresh results in this audit.
+- All 73 required catalog names are registered among 85 ToolSpecs. Stale
+  registry/adapter-defect matrix wording is corrected using current source and
+  tests. Full release, broad quality/performance, physical focus/audio and other
+  documented later gates remain visible; no deleted or deferred test was restored.
+
+Next safe packet, when instructed: P14 C-08/B-04, real task-owned whisper.cpp
+STT cancellation/unload and effective model/runtime configuration using fixture
+audio and worker/ledger readback. Continue with microphone/VAD, confidence and
+voice/text parity within P14. Do not begin P14 automatically.
+
+## Previous checkpoint: 2026-10-26, P13 planner/runtime acceptance E72
+
+**P13's assigned planner/lifecycle acceptance is complete and ready for
+independent Sol review. P14 has not started.** E72 completes the task-owned native
+llama.cpp worker path, STOP/timeout/crash absence and ledger readback, configured
+plan limits, fail-closed structured generation, planner target admission,
+native planner acceptance, ten-minute idle measurement and 50 native cycles.
+See [E72](docs/completion/p13_native_runtime_acceptance.md) for exact commands,
+model/build identity and limits.
+
+- Implementation commits: `93cb0ae052298aaff745525743e67930feb782cf` and
+  `4e325a4397be70256ac3b6f60cd4630f162ef6dc` on `p12-preparation`; recovery
+  point before this packet: `b00fbd70b910555fe9eae554706aab5132137747`.
+
+- The focused affected regression passed **398 tests, zero failures/errors/
+  skips/xfails**. Actual llama.cpp acceptance passed FAST bypass, two-step
+  planning, failure/replan, native invented-tool rejection, sensitive-context
+  redaction, STOP, timeout and owned-worker crash with cleanup/SQLite readback.
+- The final combined native run is preserved as ignored
+  `output/p13-native/acceptance-report-final.json`; the harness accepts bounded
+  repeated read-only observations while enforcing the configured limit and
+  fixture paths.
+- The 50-cycle run passed **50/50**; RSS delta was **+835,584 bytes**, handle
+  delta **0**, child-process delta **0**. The 600.6-second idle sample recorded
+  **0% GPU / 0 GPU memory**, no model import, child process or screen-capture
+  loop, and cold lifecycle throughout. The idle harness did not start global
+  hotkeys or IPC; installed resident startup remains B-01/P28/P29 scope.
+- Remaining beyond this P13 gate: independent Sol review; broad candidate-model
+  quality/latency and physical resource budgets (P24/P26); installed/package
+  startup, voice/OCR lifecycle and broader product-wide process/privacy gates
+  remain with their matrix owners. No P14 work or merge is authorized here.
+
+Next safe step: independent Sol review of E72 and the P13 source diff. Do not
+start P14 automatically.
+
+## Previous checkpoint: 2026-10-26, P13 bounded packet E71
+
+**P13 remains in progress and is not complete.** E71 makes planner STOP
+responsive while waiting for an owned inference future and preserves user STOP
+outcomes through SMART/SCREEN/DEEP planner failures. Its blocked SMART fixture
+proves no tool starts after STOP. The still-running inference future remains
+owned and causes residual cleanup; E71 does not claim native worker termination.
+This completes only the bounded STOP-responsiveness subtask; E70's F-07/F-08
+worker-absence gate remains open.
+See [E71](docs/completion/p13_f08_stop_wait.md) for reproduction, code hashes,
+exact commands and limitations.
+
+- Implementation commits: `6a06fc41a92a397e002f5a9bef0aa822fde1c79c` and
+  `15c19a4a1cdc7a2093999d308332c391ad678083` on `p12-preparation`; recovery
+  point before E71: `bee6626fb83c20c87df0f3ea12b470eb164b6701`.
+- Final affected regression: **420 passed, zero failed/errors/skips**, with
+  `--runxfail`; runtime shutdown, planner adapter/lifecycle/validator, schemas,
+  multi-step, router and FAST suites ran on Windows/Python 3.12.10/pytest 8.3.3.
+- The pre-fix blocked-backend regression failed at the 250 ms STOP-return
+  assertion. `llama_cpp` is unavailable here, so native generation, process
+  absence, real-model quality and physical unload were not tested.
+- F-07/F-08 and B-06 remain unverified until native inference is moved behind a
+  task-owned cancellable worker and STOP/timeout prove worker absence. Other P13
+  gaps include A-04/A-05/A-06, the still-unverified F rows, and real lifecycle
+  idle/unload/cycle evidence. Full list and matrix references are in E71 and
+  [`requirements_matrix.md`](docs/completion/requirements_matrix.md).
+
+Next safe packet: implement and verify task-owned native inference cancellation,
+timeout, process absence and cleanup/ledger readback. Then address configured
+plan limits and remaining P13 acceptance. Do not advance to P14 before P13
+gates pass; no P14 work or merge is authorized here.
+
+## Previous checkpoint: 2026-10-26, P13 first bounded packet E70
+
+**P12 remains complete; P13 is in progress and is not complete.** E70 repairs the first P13 gap recorded in [E69](docs/completion/p12_final_audit.md): SMART planning now sends only file-tool schemas for Downloads/file tasks, while explicit browser, website, URL, tab and URL-download requests keep the browser tool subset. The validator continues to reject any tool outside the selected subset. [E70](docs/completion/p13_e01_tool_subset.md) records the reproduction, implementation, exact checks, source hashes and remaining P13 gates.
+
+- Implementation commit: `601fcb500badd87a415ddc322e17407f0cd6897f` on `p12-preparation`; recovery point before this packet: `5c7c260a12c12849cfa7c44f61694f9d41482004` (verified P12 source/documentation head).
+- Reproduced baseline: **65 passed, 1 failed, zero skips**. After repair, the P13 planner/lifecycle/schema baseline passed **72 tests**, and the route/FAST/multi-step regression passed **298 tests**; focused selector/adapter checks passed **13 tests**. All passing runs had zero skips and zero xfails. Counts overlap.
+- The adapter prompt regression confirms the Downloads move plan contains `find_file`/`move_file` and omits browser, app and window schemas. Selector cases preserve explicit website/URL/browser requests and route `Open Downloads` to file tools.
+- Tested on Windows 11 build 26200 with Python 3.12.10 and pytest 8.3.3. Exact reports are ignored under `output/p13-e01/`; this fixture-backed packet did not run a real llama.cpp model and makes no runtime/quality claim.
+- P13 still has open plan-limit/configuration, real inference ownership/cancellation/unload, strict-generation fallback, malformed-output and real-model acceptance gaps. The next safe packet is the planner inference timeout/STOP ownership defect (F-07/F-08): prove an unresponsive native inference worker is actually stopped and absent before task cleanup is reported complete. Then address configured `agent.max_plan_steps` (A-05) and real-model acceptance. See E70 and the matrix.
+
+The P11 owner-approved physical-effects limitation, broader release/application coverage and P26 performance corpus remain visible in E57/E67/E69 and the matrix. No new waiver or skipped acceptance check is inferred. Keep the branch available for review; do not merge or advance automatically.
+
+## Previous checkpoint: 2026-10-25, P12 bounded slice E-05 (E64)
+
+**E-05 geometry/DPI refresh passes on `p12-preparation`; P12 remains open.** [E64](docs/completion/p12_e05.md) records unit movement/DPI/process-identity checks and registered-tool refusal after an owned native window moves during OCR. The executor reads fresh process identity, geometry and DPI after OCR and before coordinate conversion, refuses stale targets, and does not dispatch input. The DPI drift path is covered deterministically; no system display scaling was changed.
+
+- Focused UI/perception/dispatch regressions passed **91 tests in 18.20s**, and the additional older OCR/perception regression modules passed **14 tests in 4.38s**, zero failures/errors/skips across both runs. Combined native Win32/WPF acceptance passed **5 tests in 5.28s**, zero failures/errors/skips. The native E-05 test moved only its owned fixture window during OCR and asserted no click. Exact commands, environment and source hashes are in E64.
+- E-01/E-02 remain evidenced by [E62](docs/completion/p12_e01_e02.md); E-03/E-04 remain evidenced by [E63](docs/completion/p12_e03_e04.md). E-06 through E-10 and the remaining 16 screen-control catalog names remain P12 work. This checkpoint does not claim full P12 or product completion.
+
+Next safe bounded task, only when instructed: E-06 targeted OCR capture/recognition scope. Keep work on `p12-preparation`; do not merge or start later P12 slices automatically.
+
+## Previous checkpoint: 2026-10-25, P12 bounded slice E-03/E-04 (E63)
+
+**E-03 and E-04 now pass on `p12-preparation`; P12 remains open.** [E63](docs/completion/p12_e03_e04.md) records owned-window results, focused regressions and source hashes. Registry grounding refuses duplicate same-source labels before an action worker starts. The native Win32 fixture exposed two real UIA Submit controls with the same label; the registered click tool refused the target, and independent UIA reads confirmed both controls remained enabled. A second registered-tool case changed the task's active context from one owned HWND to another and rejected the original reference before constructing the UIA action adapter.
+
+- The active-window switch is controlled by the test context, which returns fresh native identity and geometry for either exact owned fixture HWND. The current desktop session does not provide foreground/focus acceptance; the tests do not activate or inspect any pre-existing user window.
+- From E62 baseline `69a8119`, focused UI, verifier, dispatch, snapshot/freshness, Win32, native geometry, OCR ambiguity and grounding regressions passed **87 tests in 17.54s**, zero failures/errors/skips. Combined native Win32/WPF and E-03/E-04 acceptance passed **4 tests in 5.51s**, zero failures/errors/skips. Environment: Windows 11 build 26200, Python 3.12.10, pytest 8.3.3 and pywinauto 0.6.9. Exact commands and reports are under ignored `output/p12-e03-e04/`; source SHA256 values are in E63.
+- E-01/E-02 remain evidenced by [E62](docs/completion/p12_e01_e02.md). No additional section-21 screen tool names were added. E-05 through E-10 and the remaining 16 screen-control catalog names remain P12 work. This checkpoint does not claim full P12 or product completion.
+
+Next safe bounded task, only when instructed: E-05 geometry/DPI refresh before coordinate fallback. Keep work on `p12-preparation`; do not merge or start later P12 slices automatically.
+
+## Previous checkpoint: 2026-10-25, P12 first bounded slice E-01/E-02 (E62)
+
+**E-01 and E-02 pass on `p12-preparation`; P12 remains open.** [E62](docs/completion/p12_e01_e02.md) records native Win32 and WPF inspection, Win32 Submit invocation, focused regressions and implementation fixes. E63 above adds duplicate-label and stale-reference acceptance. E-05 through E-10 and the remaining screen catalog names remain open.
+
+- E62's native test exposed and fixed three concrete gaps: the registry did not pass resolved snapshot grounding to its owned-thread executor; Win32 window rectangles varied with the caller thread's DPI context; and UIA click success did not require an expected postcondition. E62 retains exact baseline test results and source hashes.
+- No additional section-21 screen tool names were added, and no foreground/focus acceptance was claimed.
+
+## Previous checkpoint: 2026-10-25, P00-P11 merged into main (E61)
+
+**P00-P11 is merged into GitHub main.** The owner authorized the merge and P12 preparation on 2026-10-25. [E61](docs/completion/p11_main_merge.md) records the actual commits, checks, recovery points and P12 starting point. Live focus/audio acceptance remains explicitly deferred to final validation under E60; no physical pass or full-product release is claimed.
 
 - [PR 1](https://github.com/sai161812/pluma/pull/1) merged the approved dark UI foundation as `3cb367d3a387987b6872c493521eeaab59651d68`.
 - [PR 2](https://github.com/sai161812/pluma/pull/2) was retargeted to main, updated with current validation/limitations and merged as `812a8b9c05e7c7e8852be1841ae5e47677f6382f`. Both merges preserved ancestry and used exact expected-head SHA guards. Development/recovery branches and other worktrees were preserved.
 - The resulting main tree exactly matches tested P11 head `34a8471`: no merge-resolution code or untested integration delta. Windows UI workflow [40199073748](https://github.com/sai161812/pluma/actions/runs/40199073748) passed on that head. E60's 435 prerequisite, 1,274 catalog, 319 routing and 283 clipboard passes remain applicable. Fresh post-merge verification on actual main commit `812a8b9`: **435 safety prerequisites passed in 56.63s, zero failed/skipped**, and **39 C#/Python IPC checks passed** again. Matrix validation passes 298 source items / 324 rows.
 
-Next safe task, only when instructed: execute the first bounded P12 E-01/E-02 semantic-inspection gap from the current main baseline. Inspect existing adapters/tests and exact missing registry names first; use owned fixture windows, semantic UIA before OCR, strict reference lifetime and independent readback. Do not enable command entry, invent UI design or silently expand to all screen tools. E-01 through E-10 and all 16 missing P12 catalog names remain open in the matrix.
+At E61, P12 was prepared but not started. Its first bounded task was E-01/E-02 semantic inspection using an owned fixture, UIA before OCR, strict target identity and independent readback. E62 above records completion of that slice; the remaining 16 missing P12 catalog names remain open.
 
 ## Previous checkpoint: 2026-10-25, P00-P11 merge preparation (E60)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import json
 from unittest.mock import MagicMock
 import pytest
 
@@ -15,12 +16,24 @@ from pluma.core.orchestrator import Orchestrator
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import Router
 from pluma.core.task_supervisor import TaskState, TaskSupervisor
-from pluma.memory.activity import ActivityLedger
+from pluma.memory.activity import ActivityLedger, ActivityQuery
 from pluma.memory.db import DbConnection
 from pluma.rollback.engine import RollbackEngine
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
 from pluma.tools.registry import ToolRegistry, get_default_tool_registry
 from pluma.verify.common import verify_noop
+
+
+def _owned_semantic_fixture(args, task_context):
+    from datetime import datetime, timedelta, timezone
+    from pluma.perception.element_refs import ScreenSnapshot, BoundingBox
+    now = datetime.now(timezone.utc)
+    snapshot = ScreenSnapshot(created_at=now, expires_at=now + timedelta(seconds=3),
+        active_process="fixture.exe", active_window_title="Fixture", hwnd=500, pid=1234,
+        process_creation_time_ns=123, window_class="FixtureWindow",
+        window_rect=BoundingBox(left=0, top=0, right=500, bottom=400), dpi_scale=1)
+    return ToolResult.success("inspect_window_controls", {"snapshot_id": snapshot.snapshot_id,
+        "raw_snapshot": snapshot.model_dump(mode="json")}, "Owned semantic fixture observation.", verified=True)
 
 
 def test_multi_step_successful_execution_chain() -> None:
@@ -249,6 +262,50 @@ def test_orchestrator_smart_route_e2e() -> None:
     assert res.steps[1].tool == "list_files"
 
 
+def test_planner_reasoning_marker_is_not_written_to_activity_ledger(tmp_path, caplog) -> None:
+    import logging
+    caplog.set_level(logging.INFO, logger="pluma.core.multi_step")
+    db = DbConnection(str(tmp_path / "planner-history.sqlite"))
+    db.open()
+    ledger = ActivityLedger(db=db)
+    registry = get_default_tool_registry()
+    hidden_marker = "PRIVATE_CHAIN_OF_THOUGHT_FIXTURE_8f71"
+    backend = MagicMock()
+    backend.generate.return_value = json.dumps({
+        "route": "SMART",
+        "mode": "direct",
+        "steps": [{
+            "tool": "list_files",
+            "arguments": {"path": str(tmp_path)},
+            "purpose": hidden_marker,
+        }],
+    })
+    manager = LlmLifecycleManager(custom_backend=backend)
+    supervisor = TaskSupervisor(ledger=ledger)
+    orchestrator = Orchestrator(
+        registry=registry,
+        supervisor=supervisor,
+        ledger=ledger,
+        router=Router(),
+        llm_manager=manager,
+    )
+
+    result = orchestrator.execute(PlumaRequest(
+        input_mode=InputMode.TEXT,
+        text="Compare the contents of this directory with a list of files",
+    ))
+
+    assert result.route == RouteMode.SMART
+    assert result.final_state == "SUCCEEDED"
+    try:
+        rows = ActivityQuery(db).actions_for_task(result.task_id)
+        persisted = json.dumps({"actions": rows, "task": ActivityQuery(db).task_by_id(result.task_id)})
+        assert hidden_marker not in persisted
+        assert hidden_marker not in caplog.text
+    finally:
+        db.close()
+
+
 def test_orchestrator_screen_route_e2e() -> None:
     """End-to-end test of Orchestrator executing SCREEN route request with mock planner."""
     registry = get_default_tool_registry()
@@ -279,17 +336,18 @@ def test_orchestrator_screen_route_e2e() -> None:
     assert res.final_state in ("SUCCEEDED", "FAILED")  # Fails gracefully if headless without active GUI
 
 
-def test_orchestrator_deep_route_e2e() -> None:
+def test_orchestrator_deep_route_e2e(tmp_path, monkeypatch) -> None:
     """End-to-end test of Orchestrator executing DEEP route request."""
     registry = get_default_tool_registry()
+    # The fixture emits a typed observation from a real owned worker; native
+    # provider correctness is covered by the Win32/WPF acceptance suite.
+    monkeypatch.setattr(registry.lookup("inspect_window_controls"), "executor", _owned_semantic_fixture)
 
     mock_backend = MagicMock()
-    mock_backend.generate.return_value = (
-        '{"route": "DEEP", "mode": "multi_step", "steps": ['
-        '{"tool": "create_folder", "arguments": {"path": "C:\\\\deep_test"}, "purpose": "Setup folder"},'
-        '{"tool": "list_files", "arguments": {"path": "C:\\\\deep_test"}, "purpose": "Verify directory"}'
-        ']}'
-    )
+    destination = str(tmp_path / "deep-fixture")
+    mock_backend.generate.return_value = json.dumps({"route": "DEEP", "mode": "multi_step", "steps": [
+        {"tool": "create_folder", "arguments": {"path": destination}, "purpose": "Setup folder"},
+        {"tool": "list_files", "arguments": {"path": destination}, "purpose": "Verify directory"}]})
 
     llm_manager = LlmLifecycleManager(custom_backend=mock_backend, idle_unload_seconds=1.0)
     supervisor = TaskSupervisor()

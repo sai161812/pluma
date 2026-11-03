@@ -256,14 +256,16 @@ def test_stop_reports_retained_receipt_owner_and_never_late_success(runtime, mon
                 assert cap.terminal_ready.wait(3)
                 assert cap.state == TaskState.STOPPED_WITH_RESIDUAL and cap.cleanup_pending
                 resource = next(item for item in cap.owned_resources if item.metadata.get('persistent_launch_id'))
-                assert subprocess_absent(resource.metadata['pid'], resource.metadata['creation_time'])
+                # Job termination is asynchronous. Read the same owned process
+                # handle with a bounded wait instead of racing its kernel exit.
+                assert subprocess_absent(resource.metadata['pid'], resource.metadata['creation_time'], wait_s=0.3)
             finally:
                 release.set()
             result = future.result(5)
         assert not result.ok and cap.terminal_ready.wait(8)
         assert cap.state == TaskState.STOPPED_WITH_RESIDUAL
         resource = next(item for item in cap.owned_resources if item.metadata.get('persistent_launch_id'))
-        assert subprocess_absent(resource.metadata['pid'], resource.metadata['creation_time'])
+        assert subprocess_absent(resource.metadata['pid'], resource.metadata['creation_time'], wait_s=0.3)
         retained = ActivityQuery(runtime.db).available_undo_records_for_task(cap.task_id)
         assert retained and json.loads(retained[0]['undo_json'])['action'] == 'pending_mutation'
 

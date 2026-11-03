@@ -21,6 +21,8 @@ import os
 import queue
 import sqlite3
 import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Sequence, Tuple
 
@@ -328,6 +330,27 @@ class DbConnection:
     # ------------------------------------------------------------------
     # Read path (direct, thread-safe via WAL)
     # ------------------------------------------------------------------
+
+    @contextmanager
+    def read_snapshot(self, *, budget_s: float = .25):
+        """Independent bounded read-only transaction; never changes shared readers.
+
+        Durable history needs the file database. Anonymous in-memory fixtures
+        cannot provide an independent snapshot and are refused explicitly.
+        """
+        if not self._open or self._closing or self._db_path == ":memory:" or not 0 < budget_s <= 1:
+            raise RuntimeError("Durable read snapshot is unavailable.")
+        deadline = time.monotonic() + budget_s
+        connection = sqlite3.connect(Path(self._db_path).resolve().as_uri() + "?mode=ro",
+                                     uri=True, timeout=.05, isolation_level=None)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only=ON")
+            connection.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
+            connection.execute("BEGIN")
+            yield connection
+        finally:
+            connection.close()
 
     def execute_read(
         self,

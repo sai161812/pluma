@@ -33,12 +33,7 @@ from pluma.core.task_supervisor import ResourceOwnership, TaskCapsule, TaskState
 from pluma.policy.elevation_broker import ElevationBroker, ElevationOpType, ElevationOperation
 from pluma.policy.engine import PolicyDecision, PolicyEngine
 from pluma.tools.apps import (
-    _ALLOWED_APP_ALIASES,
-    _FORBIDDEN_EXECUTABLES,
-    CloseAppArgs,
-    FocusAppArgs,
     OpenAppArgs,
-    execute_open_app,
 )
 from pluma.tools.audio import SetVolumeArgs
 from pluma.tools.base import RiskClass, ToolResult, ToolSpec, VerifyResult
@@ -48,6 +43,42 @@ from pluma.tools.registry import (
     ToolRegistry,
     register_default_tools,
 )
+
+
+@pytest.mark.parametrize(
+    ("supplied", "canonical"),
+    [
+        ("notepad", "notepad"),
+        ("Notepad.exe", "notepad"),
+        ("PAINT", "paint"),
+        ("mspaint", "mspaint"),
+        ("calculator", "calculator"),
+        ("CALC.EXE", "calc"),
+        ("charmap", "charmap"),
+        ("snippingtool", "snippingtool"),
+        ("taskmgr", "taskmgr"),
+    ],
+)
+def test_open_app_accepts_only_current_closed_alias_contract(supplied, canonical):
+    """Validate the typed alias contract without launching an application."""
+    assert OpenAppArgs.model_validate({"app_name": supplied}).app_name == canonical
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"app_name": "cmd"},
+        {"app_name": "powershell"},
+        {"app_name": "python"},
+        {"app_name": "notepad", "arguments": ["arbitrary"]},
+        {"app_name": "notepad", "working_dir": "C:\\Windows"},
+        {"app_name": "notepad", "run_as_admin": True},
+    ],
+)
+def test_open_app_rejects_unregistered_executables_and_options(arguments):
+    """No free-form executable, arguments, working directory or elevation."""
+    with pytest.raises(ValidationError):
+        OpenAppArgs.model_validate(arguments)
 
 
 # ===========================================================================

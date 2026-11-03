@@ -2,9 +2,25 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pluma.memory.redaction import (
-    redact_dict, redact_json_str, sanitise_args_for_ledger, REDACTED_TOKEN
+    redact_command_text, redact_dict, redact_json_str, sanitise_args_for_ledger, REDACTED_TOKEN
 )
+
+
+@pytest.mark.parametrize("verb", ["paste", "pasted", "pastes", "pasting", "clip board", "pasteboard"])
+def test_clipboard_word_forms_redact_unmarked_private_value(verb: str) -> None:
+    payload = "amber-comet-fixture@example.test"
+    command = f"Please use {verb} with {payload}"
+
+    assert redact_command_text(command) == "[REDACTED CLIPBOARD COMMAND]"
+    assert payload not in redact_command_text(command)
+
+
+def test_clipboard_redaction_preserves_unrelated_words() -> None:
+    command = "open the pastry recipe"
+    assert redact_command_text(command) == command
 
 
 class TestRedactDict:

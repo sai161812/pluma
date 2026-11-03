@@ -344,7 +344,16 @@ def test_preparing_request_cannot_publish_after_shutdown(runtime, monkeypatch):
             release.set()
         with pytest.raises(TaskCancelledError):
             preparing.result(3)
-    assert runtime.close().complete
+    report = runtime.close()
+    if not report.complete:
+        # The retained shutdown worker may have observed the preparation
+        # counter in the narrow interval after releasing the supervisor lock
+        # but before create_task_capsule decrements it. That stage must remain
+        # visibly unverified with storage open; retry only after it has ended.
+        assert report.stage == 'outcomes' and report.code == 'STAGE_UNVERIFIED'
+        assert runtime.db.is_open and runtime._shutdown_session.worker is None
+        report = runtime.close()
+    assert report.complete
     assert runtime.supervisor._tasks == {} and runtime.supervisor._preparing == 0
 
 
@@ -567,6 +576,164 @@ def test_native_planner_timeout_future_is_owned_until_actual_exit(runtime):
     reopened(runtime, cap)
 
 
+def test_native_planner_stop_interrupts_wait_and_never_returns_late_plan(runtime):
+    from pluma.brain.interface import PlannerCancelledError
+    from pluma.brain.llama_cpp_adapter import LlamaCppAdapter
+    from pluma.core.cancellation import StopReason
+
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    outcome = []
+
+    class Backend:
+        def generate(self, **kwargs):
+            entered.set()
+            assert release.wait(3)
+            return ('{"route":"SMART","mode":"direct","steps":'
+                    '[{"tool":"get_system_status","arguments":{},"purpose":"fixture"}]}')
+
+    cap = task(runtime, 'planner-stop')
+    adapter = LlamaCppAdapter(custom_backend=Backend(), registry=runtime.tool_registry,
+                              inference_timeout_s=2.0)
+
+    def plan():
+        try:
+            outcome.append(adapter.plan(
+                'fixture', permitted_tool_specs=[{'name': 'get_system_status'}],
+                cancellation_token=cap.cancellation_token))
+        except Exception as exc:
+            outcome.append(exc)
+        finally:
+            returned.set()
+
+    caller = threading.Thread(target=plan, name='test-planner-stop-caller')
+    try:
+        caller.start()
+        assert entered.wait(2)
+        assert cap.cancellation_token.cancel(StopReason.USER_STOP)
+        assert returned.wait(0.25), 'planner did not return promptly after STOP'
+        assert len(outcome) == 1 and isinstance(outcome[0], PlannerCancelledError)
+        assert cap.owned_work
+        assert any(not item['future'].done() for item in cap.owned_work.values())
+        assert any(item['command_class'] == 'planner_inference'
+                   and item['task_id'] == cap.task_id
+                   for item in runtime.tool_registry.work_gate.pending_futures())
+    finally:
+        release.set()
+        caller.join(2)
+    assert not caller.is_alive()
+
+
+def test_native_planner_stop_cancels_queued_generation_before_executor_entry(runtime, monkeypatch):
+    import pluma.tools.registry as registry_module
+    from pluma.brain.interface import PlannerCancelledError
+    from pluma.brain.llama_cpp_adapter import LlamaCppAdapter
+    from pluma.core.cancellation import StopReason
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    entered_blocker, release_blocker = threading.Event(), threading.Event()
+    backend_started, returned = threading.Event(), threading.Event()
+    outcome = []
+    monkeypatch.setattr(registry_module, '_GLOBAL_TOOL_EXECUTOR', executor)
+    blocker = executor.submit(lambda: (entered_blocker.set(), release_blocker.wait(3)))
+    assert entered_blocker.wait(2)
+
+    class Backend:
+        def generate(self, **kwargs):
+            backend_started.set()
+            return '{"route":"SMART","mode":"direct","steps":[]}'
+
+    cap = task(runtime, 'planner-stop-queued')
+    adapter = LlamaCppAdapter(custom_backend=Backend(), registry=runtime.tool_registry,
+                              inference_timeout_s=2.0)
+
+    def plan():
+        try:
+            outcome.append(adapter.plan(
+                'fixture', permitted_tool_specs=[{'name': 'get_system_status'}],
+                cancellation_token=cap.cancellation_token))
+        except Exception as exc:
+            outcome.append(exc)
+        finally:
+            returned.set()
+
+    caller = threading.Thread(target=plan, name='test-planner-stop-queued-caller')
+    try:
+        caller.start()
+        deadline = time.monotonic() + 2
+        while not cap.owned_work and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert cap.owned_work
+        future = next(item['future'] for item in cap.owned_work.values())
+        assert not future.running()
+        assert cap.cancellation_token.cancel(StopReason.USER_STOP)
+        assert returned.wait(0.25)
+        assert len(outcome) == 1 and isinstance(outcome[0], PlannerCancelledError)
+        assert future.cancelled()
+    finally:
+        release_blocker.set()
+        blocker.result(timeout=2)
+        caller.join(2)
+        executor.shutdown(wait=True)
+    assert not caller.is_alive()
+    assert not backend_started.is_set()
+
+
+def test_stop_during_smart_planning_is_reported_as_stop_and_executes_no_tool(runtime, monkeypatch):
+    from pluma.brain.llama_cpp_adapter import LlamaCppAdapter
+    from pluma.core.cancellation import StopReason
+
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    capsules, outcome = [], []
+
+    class Backend:
+        def generate(self, **kwargs):
+            entered.set()
+            assert release.wait(3)
+            return ('{"route":"SMART","mode":"direct","steps":'
+                    '[{"tool":"get_system_status","arguments":{},"purpose":"fixture"}]}')
+
+    original_create = runtime.supervisor.create_task_capsule
+
+    def capture_capsule(**kwargs):
+        capsule = original_create(**kwargs)
+        capsules.append(capsule)
+        return capsule
+
+    monkeypatch.setattr(runtime.supervisor, 'create_task_capsule', capture_capsule)
+    adapter = LlamaCppAdapter(custom_backend=Backend(), registry=runtime.tool_registry,
+                              inference_timeout_s=2.0)
+    runtime.orchestrator._llm_manager = SimpleNamespace(plan=adapter.plan)
+    runtime.orchestrator._router = SimpleNamespace(route=lambda request: RouteResult(
+        route=RouteMode.SMART, reason='blocked planner fixture'))
+
+    def execute():
+        try:
+            outcome.append(runtime.orchestrator.execute(PlumaRequest.from_text('complex fixture request')))
+        finally:
+            returned.set()
+
+    caller = threading.Thread(target=execute, name='test-smart-stop-caller')
+    try:
+        caller.start()
+        assert entered.wait(2)
+        assert len(capsules) == 1
+        cap = capsules[0]
+        reply = runtime.supervisor.request_stop(cap.task_id, wait_s=0.1)
+        assert reply.tasks and reply.tasks[0].latch_acknowledged
+        assert cap.cancellation_token.reason == StopReason.USER_STOP
+        assert returned.wait(1), 'SMART route did not return after planner STOP'
+        assert len(outcome) == 1
+        assert outcome[0].final_state in ('STOPPED', 'STOPPED_WITH_RESIDUAL')
+        assert outcome[0].error == 'Planning stopped by user request.'
+        assert cap.tool_call_count == 0
+        assert not outcome[0].steps
+        assert any(item.code == 'INPROCESS_WORK_PENDING' for item in cap.cleanup_evidence)
+    finally:
+        release.set()
+        caller.join(3)
+    assert not caller.is_alive()
+
+
 @pytest.mark.parametrize('stage', ['registry', 'outcomes', 'planner', 'voice', 'storage'])
 def test_failed_shutdown_stage_does_not_skip_to_storage(runtime, monkeypatch, stage):
     mapping = {'registry': (runtime.tool_registry, 'close'), 'outcomes': (runtime.supervisor, 'finalize_shutdown'),
@@ -640,11 +807,13 @@ def test_real_runtime_shutdown_verifies_owned_tree_and_unrelated_survival(runtim
             child = int((tmp_path / 'child').read_text())
             created = get_process_creation_time(child)
             controller = cap.worker_controller
-            root = controller._proc
+            root_pid = controller.worker_identity['pid']
+            root_created = controller.worker_identity['creation_time']
             result = runtime.close()
             executing.result(3)
         assert result.complete and cap.stop_latch_set
-        assert controller.verify_cleanup() is True and not root.is_alive()
+        assert controller.verify_cleanup() is True and controller._proc is None
+        assert subprocess_absent(root_pid, root_created) is True
         assert subprocess_absent(child, created) is True
         assert unrelated.poll() is None and not (tmp_path / 'late').exists()
         assert cap.job_object is None and cap.worker_controller is None

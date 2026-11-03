@@ -33,12 +33,12 @@
                            FontWeight="SemiBold"
                            CharacterSpacing="80" />
 
-                <local:PopupStatusIndicator Grid.Column="1" Label="Running" Kind="Progress"
+                <local:PopupStatusIndicator x:Name="TaskStatus" Grid.Column="1" Label="Unavailable" Kind="Dot"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
 
-            <local:PopupMessageText Grid.Row="1"
-                       Text="Opening the latest PDF in Downloads"
+            <local:PopupMessageText x:Name="TaskMessage" Grid.Row="1"
+                       Text="Live task evidence is unavailable."
                        FontSize="14" MaxHeight="96" />
 
             <Grid Grid.Row="2" ColumnSpacing="12">
@@ -47,11 +47,11 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <local:PopupMessageText Text="TASK-2025-0145"
+                <local:PopupMessageText x:Name="TaskIdentity" Text="Task unavailable"
                            FontSize="12"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" MaxHeight="96" />
                 <TextBlock Grid.Column="1"
-                           Text="00:08"
+                           x:Name="ElapsedText" Text="Elapsed unavailable"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>

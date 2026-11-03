@@ -7,6 +7,7 @@ Tool schema selection should be route-specific."
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from pluma.brain.schemas import RouteMode
@@ -44,6 +45,22 @@ UI_PERCEPTION_TOOLS = [
     "click_element",
     "type_into_element",
     "click_ocr_text",
+    "get_active_window_context",
+    "inspect_window_controls",
+    "capture_target_window",
+    "read_visible_text",
+    "find_visible_text",
+    "refresh_screen_snapshot",
+    "find_control",
+    "invoke_control",
+    "set_control_text",
+    "read_control_text",
+    "wait_for_control",
+    "invoke_screen_element",
+    "press_key",
+    "hotkey",
+    "type_text",
+    "click_window_relative",
 ]
 
 AUDIO_TOOLS = [
@@ -147,11 +164,20 @@ class ToolSubsetSelector:
                 return base_names
             if any(k in cmd_lower for k in ('terminal', 'powershell', 'diagnostic', 'project command')):
                 return TERMINAL_TOOLS
-            if any(k in cmd_lower for k in ('browser', 'website', 'url', 'tab', 'download')):
+            explicit_browser_context = re.search(
+                r"\b(?:browser|website|web\s+site|webpage|web\s+page|web|url|tab)\b|https?://|www\.",
+                cmd_lower,
+            )
+            if explicit_browser_context:
                 return BROWSER_TOOLS
-            file_hint = any(k in cmd_lower for k in ("file", "folder", "directory", "move", "rename", "pdf", "doc"))
-            if file_hint:
-                return FILE_TOOLS + ["open_app", "focus_window"] + (SYSTEM_CLIPBOARD_TOOLS if "clipboard" in cmd_lower else [])
+            file_operation_hint = any(
+                k in cmd_lower for k in ("file", "folder", "directory", "move", "rename")
+            ) or bool(re.search(r"\bdownloads\b", cmd_lower))
+            file_type_hint = any(k in cmd_lower for k in ("pdf", "doc"))
+            if file_operation_hint or file_type_hint:
+                return FILE_TOOLS + (SYSTEM_CLIPBOARD_TOOLS if "clipboard" in cmd_lower else [])
+            if re.search(r"\bdownload(?:s|ed|ing)?\b", cmd_lower):
+                return BROWSER_TOOLS
             # If purely clipboard task
             if any(k in cmd_lower for k in ("clipboard", "copy", "paste")):
                 return SYSTEM_CLIPBOARD_TOOLS + APP_WINDOW_TOOLS

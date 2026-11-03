@@ -32,7 +32,7 @@ from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult, Router
 from pluma.core.task_supervisor import InvalidTaskTransition, TaskCapsule, TaskState, TaskSupervisor
 from pluma.memory.activity import ActionRecord, ActivityLedger, TaskRecord
-from pluma.memory.redaction import redact_string
+from pluma.memory.redaction import redact_command_text, redact_string
 from pluma.rollback.engine import RollbackEngine
 from pluma.tools.base import ToolResult
 from pluma.tools.registry import ToolRegistry, register_default_tools
@@ -126,7 +126,7 @@ class Orchestrator:
             binder(self._supervisor.request_stop)
         self._ledger = ledger
         self._supervisor.bind_execution(ledger, rollback_engine)
-        self._router = router or Router()
+        self._router = router or Router(registry=self._registry)
         self._llm_manager = llm_manager
         self._rollback_engine = rollback_engine
         self._multi_step = multi_step_orchestrator or MultiStepOrchestrator(
@@ -134,7 +134,7 @@ class Orchestrator:
             supervisor=self._supervisor,
             ledger=self._ledger,
             rollback_engine=self._rollback_engine,
-            planner=self._llm_manager.adapter if self._llm_manager and hasattr(self._llm_manager, "adapter") else None,
+            planner=self._llm_manager if self._llm_manager and hasattr(self._llm_manager, "plan") else None,
         )
 
     # ------------------------------------------------------------------
@@ -146,7 +146,17 @@ class Orchestrator:
         with self._supervisor.execution_gate.enter():
             return self._execute_request(request, capsule)
 
-    def _execute_request(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None) -> TaskExecutionResult:
+    def execute_typed_plan(self, request, capsule, plan):
+        """UI-selected saved action through the same owned FAST lifecycle."""
+        from pluma.core.router import RouteResult
+        from pluma.brain.schemas import RouteMode
+        if (plan.route != RouteMode.FAST or len(plan.steps) != 1 or
+                plan.steps[0].tool not in ('undo_last', 'open_folder') or not plan.steps[0].arguments):
+            raise ValueError('Only an exact selected history action is admitted here.')
+        with self._supervisor.execution_gate.enter():
+            return self._execute_request(request, capsule, selected_plan=plan)
+
+    def _execute_request(self, request: PlumaRequest, capsule: Optional[TaskCapsule] = None, selected_plan=None) -> TaskExecutionResult:
         wall_start = time.perf_counter()
 
         # 1. Use provided Task Capsule or create one
@@ -156,7 +166,8 @@ class Orchestrator:
         
         logger.info(
             "task=%s request=%s mode=%s text=%r",
-            task_id, request.request_id, request.input_mode.value, redact_string(request.text[:120]),
+            task_id, request.request_id, request.input_mode.value,
+            redact_command_text(request.text)[:120],
         )
 
         capsule.history_expected = True
@@ -168,6 +179,7 @@ class Orchestrator:
                     request_id=request.request_id,
                     input_mode=request.input_mode.value,
                     command_text=request.text,
+                    original_transcript=request.original_transcript,
                     active_process=request.active_process,
                     active_window=request.active_window_title,
                 ))
@@ -188,7 +200,14 @@ class Orchestrator:
             ))
 
         # 3. Classify route
-        route_result: RouteResult = self._router.route(request)
+        if request.input_mode == InputMode.VOICE and capsule.voice_presentation is not None:
+            capsule.voice_presentation.committed(request, capsule=capsule)
+        route_result: RouteResult = (RouteResult(route=RouteMode.FAST, reason="Selected saved action.", plan=selected_plan)
+                                     if selected_plan is not None else self._router.route(request))
+        if redact_command_text(request.text) == "[REDACTED CLIPBOARD COMMAND]":
+            route_result.reason = "Clipboard-related command routed; private text omitted."
+        else:
+            route_result.reason = redact_command_text(route_result.reason)
         logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason)
 
         if self._ledger:
@@ -258,7 +277,8 @@ class Orchestrator:
                 route=RouteMode.FAST,
                 route_reason=route_result.reason,
                 final_state="FAILED",
-                error="FAST route produced no plan steps.",
+                error=route_result.error or "FAST route produced no plan steps.",
+                factual_summary=route_result.error or "FAST route produced no plan steps.",
                 duration_ms=duration_ms,
             )
 
@@ -267,6 +287,7 @@ class Orchestrator:
         last_error: Optional[str] = None
         last_message = ""
 
+        capsule.live_presentation.plan(len(plan.steps))
         for idx, step in enumerate(plan.steps):
             if capsule.cancellation_token.is_cancelled:
                 final_state = "STOPPED"
@@ -274,6 +295,7 @@ class Orchestrator:
                 break
 
             step_start = time.perf_counter()
+            capsule.live_presentation.select(idx + 1)
             try:
                 result = self._registry.execute(
                     tool_name=step.tool,
@@ -341,6 +363,8 @@ class Orchestrator:
             from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
             llm = get_default_llm_lifecycle_manager()
 
+        permitted_tool_specs = self._permitted_planner_tools(llm, request.text, RouteMode.SMART)
+
         context = {
             "active_process": request.active_process,
             "active_window_title": request.active_window_title,
@@ -351,10 +375,14 @@ class Orchestrator:
             plan = llm.plan(
                 command=request.text,
                 context=context,
+                permitted_tool_specs=permitted_tool_specs,
                 cancellation_token=capsule.cancellation_token,
                 route=RouteMode.SMART,
             )
         except Exception as exc:
+            stopped = self._planning_stop_result(capsule, request, route_result, wall_start)
+            if stopped is not None:
+                return stopped
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
             logger.error("Task %s: SMART route planning failed: %s", task_id, exc)
             return TaskExecutionResult(
@@ -374,9 +402,38 @@ class Orchestrator:
             initial_plan=plan,
             command_text=request.text,
             context=context,
+            permitted_tool_specs=permitted_tool_specs,
+            route=RouteMode.SMART,
         )
 
         return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
+
+    def _capture_semantic_context(self, capsule: TaskCapsule):
+        """Observe through the registered, owned UIA tool; OCR remains on demand."""
+        token = capsule.cancellation_token
+        if token.is_cancelled:
+            return None, ToolResult.failure("inspect_window_controls", "Task stopped before screen inspection.", "TASK_CANCELLED")
+        try:
+            result = self._registry.execute("inspect_window_controls", {"max_controls": 50},
+                task_context=capsule, ledger=self._ledger)
+            if token.is_cancelled:
+                return None, ToolResult.failure("inspect_window_controls", "Task stopped during screen inspection.", "TASK_CANCELLED")
+            if not result.ok or not result.verified:
+                return None, result
+            snapshot = capsule.snapshot_registry.resolve(result.data["snapshot_id"])
+            return snapshot, None
+        except TaskCancelledError:
+            return None, ToolResult.failure("inspect_window_controls", "Task stopped during screen inspection.", "TASK_CANCELLED")
+        except Exception:
+            return None, ToolResult.failure("inspect_window_controls", "A verified task-owned screen observation is unavailable.", "SCREEN_OBSERVATION_FAILED")
+
+    @staticmethod
+    def _screen_observation_failure(capsule, request, route_result, wall_start, error):
+        return TaskExecutionResult(task_id=capsule.task_id, request_id=request.request_id,
+            route=route_result.route, route_reason=route_result.reason,
+            final_state="STOPPED" if capsule.cancellation_token.is_cancelled else "FAILED",
+            error=error.factual_message, factual_summary=error.factual_message,
+            duration_ms=(time.perf_counter() - wall_start) * 1000.0)
 
     def _execute_screen_route(
         self,
@@ -390,23 +447,24 @@ class Orchestrator:
 
         # If deterministic router already produced an unambiguous plan
         if route_result.plan and route_result.plan.steps:
+            permitted_tool_specs = None
+            if self._multi_step.planner is not None:
+                planner = self._llm_manager or self._multi_step.planner
+                permitted_tool_specs = self._permitted_planner_tools(
+                    planner, request.text, RouteMode.SCREEN
+                )
             ms_res = self._multi_step.execute_plan(
                 capsule=capsule,
                 initial_plan=route_result.plan,
                 command_text=request.text,
+                permitted_tool_specs=permitted_tool_specs,
+                route=RouteMode.SCREEN,
             )
             return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
-        # Otherwise capture UIA snapshot and query planner
-        snapshot = None
-        try:
-            from pluma.perception.context import ActiveWindowContext
-            from pluma.perception.uia_snapshot import UiaSnapshotBuilder
-            context_inspector = ActiveWindowContext()
-            builder = UiaSnapshotBuilder(context=context_inspector)
-            snapshot = builder.capture(ttl_seconds=3.0)
-        except Exception as exc:
-            logger.debug("Active window snapshot capture failed: %s", exc)
+        snapshot, perception_error = self._capture_semantic_context(capsule)
+        if perception_error is not None:
+            return self._screen_observation_failure(capsule, request, route_result, wall_start, perception_error)
 
         if self._llm_manager:
             llm = self._llm_manager
@@ -414,14 +472,20 @@ class Orchestrator:
             from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
             llm = get_default_llm_lifecycle_manager()
 
+        permitted_tool_specs = self._permitted_planner_tools(llm, request.text, RouteMode.SCREEN)
+
         try:
             plan = llm.plan(
                 command=request.text,
+                permitted_tool_specs=permitted_tool_specs,
                 screen_snapshot=snapshot,
                 cancellation_token=capsule.cancellation_token,
                 route=RouteMode.SCREEN,
             )
         except Exception as exc:
+            stopped = self._planning_stop_result(capsule, request, route_result, wall_start)
+            if stopped is not None:
+                return stopped
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
             return TaskExecutionResult(
                 task_id=task_id,
@@ -438,6 +502,8 @@ class Orchestrator:
             capsule=capsule,
             initial_plan=plan,
             command_text=request.text,
+            permitted_tool_specs=permitted_tool_specs,
+            route=RouteMode.SCREEN,
         )
         return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
@@ -451,16 +517,9 @@ class Orchestrator:
         """DEEP route: UIA + OCR + Local LLM + Bounded Multi-Step Execution."""
         task_id = capsule.task_id
 
-        # Capture snapshot with OCR fallback enabled
-        snapshot = None
-        try:
-            from pluma.perception.context import ActiveWindowContext
-            from pluma.perception.uia_snapshot import UiaSnapshotBuilder
-            context_inspector = ActiveWindowContext()
-            builder = UiaSnapshotBuilder(context=context_inspector)
-            snapshot = builder.capture(ttl_seconds=5.0, include_ocr=True)
-        except Exception as exc:
-            logger.debug("DEEP route perception capture failed: %s", exc)
+        snapshot, perception_error = self._capture_semantic_context(capsule)
+        if perception_error is not None:
+            return self._screen_observation_failure(capsule, request, route_result, wall_start, perception_error)
 
         if self._llm_manager:
             llm = self._llm_manager
@@ -468,14 +527,20 @@ class Orchestrator:
             from pluma.brain.lifecycle import get_default_llm_lifecycle_manager
             llm = get_default_llm_lifecycle_manager()
 
+        permitted_tool_specs = self._permitted_planner_tools(llm, request.text, RouteMode.DEEP)
+
         try:
             plan = llm.plan(
                 command=request.text,
+                permitted_tool_specs=permitted_tool_specs,
                 screen_snapshot=snapshot,
                 cancellation_token=capsule.cancellation_token,
                 route=RouteMode.DEEP,
             )
         except Exception as exc:
+            stopped = self._planning_stop_result(capsule, request, route_result, wall_start)
+            if stopped is not None:
+                return stopped
             duration_ms = (time.perf_counter() - wall_start) * 1000.0
             return TaskExecutionResult(
                 task_id=task_id,
@@ -492,6 +557,8 @@ class Orchestrator:
             capsule=capsule,
             initial_plan=plan,
             command_text=request.text,
+            permitted_tool_specs=permitted_tool_specs,
+            route=RouteMode.DEEP,
         )
         return self._finalize_multi_step_result(capsule, request, route_result, ms_res, wall_start)
 
@@ -528,6 +595,30 @@ class Orchestrator:
             duration_ms=duration_ms,
             factual_summary=ms_res.factual_summary,
             replan_count=ms_res.replan_count,
+        )
+
+    @staticmethod
+    def _permitted_planner_tools(llm: Any, command: str, route: RouteMode):
+        """Resolve one route-specific whitelist for initial planning and replans."""
+        adapter = getattr(llm, "adapter", llm)
+        resolver = getattr(adapter, "get_permitted_tool_specs", None)
+        return resolver(command, route) if callable(resolver) else None
+
+    @staticmethod
+    def _planning_stop_result(capsule, request, route_result, wall_start):
+        """Keep a latched user STOP distinct from a planner failure."""
+        if (not capsule.cancellation_token.is_cancelled
+                or capsule.cancellation_token.reason != StopReason.USER_STOP):
+            return None
+        return TaskExecutionResult(
+            task_id=capsule.task_id,
+            request_id=request.request_id,
+            route=route_result.route,
+            route_reason=route_result.reason,
+            final_state="STOPPED",
+            error="Planning stopped by user request.",
+            duration_ms=(time.perf_counter() - wall_start) * 1000.0,
+            factual_summary="Task stopped during planning.",
         )
 
 

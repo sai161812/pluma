@@ -8,6 +8,7 @@ import pytest
 from pluma.adapters import app_windows as native
 from pluma.brain.schemas import Plan, RouteMode, ToolCall
 from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
+from pluma.core.ownership import subprocess_absent
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.core.router import RouteResult
 from pluma.memory.activity import ActivityQuery
@@ -194,6 +195,7 @@ def test_blocked_read_worker_is_owned_and_stoppable(runtime, monkeypatch, tmp_pa
         job_object=cap.job_object, cancellation_token=cap.cancellation_token)
     assert status == 'ok'
     proc = controller._proc
+    identity = dict(controller.worker_identity)
     with ThreadPoolExecutor(1) as pool:
         future = pool.submit(runtime.tool_registry.execute, tool,
             {'pid': 1, 'creation_time': 1} if tool == 'app_status' else {}, cap, runtime.ledger)
@@ -204,4 +206,6 @@ def test_blocked_read_worker_is_owned_and_stoppable(runtime, monkeypatch, tmp_pa
         finally:
             if not future.done(): runtime.supervisor.stop_task(cap.task_id, grace_s=0)
     assert not result.ok and result.error_code == ('TASK_CANCELLED' if stop else 'TOOL_TIMEOUT')
-    assert not proc.is_alive() and controller.verify_cleanup() and not (tmp_path / 'late').exists()
+    assert proc._closed and controller._proc is None
+    assert subprocess_absent(identity['pid'], identity['creation_time']) is True
+    assert controller.verify_cleanup() and not (tmp_path / 'late').exists()

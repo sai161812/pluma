@@ -9,51 +9,80 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from pluma.core.request import InputMode, PlumaRequest
-from pluma.memory.redaction import redact_string
+from pluma.core.router import is_known_app_alias
+from pluma.memory.redaction import redact_command_text
 from pluma.voice.lifecycle import VoiceLifecycleManager
 from pluma.voice.vad import EnergyVAD
 
 logger = logging.getLogger(__name__)
 
-# Patterns for detecting material targets (destructive verbs, files, numbers)
-_DESTRUCTIVE_PATTERN = re.compile(
-    r"\b(delete|remove|format|erase|drop|kill|terminate|overwrite|destroy|wipe)\b",
-    re.IGNORECASE,
-)
-_FILE_EXT_PATTERN = re.compile(
-    r"\.(txt|pdf|docx?|xlsx?|pptx?|exe|py|cpp|c|h|json|yaml|yml|csv|log|zip|tar|gz|png|jpg|jpeg)\b",
-    re.IGNORECASE,
-)
-_NUMBER_PATTERN = re.compile(
-    r"\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
-    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|percent)\b",
-    re.IGNORECASE,
+
+@dataclass(frozen=True)
+class VoiceClarificationRequired:
+    """Backend outcome for material speech that is too uncertain to execute.
+
+    The transcript and guessed target are deliberately omitted. A later UI can
+    present a clarification request without persisting or replaying sensitive
+    speech.
+    """
+
+    confidence: float
+    code: str = "LOW_CONFIDENCE_MATERIAL_TARGET"
+
+# Only complete commands with no material target, and recognized application
+# launches, may bypass clarification when STT is uncertain. Unknown speech can
+# contain a filename or amount even without a familiar noun, suffix or numeral.
+_TARGET_FREE_COMMANDS = frozenset({
+    "stop", "stop current", "stop current task", "cancel task", "abort",
+    "mute", "mute audio", "mute sound", "unmute", "unmute audio", "unmute sound",
+    "get volume status", "check volume", "sound status", "volume status",
+    "show activity", "show history", "activity", "recent activity",
+    "recent actions", "activity history",
+    "get system status", "system status", "cpu memory status", "system health", "status",
+    "battery status", "check battery", "battery", "power status",
+    "list apps", "list applications", "running applications", "running apps",
+    "list windows", "show open windows", "open windows list",
+})
+_KNOWN_APP_LAUNCH_PATTERN = re.compile(
+    r"(?:open|launch|start)\s+(?P<app>.+)", re.IGNORECASE,
 )
 
 
 def is_material_target(text: str) -> bool:
-    """Check if command contains material targets (filenames, numbers, destructive actions)."""
-    if _DESTRUCTIVE_PATTERN.search(text):
+    """Treat unresolved uncertain speech as potentially containing a material target.
+
+    Whole-command matching prevents quotes, extra clauses, unusual filenames or
+    spoken fractions from bypassing clarification. This does not parse or alter
+    the target for execution; high-confidence requests retain their normal path.
+    """
+    return not _known_nonmaterial_command(normalize_transcript(text))
+
+
+def _known_nonmaterial_command(text: str) -> bool:
+    normalized = text.casefold()
+    if normalized in _TARGET_FREE_COMMANDS:
         return True
-    if _FILE_EXT_PATTERN.search(text):
-        return True
-    if _NUMBER_PATTERN.search(text):
-        return True
-    return False
+    launch = _KNOWN_APP_LAUNCH_PATTERN.fullmatch(normalized)
+    return bool(launch and is_known_app_alias(launch.group("app")))
 
 
 def normalize_transcript(text: str) -> str:
     """Normalize raw STT transcript minimally for downstream router processing."""
-    # Collapse multiple spaces
-    normalized = re.sub(r"\s+", " ", text.strip())
-    # Strip trailing sentence punctuation if it's a short command (e.g. "open notepad." -> "open notepad")
-    if normalized.endswith((".", "!", "?")) and len(normalized.split()) <= 10:
-        normalized = normalized[:-1].strip()
-    return normalized
+    literal = text.strip()
+    collapsed = re.sub(r"\s+", " ", literal)
+    if _known_nonmaterial_command(collapsed):
+        return collapsed
+    if collapsed.endswith((".", "!", "?")):
+        candidate = collapsed[:-1].strip()
+        if _known_nonmaterial_command(candidate):
+            return candidate
+    # Punctuation and repeated spaces can be part of a literal path, filename
+    # or glob. Do not change a material target while tidying STT text.
+    return literal
 
 
 class VoicePipeline:
@@ -72,7 +101,7 @@ class VoicePipeline:
         raw_audio: bytes,
         sample_rate: int = 16000,
         cancellation_token: Optional[Any] = None,
-    ) -> Optional[PlumaRequest]:
+    ) -> Optional[PlumaRequest | VoiceClarificationRequired]:
         """Process raw PCM audio bytes and return a PlumaRequest if valid."""
         if cancellation_token and hasattr(cancellation_token, "is_cancelled") and cancellation_token.is_cancelled:
             logger.debug("Voice processing aborted: cancellation token set.")
@@ -112,12 +141,10 @@ class VoicePipeline:
         # 5. Low-confidence safety check for material targets
         if stt_result.is_low_confidence and is_material_target(normalized_text):
             logger.warning(
-                "Low-confidence STT transcript (%0.2f) detected on material target: '%s'. "
-                "Rejecting guess and requiring user clarification.",
+                "Low-confidence STT detected on a material target (%0.2f); refusing to create a request.",
                 stt_result.confidence,
-                redact_string(normalized_text),
             )
-            return None
+            return VoiceClarificationRequired(confidence=stt_result.confidence)
 
         # 6. Synthesize PlumaRequest with InputMode.VOICE and preserved original transcript
         request = PlumaRequest(
@@ -126,5 +153,8 @@ class VoicePipeline:
             original_transcript=raw_text,
         )
 
-        logger.info("Voice utterance transcribed: '%s' (confidence: %0.2f)", redact_string(normalized_text), stt_result.confidence)
+        logger.info(
+            "Voice utterance transcribed: '%s' (confidence: %0.2f)",
+            redact_command_text(normalized_text), stt_result.confidence,
+        )
         return request

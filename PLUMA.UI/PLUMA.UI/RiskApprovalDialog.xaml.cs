@@ -27,6 +27,11 @@ namespace PLUMA.UI
                 typeof(RiskApprovalDialog),
                 new PropertyMetadata(string.Empty, OnDisplayPropertyChanged));
 
+        public static readonly DependencyProperty MaterialEffectProperty = DependencyProperty.Register(
+            nameof(MaterialEffect), typeof(string), typeof(RiskApprovalDialog), new PropertyMetadata(string.Empty, OnDisplayPropertyChanged));
+
+        public string MaterialEffect { get => (string)GetValue(MaterialEffectProperty); set => SetValue(MaterialEffectProperty, value); }
+
         public RiskApprovalDialog()
         {
             InitializeComponent();
@@ -76,11 +81,15 @@ namespace PLUMA.UI
 
             ToolNameText.Text = PopupText.Label(ToolName);
             RiskClassText.Text = PopupText.Label(RiskClass);
-            SanitizedArgumentsText.Text = PopupText.Arguments(SanitizedArguments);
+            MaterialEffectText.Text = MaterialEffect;
+            MaterialEffectText.Visibility = string.IsNullOrEmpty(MaterialEffect) ? Visibility.Collapsed : Visibility.Visible;
+            SanitizedArgumentsText.Text = string.IsNullOrWhiteSpace(SanitizedArguments) ? string.Empty : ConfirmationPresentation.Arguments(SanitizedArguments);
         }
 
         private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
+            if (!IsPrimaryButtonEnabled) { args.Cancel = true; return; }
+            IsPrimaryButtonEnabled = false;
             ApprovalRequested?.Invoke(this, EventArgs.Empty);
         }
 

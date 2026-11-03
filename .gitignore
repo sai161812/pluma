@@ -40,6 +40,7 @@ PLUMA.UI/**/obj/
 
 # Explicit local preview/audit exports
 /output/
+/tests/fixtures/wpf_semantic_target/output/
 
 # Rebuilt release bundles and private owner reference notes
 /release/

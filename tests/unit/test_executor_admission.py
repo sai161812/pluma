@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import BaseModel
 
-from pluma.core.cancellation import CancellationToken, TaskCancelledError
+from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
 from pluma.core.job_object import WindowsJobObject
 from pluma.core.task_supervisor import TaskCapsule
 from pluma.memory.activity import ActivityLedger, ActivityQuery, TaskRecord
@@ -306,6 +306,45 @@ def test_native_gate_handle_is_released_with_token():
     assert ctypes.get_last_error() == 6  # ERROR_INVALID_HANDLE
 
 
+def test_terminal_token_releases_admission_handle_and_preserves_stop_state():
+    token = CancellationToken()
+    token.cancel(StopReason.TASK_TIMEOUT)
+    gate = token.process_admission()
+
+    token.retire_after_task_completion()
+
+    assert gate.is_closed
+    assert token._process_admission is None
+    assert token.is_cancelled
+    assert token.reason == StopReason.TASK_TIMEOUT
+    with pytest.raises(TaskCancelledError):
+        token.raise_if_cancelled()
+    with pytest.raises(RuntimeError, match="terminal task"):
+        token.process_admission()
+
+
+def test_retired_successful_task_cannot_admit_a_thread_executor(task):
+    from pluma.core.task_supervisor import TaskState
+
+    capsule, registry = task
+    entered = []
+
+    def execute(_args, _context):
+        entered.append(True)
+        return ToolResult.success("admission_probe", factual_message="Read fixture.")
+
+    registry.register(spec(execute))
+    capsule.state = TaskState.SUCCEEDED
+    capsule.terminal_ready.set()
+    assert capsule.release_terminal_sync_handles()
+    assert not capsule.cancellation_token.is_cancelled
+
+    with pytest.raises(TaskCancelledError):
+        registry.execute("admission_probe", {}, capsule)
+    assert entered == []
+    assert capsule.owned_work == {}
+
+
 def test_stop_while_waiting_for_controller_prevents_worker_start(task, monkeypatch):
     capsule, registry = task
     controller = runner.TaskWorkerController(capsule.task_id)
@@ -452,14 +491,18 @@ def test_actual_spawn_inherits_live_task_gate(task, tmp_path, stop):
                 time.sleep(0.005)
             assert (tmp_path / "prepared").exists(), future.result(1) if future.done() else "Worker preparation timed out"
             assert capsule.worker_controller._proc.is_alive()
+            proc = capsule.worker_controller._proc
+            worker_identity = capsule.worker_controller.worker_identity
             if stop:
                 capsule.cancellation_token.cancel()
         finally:
             (tmp_path / "release").touch()
         result = future.result(10)
-    proc = capsule.worker_controller._proc
     registry.close()
-    assert not proc.is_alive(), "Owned fixture worker did not exit"
+    if capsule.worker_controller is not None:
+        assert capsule.worker_controller._proc is None, "Exited Process handle was retained."
+    assert proc._closed, "Exited Process handle was not closed."
+    assert worker_identity["exit_code"] is not None
     if stop:
         assert not result.ok and not result.verified
         assert result.error_code == "TASK_CANCELLED"
@@ -478,6 +521,7 @@ def test_recycled_controller_rebinds_task_and_gate(task, tmp_path, monkeypatch):
     assert registry.execute("admission_probe", {}, capsule).ok
     controller = capsule.worker_controller
     old_proc = controller._proc
+    old_identity = controller.worker_identity
     capsule.cancellation_token.cancel()
     next_capsule = TaskCapsule(request_id="p01-next-fixture")
     next_capsule.job_object = WindowsJobObject(name="pluma-p01-rebind-" + next_capsule.task_id)
@@ -489,10 +533,11 @@ def test_recycled_controller_rebinds_task_and_gate(task, tmp_path, monkeypatch):
         result = registry.execute("admission_probe", {}, next_capsule)
         new_proc = controller._proc
         assert result.ok and result.verified
-        assert new_proc is not old_proc and not old_proc.is_alive()
+        assert new_proc is not old_proc and old_proc._closed
+        assert old_identity["exit_code"] is not None
         assert (tmp_path / "executed").read_text(encoding="utf-8") == next_capsule.task_id
         registry.close()
-        assert not new_proc.is_alive()
+        assert controller._proc is None and new_proc._closed
     finally:
         registry.close()
         next_capsule.close_resources()
@@ -511,9 +556,10 @@ def test_spawn_crash_does_not_strand_stop_latch(task, tmp_path):
                 time.sleep(0.005)
             assert (tmp_path / "prepared").exists()
             proc = capsule.worker_controller._proc
+            identity = dict(capsule.worker_controller.worker_identity)
             proc.kill()  # only this test's registered task worker
-            proc.join(3)
-            assert not proc.is_alive()
+            from pluma.core.ownership import subprocess_absent
+            assert subprocess_absent(identity['pid'], identity['creation_time'], wait_s=3)
             stopping = callers.submit(capsule.cancellation_token.cancel)
             assert stopping.result(3)
             assert capsule.stop_latch_set
@@ -524,3 +570,6 @@ def test_spawn_crash_does_not_strand_stop_latch(task, tmp_path):
         result = executing.result(10)
     assert not result.ok and not result.verified
     assert not (tmp_path / "executed").exists()
+    registry.close()
+    assert capsule.worker_controller.verify_cleanup()
+    assert proc._closed

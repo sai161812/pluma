@@ -289,9 +289,16 @@ class TestGoldenCorpus:
 
         # For FAST: verify plan and first tool
         if expected_route == RouteMode.FAST:
+            if entry.get("expected_execution_status") == "FAILED":
+                assert result.plan is None and result.error
+                assert expected_tools == []
+                return
             assert result.plan is not None, f"{gc_id}: FAST route must produce a Plan"
             assert len(result.plan.steps) >= 1, f"{gc_id}: Plan must have at least one step"
             actual_first_tool = result.plan.steps[0].tool
+            from pluma.tools.registry import get_default_tool_registry
+            for call in result.plan.steps:
+                get_default_tool_registry().validate_call(call.tool, call.arguments)
             assert actual_first_tool == expected_tools[0], (
                 f"{gc_id}: expected first tool {expected_tools[0]!r}, got {actual_first_tool!r}"
             )
@@ -302,3 +309,24 @@ class TestGoldenCorpus:
 
         if no_llm:
             _assert_no_ml_loaded()
+
+
+@pytest.mark.parametrize("command", [
+    "start cmd", "open explorer", "start edge", "focus window", "switch window",
+    "find file test.txt", "find *.py", "create folder test_dir", "create folder my_docs",
+    "move file a.txt to b.txt", "rename file old.txt to new.txt", "search file report.docx",
+    "make folder archive", "locate file config.yaml", "move a to b",
+    "rename sample.log to sample.txt", "mkdir output",
+])
+def test_unresolved_original_corpus_commands_are_refused_without_guessing(command):
+    result = Router().route(command)
+    assert result.route == RouteMode.FAST
+    assert result.plan is None and result.error
+    assert "refused" in result.reason
+    _assert_no_ml_loaded()
+
+
+def test_router_uses_supplied_registry_contract():
+    from pluma.tools.registry import ToolRegistry
+    result = Router(registry=ToolRegistry()).route("mute")
+    assert result.plan is None and result.error

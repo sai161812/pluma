@@ -20,7 +20,7 @@
             <TextBlock Text="Execution route"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock Text="Screen"
+            <TextBlock x:Name="RouteText" Text="Unavailable"
                        FontFamily="Segoe UI Variable"
                        FontSize="20"
                        FontWeight="SemiBold" />

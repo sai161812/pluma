@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Authentication;
 using System.Security.Cryptography;
@@ -35,7 +36,7 @@ namespace PLUMA.UI
         }
     }
 
-    /// <summary>Read-only, per-user adapter to the existing Python Windows message pipe. Never starts the core.</summary>
+    /// <summary>Authenticated per-user adapter to the Python Windows message pipe. Never starts the core or retries uncertain requests.</summary>
     internal sealed class CoreIpcClient : ICoreStatusClient
     {
         internal const int MaximumMessageBytes = 1024 * 1024;
@@ -45,6 +46,9 @@ namespace PLUMA.UI
         private TaskCompletionSource _idle = CompletedSource();
         private readonly TaskCompletionSource _shutdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _active;
+        private int _normalActive, _backgroundActive;
+        private readonly AsyncLocal<bool> _background = new();
+        private int _stopActive;
         private bool _disposed;
 
         internal CoreIpcClient(CoreIpcOptions? options = null)
@@ -65,25 +69,36 @@ namespace PLUMA.UI
         public async Task<CoreStatusResult> GetStatusAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            CancellationToken lifetime;
-            lock (_gate)
-            {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                if (_active >= 4) return CoreStatusResult.Failed(CoreConnectionFailure.Busy);
-                if (_active++ == 0) _idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                lifetime = _lifetime.Token;
-            }
+            if (!TryEnterCall(priority: false, out CancellationToken lifetime, out bool background))
+                return CoreStatusResult.Failed(CoreConnectionFailure.Busy);
             try { return await QueryAsync(cancellationToken, lifetime).ConfigureAwait(false); }
-            finally { lock (_gate) { if (--_active == 0) _idle.TrySetResult(); } }
+            finally { ExitCall(priority: false, background); }
         }
 
         private async Task<CoreStatusResult> QueryAsync(CancellationToken caller, CancellationToken lifetime)
         {
+            PipeExchangeResult exchange = await ExchangeAsync("{\"command\":\"status\"}"u8.ToArray(), caller, lifetime,
+                returnUncertainOnCallerCancellation: false).ConfigureAwait(false);
+            if (exchange.Failure != CoreConnectionFailure.None) return CoreStatusResult.Failed(exchange.Failure);
+            try { return ParseStatus(exchange.Response!, exchange.ElapsedMilliseconds); }
+            catch (Exception error) when (error is JsonException or InvalidDataException)
+            { return CoreStatusResult.Failed(CoreConnectionFailure.Protocol); }
+        }
+
+        private sealed record PipeExchangeResult(byte[]? Response, CoreConnectionFailure Failure,
+            bool OutcomeUnknown, double ElapsedMilliseconds);
+
+        private async Task<PipeExchangeResult> ExchangeAsync(byte[] request, CancellationToken caller,
+            CancellationToken lifetime, bool returnUncertainOnCallerCancellation)
+        {
+            if (request.Length == 0 || request.Length > MaximumMessageBytes)
+                return new(null, CoreConnectionFailure.Protocol, false, 0);
             using var bounded = CancellationTokenSource.CreateLinkedTokenSource(caller, lifetime);
             bounded.CancelAfter(_options.Timeout);
             CancellationToken token = bounded.Token;
             byte[]? secret = null, proof = null;
             bool authenticating = false, credentialsLoaded = false;
+            bool requestSent = false;
             var elapsed = Stopwatch.StartNew();
             try
             {
@@ -105,30 +120,210 @@ namespace PLUMA.UI
                 if (!ack.AsSpan().SequenceEqual("AUTH_OK"u8)) throw new AuthenticationException();
                 authenticating = false;
                 // Python PipeConnection on Windows uses native message boundaries, not a TCP length prefix.
-                await pipe.WriteAsync("{\"command\":\"status\"}"u8.ToArray(), token).ConfigureAwait(false);
+                requestSent = true; // From this point a lost reply may leave a committed request.
+                await pipe.WriteAsync(request, token).ConfigureAwait(false);
                 byte[] response = await ReadMessageAsync(pipe, MaximumMessageBytes, token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                return ParseStatus(response, elapsed.Elapsed.TotalMilliseconds);
+                return new(response, CoreConnectionFailure.None, false, elapsed.Elapsed.TotalMilliseconds);
             }
             catch (Exception error) when (error is OperationCanceledException or ObjectDisposedException or IOException && token.IsCancellationRequested)
             {
+                if (caller.IsCancellationRequested && requestSent && returnUncertainOnCallerCancellation)
+                    return new(null, CoreConnectionFailure.Timeout, true, elapsed.Elapsed.TotalMilliseconds);
                 if (caller.IsCancellationRequested || lifetime.IsCancellationRequested)
                     throw new OperationCanceledException(caller.IsCancellationRequested ? caller : lifetime);
-                return CoreStatusResult.Failed(CoreConnectionFailure.Timeout);
+                return new(null, CoreConnectionFailure.Timeout, requestSent, elapsed.Elapsed.TotalMilliseconds);
             }
-            catch (FileNotFoundException) { return CoreStatusResult.Failed(CoreConnectionFailure.CredentialsUnavailable); }
-            catch (DirectoryNotFoundException) { return CoreStatusResult.Failed(CoreConnectionFailure.CredentialsUnavailable); }
-            catch (UnauthorizedAccessException) { return CoreStatusResult.Failed(CoreConnectionFailure.AccessDenied); }
-            catch (System.Security.SecurityException) { return CoreStatusResult.Failed(CoreConnectionFailure.AccessDenied); }
-            catch (AuthenticationException) { return CoreStatusResult.Failed(CoreConnectionFailure.Authentication); }
+            catch (FileNotFoundException) { return new(null, CoreConnectionFailure.CredentialsUnavailable, requestSent, elapsed.Elapsed.TotalMilliseconds); }
+            catch (DirectoryNotFoundException) { return new(null, CoreConnectionFailure.CredentialsUnavailable, requestSent, elapsed.Elapsed.TotalMilliseconds); }
+            catch (UnauthorizedAccessException) { return new(null, CoreConnectionFailure.AccessDenied, requestSent, elapsed.Elapsed.TotalMilliseconds); }
+            catch (System.Security.SecurityException) { return new(null, CoreConnectionFailure.AccessDenied, requestSent, elapsed.Elapsed.TotalMilliseconds); }
+            catch (AuthenticationException) { return new(null, CoreConnectionFailure.Authentication, requestSent, elapsed.Elapsed.TotalMilliseconds); }
             catch (Exception error) when (error is JsonException or InvalidDataException)
-            { return CoreStatusResult.Failed(!credentialsLoaded ? CoreConnectionFailure.CredentialsUnavailable : authenticating ? CoreConnectionFailure.Authentication : CoreConnectionFailure.Protocol); }
-            catch (IOException) { return CoreStatusResult.Failed(authenticating ? CoreConnectionFailure.Authentication : CoreConnectionFailure.Unavailable); }
+            { return new(null, !credentialsLoaded ? CoreConnectionFailure.CredentialsUnavailable : authenticating ? CoreConnectionFailure.Authentication : CoreConnectionFailure.Protocol, requestSent, elapsed.Elapsed.TotalMilliseconds); }
+            catch (IOException) { return new(null, authenticating ? CoreConnectionFailure.Authentication : CoreConnectionFailure.Unavailable, requestSent, elapsed.Elapsed.TotalMilliseconds); }
             finally
             {
                 if (secret != null) CryptographicOperations.ZeroMemory(secret);
                 if (proof != null) CryptographicOperations.ZeroMemory(proof);
             }
+        }
+
+        internal async Task RunBackgroundAsync(Func<Task> work)
+        {
+            bool prior = _background.Value;
+            try { _background.Value = true; await work(); }
+            finally { _background.Value = prior; }
+        }
+
+        private bool TryEnterCall(bool priority, out CancellationToken lifetime, out bool background, bool foreground = false)
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                // Four ordinary calls are bounded independently from one reserved
+                // STOP call, so a slow status/history response cannot consume STOP's client slot.
+                background = !priority && !foreground && _background.Value;
+                if (priority ? _stopActive >= 1 : _normalActive >= 4 || background && _backgroundActive >= 3)
+                { lifetime = default; return false; }
+                if (priority) _stopActive++; else { _normalActive++; if (background) _backgroundActive++; }
+                if (_active++ == 0) _idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                lifetime = _lifetime.Token;
+                return true;
+            }
+        }
+
+        private void ExitCall(bool priority, bool background)
+        {
+            lock (_gate)
+            {
+                if (priority) _stopActive--; else { _normalActive--; if (background) _backgroundActive--; }
+                if (--_active == 0) _idle.TrySetResult();
+            }
+        }
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitTextAsync(
+            string requestId, string text, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.SubmitText(requestId, text).ToMessage(), requestId,
+                false, true, bytes => CoreRequestProtocol.SubmissionAck.Parse(bytes), value => value.RequestId, cancellationToken);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> GetTerminalReadbackAsync(
+            string requestId, string taskId, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.TerminalReadbackRequest(requestId, taskId).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.TerminalReadback.Parse(bytes), value => value.RequestId, cancellationToken,
+                value => value.TaskId == taskId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.StopAck>> StopAsync(
+            string requestId, string? taskId, CancellationToken cancellationToken, string? submissionRequestId = null) =>
+            VersionedCallAsync(new CoreRequestProtocol.StopRequest(requestId, taskId, submissionRequestId).ToMessage(), requestId,
+                true, true, bytes => CoreRequestProtocol.StopAck.Parse(bytes), value => value.RequestId, cancellationToken);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SavedTaskDetail>> GetTaskDetailAsync(
+            string request, string task, long after, CancellationToken token)
+        {
+            byte[] message = new CoreRequestProtocol.SavedDetailRequest(request, task, after).ToMessage();
+            return VersionedCallAsync(message, request, false, false, bytes => CoreRequestProtocol.SavedTaskDetail.Parse(bytes),
+                value => value.RequestId, token, value => value.TaskId == task && value.Actions.All(a => a.ActionId > after));
+        }
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitUndoAsync(
+            string request, CoreRequestProtocol.UndoSelection selected, CancellationToken token)
+        {
+            byte[] message = new CoreRequestProtocol.UndoSubmission(request, selected).ToMessage();
+            return VersionedCallAsync(message, request, false, true, bytes => CoreRequestProtocol.SubmissionAck.Parse(bytes),
+                value => value.RequestId, token);
+        }
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitHistoryFolderAsync(
+            string request, CoreRequestProtocol.FolderSelection selected, CancellationToken token) =>
+            VersionedCallAsync(selected.ToMessage(request), request, false, true,
+                bytes => CoreRequestProtocol.SubmissionAck.Parse(bytes), value => value.RequestId, token);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ActivityPage>> GetActivityAsync(
+            CoreRequestProtocol.ActivityQueryRequest request, CancellationToken token) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, false,
+                bytes => CoreRequestProtocol.ActivityPage.Parse(bytes), value => value.RequestId, token,
+                value => value.TaskId == request.TaskId && value.Actions.Length <= request.Limit &&
+                    value.Actions.All(item => item.ActionId > request.AfterActionId) &&
+                    (value.Actions.Length > 0 || value.NextActionId == request.AfterActionId));
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.RuntimeSnapshot>> GetRuntimeAsync(string requestId, CancellationToken token) =>
+            VersionedCallAsync(new CoreRequestProtocol.RuntimeRequest(requestId).ToMessage(), requestId, false, false,
+                bytes => CoreRequestProtocol.RuntimeSnapshot.Parse(bytes), value => value.RequestId, token);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.VoiceSnapshot>> GetVoiceAsync(string requestId,
+            string? streamId, string? voiceId, CancellationToken token) =>
+            VersionedCallAsync(new CoreRequestProtocol.VoiceRequest(requestId, streamId, voiceId).ToMessage(), requestId, false, false,
+                bytes => CoreRequestProtocol.VoiceSnapshot.Parse(bytes), value => value.RequestId, token);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ActionVerification>> GetVerificationAsync(
+            string requestId, string taskId, long actionId, CancellationToken token) =>
+            VersionedCallAsync(new CoreRequestProtocol.VerificationRequest(requestId, taskId, actionId).ToMessage(), requestId, false, false,
+                bytes => CoreRequestProtocol.ActionVerification.Parse(bytes), value => value.RequestId, token,
+                value => value.TaskId == taskId && value.ActionId == actionId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ActionDetail>> GetActionDetailAsync(
+            CoreRequestProtocol.ActionDetailRequest request, CancellationToken token) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, false,
+                bytes => CoreRequestProtocol.ActionDetail.Parse(bytes), value => value.RequestId, token,
+                value => value.TaskId == request.TaskId && value.ActionId == request.ActionId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SettingsSnapshot>> GetSettingsAsync(
+            string requestId, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.SettingsQueryRequest(requestId).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.SettingsSnapshot.Parse(bytes), value => value.RequestId, cancellationToken);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> GetHistoryAsync(
+            string requestId, string? taskId, int limit, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.HistoryQueryRequest(requestId, taskId, limit).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.HistoryReply.Parse(bytes), value => value.RequestId, cancellationToken,
+                value => value.TaskId == taskId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.HistoryPageReply>> GetHistoryPageAsync(
+            CoreRequestProtocol.HistoryPageRequest request, CancellationToken token) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, false,
+                bytes => CoreRequestProtocol.HistoryPageReply.Parse(bytes), value => value.RequestId, token,
+                value => value.BeforeTaskId == request.BeforeTaskId && value.Tasks.Length <= request.Limit);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ConfirmationList>> GetConfirmationsAsync(
+            string requestId, string clientId, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.ConfirmationQueryRequest(requestId, clientId).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.ConfirmationList.Parse(bytes), value => value.RequestId,
+                cancellationToken, value => value.ClientId == clientId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ConfirmationAck>> DecideConfirmationAsync(
+            CoreRequestProtocol.ConfirmationDecisionRequest request, CancellationToken cancellationToken) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, true,
+                bytes => CoreRequestProtocol.ConfirmationAck.Parse(bytes), value => value.RequestId, cancellationToken,
+                value => value.ConfirmationId == request.ConfirmationId && (!value.Accepted || value.Approved == request.Approved));
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.ConfirmationDisconnected>> DisconnectConfirmationsAsync(
+            string requestId, string clientId, CancellationToken cancellationToken) =>
+            VersionedCallAsync(new CoreRequestProtocol.ConfirmationDisconnectRequest(requestId, clientId).ToMessage(), requestId,
+                false, true, bytes => CoreRequestProtocol.ConfirmationDisconnected.Parse(bytes), value => value.RequestId,
+                cancellationToken, value => value.ClientId == clientId);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.EventBatch>> GetEventsAsync(
+            CoreRequestProtocol.EventsQueryRequest request, CancellationToken cancellationToken) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, false,
+                bytes => CoreRequestProtocol.EventBatch.Parse(bytes), value => value.RequestId, cancellationToken,
+                value => value.ResetRequired || (value.StreamId == request.StreamId &&
+                    value.Events.Length <= request.Limit && value.Events.All(item => item.Sequence > request.AfterSequence) &&
+                    value.NextSequence >= request.AfterSequence));
+
+        private async Task<CoreRequestResult<T>> VersionedCallAsync<T>(byte[] request, string requestId,
+            bool priority, bool mutation, Func<byte[], T> parse, Func<T, string> correlation,
+            CancellationToken caller, Func<T, bool>? additionalCorrelation = null) where T : class
+        {
+            caller.ThrowIfCancellationRequested();
+            if (!TryEnterCall(priority, out CancellationToken lifetime, out bool background, foreground: mutation))
+                return CoreRequestResult<T>.Failed(CoreConnectionFailure.Busy);
+            try
+            {
+                PipeExchangeResult exchange = await ExchangeAsync(request, caller, lifetime,
+                    returnUncertainOnCallerCancellation: mutation).ConfigureAwait(false);
+                if (exchange.Failure != CoreConnectionFailure.None)
+                    return CoreRequestResult<T>.Failed(exchange.Failure, exchange.OutcomeUnknown);
+                try
+                {
+                    using JsonDocument document = JsonDocument.Parse(exchange.Response!, new JsonDocumentOptions { MaxDepth = 16 });
+                    if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                        document.RootElement.TryGetProperty("message_type", out JsonElement type) &&
+                        type.ValueKind == JsonValueKind.String && type.GetString() == "protocol_error")
+                    {
+                        var protocolError = CoreRequestProtocol.ProtocolError.Parse(exchange.Response!);
+                        CoreConnectionFailure failure = protocolError.ErrorCode == "BUSY"
+                            ? CoreConnectionFailure.Busy : CoreConnectionFailure.Protocol;
+                        return CoreRequestResult<T>.Failed(failure, false, protocolError.ErrorCode, protocolError.Message);
+                    }
+                    T response = parse(exchange.Response!);
+                    if (correlation(response) != requestId || (additionalCorrelation is not null && !additionalCorrelation(response)))
+                        throw new JsonException("The response correlation did not match the request.");
+                    return new(response, CoreConnectionFailure.None, false, null, null);
+                }
+                catch (Exception error) when (error is JsonException or InvalidDataException)
+                { return CoreRequestResult<T>.Failed(CoreConnectionFailure.Protocol, true); }
+            }
+            finally { ExitCall(priority, background); }
         }
 
         private static async Task<byte[]> ReadSecretAsync(string path, CancellationToken token)

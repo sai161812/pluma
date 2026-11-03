@@ -356,6 +356,11 @@ def _recipe_mute(undo_data: Dict[str, Any]) -> RollbackStepResult:
     return _recipe_set_volume(undo_data)
 
 
+def _recipe_screen_control_text(undo_data: Dict[str, Any]) -> RollbackStepResult:
+    from pluma.tools.screen_catalog import restore_screen_control_text
+    return restore_screen_control_text(undo_data)
+
+
 # ---------------------------------------------------------------------------
 # RollbackRecipes Registry
 # ---------------------------------------------------------------------------
@@ -387,6 +392,7 @@ class RollbackRecipes:
         self.register("set_default_audio_device", _recipe_set_volume)
         self.register("mute", _recipe_mute)
         self.register("unmute", _recipe_mute)
+        self.register("screen_control_text", _recipe_screen_control_text)
 
     def register(
         self,

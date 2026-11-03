@@ -21,7 +21,9 @@ def test_resident_core_lifecycle() -> None:
         # Test stop via IPC
         resp = client.send_command({"command": "stop_all"})
         assert resp["status"] == "ok"
-        assert "stopped" in resp["message"]
+        assert resp["stop_contract"] == "pluma.stop.v1"
+        assert resp["message"] == "STOP request processed."
+        assert isinstance(resp["tasks"], list)
         
     finally:
         core.stop()

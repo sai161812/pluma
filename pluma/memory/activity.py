@@ -24,7 +24,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pluma.memory.db import DbConnection
-from pluma.memory.redaction import redact_sensitive_data, redact_string, sanitise_args_for_ledger
+from pluma.memory.redaction import (
+    redact_command_text,
+    redact_sensitive_data,
+    redact_string,
+    sanitise_args_for_ledger,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,7 @@ class TaskRecord:
     request_id: str
     input_mode: str               # 'text' or 'voice'
     command_text: str
+    original_transcript: Optional[str] = None
     created_at: str = field(default_factory=_now_iso)
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -72,6 +78,8 @@ class ActionRecord:
     verified: bool = False
     verification_detail: Optional[Dict[str, Any]] = None
     error_detail: Optional[Dict[str, Any]] = None
+    factual_message: Optional[str] = None
+    policy_reason: Optional[str] = None
     # Returned after insert so the caller can attach an UndoRecord.
     _row_id: Optional[int] = field(default=None, init=False, repr=False)
 
@@ -129,20 +137,23 @@ class ActivityLedger:
 
     def insert_task(self, record: TaskRecord) -> None:
         """Insert a new task row. Called when the TaskCapsule is created."""
-        redacted_cmd = redact_string(record.command_text) if record.command_text else record.command_text
+        redacted_cmd = redact_command_text(record.command_text) if record.command_text else record.command_text
+        redacted_transcript = (redact_command_text(record.original_transcript)
+                               if record.original_transcript else None)
         self._db.execute_write(
             """
             INSERT OR REPLACE INTO tasks
-              (task_id, request_id, input_mode, command_text,
+              (task_id, request_id, input_mode, command_text, original_transcript,
                created_at, started_at, completed_at, final_state,
                route, active_process, active_window, stop_reason, error_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.task_id, record.request_id, record.input_mode.lower(),
-                redacted_cmd, record.created_at, record.started_at,
+                redacted_cmd, redacted_transcript, record.created_at, record.started_at,
                 record.completed_at, record.final_state, record.route,
-                record.active_process, record.active_window,
+                redact_string(record.active_process) if record.active_process else record.active_process,
+                redact_string(record.active_window) if record.active_window else record.active_window,
                 record.stop_reason, record.error_code,
             ),
         )
@@ -163,8 +174,12 @@ class ActivityLedger:
             raise ValueError(f"update_task: disallowed fields {bad!r}")
         if not fields:
             return
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        values = list(fields.values()) + [task_id]
+        safe_fields = dict(fields)
+        for name in ("active_process", "active_window"):
+            if safe_fields.get(name):
+                safe_fields[name] = redact_string(safe_fields[name])
+        set_clause = ", ".join(f"{k} = ?" for k in safe_fields)
+        values = list(safe_fields.values()) + [task_id]
         self._db.execute_write(
             f"UPDATE tasks SET {set_clause} WHERE task_id = ?",
             values,
@@ -189,14 +204,15 @@ class ActivityLedger:
             INSERT INTO actions
               (task_id, step_index, tool, adapter, args_json_sanitized,
                risk, approval_state, started_at, ended_at, duration_ms,
-               result_json, verified, verification_json, error_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               result_json, verified, verification_json, error_json, presentation_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.task_id, record.step_index, record.tool, record.adapter,
                 sanitised_args, record.risk, record.approval_state,
                 record.started_at, record.ended_at, record.duration_ms,
                 result_json, int(record.verified), verify_json, error_json,
+                self._presentation(record),
             ),
             wait=True,
             timeout_s=_timeout_s,
@@ -205,6 +221,11 @@ class ActivityLedger:
         return row_id  # type: ignore[return-value]
 
     # -- Undo records --
+
+    @staticmethod
+    def _presentation(record):
+        from pluma.memory.action_presentation import encode_presentation
+        return encode_presentation(record)
 
     def insert_undo_record(self, record: UndoRecord, *, _timeout_s: Optional[float] = None) -> None:
         """Insert an undo record linked to an action row."""
@@ -254,10 +275,10 @@ class ActivityLedger:
         encode = lambda value: json.dumps(redact_sensitive_data(value)) if value is not None else None
         statements = [(
             """UPDATE actions SET adapter=?, ended_at=?, duration_ms=?, result_json=?,
-                   verified=?, verification_json=?, error_json=? WHERE id=? AND task_id=?""",
+                   verified=?, verification_json=?, error_json=?, presentation_json=? WHERE id=? AND task_id=?""",
             (record.adapter, record.ended_at or _now_iso(), record.duration_ms,
              encode(record.result_data), int(record.verified), encode(record.verification_detail),
-             encode(record.error_detail), row_id, record.task_id)),
+             encode(record.error_detail), self._presentation(record), row_id, record.task_id)),
             ("UPDATE undo_records SET undo_json=? WHERE action_id=?", (encode(undo_data), row_id))]
         if not_executed:
             statements.append(("UPDATE undo_records SET available=0 WHERE action_id=?", (row_id,)))
@@ -488,7 +509,7 @@ class ActivityQuery:
     def recent_tasks(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Return the most recent *limit* task rows, newest first."""
         rows = self._db.execute_read(
-            "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?",
+            "SELECT * FROM tasks ORDER BY created_at DESC, task_id DESC LIMIT ?",
             (limit,),
         )
         return [dict(r) for r in rows]
@@ -496,10 +517,43 @@ class ActivityQuery:
     # Alias for compatibility with external caller expectations
     get_recent_tasks = recent_tasks
 
+    def event_batch(self, stream_id, after_sequence=0, limit=100):
+        """Read bounds and events in one SQLite statement/snapshot."""
+        rows = self._db.execute_read("""
+            WITH bounds AS (
+                SELECT s.stream_id, COALESCE(MIN(e.sequence),0) AS first_sequence,
+                       COALESCE(MAX(e.sequence),0) AS last_sequence
+                FROM ui_event_stream s LEFT JOIN ui_events e ON 1=1 WHERE s.singleton=1
+            )
+            SELECT b.*, e.sequence, e.kind, e.occurred_at, e.task_id, e.request_id, e.record_id
+            FROM bounds b LEFT JOIN ui_events e ON e.sequence > ?
+            ORDER BY e.sequence LIMIT ?""", (after_sequence, limit + 1))
+        if not rows or rows[0]["stream_id"] is None:
+            raise ValueError("Event journal is unavailable.")
+        first, last = rows[0]["first_sequence"], rows[0]["last_sequence"]
+        reset = (stream_id != rows[0]["stream_id"] or after_sequence > last
+                 or (first > 0 and after_sequence < first - 1))
+        events = [] if reset else [{key: row[key] for key in (
+            "sequence", "kind", "occurred_at", "task_id", "request_id", "record_id")}
+            for row in rows if row["sequence"] is not None]
+        more = len(events) > limit
+        events = events[:limit]
+        return {"stream_id": rows[0]["stream_id"], "first_sequence": first, "last_sequence": last,
+                "next_sequence": last if reset else (events[-1]["sequence"] if events else after_sequence),
+                "reset_required": reset, "has_more": more, "events": events}
+
     def task_by_id(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Return one task row or None."""
         row = self._db.execute_read_one(
             "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
+        )
+        return dict(row) if row else None
+
+    def task_by_request_id(self, request_id: str) -> Optional[Dict[str, Any]]:
+        """Return the newest task row for a request ID, for IPC replay refusal."""
+        row = self._db.execute_read_one(
+            "SELECT * FROM tasks WHERE request_id = ? ORDER BY created_at DESC, task_id DESC LIMIT 1",
+            (request_id,),
         )
         return dict(row) if row else None
 
@@ -509,7 +563,7 @@ class ActivityQuery:
     def actions_for_task(self, task_id: str) -> List[Dict[str, Any]]:
         """Return all action rows for *task_id*, ordered by step_index."""
         rows = self._db.execute_read(
-            "SELECT * FROM actions WHERE task_id = ? ORDER BY step_index",
+            "SELECT * FROM actions WHERE task_id = ? ORDER BY step_index, id",
             (task_id,),
         )
         return [dict(r) for r in rows]
@@ -517,10 +571,60 @@ class ActivityQuery:
     # Alias for compatibility with external caller expectations
     get_task_actions = actions_for_task
 
+    def activity_page(self, task_id: str, after_action_id: int, limit: int) -> List[Dict[str, Any]]:
+        """One bounded SQLite snapshot; never fetch commands or action payloads.
+
+        Fetch one extra action for continuation. A task without further actions
+        still yields its task/cleanup metadata through the left join.
+        """
+        if type(after_action_id) is not int or after_action_id < 0 or type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Invalid activity page bounds")
+        rows = self._db.execute_read("""
+            SELECT t.task_id, t.request_id AS task_request_id, t.final_state AS saved_state, t.route,
+                substr(c.metadata_json, 1, 65537) AS cleanup_json,
+                a.id AS action_id, a.step_index, substr(a.tool, 1, 65) AS tool, a.risk,
+                a.verified, (a.error_json IS NOT NULL) AS error_recorded,
+                coalesce(a.approval_state IN ('DENY', 'denied'), 0) AS policy_denied,
+                coalesce(u.available, 0) AS undo_available,
+                coalesce(u.rollback_attempted, 0) AS rollback_attempted, u.rollback_ok
+            FROM tasks t
+            LEFT JOIN (SELECT id, task_id, step_index, tool, risk, verified, error_json, approval_state
+                FROM actions WHERE task_id=? AND id>? ORDER BY id LIMIT ?) a ON a.task_id=t.task_id
+            LEFT JOIN undo_records u ON u.action_id=a.id
+            LEFT JOIN cleanup_reports c ON c.task_id=t.task_id
+            WHERE t.task_id=? ORDER BY a.id
+            """, (task_id, after_action_id, limit + 1, task_id))
+        return [dict(row) for row in rows]
+
+    def action_detail(self, task_id: str, action_id: int):
+        """Scoped snapshot: no arguments, result/error bodies or inverse recipes."""
+        row = self._db.execute_read_one("""SELECT a.id AS action_id, a.tool,
+            a.task_id, t.request_id AS task_request_id,
+            coalesce(a.approval_state IN ('DENY', 'denied'), 0) AS policy_denied,
+            substr(a.presentation_json, 1, 14001) AS presentation_json
+            FROM actions a JOIN tasks t ON t.task_id=a.task_id WHERE a.task_id=? AND a.id=?""",
+            (task_id, action_id))
+        return dict(row) if row else None
+
+    def action_verification(self, task_id: str, action_id: int):
+        row = self._db.execute_read_one("""SELECT a.id AS action_id, a.task_id, a.tool, a.verified,
+            t.request_id AS task_request_id, substr(a.verification_json,1,16001) AS proof_json
+            FROM actions a JOIN tasks t ON t.task_id=a.task_id WHERE a.task_id=? AND a.id=?""", (task_id, action_id))
+        return dict(row) if row else None
+
     def undo_record_for_action(self, action_row_id: int) -> Optional[Dict[str, Any]]:
         """Return the undo record for an action row, or None."""
         row = self._db.execute_read_one(
             "SELECT * FROM undo_records WHERE action_id = ?", (action_row_id,)
+        )
+        return dict(row) if row else None
+
+    def undo_status_for_action(self, action_row_id: int) -> Optional[Dict[str, Any]]:
+        """Return rollback status without exposing the saved undo recipe."""
+        row = self._db.execute_read_one(
+            "SELECT available, rollback_attempted, rollback_ok, rollback_result_json "
+            "FROM undo_records WHERE action_id = ?",
+            (action_row_id,),
         )
         return dict(row) if row else None
 
