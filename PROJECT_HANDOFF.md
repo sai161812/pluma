@@ -1,6 +1,57 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-03, E98 verified repairs; integration stopped at native P20 gate
+## Current checkpoint: 2026-11-03, E99 P20 Shell repair and verified main integration
+
+**The reopened P20 native gate passes.** [E99](docs/completion/e99_p20_shell_main_integration.md)
+records the reproduced metadata RPC, bounded fix, source identities, retained
+failed attempts, final exact-source native gate and main integration recovery.
+P21 has not started; approved physical and later release deferrals remain.
+
+- pywin32 automatically queried `GetTypeInfo` while wrapping returned Explorer
+  windows during readback. Worker stacks identify that unnecessary RPC after
+  `Explore`; a fault fixture reproduces the old failure. The adapter now invokes
+  fixed IDispatch methods/properties directly and releases COM references before
+  teardown. Actual URI/visibility and fresh independent verification remain.
+  The original five-second tool budget, three-second observation loop and
+  six-second native assertion are unchanged. STOP owns/terminates only its
+  worker, never Explorer.
+- Verified fix `71c174d` and real owned-worker STOP regression `cd18a44` are
+  selected. Diagnostic hooks, repeat switches and the failed timeout experiment
+  remain separate on `integration/verified-p00-p20-20261103`.
+- Conflict-free local main merge: `8dfb87c32fa83234deb18e37dfa51766f1e0f0a8`,
+  from fetched main `26dc279` and development `cd18a44`. Its tree exactly
+  matches verified development. Only subsequent test-fixture corrections follow:
+  `f870509` observes the real shutdown model-stage boundary; `d922c8d` publishes
+  an inverse claim marker atomically. No runtime or UI change is made by those
+  corrections, and the original ownership/ledger assertions remain.
+- Exact final tested source/test commit: `d922c8dc84df04bd770a5dff88dfc5e25eede1c2`.
+  Final checks pass **501 prerequisites / 641 P20+folder / 332 P19**; merged
+  **352 contracts / 244 P12 / 16 P13 units** and **285 local native IPC** pass.
+  No skips/xfails are counted. Earlier failures remain retained and explained.
+- [Final Windows run 41595595184](https://github.com/sai161812/pluma/actions/runs/41595595184)
+  passes **285 IPC / 214 native UI / 663 popup / 195 formatting**, layout,
+  surface, audio and copy gates, with zero build warnings/errors. Actual folder
+  visibility, saved verifier and closure of only the new owned window execute.
+  A prior repaired investigation gate also passes five further P20 cycles /
+  **130 checks** at the original deadlines. No diagnostic hook is used in the
+  final normal main-candidate run.
+- Final candidate is preserved in `D:/Workspace/DEVEL/PLUMA-main-merge-e99`,
+  branch `integration/main-p00-p20-e99`. Only completion records change after
+  exact-source testing; normal main push and exact remote-head verification
+  complete the owner-authorized integration. No force-push or history rewrite.
+- Recovery references remain pushed: `recovery/main-before-p12-p20-20261103`
+  (`26dc279`), `recovery/pre-p20-repair-20261103-be8410d` (`be8410d`), and
+  `recovery/pre-p20-shell-fix-20261103-b4cfd49` (`b4cfd49`). Unrelated worktrees
+  and existing SQLite data/uncertain undo receipts are preserved.
+
+Next safe milestone: **P21 only after owner instruction**. It is not started.
+E94's specific physical C-02 timing retest remains owner-deferred to P25.
+Physical focus/audio, broader UI/DPI/accessibility, full unit execution,
+installation/recovery, performance/quality/security and release gates retain
+their later scopes. Scoped P00–P20 integration is not full-product readiness;
+no independent Sol approval is assumed.
+
+## Previous checkpoint: 2026-11-03, E98 verified repairs; integration stopped at native P20 gate
 
 **Main integration is blocked. P20's native conflict-folder gate is reopened;
 P21 is not eligible and has not started.** [E98](docs/completion/e98_verified_integration.md)
