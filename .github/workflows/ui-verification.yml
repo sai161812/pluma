@@ -6,6 +6,11 @@ on:
       - 'PLUMA.UI/**'
       - '.github/workflows/ui-verification.yml'
   workflow_dispatch:
+    inputs:
+      folder_trace:
+        description: Record owned P20 COM-stage diagnostics without changing checks
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -18,6 +23,8 @@ jobs:
   native-ui:
     runs-on: windows-2025
     timeout-minutes: 20
+    env:
+      PLUMA_P20_FOLDER_TRACE: ${{ inputs.folder_trace && '1' || '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

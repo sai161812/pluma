@@ -13,10 +13,10 @@ namespace PLUMA.UI.Tests;
 
 internal static class NativeP20UndoChecks
 {
-    private static async Task Until(Func<bool> ready, int seconds = 6)
+    private static async Task Until(Func<bool> ready)
     {
         var timer = Stopwatch.StartNew();
-        while (!ready() && timer.Elapsed.TotalSeconds < seconds) await Task.Delay(15);
+        while (!ready() && timer.Elapsed.TotalSeconds < 6) await Task.Delay(15);
         if (!ready()) throw new TimeoutException("Owned saved-undo UI condition was not observed.");
     }
     private static void Invoke(Button button) => ((IInvokeProvider)FrameworkElementAutomationPeer.CreatePeerForElement(button)
@@ -115,10 +115,7 @@ internal static class NativeP20UndoChecks
                         Console.WriteLine("Owned folder command before invocation: " + JsonSerializer.Serialize(shell.CurrentCommandForAcceptance));
                         Console.WriteLine("Owned folder dialog admission enabled: " + dialog.IsSecondaryButtonEnabled);
                         Invoke(Find(dialog, "Open folder"));
-                        // The registered cold Shell operation has a ten-second
-                        // deadline. Allow its terminal readback two seconds;
-                        // every other condition retains its six-second bound.
-                        await Until(() => shell.CurrentCommandForAcceptance.RequestId != prior && !shell.CurrentCommandForAcceptance.Pending, 12);
+                        await Until(() => shell.CurrentCommandForAcceptance.RequestId != prior && !shell.CurrentCommandForAcceptance.Pending);
                         var command = shell.CurrentCommandForAcceptance;
                         var folder = await client.GetTaskDetailAsync(Guid.NewGuid().ToString("D"), command.TaskId!, 0, default);
                         Console.WriteLine("Owned folder saved timing and verifier: " + JsonSerializer.Serialize(folder.Response));
@@ -151,6 +148,7 @@ internal static class NativeP20UndoChecks
         }
         catch (Exception error)
         {
+            fixture.WriteFolderDiagnostics();
             Console.Error.WriteLine("P20 selected undo failure before teardown: " + error);
             var command = shell.CurrentCommandForAcceptance;
             Console.Error.WriteLine("Owned command outcome: " + JsonSerializer.Serialize(command));

@@ -576,8 +576,5 @@ SYSTEM_TOOL_SPECS.append(ToolSpec(
 
 SYSTEM_TOOL_SPECS.append(ToolSpec(name="open_folder",
     description="Open an explicit folder through the Windows Shell and read back its visible location.",
-    # The first Shell/Explorer COM activation can exhaust five seconds on a
-    # cold Windows host. Keep one shared hard deadline for activation, visible
-    # location readback and verification; STOP still kills only our worker.
-    args_schema=OpenFolderArgs, risk_class=RiskClass.LOW, timeout_s=10, process_isolated=True, non_undoable=True,
+    args_schema=OpenFolderArgs, risk_class=RiskClass.LOW, timeout_s=5, process_isolated=True, non_undoable=True,
     executor=execute_open_folder, verifier=verify_open_folder, undo_builder=folder_view_intent))

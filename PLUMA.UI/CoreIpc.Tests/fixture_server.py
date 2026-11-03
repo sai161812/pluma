@@ -138,6 +138,11 @@ def main():
             for spec in SYSTEM_TOOL_SPECS + FILE_TOOL_SPECS:
                 if spec.name in ('undo_last', 'show_activity', 'move_file', 'open_folder'):
                     registry.register(spec)
+            if startup_control and os.environ.get('PLUMA_P20_FOLDER_TRACE') == '1':
+                from tests.fixtures.p20_folder_probe import FolderExecute, FolderVerify
+                trace = str(Path(sys.argv[2]) / 'folder-stages.jsonl')
+                folder_spec = registry.lookup('open_folder')
+                folder_spec.executor, folder_spec.verifier = FolderExecute(trace), FolderVerify(trace)
             core.orchestrator = Orchestrator(registry=registry, supervisor=supervisor, ledger=ledger)
             history_files = []
             history_pair = None

@@ -122,6 +122,16 @@ internal static class NativeConfirmationChecks
         private DateTime _created;
         private Task<string> _errors = null!, _output = null!;
         private readonly ConcurrentQueue<string> _events = new();
+        internal void WriteFolderDiagnostics()
+        {
+            string path = Path.Combine(_root, "folder-stages.jsonl");
+            try
+            {
+                if (File.Exists(path)) Console.Error.WriteLine("Owned folder stages:\n" + File.ReadAllText(path));
+                else Console.Error.WriteLine("Owned folder stages: no executor-stage file was produced.");
+            }
+            catch (IOException) { Console.Error.WriteLine("Owned folder stages: concurrent fixture write prevented readback."); }
+        }
         internal async Task ControlEventsAsync(bool paused)
         {
             await _process.StandardInput.WriteLineAsync(paused ? "pause_events" : "resume_events");
