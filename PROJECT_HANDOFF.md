@@ -1,6 +1,67 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-03, E102 P21 native Settings page
+## Current checkpoint: 2026-11-03, E103 P21 complete
+
+**P21's settings/restart/readback gate is complete. No remaining P21 packet;
+P22 is not started.** [E103](docs/completion/e103_p21_completion.md) records the
+implementation, exact commands/source identities, native evidence and limits.
+
+- Active branch is `p12-preparation`. Recovery
+  `recovery/pre-p21-e103-20261103` is pushed at starting checkpoint
+  `ef70aac78ad72b79ab66a92ca9cb0da05801aed3`. Main remains `0468a03`; no merge,
+  branch switch, reset, clean, force-push, security bypass or dependency change.
+- `903c5a8` completes supported settings fields, guarded native hotkey startup,
+  cross-section minimum-state undo and explicit previous-source recovery.
+  `26ccdc1` adds live-owned binding readback and native model acceptance.
+  `e4180c9` adds real diagnostic logging, typed/spoken log-preview privacy and
+  optional stricter LOW confirmation; mandatory protections stay locked.
+  `fdfb5d4` tests actual Core restart with all three saved hotkeys.
+- `a041b1a` closes the discovered log-only text-hotkey action: authenticated
+  UUID/time runtime readback opens actual command entry once, with expiry
+  rechecked at UI dispatch. Existing observers/STOP ownership are retained.
+  No new polling worker or automatic tool execution is added.
+- Native Settings now supports Save/Cancel/Reload/readback, exact revision and
+  material approval, local model paths, hotkeys, bounded grace, privacy/logging
+  and allowed stricter policy. All behavioral changes require Core restart;
+  persisted values are never presented as already active. Raw captures remain
+  transient, voice remains mandatory push-to-talk, and redaction/high-risk/
+  elevation protections cannot be disabled. Existing dark styling is preserved.
+- Recovery requires exact previous valid source and explicit confirmation,
+  preserves the rejected bytes and verifies both files. Registered owned
+  `recover_settings` truthfully records no automatic undo. Offline entry
+  `python -m pluma --restore-previous-settings --config <selected.json>` uses
+  the same typed pipeline and asks for `RESTORE`, starting no hotkey/capture/ML
+  service. Missing backup or changed/denied source fails safely.
+- **1,025 combined Python checks pass** on `e4180c9`, no skips/xfails; final
+  affected runtime/IPC/STOP selection passes **136** on `a041b1a`. The app,
+  model, voice, storage, policy and tool paths are unchanged between those
+  checkpoints. Actual Qwen/Whisper persisted-path/restart cycles pass with
+  grace permission on/off, COLD startup/return and owned-worker absence.
+- Exact final runtime/test source `a041b1a3d23488f0788bb1cec4553631cde8147c`
+  passes [Windows run 41684268644](https://github.com/sai161812/pluma/actions/runs/41684268644):
+  **329 IPC/controller / 236 native UI / 663 popup / 195 formatting / 64,537
+  layout / 30 surface**, audio/copy gates and zero build warnings/errors.
+  Saved hotkeys are actually registered by an owned restarted Core; native
+  text activation opens command entry. Original folder visibility, saved
+  verification and owned-window cleanup pass at unchanged deadlines. Artifact
+  digests and unique ignored `output/p21-e103-20261103-222120-3dfb6de1/`
+  reports are in E103. Earlier failed/cancelled runs are retained, not passed.
+
+**Remaining limitations:** E94's owner-approved C-02 timing retest remains P25.
+Physical Windows/device review, installation/signing, broad corpus/performance,
+security and release gates remain their recorded later milestones. CORE-CONFIG
+is still UNVERIFIED for exhaustive baseline/corpus/performance coverage; full
+product readiness is not inferred. An intervening run hit the pre-existing P20
+folder UI timeout; the final normal gate passes without changing its adapter or
+deadline. Historical failure remains available for review, not silently repaired.
+
+**Next safe step:** independent Sol review of E103 and its recorded limitations,
+then P22 only on owner instruction. Review readiness is not Sol approval.
+Recovery uses reviewed dependent reverts while preserving later work and saved
+profiles; older hosts do not honor new privacy/policy fields, so review/export
+those overrides before starting old code. No reset/clean/force-push.
+
+## Previous checkpoint: 2026-11-03, E102 P21 native Settings page
 
 **The next bounded P21 packet is verified: the supported native Settings page. Full
 P21 remains in progress; P22 is not eligible.** [E102](docs/completion/e102_p21_native_settings.md)

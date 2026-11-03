@@ -41,9 +41,9 @@ records exact tested source and native-versus-fixture boundaries.
 ### 2. Settings
 **Purpose:** Read actual local configuration and edit supported settings.
 
-**Data/Actions:** The P21 bounded page edits `max_plan_steps` through typed settings query/save, exact revision, shared command/STOP ownership and material confirmation. Cancel discards the draft; Reload reads persisted/effective values. Saved changes explicitly require Core restart. Model paths, hotkeys, activation, privacy defaults and policy are read-only until their lifecycle gates pass. No audio-emulation or safety-bypass toggle is exposed.
+**Data/Actions:** P21 edits the plan limit, Text/STOP/push-to-talk hotkeys, local planner/speech model paths, bounded grace permission/delays, diagnostic logging, command-preview privacy and optional low-risk confirmation through typed settings query/save, exact revision, shared command/STOP ownership and material confirmation. Cancel discards drafts; Reload reads persisted/effective values. All changes require Core restart. Required voice, local approved runtimes, transient raw capture, sensitive-value redaction and mandatory policy/elevation boundaries cannot be disabled. Explicit recovery restores only the exact previous valid source and preserves the rejected source without promising automatic undo. Native text-hotkey activation reaches command entry through expiring authenticated runtime readback; it executes no tool.
 
-**Wire:** Native `MainWindow.NavigateSettings`, `SettingsPage`, `SettingsController`, `CoreSettingsProtocol`; backend `SettingsStore` JSON v1, registered `save_settings` and independent ledger/verifier. `pluma/ui/settings_contract.py` remains an abstract alternate-host boundary, not a second native implementation.
+**Wire:** Native `MainWindow.NavigateSettings`, `SettingsPage`, `SettingsController`, `CoreSettingsProtocol`; backend `SettingsStore` JSON v1, registered `save_settings`/`recover_settings` and independent ledger/verifier; NativeHotkeys and the existing owned RuntimeController for text activation. `pluma/ui/settings_contract.py` remains an abstract alternate-host boundary, not a second native implementation. Exact acceptance and limitations are in [E103](../../../docs/completion/e103_p21_completion.md).
 
 ### 3. History / Activity Ledger
 **Purpose:** Browse all completed tasks.  
