@@ -148,6 +148,33 @@ def test_probe_failures_are_factual_and_redacted(monkeypatch):
     assert 'private' not in json.dumps(checks)
 
 
+@pytest.mark.parametrize('tool,args',[('check_setup',{'include_microphone':True}),
+    ('restart_core',{'instance_id':str(uuid.uuid4()),'pid':1,'creation_time':1})])
+def test_planner_cannot_invent_setup_consent_or_restart(host,tool,args):
+    from pluma.tools.registry import ToolArgumentError
+    with pytest.raises(ToolArgumentError,match='explicit typed user request'):
+        host.runtime.tool_registry.execute(tool,args)
+
+
+def test_restart_drains_other_task_before_replacing_graph(host,tmp_path):
+    from tests.unit.test_worker_cancellation import OwnedProbe
+    from pluma.memory.activity import ActivityQuery
+    registry=host.runtime.tool_registry
+    spec=registry.lookup('check_setup')
+    registry.register(spec.model_copy(update={'executor':OwnedProbe(str(tmp_path)),'timeout_s':15}),overwrite=True)
+    setup=request(host,'setup_check',instance_id=host.instance_id,include_microphone=False)
+    end=time.monotonic()+6
+    while not (tmp_path/'entered').exists() and time.monotonic()<end:time.sleep(.01)
+    assert (tmp_path/'entered').exists()
+    cap=host.runtime.supervisor.get_task(setup['task_id'])
+    old=host.instance_id
+    terminal(host,request(host,'core_restart',**host.identity()))
+    host.advance()
+    assert host.instance_id!=old and cap.terminal_ready.is_set() and cap.state.value=='STOPPED'
+    assert not registry._worker_controllers and not (tmp_path/'late').exists()
+    assert ActivityQuery(host.runtime.db).task_by_id(setup['task_id'])['final_state']=='STOPPED'
+
+
 def test_stop_after_queued_restart_prevents_new_graph(host):
     before=host.instance_id
     cap=terminal(host,request(host,'core_restart',**host.identity()))

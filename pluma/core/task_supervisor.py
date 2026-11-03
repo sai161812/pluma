@@ -150,6 +150,7 @@ class TaskCapsule(BaseModel):
     steps: List[TaskStep] = Field(default_factory=list)
     live_presentation: Any = Field(default_factory=LivePresentation, exclude=True)
     recognition_progress: Any = Field(default=None, exclude=True)
+    health_authorization: Any = Field(default=None, exclude=True)
     voice_presentation: Any = Field(default=None, exclude=True)
     owned_resources: List[OwnedResource] = Field(default_factory=list)
 

@@ -16,6 +16,10 @@ internal static class HealthChecks
         var fixture=snapshot with {Checks=new[]{"planner","speech","ocr","uia","microphone"}.Select(id=>new CoreHealthProtocol.Check(id,"PASSED","FIXTURE_ONLY","fixture")).ToArray(),NativeVerified=false,SetupReady=true};
         bool rejected=false;try{CoreHealthProtocol.Snapshot.Parse(Encoding.UTF8.GetBytes(Wire(fixture)));}catch(JsonException){rejected=true;}
         check(rejected,"fixture capability results cannot assert production Continue");
+        var native=snapshot with {Checks=new[]{"planner","speech","ocr","uia","microphone"}.Select(id=>new CoreHealthProtocol.Check(id,"PASSED","NATIVE_ACCESS_VERIFIED","native")).ToArray(),NativeVerified=true,SetupReady=true};
+        check(CoreHealthProtocol.Snapshot.Parse(Encoding.UTF8.GetBytes(Wire(native))).SetupReady,"complete native receipt schema is accepted; unit data is not native acceptance");
+        rejected=false;try{CoreHealthProtocol.Snapshot.Parse(Encoding.UTF8.GetBytes(Wire(native).Replace("\"state\":\"PASSED\"","\"state\":\"FAILED\",\"state\":\"PASSED\"")));}catch(JsonException){rejected=true;}
+        check(rejected,"nested duplicate capability state cannot override failure");
         var backend=new Client();
         await using var commands=new CommandController(backend,TimeSpan.FromMilliseconds(1));
         await using var health=new HealthController((id,t)=>Task.FromResult(Ok(snapshot with {RequestId=id})),commands);

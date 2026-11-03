@@ -153,6 +153,9 @@ class Orchestrator:
         if (plan.route != RouteMode.FAST or len(plan.steps) != 1 or
                 plan.steps[0].tool not in ('undo_last', 'open_folder', 'save_settings', 'recover_settings', 'check_setup', 'restart_core') or not plan.steps[0].arguments):
             raise ValueError('Only a supported exact typed action is admitted here.')
+        if plan.steps[0].tool in ('check_setup','restart_core'):
+            from copy import deepcopy
+            capsule.health_authorization=(plan.steps[0].tool,deepcopy(plan.steps[0].arguments))
         with self._supervisor.execution_gate.enter():
             return self._execute_request(request, capsule, selected_plan=plan)
 

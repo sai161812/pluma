@@ -30,6 +30,7 @@ def run(args):
         assert cap.terminal_ready.is_set() and cap.state.value=='SUCCEEDED'
         view=host.health(str(uuid.uuid4()))
         assert view['native_verified'] and len(view['checks'])==5
+        assert view['setup_ready'] and all(c['state']=='PASSED' for c in view['checks'])
         assert view['hotkeys_registered']
         assert host.runtime.llm_lifecycle.state.value==host.runtime.voice_lifecycle.state=='COLD'
         assert not host.runtime.tool_registry._worker_controllers

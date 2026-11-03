@@ -1029,6 +1029,9 @@ class ToolRegistry:
         from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
+        if tool_name in ("check_setup","restart_core"):
+            if getattr(task_context,"health_authorization",None)!=(tool_name,validated_args):
+                raise ToolArgumentError("Health actions require an explicit typed user request.")
         if tool_name in ("save_settings", "recover_settings") and task_context is not None:
             task_context.settings_path = self.settings_path
         # One declared tool budget covers policy, pre-state capture, dispatch,
