@@ -75,6 +75,8 @@ def test_typed_save_duplicate_restart_projection_and_ledger(runtime):
     rows = ActivityQuery(runtime.db).actions_for_task(ack["task_id"])
     assert len(rows) == 1 and rows[0]["tool"] == "save_settings" and rows[0]["verified"]
     assert json.loads(rows[0]["verification_json"])["method"] == "independent_settings_readback"
+    resources = runtime.db.execute_read("SELECT released_at FROM resources WHERE task_id=? AND resource_type='temp_dir' AND ownership='PLUMA_CREATED'", (ack["task_id"],))
+    assert resources and all(row["released_at"] is not None for row in resources)
     assert runtime.resident_core.handle_ipc_command(dict(payload, changes={"max_plan_steps": 5}))["error_code"] == "REQUEST_ID_REUSED"
 
 

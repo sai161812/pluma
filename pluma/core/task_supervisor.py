@@ -766,6 +766,22 @@ class TaskSupervisor:
         if self._ledger is None:
             return
         try:
+            for resource in capsule.owned_resources:
+                if resource.metadata.get("persisted_resource") is not True or resource.released_at is None:
+                    continue
+                checks = [entry for entry in capsule.cleanup_evidence if entry.resource_id == resource.resource_id]
+                if not checks or not checks[-1].verified:
+                    continue
+                row = self._ledger._db.execute_read_one(
+                    "SELECT task_id,external_id FROM resources WHERE id=?", (resource.resource_id,))
+                if row is None or row["task_id"] != capsule.task_id or row["external_id"] != resource.external_id:
+                    raise RuntimeError("Persisted resource ownership readback failed.")
+                released = resource.released_at.isoformat()
+                self._ledger.release_resource(resource.resource_id, released)
+                readback = self._ledger._db.execute_read_one(
+                    "SELECT released_at FROM resources WHERE id=?", (resource.resource_id,))
+                if readback is None or readback["released_at"] != released:
+                    raise RuntimeError("Persisted resource release readback failed.")
             self._ledger.record_cleanup(capsule.task_id, [item.model_dump() for item in capsule.cleanup_evidence])
         except Exception:
             capsule.cleanup_evidence.append(CleanupEvidence(resource_id="ledger:" + capsule.task_id,

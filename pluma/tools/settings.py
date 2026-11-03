@@ -41,7 +41,8 @@ def stage_settings(context, ledger, path):
         context.cancellation_token.raise_if_cancelled()
         store.path.parent.mkdir(parents=True, exist_ok=True)
         directory = Path(tempfile.mkdtemp(prefix=".pluma-settings-" + context.task_id + "-", dir=store.path.parent))
-        resource = context.register_owned_resource("temp_dir", ResourceOwnership.PLUMA_CREATED, str(directory))
+        resource = context.register_owned_resource("temp_dir", ResourceOwnership.PLUMA_CREATED, str(directory),
+                                                    metadata={"persisted_resource": True})
         identity = resource.metadata.get("cleanup_identity")
         if not identity:
             raise SettingsError("SETTINGS_OWNERSHIP_UNAVAILABLE")
