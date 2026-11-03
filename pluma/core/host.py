@@ -94,7 +94,7 @@ class CoreHost:
     def schedule(self,args,task_id):
         from pluma.core.ownership import get_process_creation_time
         with self._lock:
-            if self._closing or self._restart is not None or args!=self.identity() or get_process_creation_time(self.pid)!=self.creation_time:
+            if self._closing or self._recover_control or self.state not in ("READY","CONFIGURATION_ERROR","HOTKEY_ERROR","RECOVERY_ERROR") or self._restart is not None or args!=self.identity() or get_process_creation_time(self.pid)!=self.creation_time:
                 raise ValueError("Restart target is not the owned current Core.")
             self._restart=(self.instance_id,task_id)
         return lambda:self._restart==(args["instance_id"],task_id)
@@ -111,6 +111,8 @@ class CoreHost:
             if not self.runtime.close(3).complete:return
             from pluma.app import PlumaApplicationRuntime
             config=self.runtime.config
+            with self._lock:self._restart=None
+            self.instance_id=str(uuid4());self.setup_task=None;self.setup_time=0
             self.runtime=PlumaApplicationRuntime(self.paths,config=config,settings_path=self.config_path)
             self.runtime.resident_core.ipc=_GraphEndpoint()
             self.runtime.tool_registry.core_restart_callback=self.schedule

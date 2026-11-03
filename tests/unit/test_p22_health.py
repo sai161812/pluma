@@ -211,6 +211,19 @@ def test_lost_hotkey_thread_drains_into_control_only_graph(host):
     assert request(host,'setup_check',instance_id=host.instance_id,include_microphone=False)['message_type']=='protocol_error'
 
 
+def test_hotkey_loss_cancels_old_queued_restart_before_control_replacement(host):
+    class DeadThread:
+        def is_alive(self):return False
+        def join(self,*_):pass
+    before=host.instance_id
+    terminal(host,request(host,'core_restart',**host.identity()))
+    host.runtime.resident_core._hotkey_thread=DeadThread()
+    host.advance()
+    view=request(host,'health_query')
+    assert host._restart is None and view['can_restart'] and view['instance_id']!=before
+    host.advance()  # No lookup of an old task in the replacement supervisor.
+
+
 @pytest.mark.parametrize('stop',[True,False])
 def test_setup_worker_stop_and_timeout_leave_no_worker(host,tmp_path,stop):
     from tests.unit.test_worker_cancellation import OwnedProbe
