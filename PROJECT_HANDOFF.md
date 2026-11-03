@@ -1,6 +1,54 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-03, E101 P21 owned settings contracts
+## Current checkpoint: 2026-11-03, E102 P21 native Settings page
+
+**The next bounded P21 packet is verified: the supported native Settings page. Full
+P21 remains in progress; P22 is not eligible.** [E102](docs/completion/e102_p21_native_settings.md)
+records the exact scope, evidence and remaining lifecycle gates.
+
+- Active branch remains `p12-preparation`; recovery
+  `recovery/pre-p21-e102-20261103` is pushed at the clean starting source
+  `9936c116cfe99fb9e4ac936c1a0d4cbfcd747df9`. Main remains `0468a03`.
+  No merge, branch switch, reset, clean, force-push or new dependency.
+- `5e267d8` binds SettingsPage to actual persisted/effective data through one
+  shell-owned SettingsController and the shared command owner. Supported
+  planner-limit edits have Save/Cancel/reload, exact-revision material approval,
+  independent readback, errors and explicit restart-needed status. Preview
+  selections and fictional permission/audio toggles are removed. Existing dark
+  styling/theme resources remain. Other fields stay truthfully read-only.
+- Save claims its shared request before the first UI await, preserving the
+  exact STOP fence. Regression checks cover invalid drafts, unknown-write
+  reconciliation without replay, repeated Save, navigation and joined disposal.
+  `1c2572c` strengthens exact confirmation and unchanged/cold runtime assertions.
+- Fresh pre-edit and affected runs each pass **142 tests**, no skips/xfails.
+  Both local C# projects build with zero warnings/errors; all 33 compiled XAML
+  files pass visible-copy checks. The prior 501 prerequisite/352 contract checks
+  remain applicable to unchanged backend behavior. Local execution restrictions
+  remain; native assembly acceptance is from authorized Windows CI only.
+- Exact product/test source `1c2572c038c6fbf32d8c02134deb3f071ceab2b2` passes
+  [Windows run 41642718466](https://github.com/sai161812/pluma/actions/runs/41642718466):
+  **324 IPC/controller / 229 native UI / 663 popup / 195 formatting / 64,537
+  layout / 30 surface checks**, audio/copy and zero build warnings/errors.
+  All 15 new native page checks pass against owned actual storage/backend;
+  prior native folder/STOP/ownership regressions also pass. No skipped or
+  unexecuted native control checks. Exact commands/digests are in E102 and
+  `output/p21-e102-20261103-125317-022c7a8f/`. The superseded first CI run is
+  cancelled, not passed. This bounded packet is ready for independent Sol review.
+
+**Remaining P21:** guarded hotkey availability/registration/conflict/failure and
+STOP preservation; compatible local model/runtime-path changes and owned
+restart; voice activation; measured warm grace; permitted privacy/logging/policy
+settings; controlled corrupt-source recovery; combined native application/
+rollback acceptance for those fields. CORE-CONFIG remains UNVERIFIED. No owner
+waiver is inferred for these gates.
+
+**Next safe packet:** guarded hotkey lifecycle before enabling hotkey edits.
+Retain E94's owner-approved C-02 physical timing deferral to P25 and the recorded
+installation/performance/security/release limitations. Independent Sol approval
+is not assumed. Recovery uses reviewed dependent reverts, preserving later work
+and saved configuration. Do not advance to P22.
+
+## Previous checkpoint: 2026-11-03, E101 P21 owned settings contracts
 
 **The next two bounded P21 packets are complete; full P21 remains in progress.** [E101](docs/completion/e101_p21_owned_settings.md) covers
 the next two bounded packets: typed owned Save/readback and C# IPC interoperation.
