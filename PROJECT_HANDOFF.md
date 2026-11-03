@@ -1,6 +1,64 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-03, E100 P21 persistence foundation
+## Current checkpoint: 2026-11-03, E101 P21 owned settings contracts
+
+**The next two bounded P21 packets are complete; full P21 remains in progress.** [E101](docs/completion/e101_p21_owned_settings.md) covers
+the next two bounded packets: typed owned Save/readback and C# IPC interoperation.
+Full P21/native Settings-page acceptance is not claimed; P22 is not eligible.
+
+- Clean starting checkpoint `d9f1fbc`; recovery
+  `recovery/pre-p21-e101-20261103` is pushed at that source. The active branch
+  remains `p12-preparation`; main remains `0468a03`. No merge, branch switch,
+  force-push, security bypass, new dependency or native styling change.
+- `163783a` adds strict versioned edit/save contracts and MEDIUM registered
+  `save_settings` through the shared capsule, policy/confirmation, owned worker,
+  journal, independent verification, ledger and once-only selected undo path.
+  Persisted/effective readback and restart-needed fields are explicit. Only
+  `max_plan_steps` is editable; schema refuses unsupported fields before admission.
+- Configuration authority comes from app composition, including CLI source paths,
+  never planner/tool paths. Undo captures only touched public settings/default
+  presence. Namespaced hash receipts preserve the exact inverse through existing
+  redaction without weakening secret filtering. Later owner edits are preserved.
+- `334fee5` fixes the real native fixture setup and preserves P09 credential-test
+  isolation. `e54c9d8` adds identity-recorded, durably journaled task staging on
+  the settings volume before private transaction bytes, guarded pending recovery
+  for exact before/after states, and corrected verified-failed-terminal assertions.
+  Unknown third states retain conflict evidence. STOP/timeout exercise both
+  commit sides, worker absence, staging cleanup and owner-file preservation.
+- `45c2f07` repairs the native test project's missing protocol compile dependency.
+  `ef8013a` reproduces/fixes a stale staging-resource release timestamp and verifies
+  its exact SQLite readback before terminal cleanup history.
+- Fresh pre-edit **180 passed**. Final source/test commit is
+  `ef8013a08eecaf079f548373bf24ab0c989a7e24`; **124 affected / 501 prerequisites /
+  352 contract regressions** pass, zero failures/errors/skips/xfails.
+  [Windows run 41636726654](https://github.com/sai161812/pluma/actions/runs/41636726654)
+  passes **308 actual IPC / 214 native UI / 663 popup / 195 formatting / 64,537
+  layout / 30 surface**, audio/copy gates and zero build warnings/errors. Actual
+  settings Save/deny/restart and cold/closed ownership pass; the native Settings
+  page remains unwired. Source/artifact digests are in E101. This packet is
+  ready for independent Sol review; no approval is assumed. Earlier failed reports/artifacts are retained and
+  are not counted as passes. Exact commands/results/digests are in E101 and
+  ignored `output/p21-e101-20261103-115913-71e90ae8/`.
+
+**Observed blocker for hotkey edits:** current startup logs RegisterHotKey failure
+and continues. These fields stay read-only until native availability/conflict,
+safe registration failure handling and independent STOP preservation pass. No
+personal hotkey registration was tested. Models/STT stay cold in owned fixtures.
+
+**Remaining P21:** bind SettingsContract/native surface 2 to actual supported
+Save/Cancel/reload/readback/errors and remove preview selections; complete guarded
+hotkey lifecycle; runtime/model path compatibility, activation, measured grace,
+privacy/logging and allowed policy behavior; controlled corrupt-source recovery;
+combined native Settings-page save/restart/application/rollback acceptance.
+
+**Next safe packet:** native Settings controller/view
+for supported edits and truthful read-only fields, then guarded hotkey lifecycle.
+Do not advance to P22. E94's owner-approved C-02 timing deferral to P25 and other
+physical/installation/performance/security/release scopes remain. Independent Sol
+review approval is not assumed. Recovery uses reviewed dependent reverts while
+preserving versioned settings, durable resources and uncertain inverse claims.
+
+## Previous checkpoint: 2026-11-03, E100 P21 persistence foundation
 
 **The first bounded P21 packet is implemented; full P21 remains incomplete.**
 [E100](docs/completion/e100_p21_settings_store.md) records the selected storage/
