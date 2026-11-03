@@ -103,11 +103,33 @@ internal static class SettingsControllerChecks
         await stopped; hold.Drain(); await queued;
         check(queuedId is not null && queuedSource.Fence==queuedId && queuedSource.Saves==0,
             "STOP before the first settings UI await prevents late submission and preserves its exact fence");
+
+        var extendedSource=new Client();
+        await using var extendedCommand=new CommandController(extendedSource);
+        var extendedSnapshot=Snapshot() with {EditableFields=CoreRequestProtocol.SettingKeys};
+        await using var extended=new SettingsController((id,t)=>Task.FromResult(Ok(extendedSnapshot with {RequestId=id})),
+            (id,t)=>Task.FromResult(Ok(Runtime(id))),extendedCommand);
+        await extended.RefreshAsync(default);
+        extended.SetValues(extended.View.DraftValues! with {ModelIdleUnloadSeconds=2,AllowShortWarmGrace=false,StopHotkey="ctrl+shift+f11"});
+        check(extended.View.CanSave,"supported hotkey and grace edits enable one shared Save");
+        extendedSource.AfterSubmit=()=>extendedSnapshot=extendedSnapshot with {Persisted=extended.View.DraftValues!};
+        await extended.SaveAsync(default);
+        check(extendedSource.Edits!.Fields().Keys.Order().SequenceEqual(new[]{"allow_short_warm_grace","model_idle_unload_seconds","stop_hotkey"}),
+            "extended Settings Save sends only actual changed fields without rewriting unrelated configuration");
+        extendedSnapshot=extendedSnapshot with {EditableFields=[],PreviousRevision=new string('c',64)};
+        await extended.RefreshAsync(default);
+        check(!extended.View.CanEdit && !extended.View.CanSave && extended.View.CanRecover,
+            "recovery snapshot blocks normal edits and offers only exact previous-source restoration");
+        extendedSource.AfterSubmit=()=>extendedSnapshot=extendedSnapshot with {EditableFields=CoreRequestProtocol.SettingKeys,PreviousRevision=null};
+        await extended.RecoverAsync(default);
+        check(extendedSource.Edits is {RecoverPrevious:true,RecoveryRevision:not null} && !extended.View.CanRecover,
+            "settings recovery uses the shared typed submission with exact previous revision and verified readback");
     }
 
     private sealed class Client : ICommandClient
     {
         internal int Saves, Stops, Limit;
+        internal CoreRequestProtocol.SettingsEdits? Edits;
         internal string? Revision, Request, Fence;
         internal readonly string TaskId=Id();
         internal bool Unknown, HistoryAvailable=true;
@@ -119,7 +141,7 @@ internal static class SettingsControllerChecks
         public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitSettingsAsync(string request,string revision,
             CoreRequestProtocol.SettingsEdits edits,CancellationToken token)
         {
-            Saves++; Request=request; Revision=revision; Limit=edits.MaxPlanSteps!.Value; Entered?.Release();
+            Saves++; Request=request; Revision=revision; Edits=edits; Limit=edits.MaxPlanSteps ?? 8; Entered?.Release();
             if(Gate is not null) await Gate.WaitAsync(token);
             AfterSubmit?.Invoke();
             return Unknown ? CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Timeout,true)

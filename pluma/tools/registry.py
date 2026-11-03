@@ -1029,7 +1029,7 @@ class ToolRegistry:
         from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
-        if tool_name == "save_settings" and task_context is not None:
+        if tool_name in ("save_settings", "recover_settings") and task_context is not None:
             task_context.settings_path = self.settings_path
         # One declared tool budget covers policy, pre-state capture, dispatch,
         # and readback. Starting the clock after policy allowed a slow approval
@@ -1466,7 +1466,7 @@ class ToolRegistry:
                     ),
                 )
 
-        settings_source = self.settings_path if tool_name == "save_settings" else None
+        settings_source = self.settings_path if tool_name in ("save_settings", "recover_settings") else None
         if tool_name == "undo_last" and self.settings_path is not None:
             from pluma.tools.settings import peek_settings
             lookup_spec = spec.model_copy(update={"undo_builder": peek_settings})
@@ -1483,7 +1483,7 @@ class ToolRegistry:
                     raise ValueError("Settings source is not the active configured source.")
                 staging = stage_settings(task_context, ledger, settings_source)
                 execution_binding = dict(execution_binding or {}, settings_staging=staging)
-                if tool_name == "save_settings":
+                if tool_name in ("save_settings", "recover_settings"):
                     pre_undo_data["staging"] = staging
             except Exception:
                 return _record_no_execution(ledger, task_context, step_index, tool_name,

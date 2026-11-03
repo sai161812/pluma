@@ -33,11 +33,11 @@
                 <StackPanel Grid.Row="1" Spacing="8">
                     <TextBlock Text="Local model"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="Current local model configuration"
+                    <TextBlock Text="Local llama.cpp planner and whisper.cpp speech runtime"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Style="{StaticResource BodyTextBlockStyle}" />
                     <controls:SettingsCard Header="Model path"
-                                            Description="Configured path. Model availability is not established here; editing is unavailable."
+                                            Description="Local GGUF path. Native compatibility is verified when the model is used; saving requires restart."
                                             HorizontalAlignment="Stretch">
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
@@ -45,7 +45,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="ModelPath" Grid.Column="0"
-                                     Text="Unavailable" IsReadOnly="True"
+                                     Text="Unavailable" TextChanged="OnFieldsChanged"
                                      HorizontalAlignment="Stretch" />
                             <Button Grid.Column="1" Content="Browse" IsEnabled="False" />
                         </Grid>
@@ -63,21 +63,24 @@
                 <StackPanel Grid.Row="2" Spacing="8">
                     <TextBlock Text="Hotkeys"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="Saved bindings. Editing and OS availability checks are not available yet."
+                    <TextBlock Text="Saved bindings. Conflicts are refused. Core restart is required to apply changes."
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Style="{StaticResource BodyTextBlockStyle}" />
                     <StackPanel Spacing="8">
                         <controls:SettingsCard Header="Command activation"
                                                 HorizontalAlignment="Stretch">
-                            <TextBox x:Name="TextHotkey" Text="Unavailable" IsReadOnly="True"
+                            <TextBox x:Name="TextHotkey" Text="Unavailable" TextChanged="OnFieldsChanged"
                                      Width="240"
                                      HorizontalAlignment="Right" />
                         </controls:SettingsCard>
                         <controls:SettingsCard Header="Stop current task"
                                                 HorizontalAlignment="Stretch">
-                            <TextBox x:Name="StopHotkey" Text="Unavailable" IsReadOnly="True"
+                            <TextBox x:Name="StopHotkey" Text="Unavailable" TextChanged="OnFieldsChanged"
                                      Width="240"
                                      HorizontalAlignment="Right" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Voice activation hotkey" HorizontalAlignment="Stretch">
+                            <TextBox x:Name="VoiceHotkey" Text="Unavailable" Width="240" TextChanged="OnFieldsChanged" />
                         </controls:SettingsCard>
                         <controls:SettingsCard Header="Global hotkey availability"
                                                 HorizontalAlignment="Stretch">
@@ -90,7 +93,7 @@
                 <StackPanel Grid.Row="3" Spacing="8">
                     <TextBlock Text="Audio and voice"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="Read-only active configuration. No microphone capture starts on this page."
+                    <TextBlock Text="Push-to-talk stays available. Wake listening and background capture are not enabled."
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Style="{StaticResource BodyTextBlockStyle}" />
                     <StackPanel Spacing="8">
@@ -101,7 +104,7 @@
                         </controls:SettingsCard>
                         <controls:SettingsCard Header="Speech model path"
                                                 HorizontalAlignment="Stretch">
-                            <TextBox x:Name="SpeechModelPath" Text="Unavailable" IsReadOnly="True"
+                            <TextBox x:Name="SpeechModelPath" Text="Unavailable" TextChanged="OnFieldsChanged"
                                      Width="240" HorizontalAlignment="Right" />
                         </controls:SettingsCard>
                         <controls:SettingsCard Header="Privacy defaults"
@@ -115,7 +118,7 @@
                 <StackPanel Grid.Row="4" Spacing="8">
                     <TextBlock Text="Tool permissions"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock Text="Policy is evaluated for each exact action. Editing is unavailable."
+                    <TextBlock Text="Policy is evaluated for each exact action. Safety protections cannot be disabled."
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Style="{StaticResource BodyTextBlockStyle}" />
                     <StackPanel Spacing="8">
@@ -138,10 +141,24 @@
                 </StackPanel>
 
                 <StackPanel Grid.Row="5" Spacing="8">
+                    <controls:SettingsCard Header="Model unload delay" Description="Upper bound in seconds, from 0 to 30. Task-owned native models release after every request." HorizontalAlignment="Stretch">
+                        <NumberBox x:Name="ModelGrace" Minimum="0" Maximum="30" Width="240" ValueChanged="OnGraceChanged" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Speech unload delay" Description="Upper bound in seconds, from 0 to 30. Task-owned speech models release after every request." HorizontalAlignment="Stretch">
+                        <NumberBox x:Name="SpeechGrace" Minimum="0" Maximum="30" Width="240" ValueChanged="OnGraceChanged" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="OCR unload delay" Description="Upper bound in seconds, from 0 to 30. Current OCR workers release on completion." HorizontalAlignment="Stretch">
+                        <NumberBox x:Name="OcrGrace" Minimum="0" Maximum="30" Width="240" ValueChanged="OnGraceChanged" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard Header="Allow short warm grace" Description="No model is kept warm without measured benefit. Off requires immediate release." HorizontalAlignment="Stretch">
+                        <ToggleSwitch x:Name="WarmGrace" Toggled="OnWarmChanged" />
+                    </controls:SettingsCard>
+
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="SettingsSave" Content="Save settings" IsEnabled="False" Click="OnSave" />
                         <Button x:Name="SettingsCancel" Content="Cancel edits" IsEnabled="False" Click="OnCancel" />
                         <Button x:Name="SettingsReload" Content="Reload" IsEnabled="False" Click="OnReload" />
+                        <Button x:Name="SettingsRecover" Content="Restore previous settings" IsEnabled="False" Click="OnRecover" />
                         <Button x:Name="SettingsStop" Content="STOP" IsEnabled="False" Click="OnStop" />
                     </StackPanel>
                     <TextBlock x:Name="SettingsStatus" Text="Connect to Core to read settings."

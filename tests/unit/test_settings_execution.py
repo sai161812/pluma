@@ -69,7 +69,8 @@ def test_typed_save_duplicate_restart_projection_and_ledger(runtime):
     assert current["persisted"]["max_plan_steps"] == 4
     assert current["effective"]["max_plan_steps"] == 8
     assert current["restart_fields"] == ["max_plan_steps"]
-    assert current["editable_fields"] == ["max_plan_steps"]
+    from pluma.config.settings_contract import FIELDS
+    assert current["editable_fields"] == list(FIELDS)
     assert runtime.llm_lifecycle.adapter.max_plan_steps == 8
     assert runtime.llm_lifecycle.state.value == "COLD"
     rows = ActivityQuery(runtime.db).actions_for_task(ack["task_id"])
@@ -146,7 +147,7 @@ def test_typed_denial_is_a_verified_failed_terminal_not_a_verified_action(runtim
 
 
 @pytest.mark.parametrize("changes", [{}, {"max_plan_steps": True}, {"max_plan_steps": 21},
-    {"stop_hotkey": None}, {"stop_hotkey": "ctrl+shift+s"}, {"voice_required": False},
+    {"stop_hotkey": None}, {"stop_hotkey": "ctrl+unknown+s"}, {"voice_required": False},
     {"model_path": "C:/unverified.gguf"}, {"permanent_elevation": True}])
 def test_invalid_edits_are_rejected_before_policy_or_admission(runtime, changes):
     payload = dict(protocol_version=1, message_type="settings_save", request_id=str(uuid.uuid4()),

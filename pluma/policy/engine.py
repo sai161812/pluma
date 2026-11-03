@@ -141,6 +141,8 @@ class PolicyEngine:
                 if tool_name == 'undo_last' and arguments.get('selection') is not None:
                     prompt = 'Restore this selected saved action? Newer changes will be preserved if restoration conflicts. An uncertain inverse will not be repeated. PLUMA cannot automatically redo a completed undo.'
                     summary = arguments['selection']['material']
+                if tool_name == 'recover_settings':
+                    prompt = 'Restore the last valid local settings? The rejected source will be preserved separately. Core restart is required. No automatic undo is available.'
                 if tool_name == 'safe_delete':
                     # This tool always recycles; the confirmation must state
                     # the actual recovery path and must never imply permanent

@@ -47,8 +47,8 @@ def test_atomic_save_reload_restart_and_cold_effective_readback(tmp_path):
 
     paths = PlumaPaths(tmp_path / "local", tmp_path / "roaming")
     planner, stt = tmp_path / "planner.gguf", tmp_path / "speech.bin"
-    planner.write_bytes(b"owned model path fixture")
-    stt.write_bytes(b"owned model path fixture")
+    planner.write_bytes(b"GGUF" + b"owned format fixture; not a native model")
+    stt.write_bytes(b"lmgg" + b"owned format fixture; not a native model")
     store = SettingsStore(paths.user_settings_path)
     first = store.snapshot()
     assert first.revision == ABSENT_REVISION and first.overrides == {}
@@ -137,7 +137,7 @@ def test_cancel_is_read_only_and_snapshot_has_no_shared_mutable_cache(tmp_path):
     ({"policy.confirm_high_risk": False}, "UNSUPPORTED_FIELD"),
     ({"policy.permanent_elevation": True}, "UNSUPPORTED_FIELD"),
     ({"voice.wake_phrase_enabled": True}, "UNSUPPORTED_FIELD"),
-    ({"runtime.allow_short_warm_grace": True}, "UNSUPPORTED_FIELD"),
+    ({"runtime.allow_short_warm_grace": "true"}, "UNSUPPORTED_RUNTIME"),
     ({"voice.save_audio": True}, "UNSUPPORTED_FIELD"),
 ])
 def test_invalid_or_unimplemented_fields_preserve_valid_settings(tmp_path, change, code):

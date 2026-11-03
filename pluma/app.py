@@ -93,6 +93,8 @@ class PlumaApplicationRuntime:
         model_name = get(self.config, "brain", "model_name", default="qwen3-4b.gguf")
         model_path = get(self.config, "brain", "model_path", default=str(paths.llm_models_dir / model_name))
         idle_seconds = float(get(self.config, "runtime", "model_idle_unload_seconds", default=30.0))
+        if not get(self.config, "runtime", "allow_short_warm_grace", default=True):
+            idle_seconds = 0
         max_plan_steps = get(self.config, "agent", "max_plan_steps", default=8)
 
         from pluma.brain.lifecycle import LlmLifecycleManager
@@ -121,6 +123,9 @@ class PlumaApplicationRuntime:
         )
         stt_idle = float(get(self.config, "runtime", "stt_idle_unload_seconds", default=20.0))
 
+        if not get(self.config, "runtime", "allow_short_warm_grace", default=True):
+            stt_idle = 0
+
         from pluma.voice.lifecycle import VoiceLifecycleManager
         from pluma.voice.stt_adapter import WhisperSttAdapter
         self.voice_lifecycle = VoiceLifecycleManager(
@@ -142,6 +147,8 @@ class PlumaApplicationRuntime:
             confirmation_broker=self.confirmation_broker,
             settings_path=self.settings_path,
         )
+        self.resident_core.default_model_path = str(paths.llm_models_dir / model_name)
+        self.resident_core.default_stt_model_path = str(paths.whisper_models_dir / stt_model_name)
 
     def close(self, timeout_s: float = 5.0):
         """Bounded, resumable shutdown. Unknown drain keeps storage owned/open."""
@@ -264,6 +271,7 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging")
+    parser.add_argument("--restore-previous-settings", action="store_true", help="Explicit confirmed settings recovery without starting resident hotkeys/devices")
     parser.add_argument("--recover-only", action="store_true", help="Run crash recovery reconciliation and exit")
     parser.add_argument("--config", type=str, default=None, help="Path to custom user configuration file")
     parser.add_argument("--local-app-data", type=str, default=None, help="Override %LOCALAPPDATA% directory")
@@ -299,6 +307,29 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
         shutdown_logging()
         return 0
 
+    if args.restore_previous_settings:
+        from pluma.config.settings import SettingsStore
+        from pluma.ui.confirmations import CallbackConfirmationContract, ConfirmationResponse
+        from pluma.core.request import PlumaRequest, InputMode
+        from pluma.brain.schemas import Plan, ToolCall, RouteMode
+        source = Path(args.config or os.environ.get("PLUMA_CONFIG") or paths.user_settings_path).absolute()
+        revision, previous = SettingsStore(source).recovery_state()
+        from pluma.config.loader import _load_yaml, _DEFAULTS_FILE
+        recovery_runtime = PlumaApplicationRuntime(paths, config=_load_yaml(_DEFAULTS_FILE), settings_path=str(source),
+            confirmation_contract=CallbackConfirmationContract(lambda request: ConfirmationResponse(
+                approved=input(request.prompt_message + " Type RESTORE to approve: ") == "RESTORE")))
+        try:
+            request=PlumaRequest(input_mode=InputMode.TEXT,text="Restore previous valid PLUMA settings.")
+            capsule=recovery_runtime.supervisor.create_task_capsule(request_id=request.request_id)
+            result=recovery_runtime.orchestrator.execute_typed_plan(request,capsule,
+                Plan(task_id=capsule.task_id,route=RouteMode.FAST,steps=[ToolCall(tool="recover_settings",
+                    arguments={"expected_revision":revision,"previous_revision":previous.revision},purpose="Restore selected valid settings.")]))
+            return 0 if result.success else 1
+        finally:
+            if not recovery_runtime.close(5).complete:
+                raise RuntimeError("Settings recovery cleanup remains unverified.")
+            shutdown_logging()
+
     # 4. Initialize and start Production Runtime Dependency Graph
     custom_cfg = load_config(args.config) if args.config else None
     runtime = PlumaApplicationRuntime(paths=paths, config=custom_cfg, settings_path=args.config)
@@ -314,11 +345,10 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
-    core.start()
-    logger.info("PLUMA Resident Core active and listening (Hotkeys & Named Pipe IPC ready).")
-
-    # 5. Main loop
+    # 5. Main loop, including startup failure cleanup.
     try:
+        core.start()
+        logger.info("PLUMA Resident Core active and listening (Hotkeys & Named Pipe IPC ready).")
         while not stop_event.is_set():
             time.sleep(0.2)
     except KeyboardInterrupt:

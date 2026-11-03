@@ -46,13 +46,21 @@ namespace PLUMA.UI
             {
                 if (!PlanLimit.Value.Equals(view.DraftLimit)) PlanLimit.Value = view.DraftLimit;
                 PlanLimit.IsEnabled = view.CanEdit;
+                SettingsRecover.IsEnabled=view.CanRecover;
                 SettingsSave.IsEnabled = view.CanSave; SettingsCancel.IsEnabled = view.CanCancel;
                 SettingsReload.IsEnabled = !view.Busy;
                 SettingsStop.IsEnabled = _commands is not null && !_commands.View.StopPending;
-                ModelPath.Text = view.Runtime?.PlannerModelPath ?? "Unavailable";
-                SpeechModelPath.Text = view.Runtime?.SttModelPath ?? "Unavailable";
-                TextHotkey.Text = view.Saved?.Persisted.TextHotkey ?? "Unavailable";
-                StopHotkey.Text = view.Saved?.Persisted.StopHotkey ?? "Unavailable";
+                ModelPath.Text = view.DraftValues?.PlannerModelPath ?? "Unavailable";
+                ModelPath.IsEnabled=SpeechModelPath.IsEnabled=TextHotkey.IsEnabled=StopHotkey.IsEnabled=VoiceHotkey.IsEnabled=view.CanEdit;
+                SpeechModelPath.Text = view.DraftValues?.SttModelPath ?? "Unavailable";
+                TextHotkey.Text = view.DraftValues?.TextHotkey ?? "Unavailable";
+                StopHotkey.Text = view.DraftValues?.StopHotkey ?? "Unavailable";
+                VoiceHotkey.Text=view.DraftValues?.VoiceHotkey ?? "Unavailable";
+                ModelGrace.Value=view.DraftValues?.ModelIdleUnloadSeconds ?? double.NaN;
+                SpeechGrace.Value=view.DraftValues?.SttIdleUnloadSeconds ?? double.NaN;
+                OcrGrace.Value=view.DraftValues?.OcrIdleUnloadSeconds ?? double.NaN;
+                WarmGrace.IsOn=view.DraftValues?.AllowShortWarmGrace ?? false;
+                ModelGrace.IsEnabled=SpeechGrace.IsEnabled=OcrGrace.IsEnabled=WarmGrace.IsEnabled=view.CanEdit;
                 VoiceMode.Text = view.Runtime is null ? "Unavailable" : !view.Runtime.VoiceRequired
                     ? "Disabled in configuration" : PopupText.Label(view.Runtime.ActivationDefault);
                 PrivacyDefaults.Text = view.Runtime is null ? "Unavailable" :
@@ -68,8 +76,22 @@ namespace PLUMA.UI
             }
             finally { _applying = false; }
         }
+        private void OnFieldsChanged(object sender, TextChangedEventArgs args) => UpdateFields();
+        private void OnGraceChanged(NumberBox sender, NumberBoxValueChangedEventArgs args) => UpdateFields();
+        private void OnWarmChanged(object sender, RoutedEventArgs args) => UpdateFields();
+        private void UpdateFields()
+        {
+            if(_applying || _settings?.View.DraftValues is not {} values || ModelGrace is null || WarmGrace is null) return;
+            int Delay(double value)=>double.IsFinite(value) && value==Math.Truncate(value) ? (int)value : -1;
+            _settings.SetValues(values with {TextHotkey=TextHotkey.Text,StopHotkey=StopHotkey.Text,VoiceHotkey=VoiceHotkey.Text,
+                PlannerModelPath=ModelPath.Text,SttModelPath=SpeechModelPath.Text,
+                ModelIdleUnloadSeconds=Delay(ModelGrace.Value),SttIdleUnloadSeconds=Delay(SpeechGrace.Value),
+                OcrIdleUnloadSeconds=Delay(OcrGrace.Value),AllowShortWarmGrace=WarmGrace.IsOn});
+        }
         private void OnLimitChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
         { if (!_applying) _settings?.SetDraft(args.NewValue); }
+        private async void OnRecover(object sender, RoutedEventArgs args)
+        { if(_settings is not null)await _settings.RecoverAsync(_owner); }
         private async void OnSave(object sender, RoutedEventArgs args)
         { if (_settings is not null) await _settings.SaveAsync(_owner); }
         private void OnCancel(object sender, RoutedEventArgs args) => _settings?.CancelEdits();

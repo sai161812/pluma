@@ -22,6 +22,9 @@ ABSENT_REVISION = "absent"
 EDITABLE_FIELDS = frozenset({
     "agent.text_hotkey", "agent.stop_hotkey", "agent.voice_hotkey",
     "agent.max_plan_steps", "brain.model_path", "voice.model_path",
+    "runtime.model_idle_unload_seconds", "runtime.stt_idle_unload_seconds",
+    "runtime.ocr_idle_unload_seconds", "runtime.allow_short_warm_grace",
+    "voice.activation_default", "brain.runtime",
 })
 
 
@@ -128,6 +131,14 @@ def _validate(overrides):
     from pluma.brain.schemas import MAX_PLAN_STEPS_HARD_CAP
     if type(steps) is not int or not 1 <= steps <= MAX_PLAN_STEPS_HARD_CAP:
         raise SettingsError("SETTINGS_INVALID_PLAN_LIMIT")
+    for name in ("model", "stt", "ocr"):
+        delay = get(config, "runtime", name + "_idle_unload_seconds")
+        if type(delay) is not int or not 0 <= delay <= 30:
+            raise SettingsError("SETTINGS_INVALID_GRACE")
+    if (type(get(config, "runtime", "allow_short_warm_grace")) is not bool
+            or get(config, "voice", "activation_default") != "push_to_talk"
+            or get(config, "brain", "runtime") != "llama_cpp"):
+        raise SettingsError("SETTINGS_UNSUPPORTED_RUNTIME")
     # Saving cannot launder legacy overrides that violate the locked runtime laws.
     required = {
         "voice.required": True, "voice.wake_phrase_enabled": False,
@@ -158,7 +169,8 @@ def _apply(overrides, changes):
                 if not Path(value).is_file():
                     raise SettingsError("SETTINGS_INVALID_MODEL_PATH")
                 with Path(value).open("rb") as stream:
-                    if not stream.read(1):
+                    expected_magic = b"GGUF" if section == "brain" else b"lmgg"
+                    if stream.read(4) != expected_magic or not stream.read(4):
                         raise SettingsError("SETTINGS_INVALID_MODEL_PATH")
             except OSError:
                 raise SettingsError("SETTINGS_INVALID_MODEL_PATH") from None
@@ -235,6 +247,38 @@ class SettingsStore:
         overrides, version = decode_settings(raw)
         _validate(overrides)
         return SettingsSnapshot(overrides, _revision(raw), version)
+
+    def recovery_state(self):
+        raw = _read(self.path)
+        if raw is None:
+            raise SettingsError("SETTINGS_NO_RECOVERY_NEEDED")
+        try:
+            overrides = decode_settings(raw)[0]
+            _validate(overrides)
+        except SettingsError:
+            return _revision(raw), self.previous()
+        raise SettingsError("SETTINGS_NO_RECOVERY_NEEDED")
+
+    def restore_previous(self, *, expected_revision, previous_revision, scratch_dir):
+        """Explicit recovery only. Preserve rejected source without exposing its contents."""
+        with _exclusive(self.path.with_name(self.path.name + ".lock")):
+            current, previous = self.recovery_state()
+            if current != expected_revision or previous.revision != previous_revision:
+                raise SettingsError("SETTINGS_CONFLICT")
+            raw, valid = _read(self.path), _read(self.backup_path)
+            rejected = self.path.with_name(self.path.name + ".rejected." + current)
+            if rejected.is_symlink():
+                raise SettingsError("SETTINGS_LINK_REFUSED")
+            if rejected.exists() and _read(rejected) != raw:
+                raise SettingsError("SETTINGS_RECOVERY_CONFLICT")
+            if not rejected.exists():
+                _replace(rejected, raw, directory=scratch_dir)
+            if _read(rejected) != raw or _read(self.path) != raw or _read(self.backup_path) != valid:
+                raise SettingsError("SETTINGS_CONFLICT")
+            _replace(self.path, valid, directory=scratch_dir)
+            if self.snapshot().revision != previous_revision:
+                raise SettingsError("SETTINGS_RECOVERY_UNVERIFIED")
+            return previous
 
     def save(self, changes, *, expected_revision, scratch_dir=None):
         # Reject malformed requests before creating even a lock or directory.

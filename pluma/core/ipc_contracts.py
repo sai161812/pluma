@@ -8,6 +8,8 @@ from pydantic import (BaseModel, ConfigDict, Field, StrictBool, StrictInt,
                       StrictStr, ValidationError, model_validator)
 
 
+from pluma.config.settings_contract import FIELDS
+
 PROTOCOL_VERSION = 1
 
 
@@ -115,8 +117,9 @@ class SettingsEditSnapshotV1(BaseModel):
     revision: StrictStr = Field(pattern=r"^(?:absent|[0-9a-f]{64})$")
     persisted: SettingsValues
     effective: SettingsValues
-    editable_fields: list[Literal["max_plan_steps"]] = Field(default_factory=lambda: ["max_plan_steps"])
-    restart_fields: list[Literal["text_hotkey", "stop_hotkey", "voice_hotkey", "max_plan_steps"]] = Field(max_length=4)
+    previous_revision: Optional[StrictStr] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    editable_fields: list[StrictStr] = Field(default_factory=lambda: list(FIELDS))
+    restart_fields: list[StrictStr] = Field(max_length=12)
 
 
 class VoiceQueryV1(_Envelope):

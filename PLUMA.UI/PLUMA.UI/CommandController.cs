@@ -79,7 +79,7 @@ internal sealed class CoreCommandClient(CoreIpcClient client) : ICommandClient
             if (!capability.IsSuccess || capability.Response is not { SubmissionStopFence: true })
                 return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Protocol);
             token.ThrowIfCancellationRequested();
-            return await client.SaveSettingsAsync(new(request, revision, edits), token);
+            return await client.SaveSettingsAsync(new(request, revision, edits, edits.RecoveryRevision), token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         { return CoreRequestResult<CoreRequestProtocol.SubmissionAck>.Failed(CoreConnectionFailure.Timeout); }
@@ -124,6 +124,9 @@ internal sealed class CommandController(ICommandClient client, TimeSpan? pollInt
         }
         Publish();
     }
+
+    internal Task SubmitSettingsAsync(string revision, CoreRequestProtocol.SettingsEdits edits) =>
+        SubmitAsync("Save PLUMA settings.", settings: edits, settingsRevision: revision);
 
     internal Task SubmitSettingsAsync(string revision, int limit) =>
         SubmitAsync("Save PLUMA settings.", settings: new(limit), settingsRevision: revision);

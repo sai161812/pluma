@@ -77,15 +77,16 @@ def scratch(state):
 
 def restored_values(overrides, state):
     result = deepcopy(overrides)
-    agent = result.setdefault("agent", {})
+    sections = state.get("sections_present", {"agent": state.get("agent_present", True)})
     for field, old in state["before"].items():
-        key = field.split(".")[1]
+        section, key = field.split(".")
+        values = result.setdefault(section, {})
         if old["present"]:
-            agent[key] = old["value"]
+            values[key] = old["value"]
         else:
-            agent.pop(key, None)
-    if not agent and not state["agent_present"]:
-        result.pop("agent", None)
+            values.pop(key, None)
+        if not values and not sections.get(section, True):
+            result.pop(section, None)
     return result
 
 
@@ -99,12 +100,20 @@ def capture_settings(args, context):
         raise SettingsError("SETTINGS_CONFLICT")
     changes = patch(args)
     updated = _apply(observed.overrides, changes)
-    agent = observed.overrides.get("agent", {})
-    before = {field: {"present": field.split(".")[1] in agent,
-                      "value": agent.get(field.split(".")[1])} for field in changes}
+    from pluma.config.settings import _hotkey
+    from pluma.config.loader import _load_yaml, _DEFAULTS_FILE, _merge, get
+    current = _merge(_load_yaml(_DEFAULTS_FILE), observed.overrides)
+    changed_bindings = [value for field,value in changes.items() if field.endswith("_hotkey")
+                        and _hotkey(value) != _hotkey(get(current, *field.split("."), default="ctrl+alt+v"))]
+    if changed_bindings:
+        from pluma.adapters.hotkeys import probe_changed
+        probe_changed(changed_bindings)
+    before = {field: {"present": field.split(".")[1] in observed.overrides.get(field.split(".")[0], {}),
+                      "value": observed.overrides.get(field.split(".")[0], {}).get(field.split(".")[1])} for field in changes}
     state = {"action": "settings_write", "guard_version": 1, "path": str(store.path),
              "before_revision": proof_revision(observed.revision), "after_revision": proof_revision(_revision(encoded(updated))),
-             "changes": changes, "before": before, "agent_present": "agent" in observed.overrides}
+             "changes": changes, "before": before, "agent_present": "agent" in observed.overrides,
+             "sections_present": {field.split(".")[0]: field.split(".")[0] in observed.overrides for field in changes}}
     reverse = restored_values(updated, state)
     state["restored_revision"] = proof_revision(_revision(None) if observed.revision == "absent"
                                                else _revision(encoded(reverse)))
@@ -165,8 +174,8 @@ def restore_settings(state):
                 raise SettingsError("SETTINGS_UNDO_CONFLICT")
             # Only the captured public agent fields can be restored, never a
             # policy/path value smuggled in through a stored inverse.
-            from pluma.config.settings_contract import FIELDS
-            if not state["before"] or set(state["before"]) - {"agent." + key for key in FIELDS}:
+            from pluma.config.settings_contract import FIELD_PATHS
+            if not state["before"] or set(state["before"]) - set(FIELD_PATHS.values()):
                 raise SettingsError("SETTINGS_UNDO_INVALID")
             if state["before_revision"] == "absent":
                 store.path.unlink()
@@ -205,3 +214,49 @@ def recover_pending_settings(pending):
 SETTINGS_TOOL_SPECS = [ToolSpec(name="save_settings", description="Save explicitly selected PLUMA settings; restart required.",
     args_schema=SettingsSaveArgs, risk_class=RiskClass.MEDIUM, timeout_s=10, process_isolated=True,
     executor=execute_settings, verifier=verify_settings, undo_builder=capture_settings)]
+
+
+def capture_recovery(args, context):
+    store = SettingsStore(context.settings_path)
+    current, previous = store.recovery_state()
+    if current != args["expected_revision"] or previous.revision != args["previous_revision"]:
+        raise SettingsError("SETTINGS_CONFLICT")
+    return {"action":"non_undoable", "non_undoable":True, "operation":"recover_settings", "path":str(store.path),
+            "before_revision":proof_revision(current), "after_revision":proof_revision(previous.revision),
+            "reason":"Restore the last valid source; preserve the rejected source separately. No automatic undo."}
+
+
+def execute_recovery(args, context):
+    try:
+        state=next(item["pre_state"] for item in reversed(context.undo_stack)
+                   if item.get("action")=="pending_mutation" and item.get("tool")=="recover_settings")
+        if (state["path"]!=context.settings_path or raw_revision(state["before_revision"])!=args["expected_revision"]
+                or raw_revision(state["after_revision"])!=args["previous_revision"]):
+            raise SettingsError("SETTINGS_BINDING_CHANGED")
+        context.cancellation_token.raise_if_cancelled()
+        SettingsStore(context.settings_path).restore_previous(expected_revision=args["expected_revision"],
+            previous_revision=args["previous_revision"],scratch_dir=scratch(state))
+        return ToolResult.success("recover_settings", data={"recovered":True,"restart_required":True},
+            factual_message="Restored previous valid settings. Rejected source preserved. Restart Core to apply.").model_copy(
+                update={"private_context":{"settings_recovery":state}})
+    except Exception:
+        return ToolResult.failure("recover_settings","Recovery was not verified. Source evidence retained.","SETTINGS_RECOVERY_FAILED")
+
+
+def verify_recovery(result):
+    try:
+        state=result.private_context["settings_recovery"]
+        store=SettingsStore(state["path"])
+        from pluma.config.settings import _read
+        rejected=store.path.with_name(store.path.name+".rejected."+raw_revision(state["before_revision"]))
+        ok=(result.ok and store.snapshot().revision==raw_revision(state["after_revision"])
+            and _revision(_read(rejected))==raw_revision(state["before_revision"]))
+    except Exception:
+        ok=False
+    return VerifyResult(ok=ok,method="independent_settings_recovery_readback",detail="Recovery source and retained original checked.")
+
+
+from pluma.config.settings_contract import SettingsRecoveryArgs
+SETTINGS_TOOL_SPECS.append(ToolSpec(name="recover_settings",description="Restore last valid local settings, preserving rejected source; no automatic undo.",
+    args_schema=SettingsRecoveryArgs,risk_class=RiskClass.MEDIUM,timeout_s=10,process_isolated=True,non_undoable=True,
+    executor=execute_recovery,verifier=verify_recovery,undo_builder=capture_recovery))

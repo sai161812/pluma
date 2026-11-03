@@ -118,6 +118,7 @@ internal static class NativeConfirmationChecks
         internal string Pipe = "pluma_p16_native_" + Guid.NewGuid().ToString("N");
         private readonly string _root = Path.Combine(Path.GetTempPath(), "PLUMA-P16-" + Guid.NewGuid().ToString("N"));
         internal string Key => Path.Combine(_root, "Pluma", "ipc_secret.key");
+        internal string OwnedRoot => _root;
         private Process _process = null!;
         private DateTime _created;
         private Task<string> _errors = null!, _output = null!;
