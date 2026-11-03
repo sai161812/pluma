@@ -1466,6 +1466,30 @@ class ToolRegistry:
                     ),
                 )
 
+        settings_source = self.settings_path if tool_name == "save_settings" else None
+        if tool_name == "undo_last" and self.settings_path is not None:
+            from pluma.tools.settings import peek_settings
+            lookup_spec = spec.model_copy(update={"undo_builder": peek_settings})
+            captured = self._owned_prestate(lookup_spec, validated_args, task_context, token,
+                max(0.0, call_deadline - time.monotonic()))
+            if not captured.ok:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, captured)
+            settings_source = captured.data["pre_state"].get("path")
+        if settings_source is not None:
+            try:
+                from pluma.tools.settings import stage_settings
+                if settings_source != self.settings_path:
+                    raise ValueError("Settings source is not the active configured source.")
+                staging = stage_settings(task_context, ledger, settings_source)
+                execution_binding = dict(execution_binding or {}, settings_staging=staging)
+                if tool_name == "save_settings":
+                    pre_undo_data["staging"] = staging
+            except Exception:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        "Owned settings storage could not be verified. No action was executed.", "SETTINGS_OWNERSHIP_UNAVAILABLE"))
+
         worker_req = WorkerRequest(
             task_id=task_id,
             tool_name=tool_name,

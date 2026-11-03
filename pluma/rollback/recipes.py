@@ -116,6 +116,9 @@ def _recipe_window_geometry(undo_data):
 
 def _recipe_pending_mutation(undo_data: Dict[str, Any]) -> RollbackStepResult:
     """Unknown partial effects are retained, never guessed at by a generic inverse."""
+    if undo_data.get('tool') == 'save_settings':
+        from pluma.tools.settings import recover_pending_settings
+        return recover_pending_settings(undo_data)
     if undo_data.get('tool') == 'safe_delete':
         from pluma.adapters.recycle_bin import recover_pending
         try:

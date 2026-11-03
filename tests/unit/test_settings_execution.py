@@ -127,6 +127,22 @@ def test_policy_denial_and_stale_revision_never_mutate(runtime):
     assert not result.ok and store.snapshot() == latest
 
 
+def test_typed_denial_is_a_verified_failed_terminal_not_a_verified_action(runtime):
+    runtime.policy_engine.confirmation_contract = CallbackConfirmationContract(
+        lambda request: ConfirmationResponse(approved=False))
+    ack = runtime.resident_core.handle_ipc_command(dict(protocol_version=1, message_type="settings_save",
+        request_id=str(uuid.uuid4()), **save_args(runtime)))
+    terminal = wait_terminal(runtime, ack)
+    # Completion verification describes the terminal lifecycle, not action success.
+    end = time.monotonic() + 2
+    while not terminal["completion_verified"] and time.monotonic() < end:
+        terminal = wait_terminal(runtime, ack)
+    assert terminal["completion_verified"] and terminal["final_state"] == "FAILED"
+    assert terminal["terminal_persisted"] and not terminal["has_residual"]
+    assert not Path(runtime.settings_path).exists()
+    assert not ActivityQuery(runtime.db).actions_for_task(ack["task_id"])[0]["verified"]
+
+
 @pytest.mark.parametrize("changes", [{}, {"max_plan_steps": True}, {"max_plan_steps": 21},
     {"stop_hotkey": None}, {"stop_hotkey": "ctrl+shift+s"}, {"voice_required": False},
     {"model_path": "C:/unverified.gguf"}, {"permanent_elevation": True}])
@@ -198,6 +214,8 @@ def test_actual_settings_wire_fixture_starts_and_joins_its_graph(tmp_path):
 
 
 def blocked_save(args, context):
+    staging = Path(context.execution_binding["settings_staging"]["path"])
+    (staging / "partial.tmp").write_text("owned partial transaction fixture", encoding="utf-8")
     marker = Path(context.settings_path).with_suffix(".entered")
     marker.write_text("owned settings worker", encoding="utf-8")
     while True:
@@ -205,11 +223,23 @@ def blocked_save(args, context):
         time.sleep(.01)
 
 
+def committed_then_blocked(args, context):
+    from pluma.tools.settings import execute_settings
+    result = execute_settings(args, context)
+    if not result.ok:
+        raise RuntimeError("Owned fixture did not commit settings.")
+    return blocked_save(args, context)
+
+
 @pytest.mark.parametrize("stop", [True, False])
-def test_stop_or_timeout_retains_intent_and_verifies_worker_absence(runtime, stop):
+@pytest.mark.parametrize("committed", [True, False])
+def test_stop_or_timeout_recovers_atomic_state_and_owned_staging(runtime, stop, committed):
     spec = runtime.tool_registry.lookup("save_settings")
-    runtime.tool_registry.register(spec.model_copy(update={"executor": blocked_save, "timeout_s": 2.5}), overwrite=True)
+    runtime.tool_registry.register(spec.model_copy(update={"executor": committed_then_blocked if committed else blocked_save,
+                                                        "timeout_s": 2.5}), overwrite=True)
     cap = task(runtime)
+    owner_file = Path(runtime.settings_path).with_name("owner-preserved.txt")
+    owner_file.write_text("preserve owner file", encoding="utf-8")
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(runtime.tool_registry.execute, "save_settings", save_args(runtime), cap, runtime.ledger)
         marker = Path(runtime.settings_path).with_suffix(".entered")
@@ -219,12 +249,37 @@ def test_stop_or_timeout_retains_intent_and_verifies_worker_absence(runtime, sto
         assert marker.exists()
         worker = cap.worker_controller
         identity = dict(worker.worker_identity)
+        directory = Path(next(resource.external_id for resource in cap.owned_resources if resource.resource_type == "temp_dir"))
+        assert (directory / "partial.tmp").is_file()
+        assert Path(runtime.settings_path).exists() == committed
+        journal = runtime.db.execute_read_one("SELECT ownership,metadata_json FROM resources WHERE task_id=? AND external_id=?",
+                                              (cap.task_id, str(directory)))
+        assert journal["ownership"] == "PLUMA_CREATED" and "cleanup_identity" in json.loads(journal["metadata_json"])
         if stop:
             runtime.supervisor.stop_task(cap.task_id)
         result = future.result(5)
+    if not stop:
+        runtime.supervisor.stop_task(cap.task_id)
     assert not result.ok and not Path(runtime.settings_path).exists()
     assert worker.verify_cleanup() and worker.worker_identity["exit_code"] is not None
     assert worker.worker_identity["pid"] == identity["pid"]
+    assert not directory.exists() and owner_file.read_text(encoding="utf-8") == "preserve owner file"
+    assert any(check.identity.get("resource_type") == "temp_dir" and check.verified for check in cap.cleanup_evidence)
     rows = ActivityQuery(runtime.db).actions_for_task(cap.task_id)
     assert rows and not any(row["verified"] for row in rows)
-    assert cap.undo_stack and cap.undo_stack[-1]["action"] == "pending_mutation"
+    assert not cap.undo_stack and not cap.cleanup_pending
+    record = runtime.db.execute_read_one("SELECT available,rollback_ok FROM undo_records WHERE action_id=?", (rows[0]["id"],))
+    assert list(record) == [0, 1]
+
+
+def test_pending_recovery_refuses_a_third_owner_state(runtime):
+    from pluma.tools.settings import recover_pending_settings
+
+    cap = task(runtime)
+    result = runtime.tool_registry.execute("save_settings", save_args(runtime), cap, runtime.ledger)
+    assert result.ok
+    proof = cap.undo_stack[-1]
+    store = SettingsStore(runtime.settings_path)
+    owner = store.save({"agent.max_plan_steps": 6}, expected_revision=store.snapshot().revision)
+    assert not recover_pending_settings({"pre_state": proof}).ok
+    assert store.snapshot() == owner and cap.undo_stack[-1] == proof

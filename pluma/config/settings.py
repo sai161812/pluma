@@ -169,9 +169,9 @@ def _apply(overrides, changes):
     return result
 
 
-def _replace(path, raw):
+def _replace(path, raw, *, directory=None):
     """Flush a private sibling, atomically replace, then independently read back."""
-    fd, name = tempfile.mkstemp(prefix=".pluma-settings-", suffix=".tmp", dir=path.parent)
+    fd, name = tempfile.mkstemp(prefix=".pluma-settings-", suffix=".tmp", dir=directory or path.parent)
     temporary = Path(name)
     try:
         with os.fdopen(fd, "wb") as stream:
@@ -236,7 +236,7 @@ class SettingsStore:
         _validate(overrides)
         return SettingsSnapshot(overrides, _revision(raw), version)
 
-    def save(self, changes, *, expected_revision):
+    def save(self, changes, *, expected_revision, scratch_dir=None):
         # Reject malformed requests before creating even a lock or directory.
         if type(changes) is not dict or not changes or set(changes) - EDITABLE_FIELDS:
             raise SettingsError("SETTINGS_UNSUPPORTED_FIELD")
@@ -260,13 +260,13 @@ class SettingsStore:
                 if before is not None:
                     if self.backup_path.is_symlink():
                         raise SettingsError("SETTINGS_LINK_REFUSED")
-                    _replace(self.backup_path, before)
+                    _replace(self.backup_path, before, directory=scratch_dir)
                     if _read(self.backup_path) != before:
                         raise SettingsError("SETTINGS_BACKUP_UNVERIFIED")
                 if _read(self.path) != before:
                     raise SettingsError("SETTINGS_CONFLICT")
                 try:
-                    _replace(self.path, payload)
+                    _replace(self.path, payload, directory=scratch_dir)
                     readback = self.snapshot()
                     if readback.revision != _revision(payload) or readback.overrides != updated:
                         raise SettingsError("SETTINGS_WRITE_UNVERIFIED")
@@ -281,7 +281,7 @@ class SettingsStore:
                             if before is None:
                                 self.path.unlink()
                             else:
-                                _replace(self.path, before)
+                                _replace(self.path, before, directory=scratch_dir)
                             restored = _read(self.path) == before
                         elif current == before:
                             restored = True

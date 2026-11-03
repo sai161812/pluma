@@ -12,7 +12,7 @@ internal static partial class Program
         while (clock.Elapsed < TimeSpan.FromSeconds(12))
         {
             var terminal = (await client.GetTerminalReadbackAsync(ack.RequestId, ack.TaskId!, default)).Response;
-            if (terminal?.Terminal == true) return terminal;
+            if (terminal is { Terminal: true, CompletionVerified: true }) return terminal;
             await Task.Delay(10);
         }
         throw new InvalidOperationException("Owned settings task did not complete within its tool/cleanup budget.");
@@ -78,8 +78,8 @@ internal static partial class Program
                 var terminal = await SettingsTerminalAsync(client, submission.Response!);
                 Check(terminal is { TerminalPersisted: true } && (approve
                     ? terminal is { FinalState: "SUCCEEDED", CompletionVerified: true }
-                    : terminal is { FinalState: "FAILED", CompletionVerified: false }),
-                    "settings terminal/ledger readback reflects actual approval or denial");
+                    : terminal is { FinalState: "FAILED", CompletionVerified: true, HasResidual: false }),
+                    "settings terminal/ledger readback reflects actual approval or denial: " + JsonSerializer.Serialize(terminal));
                 var observed = (await client.GetSettingsEditAsync(Id(), default)).Response!;
                 Check(observed.Persisted.MaxPlanSteps == 4 && observed.Effective.MaxPlanSteps == 8
                     && observed.RestartFields.SequenceEqual(new[] { "max_plan_steps" }),

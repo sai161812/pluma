@@ -1,7 +1,9 @@
 """Owned settings Save with minimum field pre-state and guarded semantic undo."""
 from copy import deepcopy
 import json
+from pathlib import Path
 import re
+import tempfile
 
 from pluma.config.settings import (SettingsError, SettingsStore, _apply, _exclusive,
                                    _replace, _revision, SCHEMA_VERSION)
@@ -26,6 +28,50 @@ def raw_revision(revision):
     if not isinstance(revision, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", revision):
         raise SettingsError("SETTINGS_INVALID_PROOF")
     return revision[7:]
+
+
+def stage_settings(context, ledger, path):
+    """Parent publishes exact directory identity before any settings bytes exist."""
+    from pluma.core.task_supervisor import ResourceOwnership
+    from pluma.memory.activity import ResourceRecord
+    if context is None or ledger is None or path is None:
+        raise SettingsError("SETTINGS_OWNERSHIP_UNAVAILABLE")
+    store = SettingsStore(path)
+    with context.work_lock:
+        context.cancellation_token.raise_if_cancelled()
+        store.path.parent.mkdir(parents=True, exist_ok=True)
+        directory = Path(tempfile.mkdtemp(prefix=".pluma-settings-" + context.task_id + "-", dir=store.path.parent))
+        resource = context.register_owned_resource("temp_dir", ResourceOwnership.PLUMA_CREATED, str(directory))
+        identity = resource.metadata.get("cleanup_identity")
+        if not identity:
+            raise SettingsError("SETTINGS_OWNERSHIP_UNAVAILABLE")
+        ledger.insert_resource(ResourceRecord(id=resource.resource_id, task_id=context.task_id,
+            resource_type="temp_dir", ownership="PLUMA_CREATED", external_id=str(directory), metadata=resource.metadata))
+        row = ledger._db.execute_read_one("SELECT external_id,metadata_json FROM resources WHERE id=?", (resource.resource_id,))
+        if row is None or row["external_id"] != str(directory) or json.loads(row["metadata_json"]) != resource.metadata:
+            raise SettingsError("SETTINGS_OWNERSHIP_UNVERIFIED")
+        context.cancellation_token.raise_if_cancelled()
+        return {"path": str(directory), "identity": identity}
+
+
+def peek_settings(args, context):
+    from pluma.memory.tool_store import connect
+    from pluma.memory.undo import _latest_available
+    with connect(context.storage_path) as connection:
+        latest = _latest_available(connection, args.get("selection"))
+    state = latest[1] if latest else {}
+    return {"action": "settings_lookup", "path": state.get("path") if state.get("action") == "settings_write" else None}
+
+
+def scratch(state):
+    from pluma.core.ownership import capture_temp_identity
+    directory = Path(state["staging"]["path"])
+    observed = capture_temp_identity(directory)
+    expected = state["staging"]["identity"]
+    if (directory.parent != Path(state["path"]).parent or not directory.is_dir()
+            or any(observed[key] != expected[key] for key in ("device", "inode"))):
+        raise SettingsError("SETTINGS_SCRATCH_IDENTITY_CHANGED")
+    return directory
 
 
 def restored_values(overrides, state):
@@ -69,10 +115,12 @@ def execute_settings(args, context):
         state = next(item["pre_state"] for item in reversed(context.undo_stack)
                      if item.get("action") == "pending_mutation" and item.get("tool") == "save_settings")
         if (state["path"] != context.settings_path or state["changes"] != patch(args)
-                or raw_revision(state["before_revision"]) != args["expected_revision"]):
+                or raw_revision(state["before_revision"]) != args["expected_revision"]
+                or state["staging"] != context.execution_binding["settings_staging"]):
             raise SettingsError("SETTINGS_BINDING_CHANGED")
         context.cancellation_token.raise_if_cancelled()
-        result = SettingsStore(state["path"]).save(state["changes"], expected_revision=raw_revision(state["before_revision"]))
+        result = SettingsStore(state["path"]).save(state["changes"], expected_revision=raw_revision(state["before_revision"]),
+                                                  scratch_dir=scratch(state))
         if result.revision != raw_revision(state["after_revision"]):
             raise SettingsError("SETTINGS_WRITE_UNVERIFIED")
         return ToolResult.success("save_settings", data={"revision": result.revision,
@@ -109,6 +157,7 @@ def restore_settings(state):
     from pluma.rollback.recipes import RollbackStepResult
     try:
         store = SettingsStore(state["path"])
+        directory = scratch(state)
         with _exclusive(store.path.with_name(store.path.name + ".lock")):
             observed = store.snapshot()
             if observed.revision != raw_revision(state["after_revision"]) or state.get("guard_version") != 1:
@@ -124,7 +173,7 @@ def restore_settings(state):
                 raw = encoded(restored_values(observed.overrides, state))
                 if _revision(raw) != raw_revision(state["restored_revision"]):
                     raise SettingsError("SETTINGS_UNDO_INVALID")
-                _replace(store.path, raw)
+                _replace(store.path, raw, directory=directory)
             if not verify_restored(state):
                 raise SettingsError("SETTINGS_UNDO_UNVERIFIED")
         return RollbackStepResult(ok=True, action="settings_write",
@@ -132,6 +181,24 @@ def restore_settings(state):
     except Exception:
         return RollbackStepResult(ok=False, action="settings_write",
                                   message="Settings undo conflicts or is unverified.", error="ROLLBACK_CONFLICT")
+
+
+def recover_pending_settings(pending):
+    from pluma.rollback.recipes import RollbackStepResult
+    try:
+        state = pending["pre_state"]
+        if state.get("guard_version") != 1 or state.get("action") != "settings_write":
+            raise SettingsError("SETTINGS_INVALID_PROOF")
+        observed = SettingsStore(state["path"]).snapshot()
+        if observed.revision == raw_revision(state["before_revision"]):
+            return RollbackStepResult(ok=True, action="pending_mutation",
+                message="Settings source independently matches captured pre-state.")
+        if observed.revision == raw_revision(state["after_revision"]):
+            return restore_settings(state)
+    except Exception:
+        pass
+    return RollbackStepResult(ok=False, action="pending_mutation",
+        message="Settings source differs from both captured states. Evidence retained.", error="ROLLBACK_CONFLICT")
 
 
 SETTINGS_TOOL_SPECS = [ToolSpec(name="save_settings", description="Save explicitly selected PLUMA settings; restart required.",
