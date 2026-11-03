@@ -55,6 +55,7 @@ def selection(connection, task_id, action_id):
     # Paths/key identify the material effect. Never include before/after values,
     # browser profiles, private text or process handles from an inverse recipe.
     descriptions = {
+        'settings_write': 'Restore the captured settings values. Core restart is required.',
         'copy_file': 'Remove only the captured unchanged copy.',
         'create_folder': 'Remove only the captured unchanged empty folder.',
         'safe_delete': 'Restore the exact captured Recycle Bin item to its original path.',
@@ -79,6 +80,9 @@ def selection(connection, task_id, action_id):
             if len(previous.encode('utf-8')) > 2048:
                 raise ValueError('Previous entry cannot be displayed within the safe material bound.')
             material += '\nRestore previous entry: ' + previous
+    if state['action'] == 'settings_write':
+        for field, previous in state['before'].items():
+            material += '\n' + field.replace('_', ' ') + ': ' + (str(previous['value']) if previous['present'] else 'Reset to default')
     for name in ('hwnd', 'pid', 'creation_time'):
         if type(state.get(name)) is int:
             material += '\n' + name.upper() + ': ' + str(state[name])

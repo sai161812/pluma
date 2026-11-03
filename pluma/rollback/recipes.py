@@ -373,6 +373,8 @@ class RollbackRecipes:
         self._register_defaults()
 
     def _register_defaults(self) -> None:
+        from pluma.tools.settings import restore_settings
+        self.register("settings_write", restore_settings)
         self.register("memory_write", _recipe_memory_write)
         self.register('clipboard_restore', _recipe_clipboard_restore)
         self.register("window_geometry", _recipe_window_geometry)

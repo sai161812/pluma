@@ -1,0 +1,218 @@
+"""P21 owned native workers/files, no desktop/hotkey/model/device activation."""
+import json
+from pathlib import Path
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+
+import pytest
+
+from pluma.app import PlumaApplicationRuntime
+from pluma.config.loader import load_config
+from pluma.config.paths import PlumaPaths
+from pluma.config.settings import SettingsStore
+from pluma.core import job_object
+from pluma.memory.activity import ActivityQuery
+from pluma.rollback.recipes import RollbackRecipes
+from pluma.tools.registry import ToolArgumentError
+from pluma.ui.confirmations import CallbackConfirmationContract, ConfirmationResponse
+from tests.unit.test_runtime_shutdown import NATIVE_JOB, task
+
+
+@pytest.fixture
+def runtime(tmp_path, monkeypatch):
+    monkeypatch.setattr(job_object, "WindowsJobObject", NATIVE_JOB)
+    paths = PlumaPaths(tmp_path / "local", tmp_path / "roaming")
+    paths.ensure_directories()
+    value = PlumaApplicationRuntime(paths, config=load_config(tmp_path / "absent.json"))
+    value.policy_engine.confirmation_contract = CallbackConfirmationContract(
+        lambda request: ConfirmationResponse(approved=True))
+    yield value
+    assert value.close(5).complete
+    assert value.tool_registry.work_gate.wait_idle(0)
+    assert not value.tool_registry._worker_controllers
+
+
+def query(runtime):
+    return runtime.resident_core.handle_ipc_command({"protocol_version": 1,
+        "message_type": "settings_edit_query", "request_id": str(uuid.uuid4())})
+
+
+def save_args(runtime, **changes):
+    return {"expected_revision": SettingsStore(runtime.settings_path).snapshot().revision,
+            "changes": changes or {"max_plan_steps": 4}}
+
+
+def wait_terminal(runtime, ack):
+    end = time.monotonic() + 8
+    while time.monotonic() < end:
+        reply = runtime.resident_core.handle_ipc_command({"protocol_version": 1,
+            "message_type": "terminal_readback", "request_id": ack["request_id"], "task_id": ack["task_id"]})
+        if reply.get("terminal"):
+            return reply
+        time.sleep(.01)
+    pytest.fail("Owned settings task did not reach persisted terminal state.")
+
+
+def test_typed_save_duplicate_restart_projection_and_ledger(runtime):
+    original = query(runtime)
+    assert original["revision"] == "absent" and original["restart_fields"] == []
+    payload = dict(protocol_version=1, message_type="settings_save", request_id=str(uuid.uuid4()),
+                   **save_args(runtime, max_plan_steps=4))
+    ack = runtime.resident_core.handle_ipc_command(payload)
+    assert ack["accepted"]
+    duplicate = runtime.resident_core.handle_ipc_command(payload)
+    assert duplicate["task_id"] == ack["task_id"]
+    terminal = wait_terminal(runtime, ack)
+    assert terminal["final_state"] == "SUCCEEDED" and terminal["completion_verified"]
+    current = query(runtime)
+    assert current["persisted"]["max_plan_steps"] == 4
+    assert current["effective"]["max_plan_steps"] == 8
+    assert current["restart_fields"] == ["max_plan_steps"]
+    assert current["editable_fields"] == ["max_plan_steps"]
+    assert runtime.llm_lifecycle.adapter.max_plan_steps == 8
+    assert runtime.llm_lifecycle.state.value == "COLD"
+    rows = ActivityQuery(runtime.db).actions_for_task(ack["task_id"])
+    assert len(rows) == 1 and rows[0]["tool"] == "save_settings" and rows[0]["verified"]
+    assert json.loads(rows[0]["verification_json"])["method"] == "independent_settings_readback"
+    assert runtime.resident_core.handle_ipc_command(dict(payload, changes={"max_plan_steps": 5}))["error_code"] == "REQUEST_ID_REUSED"
+
+
+def test_native_settings_write_semantic_undo_and_private_prestate(runtime):
+    path = Path(runtime.settings_path)
+    path.write_text(json.dumps({"custom": {"password": "PRIVATE_OWNED_SETTINGS_FIXTURE"},
+                               "agent": {"max_plan_steps": 3}}), encoding="utf-8")
+    cap = task(runtime)
+    result = runtime.tool_registry.execute("save_settings", save_args(runtime), cap, runtime.ledger)
+    assert result.ok and result.verified
+    proof = cap.undo_stack[-1]
+    assert proof["action"] == "settings_write" and proof["before"] == {"agent.max_plan_steps": {"present": True, "value": 3}}
+    assert "PRIVATE_OWNED_SETTINGS_FIXTURE" not in json.dumps(proof)
+    assert "PRIVATE_OWNED_SETTINGS_FIXTURE" not in json.dumps(query(runtime))
+    assert RollbackRecipes().apply("settings_write", proof).ok
+    assert load_config(path)["agent"]["max_plan_steps"] == 3
+    assert load_config(path)["custom"]["password"] == "PRIVATE_OWNED_SETTINGS_FIXTURE"
+    assert not RollbackRecipes().apply("settings_write", proof).ok
+
+
+def test_undo_restores_absence_and_refuses_owner_edit(runtime):
+    cap = task(runtime)
+    result = runtime.tool_registry.execute("save_settings", save_args(runtime), cap, runtime.ledger)
+    assert result.ok
+    proof = cap.undo_stack[-1]
+    assert RollbackRecipes().apply("settings_write", proof).ok
+    assert not Path(runtime.settings_path).exists()
+    cap2 = task(runtime, "settings-second")
+    result = runtime.tool_registry.execute("save_settings", save_args(runtime), cap2, runtime.ledger)
+    assert result.ok
+    proof2 = cap2.undo_stack[-1]
+    store = SettingsStore(runtime.settings_path)
+    latest = store.save({"agent.max_plan_steps": 6}, expected_revision=store.snapshot().revision)
+    assert not RollbackRecipes().apply("settings_write", proof2).ok
+    assert store.snapshot() == latest
+
+
+def test_policy_denial_and_stale_revision_never_mutate(runtime):
+    runtime.policy_engine.confirmation_contract = CallbackConfirmationContract(
+        lambda request: ConfirmationResponse(approved=False))
+    cap = task(runtime)
+    result = runtime.tool_registry.execute("save_settings", save_args(runtime), cap, runtime.ledger)
+    assert not result.ok and result.error_code == "POLICY_DENIED"
+    assert cap.worker_controller is None and not Path(runtime.settings_path).exists()
+    runtime.policy_engine.confirmation_contract = CallbackConfirmationContract(
+        lambda request: ConfirmationResponse(approved=True))
+    store = SettingsStore(runtime.settings_path)
+    latest = store.save({"agent.max_plan_steps": 6}, expected_revision="absent")
+    result = runtime.tool_registry.execute("save_settings", {"expected_revision": "absent", "changes": {"max_plan_steps": 4}}, cap, runtime.ledger)
+    assert not result.ok and store.snapshot() == latest
+
+
+@pytest.mark.parametrize("changes", [{}, {"max_plan_steps": True}, {"max_plan_steps": 21},
+    {"stop_hotkey": None}, {"stop_hotkey": "ctrl+shift+s"}, {"voice_required": False},
+    {"model_path": "C:/unverified.gguf"}, {"permanent_elevation": True}])
+def test_invalid_edits_are_rejected_before_policy_or_admission(runtime, changes):
+    payload = dict(protocol_version=1, message_type="settings_save", request_id=str(uuid.uuid4()),
+                   expected_revision="absent", changes=changes)
+    assert runtime.resident_core.handle_ipc_command(payload)["error_code"] == "INVALID_REQUEST"
+    assert not Path(runtime.settings_path).exists()
+    with pytest.raises((ValueError, ToolArgumentError)):
+        runtime.tool_registry.execute("save_settings", {"expected_revision": "absent", "changes": changes},
+                                      task(runtime, "bad-input"), runtime.ledger)
+
+
+def test_storage_path_cannot_be_supplied_as_tool_authority(runtime, tmp_path):
+    cap = task(runtime)
+    other = tmp_path / "never.json"
+    with pytest.raises(ToolArgumentError):
+        runtime.tool_registry.execute("save_settings", dict(save_args(runtime), settings_path=str(other)), cap, runtime.ledger)
+    assert not other.exists() and cap.worker_controller is None
+
+
+def test_selected_manual_settings_undo_is_verified_and_consumed_once(runtime):
+    from pluma.core.task_supervisor import TaskState
+    from pluma.memory.history_detail import selection
+
+    original = task(runtime)
+    result = runtime.tool_registry.execute("save_settings", save_args(runtime), original, runtime.ledger)
+    assert result.ok and result.verified
+    runtime.supervisor.finalize_task(original.task_id, TaskState.SUCCEEDED)
+    action = ActivityQuery(runtime.db).actions_for_task(original.task_id)[0]
+    with runtime.db.read_snapshot() as connection:
+        selected = selection(connection, original.task_id, action["id"])
+    assert "Reset to default" in selected["material"]
+    undo = task(runtime, "settings-undo")
+    restored = runtime.tool_registry.execute("undo_last", {"selection": selected}, undo, runtime.ledger)
+    assert restored.ok and restored.verified and not Path(runtime.settings_path).exists()
+    claim = runtime.db.execute_read_one("SELECT state FROM undo_claims WHERE action_id=?", (action["id"],))
+    assert claim["state"] == "verified"
+    record = runtime.db.execute_read_one("SELECT available,rollback_ok FROM undo_records WHERE action_id=?", (action["id"],))
+    assert list(record) == [0, 1]
+    again = task(runtime, "settings-undo-again")
+    refused = runtime.tool_registry.execute("undo_last", {}, again, runtime.ledger)
+    assert not refused.ok and not Path(runtime.settings_path).exists()
+
+
+def test_explicit_source_is_used_for_runtime_read_edit_and_write(tmp_path):
+    paths = PlumaPaths(tmp_path / "local", tmp_path / "roaming")
+    explicit = tmp_path / "explicit.json"
+    explicit.write_text('{"agent":{"max_plan_steps":3}}', encoding="utf-8")
+    runtime = PlumaApplicationRuntime(paths, settings_path=str(explicit))
+    try:
+        observed = query(runtime)
+        assert observed["persisted"]["max_plan_steps"] == observed["effective"]["max_plan_steps"] == 3
+        assert runtime.tool_registry.settings_path == runtime.resident_core.settings_path == str(explicit)
+    finally:
+        assert runtime.close(5).complete
+
+
+def blocked_save(args, context):
+    marker = Path(context.settings_path).with_suffix(".entered")
+    marker.write_text("owned settings worker", encoding="utf-8")
+    while True:
+        context.cancellation_token.raise_if_cancelled()
+        time.sleep(.01)
+
+
+@pytest.mark.parametrize("stop", [True, False])
+def test_stop_or_timeout_retains_intent_and_verifies_worker_absence(runtime, stop):
+    spec = runtime.tool_registry.lookup("save_settings")
+    runtime.tool_registry.register(spec.model_copy(update={"executor": blocked_save, "timeout_s": 2.5}), overwrite=True)
+    cap = task(runtime)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(runtime.tool_registry.execute, "save_settings", save_args(runtime), cap, runtime.ledger)
+        marker = Path(runtime.settings_path).with_suffix(".entered")
+        end = time.monotonic() + 4
+        while not marker.exists() and time.monotonic() < end:
+            time.sleep(.01)
+        assert marker.exists()
+        worker = cap.worker_controller
+        identity = dict(worker.worker_identity)
+        if stop:
+            runtime.supervisor.stop_task(cap.task_id)
+        result = future.result(5)
+    assert not result.ok and not Path(runtime.settings_path).exists()
+    assert worker.verify_cleanup() and worker.worker_identity["exit_code"] is not None
+    assert worker.worker_identity["pid"] == identity["pid"]
+    rows = ActivityQuery(runtime.db).actions_for_task(cap.task_id)
+    assert rows and not any(row["verified"] for row in rows)
+    assert cap.undo_stack and cap.undo_stack[-1]["action"] == "pending_mutation"

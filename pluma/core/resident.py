@@ -52,8 +52,10 @@ class ResidentCore:
         effective_model_path: Optional[str] = None,
         effective_stt_model_path: Optional[str] = None,
         confirmation_broker: Optional[Any] = None,
+        settings_path: Optional[str] = None,
     ) -> None:
         self.config = config or load_config()
+        self.settings_path = settings_path
         self.effective_model_path = effective_model_path
         self.effective_stt_model_path = effective_stt_model_path
         self.confirmation_broker = confirmation_broker
@@ -337,7 +339,7 @@ class ResidentCore:
 
     def _handle_versioned_ipc(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         from pluma.core.ipc_contracts import (
-            ProtocolErrorV1, SubmissionAckV1,
+            ProtocolErrorV1, SubmissionAckV1, SettingsEditQueryV1, SettingsSaveV1,
             VoiceQueryV1,
             HistoryPageQueryV1, TaskDetailQueryV1, UndoSubmitV1, HistoryFolderSubmitV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
@@ -366,6 +368,14 @@ class ResidentCore:
             return self._stop_v1(request)
         if isinstance(request, SettingsQueryV1):
             return self._settings_query_v1(request)
+        if isinstance(request, SettingsEditQueryV1):
+            return self._settings_edit_query_v1(request)
+        if isinstance(request, SettingsSaveV1):
+            from pluma.core.ipc_contracts import SubmitTextV1
+            selected = {"settings": request.model_dump(include={"expected_revision", "changes"}, exclude_unset=True)}
+            task_request = SubmitTextV1(protocol_version=1, message_type="submit_text",
+                request_id=request.request_id, text="Save PLUMA settings.")
+            return self._submit_text_v1(task_request, SubmissionAckV1, selected=selected)
         if isinstance(request, HistoryQueryV1):
             return self._history_query_v1(request)
         if isinstance(request, TaskDetailQueryV1):
@@ -566,9 +576,9 @@ class ResidentCore:
             else:
                 from pluma.brain.schemas import Plan, RouteMode, ToolCall
                 plan = Plan(task_id=capsule.task_id, route=RouteMode.FAST, steps=[ToolCall(
-                    tool="open_folder" if 'folder' in selected else "undo_last",
-                    arguments={"path": selected['folder']} if 'folder' in selected else {"selection": selected},
-                    purpose="Execute the selected history action.")])
+                    tool="save_settings" if 'settings' in selected else "open_folder" if 'folder' in selected else "undo_last",
+                    arguments=selected['settings'] if 'settings' in selected else {"path": selected['folder']} if 'folder' in selected else {"selection": selected},
+                    purpose="Execute the selected typed action.")])
                 result = self.orchestrator.execute_typed_plan(request, capsule, plan)
             projection = {
                 "terminal": bool(capsule.terminal_ready.is_set()),
@@ -711,6 +721,24 @@ class ResidentCore:
         except Exception:
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "CONTRACT_UNAVAILABLE", "message": "The requested contract is unavailable."}
+
+    def _settings_edit_query_v1(self, request):
+        from pluma.config.settings import SettingsStore
+        from pluma.config.settings_contract import values, FIELDS
+        from pluma.config.loader import _merge, _load_yaml, _DEFAULTS_FILE
+        from pluma.core.ipc_contracts import SettingsEditSnapshotV1, ProtocolErrorV1
+        try:
+            if self.settings_path is None:
+                raise ValueError("No editable source is configured.")
+            saved = SettingsStore(self.settings_path).snapshot()
+            persisted = values(_merge(_load_yaml(_DEFAULTS_FILE), saved.overrides))
+            effective = values(self.config)
+            return SettingsEditSnapshotV1(request_id=request.request_id, revision=saved.revision,
+                persisted=persisted, effective=effective,
+                restart_fields=[key for key in FIELDS if getattr(persisted, key) != getattr(effective, key)]).model_dump(mode="json")
+        except Exception:
+            return ProtocolErrorV1(error_code="SETTINGS_UNAVAILABLE",
+                message="Saved settings are unavailable. Existing settings were preserved.").model_dump(mode="json")
 
     def _settings_query_v1(self, request):
         from pluma.core.ipc_contracts import SettingsSnapshotV1

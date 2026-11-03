@@ -57,6 +57,7 @@ class WorkerRequest:
     env_overrides: Dict[str, str] = field(default_factory=dict)
     grounded_ui_target: Optional[Dict[str, Any]] = None
     storage_path: Optional[str] = None
+    settings_path: Optional[str] = None
     supervisor_pid: Optional[int] = None
     execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
     screen_snapshot: Optional[Dict[str, Any]] = field(default=None, repr=False)
@@ -208,6 +209,7 @@ def _worker_process_loop(
             worker_ctx.undo_stack = list(worker_req.undo_stack)
             worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
             worker_ctx.storage_path = worker_req.storage_path
+            worker_ctx.settings_path = worker_req.settings_path
             worker_ctx.supervisor_pid = worker_req.supervisor_pid
             worker_ctx.execution_binding = worker_req.execution_binding
             if worker_req.screen_snapshot is not None:
@@ -576,7 +578,8 @@ class ToolRegistry:
         result = registry.execute(ToolCall(...), task_context)
     """
 
-    def __init__(self, policy_engine: Optional[Any] = None, stop_service: Optional[Any] = None) -> None:
+    def __init__(self, policy_engine: Optional[Any] = None, stop_service: Optional[Any] = None, settings_path: Optional[str] = None) -> None:
+        self.settings_path = settings_path
         self._specs: Dict[str, ToolSpec] = {}
         self._lock = threading.RLock()
         self._policy_engine = policy_engine
@@ -739,6 +742,7 @@ class ToolRegistry:
                             error_code="STALE_SNAPSHOT")
                 request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
                     storage_path=getattr(context, "storage_path", None),
+                    settings_path=getattr(context, "settings_path", None),
                     supervisor_pid=os.getpid(),
                     execution_binding=execution_binding,
                     env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")},
@@ -1025,6 +1029,8 @@ class ToolRegistry:
         from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
+        if tool_name == "save_settings" and task_context is not None:
+            task_context.settings_path = self.settings_path
         # One declared tool budget covers policy, pre-state capture, dispatch,
         # and readback. Starting the clock after policy allowed a slow approval
         # path to silently extend every call beyond its ToolSpec deadline.
@@ -1469,6 +1475,7 @@ class ToolRegistry:
             env_overrides=env_flags,
             grounded_ui_target=grounded_ui_target,
             storage_path=getattr(task_context, "storage_path", None),
+            settings_path=getattr(task_context, "settings_path", None),
             supervisor_pid=os.getpid(),
             execution_binding=execution_binding,
             screen_snapshot=screen_snapshot,
@@ -1969,6 +1976,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.files import FILE_TOOL_SPECS
     from pluma.tools.system import SYSTEM_TOOL_SPECS
     from pluma.tools.processes import PROCESS_TOOL_SPECS
+    from pluma.tools.settings import SETTINGS_TOOL_SPECS
     from pluma.tools.memory import MEMORY_TOOL_SPECS
     from pluma.tools.terminal import TERMINAL_TOOL_SPECS
     from pluma.tools.browser import BROWSER_TOOL_SPECS
@@ -1983,6 +1991,7 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + SYSTEM_TOOL_SPECS
         + PROCESS_TOOL_SPECS
         + MEMORY_TOOL_SPECS
+        + SETTINGS_TOOL_SPECS
         + TERMINAL_TOOL_SPECS
         + BROWSER_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS

@@ -204,6 +204,7 @@ class TaskCapsule(BaseModel):
     worker_controller: Any = Field(default=None, exclude=True)
     tool_registry: Any = Field(default=None, exclude=True)
     inverse_workers: Dict[str, Any] = Field(default_factory=dict, exclude=True)
+    settings_path: Optional[str] = Field(default=None, exclude=True)
     storage_path: Optional[str] = Field(default=None, exclude=True)
     tool_services: Any = Field(default=None, exclude=True)
     tool_call_count: int = 0

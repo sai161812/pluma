@@ -52,11 +52,11 @@ class PlumaApplicationRuntime:
         config: Optional[Dict[str, Any]] = None,
         confirmation_contract: Optional[ConfirmationContract] = None,
         db_connection: Optional[DbConnection] = None,
+        settings_path: Optional[str] = None,
     ) -> None:
         self.paths = paths
-        self.config = config or load_config(
-            os.environ.get("PLUMA_CONFIG") or paths.user_settings_path
-        )
+        self.settings_path = str(Path(settings_path or os.environ.get("PLUMA_CONFIG") or paths.user_settings_path).absolute())
+        self.config = config or load_config(self.settings_path)
         self.db = db_connection or DbConnection(str(paths.db_path))
         if not self.db.is_open:
             self.db.open()
@@ -80,7 +80,8 @@ class PlumaApplicationRuntime:
             confirmation_contract=confirmation_contract if confirmation_contract is not None else self.confirmation_broker,
             command_catalog_path=str(paths.roaming_root / 'commands.json'),
         )
-        self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop)
+        self.tool_registry = ToolRegistry(policy_engine=self.policy_engine, stop_service=self.supervisor.request_stop,
+                                          settings_path=self.settings_path)
         register_default_tools(self.tool_registry)
         self.rollback_engine.clipboard_inverse = self.tool_registry.restore_clipboard
         self.rollback_engine.screen_text_inverse = self.tool_registry.restore_screen_control_text
@@ -139,6 +140,7 @@ class PlumaApplicationRuntime:
             effective_model_path=model_path,
             effective_stt_model_path=stt_model_path,
             confirmation_broker=self.confirmation_broker,
+            settings_path=self.settings_path,
         )
 
     def close(self, timeout_s: float = 5.0):
@@ -299,7 +301,7 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
 
     # 4. Initialize and start Production Runtime Dependency Graph
     custom_cfg = load_config(args.config) if args.config else None
-    runtime = PlumaApplicationRuntime(paths=paths, config=custom_cfg)
+    runtime = PlumaApplicationRuntime(paths=paths, config=custom_cfg, settings_path=args.config)
     core = runtime.resident_core
 
     stop_event = threading.Event()

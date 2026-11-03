@@ -83,6 +83,42 @@ class SettingsQueryV1(_Envelope):
         return self
 
 
+class SettingsEditQueryV1(_Envelope):
+    message_type: Literal["settings_edit_query"]
+    request_id: StrictStr
+
+    @model_validator(mode="after")
+    def canonical_id(self):
+        _validate_id("request_id", self.request_id)
+        return self
+
+
+from pluma.config.settings_contract import SettingsSaveArgs, SettingsValues
+
+
+class SettingsSaveV1(SettingsSaveArgs):
+    protocol_version: Literal[1]
+    message_type: Literal["settings_save"]
+    request_id: StrictStr
+
+    @model_validator(mode="after")
+    def canonical_id(self):
+        _validate_id("request_id", self.request_id)
+        return self
+
+
+class SettingsEditSnapshotV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = 1
+    message_type: Literal["settings_edit_snapshot"] = "settings_edit_snapshot"
+    request_id: StrictStr
+    revision: StrictStr = Field(pattern=r"^(?:absent|[0-9a-f]{64})$")
+    persisted: SettingsValues
+    effective: SettingsValues
+    editable_fields: list[Literal["max_plan_steps"]] = Field(default_factory=lambda: ["max_plan_steps"])
+    restart_fields: list[Literal["text_hotkey", "stop_hotkey", "voice_hotkey", "max_plan_steps"]] = Field(max_length=4)
+
+
 class VoiceQueryV1(_Envelope):
     message_type: Literal["voice_query"]
     request_id: StrictStr
@@ -835,6 +871,10 @@ def parse_versioned_request(payload: dict):
             return StopRequestV1.model_validate(payload)
         if kind == "settings_query":
             return SettingsQueryV1.model_validate(payload)
+        if kind == "settings_edit_query":
+            return SettingsEditQueryV1.model_validate(payload)
+        if kind == "settings_save":
+            return SettingsSaveV1.model_validate(payload)
         if kind == "voice_query":
             return VoiceQueryV1.model_validate(payload)
         if kind == "history_query":

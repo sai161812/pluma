@@ -9,7 +9,7 @@ from pluma.memory.tool_store import connect, row
 SUPPORTED_ACTIONS = {'memory_write', 'move_file', 'rename_file', 'copy_file', 'create_folder', 'window_geometry', 'safe_delete', 'pending_mutation', 'set_volume', 'mute', 'unmute', 'set_default_audio_device'}
 SUPPORTED_ACTIONS.update(('clipboard_restore', 'window_state', 'window_focus', 'app_launch'))
 SUPPORTED_ACTIONS.update(('browser_tab', 'browser_focus'))
-SUPPORTED_ACTIONS.add('screen_control_text')
+SUPPORTED_ACTIONS.update(('screen_control_text', 'settings_write'))
 
 
 def _is_legacy_without_guard(state):
@@ -150,6 +150,9 @@ def verify(receipt):
         if observed is None or list(observed) != [0, 1, 'verified']:
             return False
         state = receipt['undo_data']
+        if state['action'] == 'settings_write':
+            from pluma.tools.settings import verify_restored
+            return verify_restored(state)
         if state['action'] in ('browser_tab', 'browser_focus'):
             from pluma.adapters.browser import restored
             return restored(state)

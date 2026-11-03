@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json;
 using PLUMA.UI;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _checks;
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "PLUMA-Ipc-tests-" + Guid.NewGuid().ToString("N"));
@@ -49,6 +49,7 @@ internal static class Program
 
     private static async Task RunAsync()
     {
+        await RunSettingsAsync();
         await ConfirmationControllerChecks.RunAsync(Check);
         await CommandControllerChecks.RunAsync(Check);
         await EventFeedChecks.RunAsync(Check);

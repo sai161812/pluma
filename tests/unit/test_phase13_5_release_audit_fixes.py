@@ -296,14 +296,17 @@ def test_audit_terminal_task_memory_bounding() -> None:
     assert len(supervisor._tasks) == 25
 
 
-def test_audit_registry_exposes_86_tools() -> None:
-    """Audit: Verify P12's exact Section 21 screen catalog is registered."""
+def test_audit_registry_exposes_87_tools() -> None:
+    """Verify the catalog plus P21's owned settings utility registration."""
     from pluma.tools.registry import get_default_tool_registry
     reg = get_default_tool_registry()
 
-    assert len(reg) == 86
-    assert len(reg.list_tools()) == 86
-    assert len(reg.list_tool_names()) == 86
+    assert len(reg) == 87
+    assert len(reg.list_tools()) == 87
+    assert len(reg.list_tool_names()) == 87
+    settings = reg.lookup("save_settings")
+    assert settings.process_isolated and settings.undo_builder is not None
+    assert settings.verifier.__name__ == "verify_settings"
     assert "move_file" in reg.list_tool_names()
     assert "inspect_active_window" in reg.list_tool_names()
     assert "undo_last" in reg.list_tool_names()
