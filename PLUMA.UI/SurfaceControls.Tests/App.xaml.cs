@@ -204,7 +204,9 @@ namespace PLUMA.UI.Tests
             await Click(next);
             int continueRequests = 0;
             wizard.ContinueRequested += (_, _) => continueRequests++;
-            await Click(next);
+            Check(!next.IsEnabled,"fixture-only review has no invocable Continue action");
+            try { await Click(next); }
+            catch(System.Runtime.InteropServices.COMException) when(!next.IsEnabled) { }
             Check(continueRequests == 0 && !next.IsEnabled, "fixture display checks cannot enable production Continue");
             wizard.SetCheckResult(SetupCheckId.Microphone, SetupCheckState.Failed, "Access revoked");
             Check(!next.IsEnabled, "revoked capability disables Continue");
