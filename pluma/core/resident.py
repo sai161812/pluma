@@ -346,7 +346,7 @@ class ResidentCore:
             VoiceQueryV1,
             HistoryPageQueryV1, TaskDetailQueryV1, UndoSubmitV1, HistoryFolderSubmitV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
-            ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
+            PerceptionQueryV1, ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
         )
         try:
@@ -395,6 +395,8 @@ class ResidentCore:
             return self._action_verification_v1(request)
         if isinstance(request, ActionDetailQueryV1):
             return self._action_detail_v1(request)
+        if isinstance(request, PerceptionQueryV1):
+            return self._perception_query_v1(request)
         if isinstance(request, RuntimeQueryV1):
             return self._runtime_query_v1(request)
         if isinstance(request, VoiceQueryV1):
@@ -987,6 +989,26 @@ class ResidentCore:
             logger.warning("Live task evidence could not be read safely.")
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "RUNTIME_UNAVAILABLE", "message": "Live task evidence is unavailable."}
+
+    def _perception_query_v1(self,request):
+        from pluma.core.ipc_contracts import PerceptionSnapshotV1
+        import time
+        try:
+            supervisor=self.supervisor
+            if not supervisor._lock.acquire(timeout=.05):raise TimeoutError('Task readback is busy.')
+            try:capsules=list(supervisor.get_active_tasks())
+            finally:supervisor._lock.release()
+            if len(capsules)>256:raise ValueError('Perception task bound exceeded.')
+            deadline=time.monotonic()+.1
+            items=[]
+            for cap in capsules:
+                if time.monotonic()>deadline:raise TimeoutError('Perception readback budget exceeded.')
+                item=cap.perception_feedback.snapshot(cap)
+                if item is not None and not cap.stop_latch_set and cap.state.value=='RUNNING':items.append(item)
+            return PerceptionSnapshotV1(request_id=request.request_id,observations=items).model_dump(mode='json')
+        except Exception:
+            return {'protocol_version':1,'message_type':'protocol_error','error_code':'PERCEPTION_UNAVAILABLE',
+                    'message':'Transient perception observations are unavailable.'}
 
     def _action_verification_v1(self, request):
         from pluma.core.ipc_contracts import ActionVerificationV1

@@ -375,6 +375,33 @@ def execute_inspect_window_controls(args: Dict[str, Any], task_context: Any = No
         return _failure(tool, "UI Automation could not inspect the target window.", "UIA_INSPECTION_FAILED")
 
 
+def _with_feedback(result,snapshot,region,task_context,match_state='NOT_REQUESTED',match=None):
+    """Private receipt only; unavailable observation metadata never becomes success evidence."""
+    try:
+        from datetime import datetime,timedelta,timezone
+        from pluma.core.ownership import get_process_creation_time
+        from pluma.perception.feedback import Evidence,title_hash
+        creation=get_process_creation_time(snapshot.pid)
+        if not creation:return result
+        _cancel(task_context)
+        _check_window(snapshot,task_context)
+        now=datetime.now(timezone.utc)
+        region=BoundingBox.model_validate(region) if region is not None else BoundingBox(
+            left=0,top=0,right=snapshot.window_rect.width,bottom=snapshot.window_rect.height)
+        receipt=Evidence(observation_id=str(uuid.uuid4()),snapshot_id=snapshot.snapshot_id,
+            hwnd=snapshot.hwnd,pid=snapshot.pid,creation_time=creation,window_class=snapshot.window_class,
+            title_hash=title_hash(snapshot.active_window_title),window_bounds=snapshot.window_rect.model_dump(),
+            dpi_scale=snapshot.dpi_scale,region=region.model_dump(),observed_utc=now.isoformat(),
+            expires_utc=min(snapshot.expires_at,now+timedelta(seconds=3)).isoformat(),match_state=match_state,
+            match=None if match is None else dict(element_id=match.element_id,bounds=match.bounds.model_dump(),confidence=match.confidence))
+        return result.model_copy(update={'private_context':dict(result.private_context,perception_receipt=receipt.model_dump(mode='json'))})
+    except TaskCancelledError:raise
+    except Exception:
+        # The read itself may still be valid; no UI target is published from
+        # incomplete identity/geometry and no action authority is manufactured.
+        return result
+
+
 def execute_capture_target_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
     tool = "capture_target_window"
     try:
@@ -388,13 +415,15 @@ def execute_capture_target_window(args: Dict[str, Any], task_context: Any = None
         _cancel(task_context)
         length = len(image)
         image = None
+        _check_window(snap,task_context)
         if length <= 0:
             return _failure(tool, "Target window capture returned no image data.", "CAPTURE_FAILED")
-        return ToolResult.success(tool, {"hwnd": info.hwnd, "snapshot_id": snap.snapshot_id,
+        result=ToolResult.success(tool, {"hwnd": info.hwnd, "snapshot_id": snap.snapshot_id,
             "captured": True, "byte_count": length,
             "region": region.model_dump() if region else None},
             "Captured the requested target window in memory; image bytes were discarded.", verified=True,
             verify_detail=VerifyResult(ok=True, method="win32", detail="The target-scoped capture returned non-empty in-memory bytes."))
+        return _with_feedback(result,snap,region,task_context)
     except Exception as exc:
         if isinstance(exc, TaskCancelledError):
             raise
@@ -433,8 +462,11 @@ def _read_ocr(args: Dict[str, Any], task_context: Any, *, find: bool) -> ToolRes
                 "words": words, "word_count": len(updated.ocr_words),
                 "raw_snapshot": updated.model_dump(mode="json")}
             message = f"Read {len(updated.ocr_words)} visible text elements from the target window."
-        return ToolResult.success(tool, result_data, message, verified=True,
+        result=ToolResult.success(tool, result_data, message, verified=True,
             verify_detail=VerifyResult(ok=True, method="ocr", detail="OCR returned target-window text and bounding boxes."))
+        state=('UNIQUE' if len(elements)==1 else 'NONE' if not elements else 'AMBIGUOUS') if find else 'NOT_REQUESTED'
+        return _with_feedback(result,updated,args.get('region'),task_context,
+            state,elements[0] if find and len(elements)==1 else None)
     except Exception as exc:
         if isinstance(exc, TaskCancelledError):
             raise

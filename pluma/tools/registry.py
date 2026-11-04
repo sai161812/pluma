@@ -1029,6 +1029,9 @@ class ToolRegistry:
         from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
+        perception=getattr(task_context,'perception_feedback',None)
+        if perception is not None and tool_name in ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot'):
+            perception.clear()
         if tool_name in ("check_setup","restart_core"):
             if getattr(task_context,"health_authorization",None)!=(tool_name,validated_args):
                 raise ToolArgumentError("Health actions require an explicit typed user request.")
@@ -1923,6 +1926,15 @@ class ToolRegistry:
                     self._screen_text_undo_cache.pop(state.get('undo_ref'), None)
         if live is not None:
             live.complete(live_generation)
+        if perception is not None and tool_name in ('capture_target_window','read_visible_text','find_visible_text'):
+            receipt=result.private_context.get('perception_receipt')
+            if final_result.ok and final_result.verified and receipt is not None:
+                try:
+                    if receipt.get('snapshot_id')!=final_result.data.get('snapshot_id'):
+                        raise ValueError('Observation does not match the executed result.')
+                    perception.publish(receipt,task_context)
+                except Exception:
+                    perception.clear()  # Refuse optional feedback, never fabricate a target.
         return final_result
 
     # ------------------------------------------------------------------

@@ -94,6 +94,13 @@ class SnapshotRegistry:
             )
         return element
 
+    def resolve_bounded(self,snapshot_id: str,timeout_s: float=.01) -> ScreenSnapshot:
+        """Readback callers may not wait indefinitely behind another owner."""
+        if not self._lock.acquire(timeout=max(0,timeout_s)):
+            raise TimeoutError('Snapshot registry is busy.')
+        try:return self.resolve(snapshot_id)
+        finally:self._lock.release()
+
     def get(self, snapshot_id: str) -> Optional[ScreenSnapshot]:
         """Return the snapshot or None — does NOT check TTL."""
         with self._lock:

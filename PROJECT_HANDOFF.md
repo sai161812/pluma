@@ -1,6 +1,33 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E105 P22 completion recheck passed
+## Current checkpoint: 2026-11-04, E106 P23 packet 1 verification
+
+[E106](docs/completion/e106_p23_perception_readback.md) implements the handoff's
+first bounded P23 packet: task-owned transient capture/match observation readback.
+P23 is in progress; P24 is not eligible and has not started.
+
+Base 681c439 on p12-preparation; recovery/pre-p23-e106-20261104 preserves it.
+No main merge, branch switch, reset/clean/force-push, styling or dependency change.
+Pre-edit prerequisites pass 76 cases. A reproduced post-capture movement race
+now fails closed. Twenty new focused checks and one owned native capture/worker/
+readback case pass; C# contracts compile with zero warnings/errors.
+Final required regression and exact-source Windows IPC verification are pending.
+
+The new explicit read-only channel carries no image bytes, OCR text or window
+title; actual geometry/confidence and hashed/native identity are task-bound.
+STOP/terminal/expiry clear it. Observations require native target revalidation
+before presentation and cannot authorize an action or prove success. No overlay
+or extra polling loop is enabled by this packet. Native capture acceptance uses
+an explicit owned-target foreground seam, not the personal foreground desktop.
+Unique ignored evidence: output/p23-e106-20261104-193102-8e392d74/.
+
+Remaining P23: live/in-worker delivery and remaining capture paths, native
+surfaces 15/16 hosting with fresh identity/geometry/DPI/TTL/STOP validation, and
+full combined native acceptance. Verification 17 stays tied to actual readback.
+Next safe packet after this gate/review: native target feedback host and freshness
+validation, keeping image bytes transient. Existing later physical limits remain.
+
+## Previous checkpoint: 2026-11-04, E105 P22 completion recheck passed
 
 **P22's documented implementation and required acceptance pass after fixing four
 edge gaps. No remaining P22 packet; P23 is ready for owner instruction and has

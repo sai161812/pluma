@@ -252,6 +252,10 @@ namespace PLUMA.UI
             VersionedCallAsync(new CoreRequestProtocol.SettingsQueryRequest(requestId).ToMessage(), requestId,
                 false, false, bytes => CoreRequestProtocol.SettingsSnapshot.Parse(bytes), value => value.RequestId, cancellationToken);
 
+        internal Task<CoreRequestResult<CoreRequestProtocol.PerceptionSnapshot>> GetPerceptionAsync(string request,CancellationToken token)=>
+            VersionedCallAsync(new CoreRequestProtocol.PerceptionRequest(request).ToMessage(),request,false,false,
+                bytes=>CoreRequestProtocol.PerceptionSnapshot.Parse(bytes),value=>value.RequestId,token);
+
         internal Task<CoreRequestResult<CoreHealthProtocol.Snapshot>> GetHealthAsync(string request,CancellationToken token)=>
             VersionedCallAsync(CoreHealthProtocol.Query(request),request,false,false,
                 bytes=>CoreHealthProtocol.Snapshot.Parse(bytes),value=>value.RequestId,token);

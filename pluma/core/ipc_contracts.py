@@ -9,6 +9,7 @@ from pydantic import (BaseModel, ConfigDict, Field, StrictBool, StrictInt,
 
 
 from pluma.config.settings_contract import FIELDS
+from pluma.perception.feedback import Observation
 
 PROTOCOL_VERSION = 1
 
@@ -435,6 +436,25 @@ class RuntimeQueryV1(_Envelope):
     @model_validator(mode="after")
     def canonical_id(self):
         _validate_id("request_id", self.request_id)
+        return self
+
+
+class PerceptionQueryV1(RuntimeQueryV1):
+    message_type: Literal['perception_query']
+
+
+class PerceptionSnapshotV1(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True,frozen=True)
+    protocol_version:Literal[1]=PROTOCOL_VERSION
+    message_type:Literal['perception_snapshot']='perception_snapshot'
+    request_id:StrictStr
+    observations:list[Observation]=Field(max_length=256)
+
+    @model_validator(mode='after')
+    def ids(self):
+        _validate_id('request_id',self.request_id)
+        ids=[item.task_id for item in self.observations]
+        if len(ids)!=len(set(ids)):raise ValueError('Duplicate perception task.')
         return self
 
 
@@ -910,6 +930,8 @@ def parse_versioned_request(payload: dict):
             return ActionVerificationQueryV1.model_validate(payload)
         if kind == "runtime_query":
             return RuntimeQueryV1.model_validate(payload)
+        if kind == 'perception_query':
+            return PerceptionQueryV1.model_validate(payload)
     except ValidationError:
         raise ValueError("INVALID_REQUEST") from None
     raise ValueError("UNKNOWN_MESSAGE_TYPE")

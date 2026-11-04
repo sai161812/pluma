@@ -56,6 +56,7 @@ internal static partial class Program
         await EventFeedChecks.RunAsync(Check);
         await SurfaceFactChecks.RunAsync(Check);
         await RuntimeChecks.RunAsync(Check);
+        PerceptionChecks.Run(Check);
         VoiceChecks.Run(Check);
         await VoiceControllerChecks.RunAsync(Check);
         await HistoryChecks.RunAsync(Check);
@@ -255,6 +256,10 @@ internal static partial class Program
         await using (var client = new CoreIpcClient(Options(requestsPipe, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
         {
             string wireRequestId = Guid.NewGuid().ToString("D");
+            string perceptionId=Guid.NewGuid().ToString("D");
+            var perception=await client.GetPerceptionAsync(perceptionId,default);
+            Check(perception.IsSuccess&&perception.Response!.RequestId==perceptionId&&perception.Response.Observations.Length==0,
+                "authenticated native perception readback is empty at idle and starts no capture");
             var voice = await client.GetVoiceAsync(Guid.NewGuid().ToString("D"), null, null, default);
             Check(voice.IsSuccess && voice.Response is { Voice: null, ResetRequired: true },
                 "authenticated native voice query reads the cold Python resident without starting capture");

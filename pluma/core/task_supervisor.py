@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
 from pluma.core.cleanup import CleanupEvidence, cleanup_job, latest_unresolved
 from pluma.core.live_presentation import LivePresentation
+from pluma.perception.feedback import PerceptionFeedback
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,7 @@ class TaskCapsule(BaseModel):
     undo_stack: List[Dict[str, Any]] = Field(default_factory=list)
     steps: List[TaskStep] = Field(default_factory=list)
     live_presentation: Any = Field(default_factory=LivePresentation, exclude=True)
+    perception_feedback: Any = Field(default_factory=PerceptionFeedback, exclude=True)
     recognition_progress: Any = Field(default=None, exclude=True)
     health_authorization: Any = Field(default=None, exclude=True)
     voice_presentation: Any = Field(default=None, exclude=True)
@@ -379,6 +381,7 @@ class TaskCapsule(BaseModel):
         if self.snapshot_registry is not None:
             check = CleanupEvidence(resource_id="snapshots:" + self.task_id, kind="snapshots", code="SNAPSHOT_RELEASE_UNVERIFIED")
             try:
+                self.perception_feedback.clear()
                 self.snapshot_registry.clear()
                 if len(self.snapshot_registry) != 0:
                     raise RuntimeError("Snapshot release readback failed.")
