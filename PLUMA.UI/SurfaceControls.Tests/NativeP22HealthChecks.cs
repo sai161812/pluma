@@ -77,6 +77,11 @@ internal static class NativeP22HealthChecks
                     await Until(()=>shell.CriticalForAcceptance is {IsLoaded:true});
                     check(!((Button)shell.Dashboard.FindName("CommandRunButton")).IsEnabled,
                         "configuration failure leaves normal dashboard actions disabled while recovery remains available");
+                    var status=(CoreHealthIndicator)shell.Dashboard.FindName("CoreHealthReadback");
+                    double previousLatency=status.PingLatencyMs;
+                    await Until(()=>double.IsFinite(status.PingLatencyMs)&&status.PingLatencyMs!=previousLatency);
+                    check(shell.CriticalForAcceptance!.CanRestart&&!shell.CurrentCommandForAcceptance.CanSubmit,
+                        "fresh native not-ready runtime readback preserves verified error recovery without enabling commands");
                     Invoke(Find(shell.CriticalForAcceptance!,"Close"));
                     await Until(()=>shell.CriticalForAcceptance is null);
                 }
