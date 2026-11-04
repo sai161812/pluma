@@ -61,6 +61,7 @@ class CoreHost:
             self.state="READY";self.code="CORE_READY"
         except Exception:
             if not runtime.close(3).complete:
+                self._recover_control=True
                 self.state="RECOVERY_ERROR";self.code="OWNED_DRAIN_PENDING";return
             self.runtime=PlumaApplicationRuntime(self.paths,config=config,settings_path=self.config_path)
             self.runtime.resident_core.ipc=_GraphEndpoint()
@@ -100,10 +101,17 @@ class CoreHost:
             self._restart=pending
         return lambda:self._restart==pending
 
+    @staticmethod
+    def _voice_available(core):
+        if not core.voice_enabled:return True
+        activation=core.voice_activation
+        return bool(activation is not None and activation._running and activation._thread is not None
+                    and activation._thread.is_alive())
+
     def _observe_liveness(self):
         core=self.runtime.resident_core if self.runtime else None
         if self.state=="READY" and core is not None and (not core._running or
-                (core._hotkey_thread is not None and not core._hotkey_thread.is_alive())):
+                (core._hotkey_thread is not None and (not core._hotkey_thread.is_alive() or not self._voice_available(core)))):
             self._recover_control=True;self.state="RECOVERY_ERROR";self.code="OWNED_DRAIN_PENDING"
 
     def advance(self):
@@ -161,7 +169,7 @@ class CoreHost:
             except Exception:checks=[];native=False
         core=self.runtime.resident_core if self.runtime else None
         hotkeys=bool(core is not None and core._running and core._hotkey_thread is not None
-            and core._hotkey_thread.is_alive() and getattr(core,"_hotkey_error",None) is None)
+            and core._hotkey_thread.is_alive() and getattr(core,"_hotkey_error",None) is None and self._voice_available(core))
         ready=(self.state=="READY" and native and hotkeys and {c.get("id") for c in checks}=={"planner","speech","ocr","uia","microphone"}
                and all(c.get("state")=="PASSED" for c in checks))
         return {"protocol_version":1,"message_type":"health_snapshot","request_id":request_id,

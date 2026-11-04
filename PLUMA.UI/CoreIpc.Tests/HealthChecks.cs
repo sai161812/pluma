@@ -22,7 +22,9 @@ internal static class HealthChecks
         check(rejected,"nested duplicate capability state cannot override failure");
         var backend=new Client();
         await using var commands=new CommandController(backend,TimeSpan.FromMilliseconds(1));
-        await using var health=new HealthController((id,t)=>Task.FromResult(Ok(snapshot with {RequestId=id})),commands);
+        bool unavailable=false;
+        await using var health=new HealthController((id,t)=>Task.FromResult(unavailable?
+            CoreRequestResult<CoreHealthProtocol.Snapshot>.Failed(CoreConnectionFailure.Unavailable):Ok(snapshot with {RequestId=id})),commands);
         await health.RefreshAsync(default);
         check(health.View.CanCheck&&health.View.CanRestart&&!health.View.CanContinue,"authenticated Core responsiveness never substitutes for native setup proof");
         await health.CheckAsync(false,default);
@@ -43,6 +45,14 @@ internal static class HealthChecks
         await health.RestartAsync(default);
         check(!commands.View.Pending&&backend.Count==beforeReplayCheck+1&&health.View.Message.Contains("authenticated health was verified"),
             "new authenticated graph reconciles interrupted terminal readback without replaying restart");
+        health.OnRuntime(new([],false,null));
+        check(!commands.View.CanSubmit&&health.View.Snapshot is null&&!health.View.CanContinue,
+            "disconnected runtime revokes command readiness and all setup evidence");
+        health.OnRuntime(new([],true,1,snapshot.InstanceId,true));
+        check(commands.View.CanSubmit,"authenticated live runtime readiness restores command admission");
+        unavailable=true;await health.RefreshAsync(default);
+        check(!commands.View.CanSubmit&&health.View.Snapshot is null,"failed explicit health read clears stale command readiness");
+        unavailable=false;
         snapshot=Snapshot();await health.RefreshAsync(default);
         using var entered=new SemaphoreSlim(0);
         backend.Entered=entered;backend.Wait=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

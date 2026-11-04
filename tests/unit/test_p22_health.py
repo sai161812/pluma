@@ -220,6 +220,47 @@ def test_lost_hotkey_thread_drains_into_control_only_graph(host):
     assert request(host,'setup_check',instance_id=host.instance_id,include_microphone=False)['message_type']=='protocol_error'
 
 
+def test_incomplete_failed_startup_drain_resumes_into_control_graph(tmp_path,monkeypatch):
+    from pluma.app import PlumaApplicationRuntime
+    def rejected_start(core):raise RuntimeError('Owned startup fault')
+    original_close=PlumaApplicationRuntime.close
+    first=True
+    def delayed_close(runtime,timeout_s=5):
+        nonlocal first
+        if first:
+            first=False
+            return original_close(runtime,0)
+        return original_close(runtime,timeout_s)
+    monkeypatch.setattr(ResidentCore,'start',rejected_start)
+    monkeypatch.setattr(PlumaApplicationRuntime,'close',delayed_close)
+    paths=PlumaPaths(tmp_path/'local',tmp_path/'roaming');paths.ensure_directories()
+    value=CoreHost(paths,address='\\\\.\\pipe\\p22-start-'+uuid.uuid4().hex)
+    try:
+        value.start()
+        old=value.runtime;identity=value.instance_id
+        assert value.state=='RECOVERY_ERROR' and old.db.is_open
+        value.advance()
+        assert value.state=='HOTKEY_ERROR' and value.runtime is not old and not old.db.is_open
+        assert value.instance_id!=identity and request(value,'health_query')['can_restart']
+    finally:assert value.close()
+
+
+def test_voice_owner_loss_revokes_core_readiness(host):
+    class ThreadState:
+        def __init__(self,alive):self.alive=alive
+        def is_alive(self):return self.alive
+    core=host.runtime.resident_core
+    core._hotkey_thread=ThreadState(True)
+    core.voice_activation._running=False
+    core.voice_activation._thread=ThreadState(False)
+    try:
+        view=request(host,'health_query')
+    finally:core._hotkey_thread=None
+    assert view['state']=='RECOVERY_ERROR' and not view['hotkeys_registered'] and not view['setup_ready']
+    host.advance()
+    assert host.state=='HOTKEY_ERROR' and request(host,'health_query')['can_restart']
+
+
 def test_hotkey_loss_cancels_old_queued_restart_before_control_replacement(host):
     class DeadThread:
         def is_alive(self):return False

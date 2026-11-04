@@ -23,6 +23,7 @@ def run(address,root):
             if command=="stop":break
             if command=="health_corrupt":source.write_bytes(b"{owned invalid health configuration")
             elif command=="health_repair":source.write_text(json.dumps({"agent":{"text_hotkey":"ctrl+alt+shift+f4","stop_hotkey":"ctrl+alt+shift+f5","voice_hotkey":"ctrl+alt+shift+f6"}}),encoding="utf-8")
+            elif command=="health_disconnect":host.server.stop()
             else:raise ValueError("Unknown fixture command.")
             print(command.upper(),flush=True)
     finally:

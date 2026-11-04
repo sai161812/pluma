@@ -82,6 +82,17 @@ internal static class NativeP22HealthChecks
                 }
                 await Until(()=>!shell.CurrentCommandForAcceptance.Pending);
             }
+            await fixture.ControlHistoryAsync("health_disconnect");
+            await Until(()=>!shell.CurrentCommandForAcceptance.CanSubmit&&
+                !((CoreHealthIndicator)shell.Dashboard!.FindName("CoreHealthReadback")).IsConnected);
+            check(!((Button)shell.Dashboard!.FindName("CommandRunButton")).IsEnabled,
+                "actual authenticated IPC disconnect disables ordinary native command entry");
+            Invoke((Button)shell.Dashboard.FindName("RecoveryButton"));
+            await Until(()=>shell.CriticalForAcceptance is {IsLoaded:true});
+            check(!shell.CriticalForAcceptance!.CanRestart&&!shell.CriticalForAcceptance.IsPrimaryButtonEnabled,
+                "unavailable native Core cannot authorize recovery or spawn a duplicate");
+            Invoke(Find(shell.CriticalForAcceptance,"Close"));
+            await Until(()=>shell.CriticalForAcceptance is null);
         }
         finally{shell.Close();await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5));}
         check(shell.ObservationLifetime.IsCompleted,"native health/setup/recovery close joins all UI-owned reads, dialogs and observers");

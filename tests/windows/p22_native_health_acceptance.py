@@ -38,6 +38,16 @@ def run(args):
         report={'commit':__import__('subprocess').check_output(['git','rev-parse','HEAD'],text=True).strip(),
             'native_checks':view['checks'],'setup_ready':view['setup_ready'],'worker_absence_verified':True,
             'resident_models_cold':True,'audio_saved':False,'screenshot_saved':False,'owned_root':str(root)}
+        if args.verify_voice_loss:
+            # Only this fixture's polling thread is stopped; no user owner is touched.
+            host.runtime.resident_core.voice_activation.stop()
+            lost=host.handle({'protocol_version':1,'message_type':'health_query','request_id':str(uuid.uuid4())})
+            assert lost['state']=='RECOVERY_ERROR' and not lost['hotkeys_registered'] and not lost['setup_ready']
+            host.advance()
+            assert host.state=='HOTKEY_ERROR' and host.instance_id!=lost['instance_id']
+            assert host.runtime.llm_lifecycle.state.value==host.runtime.voice_lifecycle.state=='COLD'
+            assert not host.runtime.tool_registry._worker_controllers
+            report.update(voice_owner_loss_verified=True,recovery_control_state=host.state)
         with args.report.open('x',encoding='utf-8') as stream:json.dump(report,stream,indent=2)
         print(json.dumps(report))
     finally:
@@ -49,4 +59,5 @@ def run(args):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--model',type=Path,required=True)
     parser.add_argument('--speech',type=Path,required=True);parser.add_argument('--report',type=Path,required=True)
+    parser.add_argument('--verify-voice-loss',action='store_true')
     run(parser.parse_args())

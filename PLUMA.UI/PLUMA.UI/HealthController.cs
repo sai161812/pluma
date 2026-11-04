@@ -31,7 +31,11 @@ internal sealed class HealthController(Func<string,CancellationToken,Task<CoreRe
     {
         await Task.Yield();
         try{await operation();}
-        catch(Exception){_snapshot=null;_message="Core health is unavailable. No recovery was verified.";}
+        catch(Exception)
+        {
+            _snapshot=null;_message="Core health is unavailable. No recovery was verified.";
+            if(!_closed){commands.SetCoreReady(false);commands.SetConnected(false);}
+        }
         finally{_busy=false;Publish();}
     }
     private static string Id()=>Guid.NewGuid().ToString("D");
@@ -102,6 +106,9 @@ internal sealed class HealthController(Func<string,CancellationToken,Task<CoreRe
     {await RefreshAsync(owner);return View.CanContinue;}
     internal void OnRuntime( RuntimeView value)
     {
+        if(_closed)return;
+        commands.SetCoreReady(value.Connected?value.CoreReady:false);
+        commands.SetConnected(value.Connected&&value.CoreReady!=false);
         if(!value.Connected||value.CoreReady==false||(_snapshot is not null&&value.CoreInstanceId is not null&&_snapshot.InstanceId!=value.CoreInstanceId)||DateTimeOffset.UtcNow-_readAt>TimeSpan.FromSeconds(45))
         {_snapshot=null;if(!_busy)_message="Setup health needs a fresh check.";Publish();}
     }

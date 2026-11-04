@@ -1,6 +1,22 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E104 P22 complete
+## Current checkpoint: 2026-11-04, E105 P22 completion recheck
+
+[E105](docs/completion/e105_p22_completion_recheck.md) identifies and corrects
+three bounded edge gaps after E104: retained startup drain continuation,
+mandatory voice-owner liveness and stale UI command readiness after disconnect.
+Two new backend regressions reproduce the first two defects; the fixed affected
+selection passes 80 checks, with zero-warning/error C# compilation.
+Full native acceptance and required regressions are pending; do not start P23.
+
+Base/recovery: 38825bc, pushed development branch p12-preparation; recovery ref
+recovery/pre-p22-e105-20261104 preserves that base. Main remains 0468a03.
+Unique evidence: output/p22-e105-20261104-184859-3b59f9d2/.
+E104's native capability/readiness evidence and owner-approved later physical,
+installed and release limits remain recorded. No new waiver or styling change.
+Next safe step: verify the bounded corrections, then independent Sol review.
+
+## Previous checkpoint: 2026-11-04, E104 P22 complete
 
 **P22's scoped implementation and required gate are complete. No remaining P22
 packet; P23 has not started.** [E104](docs/completion/e104_p22_completion.md)
