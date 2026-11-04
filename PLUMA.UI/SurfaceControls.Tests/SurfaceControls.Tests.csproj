@@ -76,6 +76,8 @@
   <ItemGroup>
     <Compile Include="../PLUMA.UI/CoreRuntimeProtocol.cs" Link="CoreRuntimeProtocol.cs" />
     <Compile Include="../PLUMA.UI/CorePerceptionProtocol.cs" Link="CorePerceptionProtocol.cs" />
+    <Compile Include="../PLUMA.UI/PerceptionPresentation.cs" Link="PerceptionPresentation.cs" />
+    <Compile Include="../PLUMA.UI/NativePerceptionTarget.cs" Link="NativePerceptionTarget.cs" />
     <Compile Include="../PLUMA.UI/CoreVoiceProtocol.cs" Link="CoreVoiceProtocol.cs" />
     <Compile Include="../PLUMA.UI/VoiceController.cs" Link="VoiceController.cs" />
     <Compile Include="../PLUMA.UI/CoreHistoryProtocol.cs" Link="CoreHistoryProtocol.cs" />

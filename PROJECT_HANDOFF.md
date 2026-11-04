@@ -1,6 +1,35 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E106 P23 packet 1 verified
+## Current checkpoint: 2026-11-04, E107 P23 packet 2 verification
+
+[E107](docs/completion/e107_p23_native_freshness.md) adds read-only native target
+probing and a revocable presentation lease. P23 remains in progress; surfaces
+15/16 are still dormant. P24 has not started and is ineligible.
+
+Correct checkout confirmed clean at pushed 3e4a03e; opening another IDE folder
+had no effect here. Recovery/pre-p23-e107-20261104 is pushed at that source.
+E106 final evidence is recorded by e9b263e. No merge, branch switch, reset,
+clean, force push, styling, dependencies or master specification change.
+
+Fresh prerequisites: 54 pass. Corrected local C# integration: 393 pass including
+37 new lease checks; builds have zero warnings/errors. Owned native probe:
+one pass, with exact identity/bounds/DPI, moved/renamed readback and hidden-target
+refusal. An initial new-probe DPI-space mismatch is reproduced and corrected to
+match the existing backend's window_dpi contract; failed evidence is retained.
+The lease refuses unsupported legacy conversion, stale identity/geometry/DPI,
+monitor changes, missing/ambiguous matches, task loss, disconnect and STOP.
+No caption/audio/pixels are saved by the new channel.
+
+Exact committed-source native rerun and Windows integration are pending.
+Unique ignored evidence: output/p23-e107-20261104-201225-d5ffdbf3/.
+
+Next safe P23 packet after this verification: live observation delivery and
+owned native surfaces 15/16 hosting, explicit legacy conversion, deduplication,
+immediate STOP invalidation and combined fresh-target visual acceptance.
+Verification 17 remains driven only by saved actual postcondition readback.
+Existing C-02 timing deferral to P25 and later physical/release limits remain.
+
+## Previous checkpoint: 2026-11-04, E106 P23 packet 1 verified
 
 [E106](docs/completion/e106_p23_perception_readback.md) implements the handoff's
 first bounded P23 packet: task-owned transient capture/match observation readback.

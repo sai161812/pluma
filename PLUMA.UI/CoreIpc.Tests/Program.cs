@@ -22,8 +22,13 @@ internal static partial class Program
         new(pipe, key ?? Secret, TimeSpan.FromMilliseconds(milliseconds));
     private static string PipeName() => "pluma_status_test_" + Guid.NewGuid().ToString("N");
 
-    private static async Task<int> Main()
+    private static async Task<int> Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--perception-probe" && long.TryParse(args[1], out long hwnd))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(NativePerceptionTarget.Read(hwnd)));
+            return 0;
+        }
         try
         {
             CreatePrivateDirectory(Root);
@@ -57,6 +62,7 @@ internal static partial class Program
         await SurfaceFactChecks.RunAsync(Check);
         await RuntimeChecks.RunAsync(Check);
         PerceptionChecks.Run(Check);
+        PerceptionPresentationChecks.Run(Check);
         VoiceChecks.Run(Check);
         await VoiceControllerChecks.RunAsync(Check);
         await HistoryChecks.RunAsync(Check);
