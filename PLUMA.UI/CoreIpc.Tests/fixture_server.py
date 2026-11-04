@@ -211,6 +211,10 @@ def main():
                         verified = reader.execute("SELECT COUNT(*) FROM undo_claims WHERE state='verified'").fetchone()[0]
                         if verified != 1: raise RuntimeError('Owned inverse atomic consumption was not read back.')
                 elif command == "history_prepare_folder":
+                    if os.environ.get('PLUMA_P20_FOLDER_TRACE')=='1' and os.environ.get('GITHUB_ACTIONS')=='true':
+                        os.environ['PLUMA_P20_FOLDER_TRACE_ROOT']=str(Path(sys.argv[2]))
+                        startup=str(Path(__file__).resolve().parents[2]/'tests'/'fixtures'/'p20_folder_startup')
+                        os.environ['PYTHONPATH']=startup+os.pathsep+os.environ.get('PYTHONPATH','')
                     import pythoncom
                     import win32com.client
                     pythoncom.CoInitialize()
@@ -219,6 +223,22 @@ def main():
                         if windows.Count > 256: raise RuntimeError('Fixture folder enumeration exceeded its bound.')
                         prior_folder_windows = {int(windows.Item(i).HWND) for i in range(windows.Count)}
                     finally: pythoncom.CoUninitialize()
+                elif command == 'history_diagnostics':
+                    import sqlite3
+                    from contextlib import closing
+                    records=[]
+                    with closing(sqlite3.connect('file:'+owned_db.as_posix()+'?mode=ro',uri=True,timeout=.05)) as reader:
+                        reader.row_factory=sqlite3.Row
+                        for row in reader.execute('SELECT * FROM actions ORDER BY rowid DESC LIMIT 3'):
+                            records.append({key:row[key] for key in row.keys() if key in
+                                ('id','task_id','tool','tool_name','ok','success','verified','error_code','result_json','duration_ms')})
+                    workers=[]
+                    for cap in list(supervisor._tasks.values()):
+                        controller=getattr(cap,'worker_controller',None)
+                        workers.append(dict(task_id=cap.task_id,state=cap.state.value,stopped=cap.stop_latch_set,
+                            worker=getattr(controller,'worker_identity',None)))
+                    with (Path(sys.argv[2])/'folder-diagnostics.json').open('x',encoding='utf-8') as stream:
+                        json.dump(dict(actions=records,workers=workers),stream)
                 elif command == "history_assert_folder":
                     import pythoncom
                     import win32com.client

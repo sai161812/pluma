@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -59,6 +61,9 @@ internal static class NativeP23PerceptionChecks
         try
         {
             await Until(()=>shell.Dashboard is {IsLoaded:true} page&&((Button)page.FindName("CommandRunButton")).IsEnabled);
+            var self=NativePerceptionTarget.Read(WinRT.Interop.WindowNative.GetWindowHandle(shell));
+            check(self is not null && self.TitleHash=="sha256:"+Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(shell.Title))).ToLowerInvariant(),
+                "native own-window title cache agrees with the actual caption without synchronous UI messages");
             string task=await Start("fixture:capture");
             await Until(()=>host.Handle!=0 && LayerVisible(host.Handle),2);
             nint layer=host.Handle;

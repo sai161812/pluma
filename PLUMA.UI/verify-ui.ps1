@@ -118,11 +118,13 @@ try {
     $controlsExecutable = Join-Path $repositoryRoot 'PLUMA.UI/SurfaceControls.Tests/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/SurfaceControls.Tests.exe'
     # Each coherent suite retains its existing 60-second native watchdog and
     # 75-second owner budget. Both are mandatory, with separate retained reports.
+    $suiteFailures = [Collections.Generic.List[string]]::new()
     foreach ($suite in @(
         @{ Label = 'native-controls'; Arguments = @(); Report = 'control-tests.txt'; Result = 'controlsResult' },
         @{ Label = 'native-p22-health'; Arguments = @('--p22-health'); Report = 'p22-health-tests.txt'; Result = 'healthControlsResult' },
         @{ Label = 'native-p23-perception'; Arguments = @('--p23-perception'); Report = 'p23-perception-tests.txt'; Result = 'perceptionControlsResult' }
     )) {
+        try {
         $summary.stage = $suite.Label
         $controls = Start-OwnedProcess $controlsExecutable $suite.Arguments $suite.Label
         try {
@@ -145,7 +147,16 @@ try {
         }
         $controlReport = Assert-Report (Join-Path $runDirectory $suite.Report) '(?m)^\d+ UI checks passed\.'
         $summary[$suite.Result] = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''
+        }
+        catch {
+            $failure = $suite.Label + ': ' + $_.Exception.Message
+            $suiteFailures.Add($failure)
+            $summary[$suite.Result] = 'FAILED ' + $failure
+            Write-Warning $failure
+        }
     }
+    $summary['suiteFailures'] = $suiteFailures.ToArray()
+    if ($suiteFailures.Count -gt 0) { throw ($suiteFailures -join '; ') }
     $summary.status = 'passed'
     $summary.stage = 'complete'
     Write-Host 'Native popup, gallery formatting and control checks passed. Physical Windows 11 taskbar/DPI/accessibility review remains separate.'

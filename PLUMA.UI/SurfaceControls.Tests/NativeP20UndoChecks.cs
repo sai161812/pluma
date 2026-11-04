@@ -142,7 +142,25 @@ internal static class NativeP20UndoChecks
             await Until(() => shell.History is { IsLoaded:true });
             check(shell.History is not null, "verified registered show activity command opens the shared native History page");
         }
-        catch (Exception error) { Console.Error.WriteLine("P20 selected undo failure before teardown: " + error); Console.Error.WriteLine("Owned command outcome: " + shell.CurrentCommandForAcceptance.State + " / " + shell.CurrentCommandForAcceptance.Message); throw; }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("P20 selected undo failure before teardown: " + error);
+            Console.Error.WriteLine("Owned command outcome: " + shell.CurrentCommandForAcceptance.State + " / " + shell.CurrentCommandForAcceptance.Message);
+            try
+            {
+                await fixture.ControlHistoryAsync("history_diagnostics");
+                Console.Error.WriteLine("OWNED_FOLDER_DIAGNOSTICS "+System.IO.File.ReadAllText(System.IO.Path.Combine(fixture.OwnedRoot,"folder-diagnostics.json")));
+                foreach(string path in System.IO.Directory.EnumerateFiles(fixture.OwnedRoot,"folder-stack-*.txt"))
+                {
+                    using var stream=new System.IO.FileStream(path,System.IO.FileMode.Open,System.IO.FileAccess.Read,System.IO.FileShare.ReadWrite|System.IO.FileShare.Delete);
+                    using var reader=new System.IO.StreamReader(stream);
+                    char[] buffer=new char[65536];int count=reader.ReadBlock(buffer,0,buffer.Length);
+                    Console.Error.WriteLine("OWNED_WORKER_STACK "+System.IO.Path.GetFileName(path)+"\n"+new string(buffer,0,count));
+                }
+            }
+            catch(Exception diagnostic){Console.Error.WriteLine("Owned diagnostic unavailable: "+diagnostic.GetType().Name);}
+            throw;
+        }
         finally { shell.Close(); await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5)); }
         check(tray is { IsDisposed:true, IsAvailable:false } && shell.ObservationLifetime.IsCompleted,
             "shell shutdown removes only its own tray entry and joins saved-detail/command observers");

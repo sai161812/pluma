@@ -6,6 +6,12 @@ on:
       - 'PLUMA.UI/**'
       - '.github/workflows/ui-verification.yml'
   workflow_dispatch:
+    inputs:
+      folder_trace:
+        description: Capture stacks only in disposable-host owned folder workers
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -38,6 +44,8 @@ jobs:
         run: python PLUMA.UI/prepare-perception-models.py output/ui-verification/ocr-model-provisioning.json
       - name: Build and verify the actual WinUI fixtures
         shell: pwsh
+        env:
+          PLUMA_P20_FOLDER_TRACE: ${{ inputs.folder_trace && '1' || '' }}
         run: ./PLUMA.UI/verify-ui.ps1
       - name: Save reports and fixture renders
         if: always()

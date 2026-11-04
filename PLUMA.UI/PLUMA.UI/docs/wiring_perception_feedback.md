@@ -29,8 +29,11 @@ capturing pixels, sending app commands or owning the target. It reads current
 PID, process creation FILETIME, class, hashed caption, bounds, DPI, monitor,
 visibility and foreground status. Native handles are closed; caller thread DPI
 context is restored. Identity/geometry/DPI/class/caption are checked again during
-the probe. Same-process targets are refused because native caption reads would
-otherwise send a synchronous message to PLUMA's UI thread.
+the probe. E108 uses Windows' cached InternalGetWindowText for same-process
+captions, avoiding synchronous WM_GETTEXT. If that cache API is unavailable,
+presentation is refused; no unsafe message-based fallback is used. Windows
+documents this cache API as compatibility-sensitive, so native acceptance must
+verify it on the supported Windows build.
 
 Bounds follow the existing backend's **window_dpi** contract: the probe matches
 the target's DPI awareness context. These are not necessarily physical pixels.
