@@ -76,7 +76,8 @@ internal static class NativeP23PerceptionChecks
                 "actual capture receipt identifies the fixture target and invents no OCR match");
             await Task.Delay(45);
             uint lit=Pixel(sampleX,sampleY);
-            check(lit!=baseline && (lit&255)>=(baseline&255) && ((lit>>8)&255)>=((baseline>>8)&255),
+            int red=(int)(lit&255)-(int)(baseline&255),green=(int)((lit>>8)&255)-(int)((baseline>>8)&255);
+            check(lit!=baseline && red>0 && red<=128 && green>=0 && green<=128,
                 "actual composed capture flash brightens an owned target pixel rather than showing an opaque background");
             check(Pixel(outsideX,sampleY)==outsideBaseline,"capture feedback changes no pixel outside the target ROI or its owned input-transparent layer");
             await Until(()=>host.Handle==0,1);

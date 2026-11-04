@@ -23,6 +23,32 @@ def publish_and_wait(args, context):
         factual_message='Owned streaming fixture only.', verified=True)
 
 
+def publish_invalid_private_value(args,context):
+    from pluma.tools.base import ToolResult
+    snapshot=context.snapshot_registry.resolve(args['snapshot_id'])
+    receipt=dict(args['receipt'],dpi_scale='PRIVATE_VALIDATION_VALUE')
+    context.publish_perception(receipt,snapshot.model_dump(mode='json',exclude={'image_ref','is_expired'}))
+    return ToolResult.success('capture_target_window',data={},factual_message='Must not be accepted.',verified=True)
+
+
+def test_private_validation_error_body_never_reaches_result_or_history(resident_fixture):
+    from pluma.tools.registry import ToolRegistry
+    from pluma.tools.base import ToolSpec,RiskClass
+    from pluma.memory.activity import ActivityQuery
+    _,ledger,supervisor,cap,snap,receipt=prepared(resident_fixture)
+    registry=ToolRegistry()
+    registry.register(ToolSpec(name='capture_target_window',description='Owned invalid private evidence fixture.',
+        args_schema=ReceiptArgs,risk_class=RiskClass.READ,executor=publish_invalid_private_value,
+        verifier=verify_fixture,process_isolated=True,timeout_s=5))
+    try:
+        result=registry.execute('capture_target_window',dict(snapshot_id=snap.snapshot_id,receipt=receipt),cap,ledger)
+        assert not result.ok and 'PRIVATE_VALIDATION_VALUE' not in result.model_dump_json()
+        assert 'PRIVATE_VALIDATION_VALUE' not in str(ActivityQuery(ledger._db).actions_for_task(cap.task_id))
+        assert cap.perception_feedback.snapshot(cap) is None
+    finally:
+        supervisor.stop_task(cap.task_id);assert supervisor.join_stop_operations(2);registry.close()
+
+
 def test_live_worker_observation_arrives_before_result_and_stop_clears_it(resident_fixture, tmp_path):
     from pluma.tools.registry import ToolRegistry
     from pluma.tools.base import ToolSpec, RiskClass

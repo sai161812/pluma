@@ -478,7 +478,11 @@ class TaskWorkerController:
                             if (not worker_req.perception_updates or on_perception is None or perception_count>4
                                     or not isinstance(response[1],tuple) or len(response[1])!=2):
                                 raise ValueError('Unexpected perception evidence.')
-                            on_perception(*response[1])
+                            try:on_perception(*response[1])
+                            except Exception:
+                                # Schema errors can include private caption/OCR
+                                # values. Never copy that body into tool history.
+                                raise ValueError('Owned perception evidence was invalid.') from None
                             continue
                         if response[0] == "entered":
                             if on_entered is not None:

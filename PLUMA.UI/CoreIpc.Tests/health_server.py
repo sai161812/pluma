@@ -1,9 +1,12 @@
 """Execution-authorized native host fixture with private files and owned keys."""
 def run(address,root):
-    import contextlib,json,sys,threading,time
+    import contextlib,json,sys,threading,time,os
     from pluma.core.host import CoreHost
     from pluma.config.paths import PlumaPaths
     paths=PlumaPaths(root/"health-local",root/"health-roaming");paths.ensure_directories()
+    # This is the explicit missing-model native scenario. Do not depend on
+    # whether another acceptance suite provisioned OCR in the runner's cache.
+    os.environ['PADDLEX_HOME']=str(root/'missing-ocr-models')
     source=paths.user_settings_path
     source.write_text(json.dumps({"agent":{"text_hotkey":"ctrl+alt+shift+f4","stop_hotkey":"ctrl+alt+shift+f5","voice_hotkey":"ctrl+alt+shift+f6"}}),encoding="utf-8")
     host=CoreHost(paths,config_path=str(source),address="\\\\.\\pipe\\"+address)
