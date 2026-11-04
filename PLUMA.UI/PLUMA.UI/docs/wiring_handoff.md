@@ -2,7 +2,7 @@
 
 Current P22 implementation/verification supersedes the historical notes below.
 See [E104](../../../docs/completion/e104_p22_completion.md), the root handoff and
-[health/setup/recovery contract](wiring_health_setup_recovery.md). P23 has not started.
+[health/setup/recovery contract](wiring_health_setup_recovery.md). P23 packet 1 metadata readback is verified in [E106](../../../docs/completion/e106_p23_perception_readback.md); surfaces 15/16 remain dormant pending native hosting and full acceptance.
 
 **Current progress (2026-11-02, E96):** P20's scoped gate is complete on
 `p12-preparation`, native tested source `d223a32`. Saved History detail, exact

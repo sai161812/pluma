@@ -1,6 +1,7 @@
 # E106 - P23 packet 1: transient perception observation readback
 
-Implementation checkpoint; final checks pending. P23 is in progress, not complete.
+Packet 1 verified on source 3e4a03e0f8a261074e98ba9dc6f3baaacefba707.
+P23 is in progress, not complete.
 P24 has not started. Base 681c439 on p12-preparation; recovery point
 recovery/pre-p23-e106-20261104. Main stays 0468a03.
 
@@ -46,7 +47,33 @@ Native owned-window capture/worker/readback: 1 pass, using a target-bound
 foreground-context seam in the test worker so no personal foreground is changed.
 Identity/geometry/PrintWindow capture, Job ownership, saved verification and
 worker absence are native; this is not native OCR recognition or overlay acceptance.
-Final source identities/regressions/Windows IPC gate are still pending.
+Final source 3e4a03e0f8a261074e98ba9dc6f3baaacefba707 passes **1,118 required
+regressions**, no skips/xfails (145.47s pytest), and **1 owned native capture**
+case (1.54s pytest). Final focused P23 selection: **20 pass**. Core IPC Release
+build: zero warnings/errors. Commands and machine identity are in each
+run's command.json/results.xml/results.txt below the ignored root.
+
+Commands use the declared E98 test-env/Scripts/python.exe:
+- run_checks.py final-focused tests/unit/test_p23_perception_readback.py
+- required_regressions.py (deduplicated E105 required selection plus P23,
+  screen catalog, capture/context and UIA snapshot coverage; desktop isolation)
+- run_checks.py native-committed tests/windows/test_p23_capture_feedback.py
+  -p tests.fixtures.desktop_isolation
+- dotnet build PLUMA.UI/CoreIpc.Tests/CoreIpc.Tests.csproj -c Release --nologo
+- Windows workflow PLUMA.UI/verify-ui.ps1 on the exact pushed source.
+
+[Windows run 41847337439](https://github.com/sai161812/pluma/actions/runs/41847337439)
+passes **356 IPC, 237 legacy native UI, 15 P22 native UI, 663 popup and 195
+formatting** checks with complete teardown. The IPC native service path checks
+empty metadata readback; positive capture metadata and C# contract shape are
+separate evidence, not a claimed positive native capture-to-render flow.
+Artifact 13331423632 SHA256:
+19c213b10369ce4fa683e9ee37afb11eb2f9fc6156c92619ffa40a00f203c718,
+verified against GitHub's artifact digest. Executable SHA256:
+EABC69B748593E401BB5FBE08B2F703A6362645033DBFB25EBFE12774338FF8E
+(unsigned). Full summary/artifact remains in ci-41847337439/.
+
+Packet 1 is ready for independent Sol review; approval is not assumed.
 
 Remaining P23: live/in-worker observation delivery and remaining capture paths;
 target-bound native overlay hosting and freshness/monitor/DPI/TTL/STOP invalidation;

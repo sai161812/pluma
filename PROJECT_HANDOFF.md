@@ -1,6 +1,6 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E106 P23 packet 1 verification
+## Current checkpoint: 2026-11-04, E106 P23 packet 1 verified
 
 [E106](docs/completion/e106_p23_perception_readback.md) implements the handoff's
 first bounded P23 packet: task-owned transient capture/match observation readback.
@@ -11,7 +11,10 @@ No main merge, branch switch, reset/clean/force-push, styling or dependency chan
 Pre-edit prerequisites pass 76 cases. A reproduced post-capture movement race
 now fails closed. Twenty new focused checks and one owned native capture/worker/
 readback case pass; C# contracts compile with zero warnings/errors.
-Final required regression and exact-source Windows IPC verification are pending.
+Source 3e4a03e0f8a261074e98ba9dc6f3baaacefba707 passes 1,118 required
+regressions (no skips/xfails), one owned native capture, and Windows run
+41847337439: 356 IPC, 237 legacy UI, 15 P22 UI, 663 popup, 195 formatting.
+Packet 1 is verified and ready for independent Sol review, not approved.
 
 The new explicit read-only channel carries no image bytes, OCR text or window
 title; actual geometry/confidence and hashed/native identity are task-bound.
