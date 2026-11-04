@@ -43,7 +43,9 @@ reads the native UIA root and, only with consent, opens/starts/closes the microp
 It does not perform inference, enumerate personal UI, download models, save
 screenshots or retain audio samples. Errors expose bounded codes, not exception
 strings, model paths, device contents or sensitive arguments. Hotkey proof comes
-from the actual live registration owner, not configured chord strings.
+from the actual live registration and mandatory voice-polling owners, not
+configured chord strings. Losing either owner revokes readiness and uses the
+existing drain/control-recovery path.
 
 Model imports occur only in the setup worker, never at shell/resident startup.
 A successful check task means observations completed, not all capabilities passed.
@@ -55,6 +57,11 @@ not-ready or instance changes invalidate proof using the existing observer.
 There is no extra background health poller. Explicit reads are bounded to three
 seconds with limited pre-write busy retries; recovery waits at most 20 seconds
 for new-instance health. Timeout/disconnect never means successful recovery.
+An unavailable health read or disconnected/not-ready runtime also revokes
+ordinary command readiness. Fresh authenticated runtime evidence can restore it.
+An authenticated configuration/error snapshot remains available for controlled
+recovery across matching not-ready updates; it never enables ordinary commands
+or Continue. Disconnect, instance change and expiry still discard stale identity.
 
 ## Ownership and recovery
 
@@ -73,6 +80,9 @@ and STOP remain available. No default source is written over corrupt settings.
 Startup reconciles stale tasks before readiness; no previous PID is killed from
 unverified persisted identity. Unexpected hotkey loss drains before publishing
 new control identity and discards references to the old supervisor's queued work.
+If initial startup's cleanup budget expires, the host retains and resumes that
+same drain before constructing a fresh control-only graph. It does not retry
+normal startup automatically or discard storage/leases while work remains owned.
 
 The recovery dialog yields its modal root to the existing material-approval
 dialog. The Dashboard continues to show factual status; failed recovery reopens

@@ -1,20 +1,51 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E105 P22 completion recheck
+## Current checkpoint: 2026-11-04, E105 P22 completion recheck passed
 
-[E105](docs/completion/e105_p22_completion_recheck.md) identifies and corrects
-three bounded edge gaps after E104: retained startup drain continuation,
-mandatory voice-owner liveness and stale UI command readiness after disconnect.
-Two new backend regressions reproduce the first two defects; the fixed affected
-selection passes 80 checks, with zero-warning/error C# compilation.
-Full native acceptance and required regressions are pending; do not start P23.
+**P22's documented implementation and required acceptance pass after fixing four
+edge gaps. No remaining P22 packet; P23 is ready for owner instruction and has
+not started.** [E105](docs/completion/e105_p22_completion_recheck.md) supersedes
+E104's current completion conclusion and preserves its historical evidence.
 
-Base/recovery: 38825bc, pushed development branch p12-preparation; recovery ref
-recovery/pre-p22-e105-20261104 preserves that base. Main remains 0468a03.
-Unique evidence: output/p22-e105-20261104-184859-3b59f9d2/.
-E104's native capability/readiness evidence and owner-approved later physical,
-installed and release limits remain recorded. No new waiver or styling change.
-Next safe step: verify the bounded corrections, then independent Sol review.
+- Branch: p12-preparation. Recovery/pre-p22-e105-20261104 is pushed at base
+  38825bcd9cee6e27fd29626f2a77d6702cfba044. Main remains 0468a03; no merge,
+  reset, clean, force-push, branch switch, dependency or styling change.
+- cebe81b resumes an incomplete failed-startup drain before creating a fresh
+  control graph, detects loss of the mandatory voice polling owner, and revokes
+  stale UI command readiness on unavailable health/disconnected runtime.
+- c8a2510 retains authenticated configuration-error identity for controlled
+  recovery across matching not-ready updates; ordinary commands/Continue stay
+  disabled. 4e63df5 proves this after actual native runtime readback.
+- Fresh Python required selection on cebe81b: **1,059 passed**, no skips/xfails;
+  Python runtime/tests are unchanged at final native source 4e63df5.
+  Both new backend defects reproduce before repair; fixed affected selection
+  passes 80. Native setup passes all five capabilities and actual hotkey/voice
+  owners, with worker absence/cold resident and no retained audio/screenshots.
+  Stopping only the fixture voice owner revokes readiness and verifies a new
+  cold control graph. No personal state is altered.
+- [Final Windows run 41838806276](https://github.com/sai161812/pluma/actions/runs/41838806276)
+  passes on **4e63df5e28091b0417bc3b843d8b6836dafcaf2a**: **345 IPC/controller,
+  237 legacy UI, 15 P22 native UI, 663 popup, 195 formatting, 64,537 layout,
+  30 surface**, audio/copy and zero-warning/error builds. Includes repeated
+  approved recovery, surviving not-ready readback, actual IPC disconnect,
+  disabled command/unavailable recovery and joined shutdown.
+- Earlier fresh run 41837743803 also passes; both complete native teardown.
+  Unique SHA256-verified reports/artifacts remain under ignored
+  output/p22-e105-20261104-184859-3b59f9d2/. No historical report is overwritten.
+  Master blob remains 01b693dbf898b662aa4cd67736c1a0e8a21cf3e3.
+
+Existing limits remain: owner-approved C-02 timing at P25; later physical,
+installed/reboot/signing, broad quality/performance/security/release acceptance.
+Positive native setup and negative native UI readiness are separate evidence;
+a positive device-to-Continue UI run/full-product readiness is not claimed.
+Prior historical native crash evidence remains recorded, not relabelled fixed.
+
+**Next safe milestone: P23, only on owner instruction.** First bounded packet:
+typed readback of actual task-owned target capture/match facts before attaching
+existing capture flash 15 / OCR match 16 with identity/geometry/DPI/TTL/STOP.
+Ready for independent Sol review; approval is not assumed. No P23 code started.
+Recovery uses reviewed dependent reverts preserving profiles/unrelated work;
+no reset/clean/force-push or concurrent old/new host on one profile/pipe.
 
 ## Previous checkpoint: 2026-11-04, E104 P22 complete
 

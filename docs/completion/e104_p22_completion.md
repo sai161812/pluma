@@ -1,5 +1,9 @@
 # E104 - P22 health, setup and controlled recovery complete
 
+Current-status note: [E105](e105_p22_completion_recheck.md) supersedes this
+completion conclusion after four additional edge fixes and fresh acceptance.
+The source-specific E104 results below remain historical evidence.
+
 P22's scoped implementation and required gate are complete. P23 has not started.
 Ready for independent Sol review; approval and full-product readiness are not assumed.
 
