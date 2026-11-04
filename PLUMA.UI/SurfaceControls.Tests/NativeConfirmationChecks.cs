@@ -177,7 +177,12 @@ internal static class NativeConfirmationChecks
                 if (ready != "READY") throw new InvalidOperationException("Owned fixture was not ready.");
                 return value;
             }
-            catch { await value.DisposeAsync(); throw; }
+            catch
+            {
+                await value.DisposeAsync();
+                Console.Error.WriteLine("Owned fixture startup diagnostics: "+await value._errors);
+                throw;
+            }
         }
         public async ValueTask DisposeAsync()
         {

@@ -19,10 +19,12 @@ target/notification placement were reviewed/reused before editing.
   verified tool-result registration and TTL admission. Cross-target/invalid
   receipts, flooding, STOP and late delivery fail closed. Final receipts cannot
   replay an observation or renew its lifetime.
-- The existing serialized runtime observer queries feedback only while tasks
-  run. No extra reader, idle image loop or heavy startup import is introduced.
+- The existing serialized runtime observer queries feedback while tasks run,
+  plus a bounded three-second metadata tail after recent activity/terminal events.
+  No extra reader, idle image loop or heavy startup import is introduced.
   Missing/corrupt/disconnected replies clear presentation. Shell STOP revokes
-  immediately; runtime/terminal/expiry and native revalidation remove stale facts.
+  immediately; failure/expiry and native revalidation remove stale facts. Successful
+  tails require actual terminal persistence and retain the original expiry only.
 - A shell-owned nonactivating, input-transparent transparent window hosts the
   unchanged ScreenCaptureFlash and OcrMatchIndicator controls, outside the popup
   stack. It occupies only the actual capture ROI and has no non-client shadow.
@@ -103,6 +105,47 @@ readback and STOP: 80 passed (short-capture-regressions/); C# IPC: 403 passed
 (short-capture-core-run.log), Release build zero warnings/errors. Native tests
 add no-holding-step capture and actual region coverage. Combined acceptance is
 still required; no completion claim or P24 eligibility is implied.
+
+Normal run 41896683698 on 35d8800 passed 403 IPC, 663 native popup, 195 formatting
+and 15 P22 UI checks. The independent native-controls suite crashed before the
+folder scenario: the added diagnostic branch's local imports shadowed existing
+history readback closure bindings. Removing those imports is verified by an
+actual subprocess/control/SQLite regression (native-fixture-import-guard/).
+This was an E108 fixture regression, not an undo product failure. Its P23 suite
+still found another PLUMA HWND at the right-edge hit-test sample. The revised
+fixture uses the target's empty left margin, asserts no overlap with the separate
+notification lane, and requires real SendInput delivery to an owned WM_LBUTTONDOWN
+counter while feedback is visible. Neither styles nor WindowFromPoint alone are
+accepted as actual pointer-delivery proof. The capture-only native case checks
+saved success and a separate late metadata query; it does not require a previously
+displayed RUNNING frame to change phase in place or replay a completed flash.
+
+Run 41896086286 was cancelled by workflow concurrency when the newer checkpoint
+was dispatched; its partial artifact is retained and is not acceptance evidence.
+Run 41896683698 artifact SHA256:
+ae304cfdab6d5d092a882c12eae6b171d0a93d8e22256d544a1c794e8bd1efa4.
+The final native-fixture selection on committed 02fd21e passes 4 checks: real
+diagnostic control/storage plus native conversion, capture and PaddleOCR/ONNX.
+Required affected backend regressions on 22a5b2d: 1213 passed, no skips/xfails,
+11 existing JUnit record_property warnings. Later changes so far affect native
+feedback input and test fixtures, not those backend paths. Full disposable-host
+acceptance on 02fd21e is running, with optional owned-folder stack diagnostics.
+
+Run 41898248106 on 02fd21e failed overall. The folder visibility/saved verifier/
+new-window-only cleanup scenario passes, as do target identity, input styles,
+uncovered-target hit testing and actual native ROI bounds. Remaining failures:
+P21 fixture READY was not received within its original seven seconds; P22's
+third recovery-dialog admission timed out; the P23 one-shot GetPixel brightness
+assertion failed. These are retained as failures, not assumed repaired. Pixel
+acceptance now uses a transient 1x1 BitBlt SRCCOPY|CAPTUREBLT sample to include
+layered windows (Microsoft's documented capture flag), samples within the existing
+220ms flash and logs exact colors/layout. Its brightness/outside-ROI assertions
+remain mandatory; safe independent scenarios continue before an overall failure
+is raised. Owned startup stacks/recovery state diagnostics retain their original
+deadlines. No product restart/startup fix is inferred without those diagnostics.
+The fixture/folder/undo selection passes 24 checks and native acceptance compiles
+with zero warnings/errors. Run artifact SHA256:
+a9b2759a76b36a5b5de0d8a111ecf0ce12f37fdfe4b280d2eb9d1f00437412a6.
 
 Required affected regressions, native conversion/capture/OCR checks and the
 combined native P23 suite must pass on the recorded committed source. Until

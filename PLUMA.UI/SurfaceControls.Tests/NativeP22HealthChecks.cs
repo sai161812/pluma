@@ -99,6 +99,13 @@ internal static class NativeP22HealthChecks
             Invoke(Find(shell.CriticalForAcceptance,"Close"));
             await Until(()=>shell.CriticalForAcceptance is null);
         }
+        catch(Exception error)
+        {
+            Console.Error.WriteLine("Owned health failure: "+System.Text.Json.JsonSerializer.Serialize(shell.HealthForAcceptance)+
+                "; command="+System.Text.Json.JsonSerializer.Serialize(shell.CurrentCommandForAcceptance)+
+                "; dialog="+shell.CriticalForAcceptance?.IsLoaded+"/"+shell.CriticalForAcceptance?.CanRestart+"; "+error);
+            throw;
+        }
         finally{shell.Close();await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5));}
         check(shell.ObservationLifetime.IsCompleted,"native health/setup/recovery close joins all UI-owned reads, dialogs and observers");
     }

@@ -153,6 +153,7 @@ namespace PLUMA.UI
         private Task _healthDialogTask=Task.CompletedTask,_recoveryTask=Task.CompletedTask;
         internal SetupWizard? Setup=>ContentFrame.Content as SetupWizard;
         internal CriticalErrorDialog? CriticalForAcceptance=>_critical;
+        internal HealthView HealthForAcceptance=>_health.View;
         internal void OpenSetupForAcceptance()=>OpenSetup();
         private async void OpenSetup()
         {

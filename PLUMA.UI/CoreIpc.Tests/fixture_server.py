@@ -7,6 +7,14 @@ def main():
     import threading
     from types import SimpleNamespace
 
+    # Diagnose native-host cold startup within the existing seven-second bound.
+    # Stack frames contain no captured content and are emitted only on this
+    # disposable test host; the production entry point never enables this.
+    trace_startup=os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('PLUMA_P20_FOLDER_TRACE')=='1'
+    if trace_startup:
+        import faulthandler
+        faulthandler.dump_traceback_later(5,file=sys.stderr)
+
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     os.environ["LOCALAPPDATA"] = sys.argv[2]
     mode = sys.argv[3] if len(sys.argv) > 3 else "status"
@@ -515,6 +523,7 @@ def main():
             raise RuntimeError("Fixture pipe did not start.")
         if any(name in sys.modules for name in ("torch", "whisper", "llama_cpp", "paddleocr")):
             raise RuntimeError("An IPC fixture imported a heavy inference runtime.")
+        if trace_startup:faulthandler.cancel_dump_traceback_later()
         print("READY", flush=True)
         for line in sys.stdin:
             if line.strip() == "stop":

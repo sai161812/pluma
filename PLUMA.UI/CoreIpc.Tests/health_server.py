@@ -19,6 +19,9 @@ def run(address,root):
         except BaseException as error:errors.append(type(error).__name__)
     with contextlib.redirect_stdout(sys.stderr):host.start()
     owner=threading.Thread(target=loop,name="OwnedFixtureHostLoop",daemon=True);owner.start()
+    if os.environ.get('GITHUB_ACTIONS')=='true':
+        import faulthandler
+        faulthandler.cancel_dump_traceback_later()
     print("READY",flush=True)
     try:
         for line in sys.stdin:

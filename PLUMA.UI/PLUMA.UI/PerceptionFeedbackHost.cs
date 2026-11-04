@@ -26,6 +26,8 @@ internal sealed class PerceptionFeedbackHost : IDisposable
     internal CoreRequestProtocol.PerceptionObservation? ObservationForAcceptance => _observation;
     internal event Action<CoreRequestProtocol.PerceptionObservation, PerceptionPlacement>? Presented;
     internal string? LastFailure {get;private set;}
+    internal string VisualStateForAcceptance => _window is null ? "no window" :
+        $"root={_window.Root.ActualWidth}x{_window.Root.ActualHeight}; flash={_window.Flash.ActualWidth}x{_window.Flash.ActualHeight}; loaded={_window.Flash.IsLoaded}; visibility={_window.Flash.Visibility}; opacity={(_window.Flash.FindName("FlashLayer") as FrameworkElement)?.Opacity}";
 
     internal PerceptionFeedbackHost(Window owner)
     {

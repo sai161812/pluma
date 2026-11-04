@@ -28,6 +28,9 @@ def run(address, root, mode):
             # Only the IPC readiness marker is required by this shell fixture.
             # Never start resident hotkeys or the microphone on the test desktop.
             runtime.resident_core._running = True
+        if os.environ.get('GITHUB_ACTIONS')=='true':
+            import faulthandler
+            faulthandler.cancel_dump_traceback_later()
         print("READY", flush=True)
         for line in sys.stdin:
             if line.strip() == "stop":

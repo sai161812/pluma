@@ -1,6 +1,6 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E108 P23 live/native host candidate
+## Current checkpoint: 2026-11-05, E108 P23 live/native host candidate
 
 [E108](docs/completion/e108_p23_live_hosting.md) implements remaining live worker
 delivery, native surfaces 15/16 hosting and explicit Windows legacy DPI conversion.
@@ -16,6 +16,16 @@ repair (5.289s), with original 12-second tool budget. Model loading precedes
 fresh image capture and uses installed local weights, with no inference-time
 network probe/download. Private intermediate observations do not revive expired
 action refs or enter the planner registry. STOP and image lifetime remain strict.
+
+Latest pushed source 02fd21e includes a reproduced short-task delivery repair:
+successful metadata may survive normal completion only at its original expiry,
+after terminal persistence, with all images/snapshots released. STOP/shutdown
+revoke it without rewriting completed history. Required affected regressions:
+1213 passed on 22a5b2d, no skips/xfails; C# IPC 403 passed. Committed 02fd21e
+native conversion/capture/real OCR plus diagnostic control/storage: 4 passed.
+Full native acceptance still has retained failures; E108 records exact runs and
+fixture repairs. Combined run 41898248106 is testing 02fd21e. Do not interpret
+passing local seams or the interrupted earlier run as native visual acceptance.
 
 Native foreground/render/hit-testing, movement/hidden/closed/TTL/STOP and
 shutdown acceptance is implemented for the disposable Windows host. It must

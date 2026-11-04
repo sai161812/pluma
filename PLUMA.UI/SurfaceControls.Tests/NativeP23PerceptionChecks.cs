@@ -37,6 +37,12 @@ internal static class NativeP23PerceptionChecks
         int sampleX=0,sampleY=0,outsideX=0;
         uint baseline=0,outsideBaseline=0;
         string? currentTask=null;
+        var visualFailures=new System.Collections.Generic.List<string>();
+        void Visual(bool condition,string name)
+        {
+            if(condition)check(true,name);
+            else{visualFailures.Add(name);Console.Error.WriteLine("FAIL "+name);}
+        }
         host.Presented+=(_,_)=>presented++;
         string Id()=>Guid.NewGuid().ToString("D");
         async Task<string> Start(string text)
@@ -87,12 +93,6 @@ internal static class NativeP23PerceptionChecks
                 "real capture flash native bounds equal the actual target ROI after Windows legacy DPI conversion");
             check(observation.Hwnd==(long)target&&observation.Pid==pid&&observation.Match is null,
                 "actual capture receipt identifies the fixture target and invents no OCR match");
-            await Task.Delay(45);
-            uint lit=Pixel(sampleX,sampleY);
-            int red=(int)(lit&255)-(int)(baseline&255),green=(int)((lit>>8)&255)-(int)((baseline>>8)&255);
-            check(lit!=baseline && red>0 && red<=128 && green>=0 && green<=128,
-                "actual composed capture flash brightens an owned target pixel rather than showing an opaque background");
-            check(Pixel(outsideX,sampleY)==outsideBaseline,"capture feedback changes no pixel outside the target ROI or its owned input-transparent layer");
             CheckTarget(target,pid);
             check(LayerVisible(layer)&&GetForegroundWindow()==target,"actual pointer trial starts while the feedback is displayed over its owned foreground target");
             nint clicks=GetProp(target,"PLUMA.Fixture.MouseDown");
@@ -101,6 +101,20 @@ internal static class NativeP23PerceptionChecks
             check(SendInput(2,input,Marshal.SizeOf<NativeInput>())==2,"Windows admits only the owned fixture pointer down/up pair");
             await Until(()=>GetProp(target,"PLUMA.Fixture.MouseDown")==clicks+1,.15);
             check(GetForegroundWindow()==target,"real pointer input reaches the owned target beneath the visual layer without activation theft");
+            uint lit=baseline;int red=0,green=0;
+            string visual=host.VisualStateForAcceptance;
+            var exposure=Stopwatch.StartNew();
+            while(exposure.Elapsed.TotalMilliseconds<180 && host.Handle==layer)
+            {
+                uint color=Pixel(sampleX,sampleY);
+                int delta=(int)(color&255)-(int)(baseline&255);
+                if(delta>red){lit=color;red=delta;green=(int)((color>>8)&255)-(int)((baseline>>8)&255);}
+                await Task.Delay(10);
+            }
+            Console.WriteLine($"Owned exposure baseline={baseline:x6}; peak={lit:x6}; red={red}; green={green}; initial {visual}; final {host.VisualStateForAcceptance}");
+            Visual(lit!=baseline && red>0 && red<=128 && green>=0 && green<=128,
+                "actual composed capture flash brightens an owned target pixel rather than showing an opaque background");
+            Visual(Pixel(outsideX,sampleY)==outsideBaseline,"capture feedback changes no pixel outside the target ROI or its owned input-transparent layer");
             await Until(()=>host.Handle==0,1);
             int count=presented;await Task.Delay(350);
             check(presented==count&&!host.TimerRunning,"capture flash completes once; repeated observations do not replay or keep an idle timer");
@@ -129,7 +143,7 @@ internal static class NativeP23PerceptionChecks
                 pixels.Width<NativePerceptionTarget.Map(observation with {Region=new(0,0,(int)observation.WindowBounds.Width,(int)observation.WindowBounds.Height)},1)!.Width,
                 "native region capture supplies its actual crop instead of flashing the whole target window");
             await Task.Delay(45);
-            check(Pixel(sampleX,sampleY)==baseline,"a region flash leaves the rest of the owned target unchanged");
+            Visual(Pixel(sampleX,sampleY)==baseline,"a region flash leaves the rest of the owned target unchanged");
             await Until(()=>host.Handle==0,1);await Stop(task);
 
             task=await Start("fixture:match");
@@ -177,6 +191,7 @@ internal static class NativeP23PerceptionChecks
             await fixture.ControlHistoryAsync("perception_close");await Until(()=>host.Handle==0,.6);
             check(!IsWindow(layer)&&!IsWindow(target),"a closed owned target cannot retain a feedback layer after reconnect");
             await Stop(task);
+            check(visualFailures.Count==0,"all native visual assertions passed: "+string.Join("; ",visualFailures));
         }
         catch(Exception error)
         {
@@ -197,12 +212,27 @@ internal static class NativeP23PerceptionChecks
     private static uint Pixel(int x,int y)
     {
         nint dc=GetDC(0);if(dc==0)throw new InvalidOperationException("Owned display pixel unavailable.");
-        try{uint color=GetPixel(dc,x,y);if(color==0xffffffff)throw new InvalidOperationException("Owned display pixel read failed.");return color;}
-        finally{ReleaseDC(0,dc);}
+        nint memory=0,bitmap=0,prior=0;
+        try
+        {
+            memory=CreateCompatibleDC(dc);bitmap=CreateCompatibleBitmap(dc,1,1);
+            if(memory==0||bitmap==0)throw new InvalidOperationException("Owned pixel buffer unavailable.");
+            prior=SelectObject(memory,bitmap);
+            if(prior==0||prior==-1||!BitBlt(memory,0,0,1,1,dc,x,y,0x40CC0020))
+                throw new InvalidOperationException("Layered owned display pixel capture failed.");
+            uint color=GetPixel(memory,0,0);if(color==0xffffffff)throw new InvalidOperationException("Owned display pixel read failed.");return color;
+        }
+        finally{if(prior!=0&&prior!=-1)SelectObject(memory,prior);if(bitmap!=0)DeleteObject(bitmap);if(memory!=0)DeleteDC(memory);ReleaseDC(0,dc);}
     }
     [DllImport("user32.dll")] private static extern nint GetDC(nint hwnd);
     [DllImport("user32.dll")] private static extern int ReleaseDC(nint hwnd,nint dc);
     [DllImport("gdi32.dll")] private static extern uint GetPixel(nint dc,int x,int y);
+    [DllImport("gdi32.dll")] private static extern nint CreateCompatibleDC(nint dc);
+    [DllImport("gdi32.dll")] private static extern nint CreateCompatibleBitmap(nint dc,int width,int height);
+    [DllImport("gdi32.dll")] private static extern nint SelectObject(nint dc,nint value);
+    [DllImport("gdi32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool BitBlt(nint target,int x,int y,int width,int height,nint source,int sourceX,int sourceY,uint operation);
+    [DllImport("gdi32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteObject(nint value);
+    [DllImport("gdi32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteDC(nint value);
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool SetForegroundWindow(nint hwnd);
     [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint hwnd,out uint pid);
