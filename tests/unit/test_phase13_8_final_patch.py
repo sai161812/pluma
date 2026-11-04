@@ -391,6 +391,7 @@ class TestOcrFreshnessAndVerification:
                 return [OcrWord(text=text, confidence=0.99, bounds=BoundingBox(left=10, top=10, right=50, bottom=20))]
 
         class DummyOcrManager:
+            def prepare(self,cancellation_token=None):pass
             def run_ocr(self, image_bytes, cancellation_token=None):
                 return DummyOcrResult()
 

@@ -1,6 +1,33 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E107 P23 validation packet; native regression finding
+## Current checkpoint: 2026-11-04, E108 P23 live/native host candidate
+
+[E108](docs/completion/e108_p23_live_hosting.md) implements remaining live worker
+delivery, native surfaces 15/16 hosting and explicit Windows legacy DPI conversion.
+Full combined acceptance is pending; P23 is not yet declared complete. P24 is
+ineligible and has not started. Base 3502e9e was clean; the pushed recovery point
+is recovery/pre-p23-e108-20261104. No merge/branch switch/reset/clean/force-push,
+XAML styling or master specification change.
+
+Fresh prerequisites 61 pass. Focused live/grounding/OCR guards 130 pass, C# IPC
+400 pass; native controls build has zero warnings/errors. Actual owned native
+PaddleOCR/ONNX capture/match passes after a reproduced cold-import freshness
+repair (5.289s), with original 12-second tool budget. Model loading precedes
+fresh image capture and uses installed local weights, with no inference-time
+network probe/download. Private intermediate observations do not revive expired
+action refs or enter the planner registry. STOP and image lifetime remain strict.
+
+Native foreground/render/hit-testing, movement/hidden/closed/TTL/STOP and
+shutdown acceptance is implemented for the disposable Windows host. It must
+still pass on the committed candidate. The E107 P20 folder-terminal wait
+finding remains retained; a fresh full Windows regression is required.
+Unique ignored evidence: output/p23-e108-20261104-230308-e366ce50/.
+
+Next safe work: finish required regression/native gates, fix reproduced failures
+and record exact source/build evidence before P23 closure. Existing P25 physical
+limits/C-02 deferral and later security/performance/install/release gates remain.
+
+## Previous checkpoint: 2026-11-04, E107 P23 validation packet; native regression finding
 
 [E107](docs/completion/e107_p23_native_freshness.md) adds read-only native target
 probing and a revocable presentation lease. P23 remains in progress; surfaces

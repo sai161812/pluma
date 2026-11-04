@@ -95,5 +95,15 @@ internal static class PerceptionPresentationChecks
         check(repeated.Revalidate(runtime, false, _ => target) is null, "rechecking a lease never renews original TTL");
         check(NativePerceptionTarget.Read(0) is null && NativePerceptionTarget.Read(-1) is null,
             "native probe refuses invalid handles without OS mutations");
+        clock.Ticks=0;
+        var legacy=target with {CoordinatesArePhysical=false};
+        var converted=PerceptionPresentation.TryCreate(observation,runtime,false,_=>legacy,clock,
+            _=>new(-1180,-90,200,100,10,10,50,30,.97));
+        check(converted is not null && converted.Revalidate(runtime,false,_=>legacy) is {MatchWidth:50},
+            "legacy presentation requires an explicit conversion provider rather than guessed DPI multiplication");
+        bool moved=false;
+        var duringMap=PerceptionPresentation.TryCreate(observation,runtime,false,_=>moved?target with {Monitor=101}:target,clock,
+            _=>{moved=true;return new(-1180,-90,200,100,10,10,50,30,.97);});
+        check(duringMap is null,"target is re-read after native point conversion; movement during mapping cannot grant a lease");
     }
 }

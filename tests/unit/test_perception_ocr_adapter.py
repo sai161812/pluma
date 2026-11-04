@@ -96,7 +96,7 @@ def test_ocr_adapter_not_loaded_raises_error() -> None:
         adapter.run(b"BM_DUMMY")
 
 
-def test_paddle_backend_selects_locked_small_onnx_cpu_models(monkeypatch) -> None:
+def test_paddle_backend_selects_locked_small_onnx_cpu_models(monkeypatch,tmp_path) -> None:
     """The production backend must not use Paddle's implicit engine/model defaults."""
     paddle_module = ModuleType("paddleocr")
     constructor = MagicMock(return_value=SimpleNamespace())
@@ -105,6 +105,8 @@ def test_paddle_backend_selects_locked_small_onnx_cpu_models(monkeypatch) -> Non
     ort_module.get_available_providers = lambda: ["CPUExecutionProvider"]
     monkeypatch.setitem(sys.modules, "paddleocr", paddle_module)
     monkeypatch.setitem(sys.modules, "onnxruntime", ort_module)
+    directories=[tmp_path/'det',tmp_path/'rec']
+    monkeypatch.setattr('pluma.perception.ocr_adapter._local_model_dirs',lambda:directories)
 
     backend = _PaddleOcrBackend()
     backend.load()
@@ -112,6 +114,7 @@ def test_paddle_backend_selects_locked_small_onnx_cpu_models(monkeypatch) -> Non
     args = constructor.call_args.kwargs
     assert args["text_detection_model_name"] == "PP-OCRv6_small_det"
     assert args["text_recognition_model_name"] == "PP-OCRv6_small_rec"
+    assert args['text_detection_model_dir']==str(directories[0]) and args['text_recognition_model_dir']==str(directories[1])
     assert args["engine"] == "onnxruntime"
     assert args["device"] == "cpu"
     assert args["engine_config"]["onnxruntime"]["providers"] == ["CPUExecutionProvider"]
@@ -134,6 +137,29 @@ def test_paddle_backend_refuses_missing_cpu_provider(monkeypatch) -> None:
         _PaddleOcrBackend().load()
 
     constructor.assert_not_called()
+
+
+def test_missing_local_models_refuse_before_vendor_import(monkeypatch,tmp_path):
+    from pluma.perception import ocr_adapter
+    from pluma.config.paths import PlumaPaths
+    monkeypatch.setattr(PlumaPaths,'ocr_models_dir',property(lambda self:tmp_path/'missing'))
+    monkeypatch.setenv('PADDLE_PDX_CACHE_HOME',str(tmp_path/'empty-cache'))
+    with pytest.raises(FileNotFoundError,match='Installed local'):
+        ocr_adapter._local_model_dirs()
+    assert not (tmp_path/'empty-cache').exists()
+
+
+def test_local_model_lookup_uses_complete_onnx_pair_without_download(monkeypatch,tmp_path):
+    from pluma.perception import ocr_adapter
+    from pluma.config.paths import PlumaPaths
+    monkeypatch.setattr(PlumaPaths,'ocr_models_dir',property(lambda self:tmp_path/'uninstalled'))
+    monkeypatch.setenv('PADDLE_PDX_CACHE_HOME',str(tmp_path/'cache'))
+    expected=[]
+    for name in ('PP-OCRv6_small_det','PP-OCRv6_small_rec'):
+        directory=tmp_path/'cache'/'official_models'/(name+'_onnx');directory.mkdir(parents=True)
+        for file in ('inference.onnx','inference.yml'):(directory/file).write_bytes(b'Owned path lookup fixture, not an inference model.')
+        expected.append(directory)
+    assert ocr_adapter._local_model_dirs()==expected
 
 
 def test_paddle_backend_parses_structured_results_without_persisting_images(monkeypatch) -> None:

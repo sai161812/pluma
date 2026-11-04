@@ -154,6 +154,7 @@ def test_ocr_read_and_capture_are_target_scoped_and_return_no_image_bytes(monkey
             return b"PRIVATE-SCREENSHOT"
 
     class FakeOcrManager:
+        def prepare(self,cancellation_token=None):pass
         def run_ocr(self, image, cancellation_token=None):
             assert image == b"PRIVATE-SCREENSHOT"
             from pluma.perception.ocr_adapter import OcrResult, OcrWord

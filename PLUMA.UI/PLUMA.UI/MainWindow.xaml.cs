@@ -44,6 +44,9 @@ namespace PLUMA.UI
         private readonly TaskCompletionSource _closedDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CommandController _commands;
         private readonly DispatcherQueue _dispatcher;
+        private readonly PerceptionFeedbackHost _feedback;
+        internal PerceptionFeedbackHost FeedbackForAcceptance => _feedback;
+        internal Task StopForAcceptance() => _commands.StopAsync();
         private string? _lastStopMessage;
         public PopupStackHost Popups
         {
@@ -60,12 +63,14 @@ namespace PLUMA.UI
             _coreStatus = new CoreIpcClient(options);
             InitializeComponent();
             _dispatcher = DispatcherQueue;
+            _feedback = new PerceptionFeedbackHost(this);
             _commands = new CommandController(new CoreCommandClient(_coreStatus));
             _commands.Changed += OnCommandChanged;
             _events = new EventFeedController(new CoreEventFeedClient(_coreStatus));
             _events.Notice += OnEventNotice;
             _events.Surface += OnActivitySurface;
-            _runtime = new RuntimeController(_coreStatus.GetRuntimeAsync);
+            _runtime = new RuntimeController(_coreStatus.GetRuntimeAsync, perception: _coreStatus.GetPerceptionAsync);
+            _runtime.PerceptionChanged += OnPerception;
             _runtime.Changed += OnRuntimeChanged;
             _runtime.TextRequested += OpenCommandEntry;
             _runtime.WorkerTerminated += OnWorkerTerminated;
@@ -97,11 +102,12 @@ namespace PLUMA.UI
             };
             Closed += async (_, _) =>
             {
-                _closed = true; _healthLifetime.Cancel(); _popups?.Dispose(); _activityTray?.Dispose();
+                _closed = true; _healthLifetime.Cancel(); _feedback.Dispose(); _popups?.Dispose(); _activityTray?.Dispose();
                 _commands.Changed -= OnCommandChanged;
                 _events.Notice -= OnEventNotice;
                 _events.Surface -= OnActivitySurface;
                 _runtime.Changed -= OnRuntimeChanged;
+                _runtime.PerceptionChanged -= OnPerception;
                 _runtime.TextRequested -= OpenCommandEntry;
                 _runtime.WorkerTerminated -= OnWorkerTerminated;
                 _voice.Changed -= OnVoiceChanged;
@@ -271,6 +277,7 @@ namespace PLUMA.UI
             if (!_dispatcher.HasThreadAccess)
             { _dispatcher.TryEnqueue(() => OnRuntimeChanged(_runtime.View)); return; }
             if (_closed) return;
+            _feedback.Runtime(view);
             if(view.CoreReady is not null)_commands.SetCoreReady(view.CoreReady);
             _health.OnRuntime(view);
             var current = new System.Collections.Generic.HashSet<string>();
@@ -351,7 +358,9 @@ namespace PLUMA.UI
         {
             if (!_dispatcher.HasThreadAccess)
             { _dispatcher.TryEnqueue(() => OnCommandChanged(_commands.View)); return; }
-            if (_closed || view.StopMessage == _lastStopMessage) return;
+            if (_closed) return;
+            if (view.StopPending) _feedback.Stop();
+            if (view.StopMessage == _lastStopMessage) return;
             _lastStopMessage = view.StopMessage;
             if (view.StopMessage is null) { _popups?.Dismiss("command-stop"); return; }
             Popups.Present("command-stop", 20, new CancellationAnimation
@@ -360,6 +369,12 @@ namespace PLUMA.UI
                 Message = view.StopMessage, TaskId = view.TaskId ?? "All tasks",
                 ElapsedTime = (DateTimeOffset.UtcNow - (view.StopRequestedAt ?? DateTimeOffset.UtcNow)).TotalSeconds.ToString("0.0", CultureInfo.CurrentCulture) + "s"
             }, persistent: false, lifetime: TimeSpan.FromSeconds(4));
+        }
+
+        private void OnPerception(CoreRequestProtocol.PerceptionSnapshot? frame)
+        {
+            if (!_dispatcher.HasThreadAccess) { _dispatcher.TryEnqueue(() => OnPerception(frame)); return; }
+            if (!_closed) _feedback.Observe(frame);
         }
 
         private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)

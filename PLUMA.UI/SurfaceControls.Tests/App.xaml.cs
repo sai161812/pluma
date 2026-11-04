@@ -24,7 +24,9 @@ namespace PLUMA.UI.Tests
                 var root = new StackPanel { Spacing = 12 };
                 _window = new Window { Title = "PLUMA UI contract checks", Content = root };
                 _window.Activate();
-                if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p18-startup") >= 0)
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p23-perception") >= 0)
+                    await NativeP23PerceptionChecks.RunAsync(Check);
+                else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p18-startup") >= 0)
                     for(int iteration=0;iteration<5;iteration++) await NativeP18ShellChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-undo") >= 0)
                     await NativeP20UndoChecks.RunAsync(Check);

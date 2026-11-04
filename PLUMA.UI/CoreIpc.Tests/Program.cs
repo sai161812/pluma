@@ -24,6 +24,12 @@ internal static partial class Program
 
     private static async Task<int> Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--perception-map")
+        {
+            var frame = CoreRequestProtocol.PerceptionSnapshot.Parse(Encoding.UTF8.GetBytes(await Console.In.ReadToEndAsync()));
+            Console.WriteLine(JsonSerializer.Serialize(NativePerceptionTarget.Map(frame.Observations.Single(), 1)));
+            return 0;
+        }
         if (args.Length == 2 && args[0] == "--perception-probe" && long.TryParse(args[1], out long hwnd))
         {
             Console.WriteLine(JsonSerializer.Serialize(NativePerceptionTarget.Read(hwnd)));
@@ -63,6 +69,7 @@ internal static partial class Program
         await RuntimeChecks.RunAsync(Check);
         PerceptionChecks.Run(Check);
         PerceptionPresentationChecks.Run(Check);
+        await PerceptionDeliveryChecks.RunAsync(Check);
         VoiceChecks.Run(Check);
         await VoiceControllerChecks.RunAsync(Check);
         await HistoryChecks.RunAsync(Check);

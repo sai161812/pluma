@@ -106,6 +106,12 @@ class SnapshotRegistry:
         with self._lock:
             return self._snapshots.get(snapshot_id)
 
+    def get_bounded(self,snapshot_id: str,timeout_s: float=.01) -> Optional[ScreenSnapshot]:
+        """Bounded historical ownership read; never substitutes for resolve at action admission."""
+        if not self._lock.acquire(timeout=max(0,timeout_s)):raise TimeoutError('Snapshot registry is busy.')
+        try:return self._snapshots.get(snapshot_id)
+        finally:self._lock.release()
+
     def clear(self) -> None:
         """Remove all snapshots — called when the task reaches a terminal state."""
         with self._lock:

@@ -50,6 +50,7 @@ def main():
 
 
     voice_threads = []
+    perception_fixture = None
     voice_release = threading.Event()
     voice_entered = threading.Event()
     voice_paused = threading.Event()
@@ -57,7 +58,7 @@ def main():
     initial_status_pending = threading.Event()
     initial_status_release = threading.Event()
     early_observation = threading.Event()
-    if mode in {"versioned", "commands", "voice", "history"}:
+    if mode in {"versioned", "commands", "voice", "history", "perception"}:
         from pluma.core.resident import ResidentCore
         from pluma.core.task_supervisor import TaskState, TaskSupervisor
         from pluma.config.loader import load_config
@@ -130,6 +131,10 @@ def main():
         core.config = load_config(Path(sys.argv[2]) / "no-user-settings.json")
         core.config["brain"]["model_path"] = r"C:\fixture\planner.gguf"
         core.config["voice"]["model_path"] = r"C:\fixture\whisper.ggml"
+        if mode=='perception':
+            from perception_server import PerceptionFixture
+            perception_fixture=PerceptionFixture(core,registry,supervisor,ledger,Path(sys.argv[2]))
+            core.orchestrator=perception_fixture
 
         if mode == "history":
             import sqlite3
@@ -448,6 +453,8 @@ def main():
                 report_event(command.upper())
 
         def handler(request):
+            if mode=='perception' and perception_fixture.disconnected:
+                return {'protocol_version':1,'message_type':'protocol_error','error_code':'FIXTURE_DISCONNECTED','message':'Owned fixture disconnected.'}
             if mode == 'history' and request.get('message_type') in ('confirmation_query','events_query','runtime_query','voice_query') and not initial_status_read.is_set():
                 early_observation.set()
             if request.get("message_type") == "voice_query" and voice_paused.is_set():
@@ -469,6 +476,9 @@ def main():
             if request.get("message_type") == "stop":
                 release_status.set()
             reply = core.handle_ipc_command(request)
+            if mode=='perception' and reply.get('message_type')=='runtime_snapshot':
+                # Fixture-only readiness; native health acceptance is separate.
+                reply.update(core_instance_id='d2f2ec50-77d7-45fe-8b20-847d053f4264',core_ready=True)
             if mode == "history" and reply.get('message_type') == 'history_page':
                 assert_history_page(request, reply)
             if (request.get("message_type") == "confirmation_decision" and request.get("approved") is True
@@ -495,6 +505,8 @@ def main():
                 voice_control(line.strip())
             if mode == "history" and line.strip().startswith("history_"):
                 history_control(line.strip())
+            if mode=='perception' and line.strip().startswith('perception_'):
+                perception_fixture.control(line.strip());report_event(line.strip().upper())
             if line.strip() == "pause_events":
                 paused_events.set(); report_event("EVENTS_PAUSED")
             if line.strip() == "resume_events":
@@ -525,6 +537,7 @@ def main():
                 if thread.is_alive():
                     raise RuntimeError("Owned fixture task did not exit.")
             registry.close()
+            if perception_fixture is not None:perception_fixture.close()
             if set(executed_calls) - approved_calls or len(executed_calls) != len(set(executed_calls)):
                 raise RuntimeError("Unapproved or duplicate fixture executor entry.")
             if len(command_calls) != len(set(command_calls)):

@@ -1,8 +1,8 @@
 # P23 perception feedback contract
 
 E106 adds observation transport; E107 adds a native target probe and revocable
-presentation lease. Neither checkpoint enables a renderer. UI-15/16 remain
-UNWIRED until native delivery, hosting and combined acceptance pass.
+presentation lease. E108 connects owned-worker live observations and a native
+host. UI-15/16 are wired candidates, UNVERIFIED until combined acceptance passes.
 
 ## Observation channel
 
@@ -15,8 +15,9 @@ actual match state. UNIQUE alone includes a registered OCR element's UUID,
 bounds and finite confidence. No screenshot, caption, recognized text, search
 query or input command is transported by this channel.
 
-Three E106 producers publish after verified execution and saved history:
-capture_target_window, read_visible_text and find_visible_text. Reads neither
+E108 streams actual capture/match evidence during execution for capture_target_window,
+read_visible_text, find_visible_text, OCR refresh and click_ocr_text fallback.
+Final verified tool receipts retain the E106 path without replay. Reads neither
 capture nor renew lifetime. STOP, terminal state, removed snapshots and original
 wall/monotonic expiry clear the observation. `requires_target_revalidation`
 must always be true. This metadata cannot authorize input or prove success.
@@ -33,9 +34,11 @@ otherwise send a synchronous message to PLUMA's UI thread.
 
 Bounds follow the existing backend's **window_dpi** contract: the probe matches
 the target's DPI awareness context. These are not necessarily physical pixels.
-The E107 lease refuses legacy/system-aware coordinates; a subsequent host must
-implement and verify explicit native conversion before presenting those targets.
-Do not silently multiply their coordinates by the reported target DPI.
+The E107 lease refused legacy/system-aware coordinates without a converter.
+E108 supplies LogicalToPhysicalPointForPerMonitorDPI for every ROI/match corner,
+then converts relative physical geometry into host DIPs using its actual scale.
+The original identity is rechecked after mapping. A failure clears the layer.
+Do not multiply legacy coordinates by the reported target DPI.
 
 `PerceptionPresentation` admits a strict observation only for the same RUNNING
 task/request on an authenticated connected, ready runtime with priority STOP
@@ -52,17 +55,20 @@ origin; Width/Height and match offsets/sizes are DIPs at the observed target
 DPI. A unique marker uses actual confidence. Negative monitor coordinates and
 ROI origin subtraction are retained. No guessed label is supplied by this layer.
 
-## Remaining production integration
+## E108 production integration and required acceptance
 
-The future owner must serialize observation readback under shell lifetime,
+The runtime observer serializes observation readback under shell lifetime.
+The native host must continue to
 deduplicate original observation IDs/sequences, revoke on immediate priority
 STOP/terminal/disconnect, and bound/native-check every display update. Do not
 recreate revoked leases to resurrect the same observation or restart TTL.
-Live/in-worker delivery and other capture paths remain open; current post-tool
-publication can be too brief for single-step tasks. No new idle capture loop
-or ML worker is permitted.
+Worker messages are enabled only for admitted registered producers and bounded
+to four per call. Intermediate fresh snapshots are private observation evidence;
+they never become admitted planner/action refs. Missing, expired or terminal
+observations can be omitted; short finished tasks are never replayed merely to
+force a flash. No idle capture loop or ML worker is introduced.
 
-Surfaces 15/16 require an owned, input-transparent, nonactivating native host
+Surfaces 15/16 use an owned, input-transparent, nonactivating native host
 bound to the captured target/region, outside the notification stack. Keep their
 existing XAML geometry/styles and transient image policy. Validate host DPI and
 actual screen bounds, legacy conversion, moved/closed targets, monitor changes,
@@ -71,4 +77,10 @@ in its existing notification lane and requires saved actual verifier readback;
 a capture flash or match never supplies that proof.
 
 Native read-only probe evidence and deterministic lease evidence are separate
-from combined visual/foreground/device acceptance. No full P23 claim is made.
+from combined visual/foreground/device acceptance. E108 records the exact-source
+gate result before any full P23 claim. Model preparation is on-demand before
+fresh capture; only installed local weights are loaded during execution.
+
+API contracts: [native point conversion](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-logicaltophysicalpointforpermonitordpi),
+[SystemBackdrop attachment](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.media.systembackdrop.ontargetconnected),
+[composition backdrop brush](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.composition.icompositionsupportssystembackdrop.systembackdrop).

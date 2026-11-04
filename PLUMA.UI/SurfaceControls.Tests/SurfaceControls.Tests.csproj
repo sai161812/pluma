@@ -78,6 +78,10 @@
     <Compile Include="../PLUMA.UI/CorePerceptionProtocol.cs" Link="CorePerceptionProtocol.cs" />
     <Compile Include="../PLUMA.UI/PerceptionPresentation.cs" Link="PerceptionPresentation.cs" />
     <Compile Include="../PLUMA.UI/NativePerceptionTarget.cs" Link="NativePerceptionTarget.cs" />
+    <Compile Include="../PLUMA.UI/PerceptionFeedbackHost.cs" Link="PerceptionFeedbackHost.cs" />
+    <Compile Include="../PLUMA.UI/PerceptionFeedbackWindow.cs" Link="PerceptionFeedbackWindow.cs" />
+    <Page Include="../PLUMA.UI/ScreenCaptureFlash.xaml" Link="ScreenCaptureFlash.xaml" />
+    <Compile Include="../PLUMA.UI/ScreenCaptureFlash.xaml.cs" Link="ScreenCaptureFlash.xaml.cs" />
     <Compile Include="../PLUMA.UI/CoreVoiceProtocol.cs" Link="CoreVoiceProtocol.cs" />
     <Compile Include="../PLUMA.UI/VoiceController.cs" Link="VoiceController.cs" />
     <Compile Include="../PLUMA.UI/CoreHistoryProtocol.cs" Link="CoreHistoryProtocol.cs" />

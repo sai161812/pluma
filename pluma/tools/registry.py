@@ -62,6 +62,7 @@ class WorkerRequest:
     execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
     screen_snapshot: Optional[Dict[str, Any]] = field(default=None, repr=False)
     recognition_updates: bool = False
+    perception_updates: bool = False
 
 
 @dataclass
@@ -204,6 +205,10 @@ def _worker_process_loop(
                 if worker_req.tool_name != "voice_stt":
                     raise ValueError("Recognition updates require the voice worker.")
                 worker_ctx.publish_recognition = lambda sequence, text: conn.send(("recognition", (sequence, text)))
+            if worker_req.perception_updates:
+                if worker_req.tool_name not in ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text'):
+                    raise ValueError('Perception updates require an admitted screen producer.')
+                worker_ctx.publish_perception = lambda receipt, snapshot: conn.send(("perception", (receipt, snapshot)))
             if admission is not None:
                 worker_ctx.cancellation_token = WorkerCancellationView(admission)
             worker_ctx.undo_stack = list(worker_req.undo_stack)
@@ -403,6 +408,7 @@ class TaskWorkerController:
         cancellation_token: Optional[CancellationToken] = None,
         on_entered: Optional[Callable[[float], None]] = None,
         on_recognition: Optional[Callable[[int, str], None]] = None,
+        on_perception: Optional[Callable[[dict, dict], None]] = None,
     ) -> Tuple[str, Any]:
         from pluma.adapters.worker_pipe import WorkerPipe, WorkerIOCancelled
 
@@ -411,6 +417,10 @@ class TaskWorkerController:
         if worker_req.recognition_updates and (worker_req.tool_name != "voice_stt" or on_recognition is None):
             return ("error", "Recognition updates require a voice observation owner.")
         recognition_sequence = 0
+        perception_count = 0
+        if worker_req.perception_updates and (worker_req.tool_name not in
+                ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text') or on_perception is None):
+            return ('error','Perception updates require an admitted observation owner.')
         deadline = time.monotonic() + timeout_s
         admission = cancellation_token.process_admission() if cancellation_token is not None else None
         while True:
@@ -462,6 +472,13 @@ class TaskWorkerController:
                                 raise ValueError("Recognition sequence is not contiguous.")
                             recognition_sequence = sequence
                             on_recognition(sequence, text)
+                            continue
+                        if response[0] == 'perception':
+                            perception_count += 1
+                            if (not worker_req.perception_updates or on_perception is None or perception_count>4
+                                    or not isinstance(response[1],tuple) or len(response[1])!=2):
+                                raise ValueError('Unexpected perception evidence.')
+                            on_perception(*response[1])
                             continue
                         if response[0] == "entered":
                             if on_entered is not None:
@@ -1030,7 +1047,7 @@ class ToolRegistry:
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
         perception=getattr(task_context,'perception_feedback',None)
-        if perception is not None and tool_name in ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot'):
+        if perception is not None and tool_name in ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text'):
             perception.clear()
         if tool_name in ("check_setup","restart_core"):
             if getattr(task_context,"health_authorization",None)!=(tool_name,validated_args):
@@ -1514,6 +1531,8 @@ class ToolRegistry:
             supervisor_pid=os.getpid(),
             execution_binding=execution_binding,
             screen_snapshot=screen_snapshot,
+            perception_updates=perception is not None and tool_name in
+                ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text'),
         )
 
 
@@ -1617,6 +1636,9 @@ class ToolRegistry:
                     job_object=getattr(task_context, "job_object", None) if task_context else None,
                     cancellation_token=token,
                     on_entered=(lambda started: live.entered(live_generation, started)) if live is not None else None,
+                    **({'on_perception':lambda receipt,snapshot: perception.publish_live(
+                        receipt,snapshot,task_context,screen_snapshot or {'hwnd':validated_args.get('hwnd')})}
+                        if worker_req.perception_updates else {}),
                 )
                 if status == "ok" and isinstance(payload, WorkerResponse):
                     result = payload.result

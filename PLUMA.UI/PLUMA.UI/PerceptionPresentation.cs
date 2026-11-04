@@ -19,21 +19,25 @@ internal sealed class PerceptionPresentation
     private readonly long _started;
     private readonly TimeSpan _remaining;
     private readonly long _monitor;
+    private readonly Func<CoreRequestProtocol.PerceptionObservation, PerceptionPlacement?>? _project;
     private DateTimeOffset _lastUtc;
     private bool _revoked;
     internal string ObservationId => _observation.ObservationId;
 
     private PerceptionPresentation(CoreRequestProtocol.PerceptionObservation observation,
-        TimeProvider clock, DateTimeOffset now, long started, long monitor)
+        TimeProvider clock, DateTimeOffset now, long started, long monitor,
+        Func<CoreRequestProtocol.PerceptionObservation, PerceptionPlacement?>? project)
     {
         _observation = observation; _clock = clock; _started = started;
         _lastUtc = now; _remaining = DateTimeOffset.Parse(observation.ExpiresUtc) - now;
         _monitor = monitor;
+        _project = project;
     }
 
     internal static PerceptionPresentation? TryCreate(CoreRequestProtocol.PerceptionObservation observation,
         RuntimeView runtime, bool priorityStop, Func<long, PerceptionTargetState?> read,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        Func<CoreRequestProtocol.PerceptionObservation, PerceptionPlacement?>? project = null)
     {
         try { observation.Validate(); }
         catch (System.Text.Json.JsonException) { return null; }
@@ -48,8 +52,8 @@ internal sealed class PerceptionPresentation
         try { native = read(observation.Hwnd); }
         catch { return null; }
         if (native is null || native.Monitor == 0) return null;
-        var lease = new PerceptionPresentation(observation, time, now, started, native.Monitor);
-        return lease.Revalidate(runtime, priorityStop, _ => native) is null ? null : lease;
+        var lease = new PerceptionPresentation(observation, time, now, started, native.Monitor, project);
+        return lease.Revalidate(runtime, priorityStop, read) is null ? null : lease;
     }
 
     private static bool TaskCurrent(CoreRequestProtocol.PerceptionObservation observation,
@@ -71,7 +75,7 @@ internal sealed class PerceptionPresentation
                 return Reject();
             _lastUtc = now;
             var target = read(_observation.Hwnd);
-            if (target is null || !target.Visible || !target.Foreground || !target.CoordinatesArePhysical || target.Monitor != _monitor ||
+            if (target is null || !target.Visible || !target.Foreground || (!target.CoordinatesArePhysical && _project is null) || target.Monitor != _monitor ||
                 target.Hwnd != _observation.Hwnd || target.Pid != _observation.Pid ||
                 target.CreationTime != _observation.CreationTime || target.WindowClass != _observation.WindowClass ||
                 target.TitleHash != _observation.TitleHash || target.Bounds != _observation.WindowBounds ||
@@ -86,12 +90,16 @@ internal sealed class PerceptionPresentation
             double scale = target.DpiScale;
             // Desktop placement stays physical pixels; control-local geometry is in DIPs.
             // The host occupies only the captured region, including on negative-coordinate monitors.
-            return new((long)target.Bounds.Left + region.Left, (long)target.Bounds.Top + region.Top,
+            PerceptionPlacement? placement = _project is null ? new((long)target.Bounds.Left + region.Left, (long)target.Bounds.Top + region.Top,
                 region.Width / scale, region.Height / scale,
                 match is null ? 0 : ((long)match.Bounds.Left - region.Left) / scale,
                 match is null ? 0 : ((long)match.Bounds.Top - region.Top) / scale,
                 match is null ? 0 : match.Bounds.Width / scale,
-                match is null ? 0 : match.Bounds.Height / scale, match?.Confidence);
+                match is null ? 0 : match.Bounds.Height / scale, match?.Confidence) : _project(_observation);
+            if (placement is null || (_project is not null && read(_observation.Hwnd) != target) ||
+                _clock.GetUtcNow() < after || _clock.GetUtcNow() >= DateTimeOffset.Parse(_observation.ExpiresUtc) ||
+                _clock.GetElapsedTime(_started) >= _remaining) return Reject();
+            return placement;
         }
         catch { return Reject(); }
     }

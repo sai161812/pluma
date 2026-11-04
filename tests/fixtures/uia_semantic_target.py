@@ -27,8 +27,8 @@ BS_PUSHBUTTON = 0
 SS_LEFT = 0
 
 
-def main() -> None:
-    ready_path = Path(sys.argv[1])
+def main(ready_path=None) -> None:
+    ready_path = Path(sys.argv[1]) if ready_path is None else Path(ready_path)
     user = c.WinDLL("user32", use_last_error=True)
     kernel = c.WinDLL("kernel32", use_last_error=True)
     lresult = c.c_ssize_t
@@ -129,7 +129,9 @@ def main() -> None:
         ]
 
     instance = kernel.GetModuleHandleW(None)
-    definition = WndClass(0, procedure, 0, 0, instance, None, None, None, None, class_name)
+    # Borrowed system highlight brush gives owned capture/overlay fixtures a
+    # deterministic opaque background without changing any desktop setting.
+    definition = WndClass(0, procedure, 0, 0, instance, None, None, w.HBRUSH(14), None, class_name)
     user.RegisterClassW.argtypes = [c.POINTER(WndClass)]
     user.RegisterClassW.restype = w.ATOM
     if not user.RegisterClassW(c.byref(definition)):

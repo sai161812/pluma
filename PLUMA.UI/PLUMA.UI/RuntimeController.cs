@@ -10,10 +10,12 @@ internal sealed record RuntimeView(CoreRequestProtocol.RuntimeTask[] Tasks, bool
 
 /// <summary>One shell-owned observer. A missing snapshot never proves task completion.</summary>
 internal sealed class RuntimeController(Func<string, CancellationToken, Task<CoreRequestResult<CoreRequestProtocol.RuntimeSnapshot>>> read,
-    TimeSpan? interval = null)
+    TimeSpan? interval = null,
+    Func<string, CancellationToken, Task<CoreRequestResult<CoreRequestProtocol.PerceptionSnapshot>>>? perception = null)
 {
     internal RuntimeView View { get; private set; } = new([], false, null);
     internal event Action<RuntimeView>? Changed;
+    internal event Action<CoreRequestProtocol.PerceptionSnapshot?>? PerceptionChanged;
     internal event Action<CoreRequestProtocol.WorkerTermination>? WorkerTerminated;
     internal event Action<DateTimeOffset>? TextRequested;
     private string? _lastTextActivation;
@@ -54,6 +56,17 @@ internal sealed class RuntimeController(Func<string, CancellationToken, Task<Cor
             }
             View = response.IsSuccess ? new(response.Response!.Tasks, true, timer.Elapsed.TotalMilliseconds,response.Response.CoreInstanceId,response.Response.CoreReady) : new([], false, null);
             Changed?.Invoke(View);
+            if (perception is not null)
+            {
+                if (View.Connected && View.CoreReady == true && Array.Exists(View.Tasks, task => task.State == "RUNNING"))
+                {
+                    string id = Guid.NewGuid().ToString("D");
+                    var frame = await perception(id, budget.Token);
+                    budget.Token.ThrowIfCancellationRequested();
+                    PerceptionChanged?.Invoke(frame.IsSuccess && frame.Response!.RequestId == id ? frame.Response : null);
+                }
+                else PerceptionChanged?.Invoke(null);
+            }
         }
         finally { Interlocked.Exchange(ref _polling, 0); }
     }
@@ -66,11 +79,11 @@ internal sealed class RuntimeController(Func<string, CancellationToken, Task<Cor
             {
                 try { await PollOnceAsync(token); }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
-                catch { View = new([], false, null); Changed?.Invoke(View); }
+                catch { View = new([], false, null); Changed?.Invoke(View); PerceptionChanged?.Invoke(null); }
                 await Task.Delay(interval ?? TimeSpan.FromMilliseconds(250), token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        finally { Interlocked.Exchange(ref _running, 0); }
+        finally { PerceptionChanged?.Invoke(null); Interlocked.Exchange(ref _running, 0); }
     }
 }

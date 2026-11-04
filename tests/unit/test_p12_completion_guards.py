@@ -220,7 +220,7 @@ def test_ocr_requires_exact_current_label_and_bounded_pixel_age(monkeypatch, fai
         return OcrResult(words=[OcrWord("Save As" if failure == "partial_label" else "Save",
             0.85 if failure == "low_confidence" else 0.99, BoundingBox(left=10, top=10, right=70, bottom=40))])
     monkeypatch.setattr("pluma.perception.ocr_lifecycle.get_default_ocr_lifecycle_manager", lambda:
-        SimpleNamespace(run_ocr=recognize))
+        SimpleNamespace(run_ocr=recognize,prepare=lambda cancellation_token=None:None))
     if failure == "expired":
         clock = iter((0.0, 4.0))
         monkeypatch.setattr(ui, "time", SimpleNamespace(monotonic=lambda: next(clock)))

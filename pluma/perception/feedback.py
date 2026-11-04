@@ -92,7 +92,7 @@ class Observation(Evidence):
 
 class PerceptionFeedback:
     def __init__(self):
-        self._lock=threading.Lock();self._item=None;self._deadline=0;self._sequence=0
+        self._lock=threading.Lock();self._item=None;self._deadline=0;self._sequence=0;self._anchor=None;self._anchor_fresh=True
 
     def clear(self):
         with self._lock:self._item=None;self._deadline=0
@@ -101,7 +101,34 @@ class PerceptionFeedback:
         """Admit only metadata anchored to this task's actual snapshot registry."""
         evidence=Evidence.model_validate(receipt)
         snapshot=cap.snapshot_registry.resolve_bounded(evidence.snapshot_id)
-        if (snapshot.hwnd!=evidence.hwnd or snapshot.pid!=evidence.pid or snapshot.window_class!=evidence.window_class
+        self._publish(evidence,snapshot,cap,evidence.snapshot_id)
+
+    def publish_live(self,receipt,raw_snapshot,cap,expected):
+        """Private owned-worker observation, before tool/history completion.
+
+        It is an observation only. Do not insert the worker's intermediate
+        snapshot into the planner's registry or expose its text/image content.
+        """
+        from pluma.perception.element_refs import ScreenSnapshot
+        evidence=Evidence.model_validate(receipt)
+        snapshot=ScreenSnapshot.model_validate(raw_snapshot)
+        if snapshot.image_ref is not None:raise ValueError('Live images are forbidden.')
+        anchor=None
+        if expected is not None:
+            if expected.get('hwnd') is not None and snapshot.hwnd!=expected['hwnd']:
+                raise ValueError('Worker observation escaped its admitted HWND.')
+            if expected.get('snapshot_id') is not None:
+                original=cap.snapshot_registry.get_bounded(expected['snapshot_id'])
+                if original is None:raise ValueError('Admitted snapshot was removed.')
+                if (snapshot.pid!=original.pid or snapshot.process_creation_time_ns!=original.process_creation_time_ns
+                        or snapshot.window_class!=original.window_class or snapshot.window_rect!=original.window_rect
+                        or snapshot.active_window_title!=original.active_window_title or snapshot.dpi_scale!=original.dpi_scale):
+                    raise ValueError('Worker observation escaped its admitted snapshot.')
+                anchor=original.snapshot_id
+        self._publish(evidence,snapshot,cap,anchor,anchor==snapshot.snapshot_id)
+
+    def _publish(self,evidence,snapshot,cap,anchor,anchor_fresh=True):
+        if (snapshot.snapshot_id!=evidence.snapshot_id or snapshot.hwnd!=evidence.hwnd or snapshot.pid!=evidence.pid or snapshot.window_class!=evidence.window_class
                 or title_hash(snapshot.active_window_title)!=evidence.title_hash
                 or snapshot.window_rect.model_dump()!=evidence.window_bounds.model_dump()
                 or snapshot.dpi_scale!=evidence.dpi_scale):raise ValueError('Observation target mismatch.')
@@ -116,9 +143,13 @@ class PerceptionFeedback:
         if remaining<=0:return
         with self._lock:
             if cap.stop_latch_set or cap.state.value!='RUNNING':return
+            if self._item is not None and self._item.observation_id==evidence.observation_id:
+                return  # Final tool receipt cannot renew/replay a streamed observation.
             self._sequence+=1
             self._item=Observation(**evidence.model_dump(),task_id=cap.task_id,task_request_id=cap.request_id,sequence=self._sequence)
             self._deadline=time.monotonic()+remaining
+            self._anchor=anchor
+            self._anchor_fresh=anchor_fresh
 
     def snapshot(self,cap):
         if not self._lock.acquire(timeout=.02):raise TimeoutError('Perception readback is busy.')
@@ -126,8 +157,10 @@ class PerceptionFeedback:
             if (cap.stop_latch_set or cap.state.value!='RUNNING' or time.monotonic()>=self._deadline
                     or self._item is not None and datetime.now(timezone.utc)>=datetime.fromisoformat(self._item.expires_utc)):
                 self._item=None;return None
-            if self._item is not None:
-                try:cap.snapshot_registry.resolve_bounded(self._item.snapshot_id)
+            if self._item is not None and self._anchor is not None:
+                try:
+                    if self._anchor_fresh:cap.snapshot_registry.resolve_bounded(self._anchor)
+                    elif cap.snapshot_registry.get_bounded(self._anchor) is None:self._item=None
                 except TimeoutError:raise
                 except Exception:self._item=None
             return self._item

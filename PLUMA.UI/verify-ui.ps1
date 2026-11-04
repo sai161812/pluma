@@ -120,7 +120,8 @@ try {
     # 75-second owner budget. Both are mandatory, with separate retained reports.
     foreach ($suite in @(
         @{ Label = 'native-controls'; Arguments = @(); Report = 'control-tests.txt'; Result = 'controlsResult' },
-        @{ Label = 'native-p22-health'; Arguments = @('--p22-health'); Report = 'p22-health-tests.txt'; Result = 'healthControlsResult' }
+        @{ Label = 'native-p22-health'; Arguments = @('--p22-health'); Report = 'p22-health-tests.txt'; Result = 'healthControlsResult' },
+        @{ Label = 'native-p23-perception'; Arguments = @('--p23-perception'); Report = 'p23-perception-tests.txt'; Result = 'perceptionControlsResult' }
     )) {
         $summary.stage = $suite.Label
         $controls = Start-OwnedProcess $controlsExecutable $suite.Arguments $suite.Label

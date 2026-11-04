@@ -314,6 +314,12 @@ def _resolve_window(hwnd: Optional[int], tool: str):
 def _new_snapshot(hwnd: int, *, include_ocr: bool, region: Optional[BoundingBox], task_context: Any):
     region = BoundingBox.model_validate(region) if region is not None else None
     _cancel(task_context)
+    manager=None
+    if include_ocr:
+        from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
+        manager=get_default_ocr_lifecycle_manager()
+        manager.prepare(cancellation_token=getattr(task_context,'cancellation_token',None))
+        _cancel(task_context)
     context = ActiveWindowContext()
     snapshot = UiaSnapshotBuilder(context=context).capture(hwnd=hwnd, ttl_seconds=_SNAPSHOT_TTL_S)
     _cancel(task_context)
@@ -327,7 +333,8 @@ def _new_snapshot(hwnd: int, *, include_ocr: bool, region: Optional[BoundingBox]
     image = capture.capture_window(hwnd) if region is None else capture.capture_region(region, hwnd=hwnd)
     try:
         _cancel(task_context)
-        result = get_default_ocr_lifecycle_manager().run_ocr(
+        _feedback_receipt(snapshot,region,task_context)
+        result = manager.run_ocr(
             image, cancellation_token=getattr(task_context, "cancellation_token", None))
         _cancel(task_context)
         _check_window(snapshot, task_context, foreground=False)
@@ -375,14 +382,14 @@ def execute_inspect_window_controls(args: Dict[str, Any], task_context: Any = No
         return _failure(tool, "UI Automation could not inspect the target window.", "UIA_INSPECTION_FAILED")
 
 
-def _with_feedback(result,snapshot,region,task_context,match_state='NOT_REQUESTED',match=None):
-    """Private receipt only; unavailable observation metadata never becomes success evidence."""
+def _feedback_receipt(snapshot,region,task_context,match_state='NOT_REQUESTED',match=None):
+    """Publish actual capture facts while the owned worker is still executing."""
     try:
         from datetime import datetime,timedelta,timezone
         from pluma.core.ownership import get_process_creation_time
         from pluma.perception.feedback import Evidence,title_hash
         creation=get_process_creation_time(snapshot.pid)
-        if not creation:return result
+        if not creation:return None
         _cancel(task_context)
         _check_window(snapshot,task_context)
         now=datetime.now(timezone.utc)
@@ -394,12 +401,22 @@ def _with_feedback(result,snapshot,region,task_context,match_state='NOT_REQUESTE
             dpi_scale=snapshot.dpi_scale,region=region.model_dump(),observed_utc=now.isoformat(),
             expires_utc=min(snapshot.expires_at,now+timedelta(seconds=3)).isoformat(),match_state=match_state,
             match=None if match is None else dict(element_id=match.element_id,bounds=match.bounds.model_dump(),confidence=match.confidence))
-        return result.model_copy(update={'private_context':dict(result.private_context,perception_receipt=receipt.model_dump(mode='json'))})
+        value=receipt.model_dump(mode='json')
+        publisher=getattr(task_context,'publish_perception',None)
+        if publisher is not None:
+            publisher(value,snapshot.model_dump(mode='json',exclude={'image_ref','is_expired'}))
+        return value
     except TaskCancelledError:raise
     except Exception:
         # The read itself may still be valid; no UI target is published from
         # incomplete identity/geometry and no action authority is manufactured.
-        return result
+        return None
+
+
+def _with_feedback(result,snapshot,region,task_context,match_state='NOT_REQUESTED',match=None):
+    receipt=_feedback_receipt(snapshot,region,task_context,match_state,match)
+    return result if receipt is None else result.model_copy(update={
+        'private_context':dict(result.private_context,perception_receipt=receipt)})
 
 
 def execute_capture_target_window(args: Dict[str, Any], task_context: Any = None) -> ToolResult:
@@ -504,12 +521,13 @@ def execute_refresh_screen_snapshot(args: Dict[str, Any], task_context: Any = No
         elements = _summary(snapshot.model_copy(update={"ocr_words": []}))
         if snapshot.ocr_words:
             elements.extend(_ocr_summary(snapshot))
-        return ToolResult.success(tool, {"snapshot_id": snapshot.snapshot_id, "hwnd": info.hwnd,
+        result=ToolResult.success(tool, {"snapshot_id": snapshot.snapshot_id, "hwnd": info.hwnd,
             "control_count": len(snapshot.controls), "ocr_word_count": len(snapshot.ocr_words),
             "elements": elements, "raw_snapshot": snapshot.model_dump(mode="json")},
             "Refreshed the target-window screen snapshot.", verified=True,
             verify_detail=VerifyResult(ok=True, method="uia_ocr" if args["include_ocr"] else "uia",
                                        detail="Fresh target identity, controls and requested text observations were captured."))
+        return _with_feedback(result,snapshot,None,task_context) if args['include_ocr'] else result
     except Exception as exc:
         if isinstance(exc, TaskCancelledError):
             raise

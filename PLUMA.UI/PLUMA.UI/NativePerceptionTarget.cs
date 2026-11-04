@@ -8,6 +8,47 @@ namespace PLUMA.UI;
 /// <summary>Read-only native target probe. No window activation, capture, hooks or process termination.</summary>
 internal static class NativePerceptionTarget
 {
+    internal static long Foreground => GetForegroundWindow();
+    internal static double WindowScale(nint hwnd) => GetDpiForWindow(hwnd) / 96.0;
+
+    internal static PerceptionPlacement? Map(CoreRequestProtocol.PerceptionObservation observation, double hostScale)
+    {
+        if (!double.IsFinite(hostScale) || hostScale < .25 || hostScale > 8) return null;
+        observation.Validate();
+        nint hwnd = (nint)observation.Hwnd;
+        nint context = GetWindowDpiAwarenessContext(hwnd);
+        if (context == 0) return null;
+        nint previous = SetThreadDpiAwarenessContext(context);
+        if (previous == 0) return null;
+        try
+        {
+            Point Convert(int x, int y)
+            {
+                var point = new Point { X = checked(observation.WindowBounds.Left + x), Y = checked(observation.WindowBounds.Top + y) };
+                if (!LogicalToPhysicalPointForPerMonitorDPI(hwnd, ref point))
+                    throw new System.ComponentModel.Win32Exception("Target point conversion unavailable.");
+                return point;
+            }
+            var roi = observation.Region;
+            Point origin = Convert(roi.Left, roi.Top), end = Convert(roi.Right, roi.Bottom);
+            if (end.X <= origin.X || end.Y <= origin.Y) return null;
+            double x = 0, y = 0, width = 0, height = 0;
+            if (observation.Match is { } match)
+            {
+                Point start = Convert(match.Bounds.Left, match.Bounds.Top), finish = Convert(match.Bounds.Right, match.Bounds.Bottom);
+                if (start.X < origin.X || start.Y < origin.Y || finish.X > end.X || finish.Y > end.Y || finish.X <= start.X || finish.Y <= start.Y) return null;
+                x = ((long)start.X - origin.X) / hostScale; y = ((long)start.Y - origin.Y) / hostScale;
+                width = ((long)finish.X - start.X) / hostScale; height = ((long)finish.Y - start.Y) / hostScale;
+            }
+            return new(origin.X, origin.Y, ((long)end.X-origin.X)/hostScale, ((long)end.Y-origin.Y)/hostScale,
+                x, y, width, height, observation.Match?.Confidence);
+        }
+        finally
+        {
+            if (SetThreadDpiAwarenessContext(previous) == 0)
+                throw new System.ComponentModel.Win32Exception("Could not restore target conversion DPI context.");
+        }
+    }
     internal static PerceptionTargetState? Read(long value)
     {
         if (!OperatingSystem.IsWindows() || value <= 0 || IntPtr.Size != 8) return null;
@@ -64,6 +105,8 @@ internal static class NativePerceptionTarget
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct Point { public int X, Y; }
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool LogicalToPhysicalPointForPerMonitorDPI(nint hwnd, ref Point point);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindow(nint hwnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowVisible(nint hwnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsIconic(nint hwnd);
