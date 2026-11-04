@@ -163,6 +163,15 @@ internal static class NativeEventFeedChecks
         if (!stop.IsSuccess) throw new InvalidOperationException("Owned live fixture STOP was not acknowledged.");
         await runtime.PollOnceAsync(default);
         var terminal = await core.GetTerminalReadbackAsync(accepted.RequestId, accepted.TaskId!, default);
+        // STOP acknowledgement is bounded separately from cleanup/persistence.
+        // Observe the existing finalization contract rather than racing its worker.
+        var finalization=Stopwatch.StartNew();
+        while(terminal.Response is not {Terminal:true,TerminalPersisted:true} && finalization.Elapsed<TimeSpan.FromSeconds(3))
+        {
+            await Task.Delay(20);
+            terminal=await core.GetTerminalReadbackAsync(accepted.RequestId,accepted.TaskId!,default);
+        }
+        await runtime.PollOnceAsync(default);
         check(runtime.View.Tasks.All(task => task.TaskId != accepted.TaskId) &&
             terminal.Response is { Terminal: true, TerminalPersisted: true, FinalState: "STOPPED" },
             "live disappearance is independently checked against actual STOP and saved terminal evidence");

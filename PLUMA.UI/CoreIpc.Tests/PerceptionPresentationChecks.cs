@@ -27,6 +27,11 @@ internal static class PerceptionPresentationChecks
         PerceptionPresentation New() => PerceptionPresentation.TryCreate(observation, runtime, false, _ => target, clock)
             ?? throw new Exception("Fresh evidence refused.");
         var placement = New().Revalidate(runtime, false, _ => target)!;
+        var completed=observation with {TaskPhase="SUCCEEDED"};
+        check(PerceptionPresentation.TryCreate(completed,runtime with {Tasks=[]},false,_=>target,clock) is not null &&
+            PerceptionPresentation.TryCreate(completed,runtime with {Tasks=[]},true,_=>target,clock) is null &&
+            PerceptionPresentation.TryCreate(completed,runtime with {Tasks=[task with {State="STOPPING"}]},false,_=>target,clock) is null,
+            "persisted successful observation tail remains transient and rejects priority STOP or a conflicting task phase");
         check(placement is { DesktopX: -1180, DesktopY: -90, Width: 160, Height: 80,
             MatchX: 8, MatchY: 8, MatchWidth: 40, MatchHeight: 24, Confidence: .97 },
             "presentation uses captured ROI pixels, negative desktop origin and actual DPI/confidence without rounding guesses");

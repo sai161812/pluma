@@ -996,7 +996,7 @@ class ResidentCore:
         try:
             supervisor=self.supervisor
             if not supervisor._lock.acquire(timeout=.05):raise TimeoutError('Task readback is busy.')
-            try:capsules=list(supervisor.get_active_tasks())
+            try:capsules=[cap for cap in supervisor._tasks.values() if cap.perception_feedback.has_current()]
             finally:supervisor._lock.release()
             if len(capsules)>256:raise ValueError('Perception task bound exceeded.')
             deadline=time.monotonic()+.1
@@ -1004,7 +1004,7 @@ class ResidentCore:
             for cap in capsules:
                 if time.monotonic()>deadline:raise TimeoutError('Perception readback budget exceeded.')
                 item=cap.perception_feedback.snapshot(cap)
-                if item is not None and not cap.stop_latch_set and cap.state.value=='RUNNING':items.append(item)
+                if item is not None and not cap.stop_latch_set:items.append(item)
             return PerceptionSnapshotV1(request_id=request.request_id,observations=items).model_dump(mode='json')
         except Exception:
             return {'protocol_version':1,'message_type':'protocol_error','error_code':'PERCEPTION_UNAVAILABLE',

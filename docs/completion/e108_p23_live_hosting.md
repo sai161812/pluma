@@ -83,6 +83,27 @@ not assumed. No deadline or assertion is relaxed to make that flow pass.
 
 ## Completion condition
 
+### 2026-11-05 verification checkpoint (not closure)
+
+Committed bc60b5f affected selection: 1210 passed, no failures/skips/xfails;
+native conversion/capture/real OCR: 3 passed. Full results are retained under
+required-regressions/ and native-committed/. CI 41886670901 failed the P22
+missing-model fixture because OCR is now installed; 1be0b90 isolates that negative
+fixture. CI 41888196449 failed P20 saved folder verification. Diagnostic run
+41891397425 independently passed P22 but exposed a P18 STOP-finalization race
+in its test and failed P23 WindowFromPoint input pass-through. These failures
+are retained, not counted as passes. Its artifact SHA256 is
+0e894f198a171e81fe94b00eec55b52080ac4e26ef37dada3f234b0f27169735.
+
+Review also reproduced lost capture-only observations between UI polls
+(short-capture-reproduction/: one failed regression). A bounded successful
+metadata tail now uses the original deadline, releases snapshot/image state,
+waits for terminal persistence, and is revoked by STOP/shutdown. Focused delivery,
+readback and STOP: 80 passed (short-capture-regressions/); C# IPC: 403 passed
+(short-capture-core-run.log), Release build zero warnings/errors. Native tests
+add no-holding-step capture and actual region coverage. Combined acceptance is
+still required; no completion claim or P24 eligibility is implied.
+
 Required affected regressions, native conversion/capture/OCR checks and the
 combined native P23 suite must pass on the recorded committed source. Until
 then UI-15/16 remain UNVERIFIED and P24 ineligible. Existing physical monitor/

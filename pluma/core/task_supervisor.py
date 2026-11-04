@@ -381,7 +381,7 @@ class TaskCapsule(BaseModel):
         if self.snapshot_registry is not None:
             check = CleanupEvidence(resource_id="snapshots:" + self.task_id, kind="snapshots", code="SNAPSHOT_RELEASE_UNVERIFIED")
             try:
-                self.perception_feedback.clear()
+                self.perception_feedback.finish(self)
                 self.snapshot_registry.clear()
                 if len(self.snapshot_registry) != 0:
                     raise RuntimeError("Snapshot release readback failed.")
@@ -680,6 +680,7 @@ class TaskSupervisor:
         with self._admission_lock:
             capsule = self._get_task(task_id)
             capsule.cancellation_token.cancel(reason)
+            capsule.perception_feedback.revoke()
             if not self._claim_stop_cleanup(capsule):
                 return
         self._cleanup_stopped_task(capsule, reason, grace_s)
@@ -836,6 +837,7 @@ class TaskSupervisor:
                 if cap.state not in _TERMINAL_STATES or cap.cleanup_pending:
                     cap.cancellation_token.cancel(StopReason.USER_STOP)
         self.execution_gate.begin_shutdown()
+        for cap in list(self._tasks.values()):cap.perception_feedback.revoke()
 
     def drain_shutdown_tasks(self) -> None:
         if not self.join_stop_operations(1.0):
@@ -916,6 +918,7 @@ class TaskSupervisor:
                 affected = [cap for cap in self._tasks.values() if cap.state not in _TERMINAL_STATES]
                 for capsule in affected:
                     capsule.cancellation_token.cancel(StopReason.USER_STOP)
+                for cap in self._tasks.values():cap.perception_feedback.revoke()
                 claimed = [cap for cap in affected if self._claim_stop_cleanup(cap)]
             for capsule in claimed:
                 try:
@@ -964,6 +967,7 @@ class TaskSupervisor:
             active = [cap for cap in affected if cap.state not in _TERMINAL_STATES]
             for cap in active:
                 cap.cancellation_token.cancel(StopReason.USER_STOP)
+            for cap in (list(self._tasks.values()) if global_stop else affected):cap.perception_feedback.revoke()
             claimed = []
             for cap in active:
                 try:

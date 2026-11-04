@@ -32,13 +32,13 @@ internal static partial class CoreRequestProtocol
         [property:JsonRequired] PerceptionBounds WindowBounds,[property:JsonRequired] double DpiScale,
         [property:JsonRequired] PerceptionBounds Region,[property:JsonRequired] string ObservedUtc,[property:JsonRequired] string ExpiresUtc,
         [property:JsonRequired] string MatchState,[property:JsonRequired] PerceptionMatch? Match,
-        [property:JsonRequired] bool RequiresTargetRevalidation)
+        [property:JsonRequired] bool RequiresTargetRevalidation, string TaskPhase="RUNNING")
     {
         internal void Validate()
         {
             RequireId(TaskId,"task_id");RequireId(TaskRequestId,"task_request_id");
             RequireId(ObservationId,"observation_id");RequireId(SnapshotId,"snapshot_id");
-            if(Sequence<=0||Hwnd<=0||Pid<=0||CreationTime<=0||string.IsNullOrEmpty(WindowClass)||WindowClass.Length>256||
+            if(TaskPhase is not ("RUNNING" or "SUCCEEDED")||Sequence<=0||Hwnd<=0||Pid<=0||CreationTime<=0||string.IsNullOrEmpty(WindowClass)||WindowClass.Length>256||
                 !Regex.IsMatch(TitleHash??"",@"\Asha256:[0-9a-f]{64}\z")||!RequiresTargetRevalidation||
                 !double.IsFinite(DpiScale)||DpiScale<.25||DpiScale>8||WindowBounds is null||Region is null||
                 !DateTimeOffset.TryParse(ObservedUtc,out var observed)||!DateTimeOffset.TryParse(ExpiresUtc,out var expires)||

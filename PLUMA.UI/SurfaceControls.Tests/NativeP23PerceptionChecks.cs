@@ -70,8 +70,9 @@ internal static class NativeP23PerceptionChecks
             check(GetForegroundWindow()==target,"capture feedback does not activate or steal focus from the actual owned target");
             nint style=PopupDesktopPlacement.Native.GetWindowLongPtr(layer,-20);
             check((style & (0x20|0x80|0x08000000))==(0x20|0x80|0x08000000),"native feedback HWND is input-transparent, a tool window and nonactivating");
-            GetWindowThreadProcessId(WindowFromPoint(new NativePoint{X=sampleX,Y=sampleY}),out uint hitPid);
-            check(hitPid==pid,"native hit testing reaches the owned target through the displayed feedback layer");
+            nint hit=WindowFromPoint(new NativePoint{X=sampleX,Y=sampleY});
+            GetWindowThreadProcessId(hit,out uint hitPid);
+            check(hitPid==pid,"native hit testing reaches the owned target through the displayed feedback layer; hit="+hit+" pid="+hitPid+" target="+target+" layer="+layer+" style="+style.ToString("x"));
             var observation=host.ObservationForAcceptance!;
             var pixels=NativePerceptionTarget.Map(observation,1)!;
             check(PopupDesktopPlacement.Native.GetWindowRect(layer,out var bounds)&&bounds.Left==pixels.DesktopX&&bounds.Top==pixels.DesktopY&&
@@ -89,6 +90,25 @@ internal static class NativeP23PerceptionChecks
             int count=presented;await Task.Delay(350);
             check(presented==count&&!host.TimerRunning,"capture flash completes once; repeated observations do not replay or keep an idle timer");
             await Stop(task);
+
+            task=await Start("fixture:capture_short");
+            await Until(()=>host.Handle!=0&&LayerVisible(host.Handle),2);
+            await Until(()=>host.ObservationForAcceptance?.TaskPhase=="SUCCEEDED",1);
+            var shortTerminal=await client.GetTerminalReadbackAsync(Id(),task,default);
+            check(shortTerminal.Response is {Terminal:true,TerminalPersisted:true,FinalState:"SUCCEEDED"},
+                "a capture-only task delivers its original observation after verified saved completion without an artificial holding step");
+            await Until(()=>host.Handle==0,1);
+            await Stop(task);
+
+            task=await Start("fixture:region");
+            await Until(()=>host.Handle!=0&&LayerVisible(host.Handle),2);
+            observation=host.ObservationForAcceptance!;pixels=NativePerceptionTarget.Map(observation,1)!;
+            check(observation.Region is {Left:20,Top:40,Right:260,Bottom:220}&&
+                pixels.Width<NativePerceptionTarget.Map(observation with {Region=new(0,0,(int)observation.WindowBounds.Width,(int)observation.WindowBounds.Height)},1)!.Width,
+                "native region capture supplies its actual crop instead of flashing the whole target window");
+            await Task.Delay(45);
+            check(Pixel(sampleX,sampleY)==baseline,"a region flash leaves the rest of the owned target unchanged");
+            await Until(()=>host.Handle==0,1);await Stop(task);
 
             task=await Start("fixture:match");
             await Until(()=>host.MatchVisible,15);

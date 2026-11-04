@@ -38,7 +38,7 @@ class PerceptionFixture:
         from pluma.perception.element_refs import ScreenSnapshot
         from pluma.memory.activity import ActivityQuery
         self.supervisor.start_task(capsule.task_id)
-        if request.text not in ('fixture:capture','fixture:match'):
+        if request.text not in ('fixture:capture','fixture:capture_short','fixture:region','fixture:match'):
             raise ValueError('Only exact owned P23 fixture requests are accepted.')
         context=ActiveWindowContext(); info=context.get_window_info(self.hwnd)
         if not info.is_valid or context.get_active_window().hwnd!=self.hwnd:raise RuntimeError('Owned target is not foreground.')
@@ -49,6 +49,7 @@ class PerceptionFixture:
         capsule.snapshot_registry.register(snapshot)
         args={'snapshot_id':snapshot.snapshot_id}
         tool='capture_target_window'
+        if request.text=='fixture:region':args['region']=dict(left=20,top=40,right=260,bottom=220)
         if request.text=='fixture:match':
             tool='find_visible_text';args.update(visible_text_query='Submit',min_confidence=.6,exact_match=True)
         self.release.clear()
@@ -62,7 +63,7 @@ class PerceptionFixture:
         # An explicit owned waiting step permits observing feedback and priority
         # STOP; it is not a production sleep or an extended observation lifetime.
         deadline=time.monotonic()+5
-        while not self.release.is_set() and time.monotonic()<deadline:
+        while request.text!='fixture:capture_short' and not self.release.is_set() and time.monotonic()<deadline:
             capsule.cancellation_token.raise_if_cancelled();time.sleep(.01)
         capsule.cancellation_token.raise_if_cancelled()
         self.supervisor.finalize_task(capsule.task_id,TaskState.SUCCEEDED)

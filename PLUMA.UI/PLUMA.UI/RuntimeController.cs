@@ -11,7 +11,8 @@ internal sealed record RuntimeView(CoreRequestProtocol.RuntimeTask[] Tasks, bool
 /// <summary>One shell-owned observer. A missing snapshot never proves task completion.</summary>
 internal sealed class RuntimeController(Func<string, CancellationToken, Task<CoreRequestResult<CoreRequestProtocol.RuntimeSnapshot>>> read,
     TimeSpan? interval = null,
-    Func<string, CancellationToken, Task<CoreRequestResult<CoreRequestProtocol.PerceptionSnapshot>>>? perception = null)
+    Func<string, CancellationToken, Task<CoreRequestResult<CoreRequestProtocol.PerceptionSnapshot>>>? perception = null,
+    TimeProvider? clock = null)
 {
     internal RuntimeView View { get; private set; } = new([], false, null);
     internal event Action<RuntimeView>? Changed;
@@ -23,6 +24,10 @@ internal sealed class RuntimeController(Func<string, CancellationToken, Task<Cor
     private readonly Queue<string> _seenOrder = new();
     private bool _initialized;
     private int _running, _polling;
+    private long _perceptionUntil;
+    private readonly TimeProvider _clock=clock??TimeProvider.System;
+    internal void NotePerceptionActivity()=>Interlocked.Exchange(ref _perceptionUntil,
+        _clock.GetTimestamp()+checked(3*_clock.TimestampFrequency));
     internal async Task PollOnceAsync(CancellationToken token)
     {
         if (Interlocked.Exchange(ref _polling, 1) != 0) throw new InvalidOperationException("Runtime poll already owned.");
@@ -58,7 +63,8 @@ internal sealed class RuntimeController(Func<string, CancellationToken, Task<Cor
             Changed?.Invoke(View);
             if (perception is not null)
             {
-                if (View.Connected && View.CoreReady == true && Array.Exists(View.Tasks, task => task.State == "RUNNING"))
+                if(Array.Exists(View.Tasks,task=>task.State=="RUNNING"))NotePerceptionActivity();
+                if (View.Connected && View.CoreReady == true && _clock.GetTimestamp()<Interlocked.Read(ref _perceptionUntil))
                 {
                     string id = Guid.NewGuid().ToString("D");
                     var frame = await perception(id, budget.Token);

@@ -18,6 +18,7 @@ internal sealed class PerceptionFeedbackHost : IDisposable
     private CoreRequestProtocol.PerceptionObservation? _observation;
     private PerceptionFeedbackWindow? _window;
     private bool _disposed, _drawn;
+    private DateTimeOffset _stopCutoff=DateTimeOffset.MinValue;
     internal bool IsDisposed => _disposed;
     internal nint Handle => _window?.Handle ?? 0;
     internal bool TimerRunning => _timer.IsRunning;
@@ -54,6 +55,7 @@ internal sealed class PerceptionFeedbackHost : IDisposable
     {
         if (_disposed) return;
         foreach (var task in _runtime.Tasks) _stopped.Add(task.TaskId);
+        _stopCutoff=DateTimeOffset.UtcNow;
         Clear();
     }
 
@@ -65,7 +67,7 @@ internal sealed class PerceptionFeedbackHost : IDisposable
         // Only one native foreground HWND can be highlighted. Select the newest
         // actual observation, never create a desktop-wide or multi-window layer.
         long foreground = NativePerceptionTarget.Foreground;
-        var next = frame.Observations.Where(item => item.Hwnd == foreground && !_stopped.Contains(item.TaskId))
+        var next = frame.Observations.Where(item => item.Hwnd == foreground && !_stopped.Contains(item.TaskId) && DateTimeOffset.Parse(item.ObservedUtc)>_stopCutoff)
             .OrderByDescending(item => DateTimeOffset.Parse(item.ObservedUtc)).ThenByDescending(item => item.Sequence).FirstOrDefault();
         if (next is null) { Clear(); return; }
         if (_seen.Contains(next.ObservationId)) return;

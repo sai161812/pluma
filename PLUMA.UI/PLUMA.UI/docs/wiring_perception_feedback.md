@@ -18,7 +18,7 @@ query or input command is transported by this channel.
 E108 streams actual capture/match evidence during execution for capture_target_window,
 read_visible_text, find_visible_text, OCR refresh and click_ocr_text fallback.
 Final verified tool receipts retain the E106 path without replay. Reads neither
-capture nor renew lifetime. STOP, terminal state, removed snapshots and original
+capture nor renew lifetime. STOP, failed terminal state, removed active snapshots and original
 wall/monotonic expiry clear the observation. `requires_target_revalidation`
 must always be true. This metadata cannot authorize input or prove success.
 
@@ -43,8 +43,9 @@ then converts relative physical geometry into host DIPs using its actual scale.
 The original identity is rechecked after mapping. A failure clears the layer.
 Do not multiply legacy coordinates by the reported target DPI.
 
-`PerceptionPresentation` admits a strict observation only for the same RUNNING
-task/request on an authenticated connected, ready runtime with priority STOP
+`PerceptionPresentation` admits a strict observation for the same RUNNING
+task/request, or a parent-stamped SUCCEEDED observation after terminal persistence,
+on an authenticated connected, ready runtime with priority STOP
 clear, fresh native identity and a visible foreground target. NONE/AMBIGUOUS
 matches grant no lease. Capture-only observations can supply flash geometry.
 The host must pass fresh runtime/STOP state and call native revalidation before
@@ -63,13 +64,21 @@ ROI origin subtraction are retained. No guessed label is supplied by this layer.
 The runtime observer serializes observation readback under shell lifetime.
 The native host must continue to
 deduplicate original observation IDs/sequences, revoke on immediate priority
-STOP/terminal/disconnect, and bound/native-check every display update. Do not
+STOP/failure/disconnect, and bound/native-check every display update. Do not
 recreate revoked leases to resurrect the same observation or restart TTL.
 Worker messages are enabled only for admitted registered producers and bounded
 to four per call. Intermediate fresh snapshots are private observation evidence;
-they never become admitted planner/action refs. Missing, expired or terminal
-observations can be omitted; short finished tasks are never replayed merely to
-force a flash. No idle capture loop or ML worker is introduced.
+they never become admitted planner/action refs. A verified successful short task
+retains metadata only until the original observation expiry; its snapshot registry
+and all image resources are released. This supersedes E106/E107's terminal-clear
+candidate behavior, which could lose captures between UI polls. The parent alone
+stamps task_phase; worker evidence cannot supply it. Failed persistence withholds
+the tail. Global/scoped STOP and shutdown revoke it without changing completed
+history. The shared observer reads for at most three seconds after running work
+or a terminal ledger notice, then returns to idle. Native priority STOP also
+rejects observations captured before its cutoff, including late completed tails.
+No observation is replayed or granted a new TTL. No idle capture loop or ML worker
+is introduced.
 
 Surfaces 15/16 use an owned, input-transparent, nonactivating native host
 bound to the captured target/region, outside the notification stack. Keep their

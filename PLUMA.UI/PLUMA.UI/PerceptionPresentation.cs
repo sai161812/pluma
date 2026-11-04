@@ -57,9 +57,13 @@ internal sealed class PerceptionPresentation
     }
 
     private static bool TaskCurrent(CoreRequestProtocol.PerceptionObservation observation,
-        RuntimeView runtime, bool priorityStop) => !priorityStop && runtime.Connected && runtime.CoreReady == true &&
-        runtime.Tasks.Count(task => task.TaskId == observation.TaskId &&
-            task.TaskRequestId == observation.TaskRequestId && task.State == "RUNNING") == 1;
+        RuntimeView runtime, bool priorityStop)
+    {
+        if(priorityStop || !runtime.Connected || runtime.CoreReady!=true)return false;
+        var tasks=runtime.Tasks.Where(task=>task.TaskId==observation.TaskId).ToArray();
+        if(observation.TaskPhase=="SUCCEEDED" && tasks.Length==0)return true;
+        return tasks.Length==1 && tasks[0].TaskRequestId==observation.TaskRequestId && tasks[0].State=="RUNNING";
+    }
 
     internal void Revoke() => _revoked = true;
 

@@ -82,6 +82,7 @@ class Evidence(BaseModel):
 
 
 class Observation(Evidence):
+    task_phase:Literal['RUNNING','SUCCEEDED']='RUNNING'
     task_id:StrictStr
     task_request_id:StrictStr
     sequence:StrictInt=Field(gt=0)
@@ -93,6 +94,21 @@ class Observation(Evidence):
 class PerceptionFeedback:
     def __init__(self):
         self._lock=threading.Lock();self._item=None;self._deadline=0;self._sequence=0;self._anchor=None;self._anchor_fresh=True
+        self._revoked=False
+
+    def revoke(self):
+        # STOP never waits for a presentation reader's lock.
+        self._revoked=True
+
+    def has_current(self):
+        return not self._revoked and self._item is not None and time.monotonic()<self._deadline
+
+    def finish(self,cap):
+        with self._lock:
+            if cap.state.value=='SUCCEEDED' and not cap.stop_latch_set and not self._revoked and self._item is not None:
+                self._item=self._item.model_copy(update={'task_phase':'SUCCEEDED'})
+                self._anchor=None
+            else:self._item=None
 
     def clear(self):
         with self._lock:self._item=None;self._deadline=0
@@ -142,7 +158,7 @@ class PerceptionFeedback:
                       (snapshot.expires_at-datetime.now(timezone.utc)).total_seconds())
         if remaining<=0:return
         with self._lock:
-            if cap.stop_latch_set or cap.state.value!='RUNNING':return
+            if self._revoked or cap.stop_latch_set or cap.state.value!='RUNNING':return
             if self._item is not None and self._item.observation_id==evidence.observation_id:
                 return  # Final tool receipt cannot renew/replay a streamed observation.
             self._sequence+=1
@@ -154,9 +170,12 @@ class PerceptionFeedback:
     def snapshot(self,cap):
         if not self._lock.acquire(timeout=.02):raise TimeoutError('Perception readback is busy.')
         try:
-            if (cap.stop_latch_set or cap.state.value!='RUNNING' or time.monotonic()>=self._deadline
+            if (self._revoked or cap.stop_latch_set or cap.state.value not in ('RUNNING','SUCCEEDED') or time.monotonic()>=self._deadline
                     or self._item is not None and datetime.now(timezone.utc)>=datetime.fromisoformat(self._item.expires_utc)):
                 self._item=None;return None
+            if cap.state.value=='SUCCEEDED':
+                if not cap.terminal_ready.is_set() or cap.terminal_persisted is not True:return None
+                if self._item is None or self._item.task_phase!='SUCCEEDED':return None
             if self._item is not None and self._anchor is not None:
                 try:
                     if self._anchor_fresh:cap.snapshot_registry.resolve_bounded(self._anchor)

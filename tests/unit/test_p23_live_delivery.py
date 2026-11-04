@@ -147,3 +147,34 @@ def test_model_preparation_precedes_fresh_snapshot_and_pixel_capture(resident_fi
         tools._new_snapshot(snap.hwnd,include_ocr=True,region=None,task_context=cap)
         assert phases==['ready','snapshot','pixels','recognize']
     finally:supervisor.stop_task(cap.task_id)
+
+
+def test_short_success_retains_only_original_unexpired_capture_metadata(resident_fixture):
+    from pluma.core.task_supervisor import TaskState
+    core,_,supervisor,cap,_,receipt=prepared(resident_fixture)
+    cap.perception_feedback.publish(receipt,cap)
+    deadline=cap.perception_feedback._deadline
+    supervisor.finalize_task(cap.task_id,TaskState.SUCCEEDED)
+    try:
+        frame=query(core)
+        assert len(frame['observations'])==1,'A fast completed capture vanished between UI polls.'
+        assert frame['observations'][0]['task_phase']=='SUCCEEDED'
+        assert cap.snapshot_registry is None and cap.perception_feedback._deadline==deadline
+        supervisor.request_stop(cap.task_id,wait_s=0)
+        assert query(core)['observations']==[]
+        assert cap.state==TaskState.SUCCEEDED
+    finally:supervisor.request_stop(cap.task_id,wait_s=0)
+
+
+def test_completed_metadata_never_survives_global_stop_or_failed_persistence(resident_fixture):
+    from pluma.core.task_supervisor import TaskState
+    core,_,supervisor,cap,_,receipt=prepared(resident_fixture)
+    cap.perception_feedback.publish(receipt,cap)
+    supervisor.finalize_task(cap.task_id,TaskState.SUCCEEDED)
+    cap.terminal_persisted=False
+    assert query(core)['observations']==[]
+    cap.terminal_persisted=True
+    assert len(query(core)['observations'])==1
+    supervisor.request_stop(None,wait_s=0)
+    assert query(core)['observations']==[]
+    assert cap.state==TaskState.SUCCEEDED

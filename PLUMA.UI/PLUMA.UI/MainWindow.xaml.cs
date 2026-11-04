@@ -346,6 +346,7 @@ namespace PLUMA.UI
             if (_closed) return;
             if (entry.Terminal && _terminalTasks.Add(entry.TaskId))
             {
+                _runtime.NotePerceptionActivity();
                 _terminalOrder.Enqueue(entry.TaskId);
                 if (_terminalOrder.Count > 512) _terminalTasks.Remove(_terminalOrder.Dequeue());
                 foreach (string key in _runtimeKeys)
