@@ -172,7 +172,7 @@ records exact tested source and native-versus-fixture boundaries.
 ### 23. Core Health Indicator
 **Purpose:** Small ambient indicator showing the resident core is connected.  
 **Data/Actions:** Green/red dot, "Connected" / "Disconnected", IPC ping latency.  
-**Current wire (P18 E91):** status on load/Refresh plus measured shell-owned runtime connection readback. This is connection/latency only; extended worker/model/device/capability health remains P22.
+**Current wire (P18 E91):** status on load/Refresh plus measured shell-owned runtime connection readback. This is connection/latency. P22 E104 adds explicit authenticated capability/status readback; see [health/setup/recovery](wiring_health_setup_recovery.md).
 
 ### 24. Toast Notification
 **Purpose:** One-line non-blocking info / warning pop-in.  
@@ -182,7 +182,7 @@ records exact tested source and native-versus-fixture boundaries.
 ### 25. Critical Error Dialog
 **Purpose:** Blocking dialog on fatal failures — IPC down, unhandled crash.  
 **Data/Actions:** Error message, optional stack trace, "Restart Core" button.  
-**Wire:** `CrashRecovery`, IPC connection loss event.
+**Wire (P22 E104):** explicit Recovery reads authenticated CoreHost status. Restart uses the existing material approval, typed owned graph drain and new-instance health; dead/unverified hosts cannot spawn a replacement. See [contract](wiring_health_setup_recovery.md).
 
 ---
 
@@ -190,5 +190,5 @@ records exact tested source and native-versus-fixture boundaries.
 
 ### 26. Setup Wizard
 **Purpose:** First-run check ensuring all system dependencies are present.  
-**Data/Actions:** Checklist — Tesseract OCR, PyWinAuto / UIA, microphone access, local LLM path, hotkey confirmation. "Continue" unlocks the Dashboard.  
-**Wire:** `pluma/config/loader.py` capability checks, `PreferencesStore`.
+**Data/Actions:** Checklist — local PaddleOCR/ONNX, UIA, llama.cpp and whisper.cpp files, consented microphone access and actual hotkey registration. "Continue" unlocks the Dashboard.
+**Wire (P22 E104):** bounded typed check_setup worker and HealthController. No first-run flag or fixture result grants readiness; Continue requires fresh native evidence. See [contract](wiring_health_setup_recovery.md).

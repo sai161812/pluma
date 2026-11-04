@@ -276,3 +276,20 @@ For the next workspace:
 4. Execute the newly blocked native size/glide checks in `popup_placement_refinement.md`, then finish physical/interactive cases before wiring floating surfaces.
 5. Wire Surfaces 22–26 to real core events in a separately scoped integration task; retain their disconnected, pending, or hidden defaults until evidence is supplied.
 6. Update `PLUMA.UI.csproj` with exactly one XAML registration per new production XAML file.
+
+## P22 production integration (E104)
+
+The earlier continuation checklist above is historical. Dashboard/health 23,
+critical recovery 25 and setup 26 now attach one shell-owned HealthController.
+Typed authenticated health supplies Core identity/state and native check results.
+Setup uses local PaddleOCR/ONNX, UIA, llama.cpp and whisper.cpp files; microphone
+access requires explicit consent. Access checks run only on Check again in an
+owned bounded worker. No sample/screenshot is saved. Fixture display updates
+cannot grant Continue, which requires fresh native proof from the current Core.
+
+Recovery is explicit and uses the existing exact material approval surface.
+The leased host drains its own old graph and publishes a new instance identity;
+authenticated readback must establish readiness before recovery is reported.
+Dead/unverified hosts require manual startup; no speculative process is spawned.
+Existing dark resources and dimensions remain. E104 records verification status
+and limitations; component renders alone do not prove native capability access.

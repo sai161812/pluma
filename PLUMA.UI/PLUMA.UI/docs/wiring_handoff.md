@@ -1,5 +1,9 @@
 # UI wiring handoff
 
+Current P22 implementation/verification supersedes the historical notes below.
+See [E104](../../../docs/completion/e104_p22_completion.md), the root handoff and
+[health/setup/recovery contract](wiring_health_setup_recovery.md). P23 has not started.
+
 **Current progress (2026-11-02, E96):** P20's scoped gate is complete on
 `p12-preparation`, native tested source `d223a32`. Saved History detail, exact
 selected undo, conflict evidence/folder actions and Activity tray/command entry

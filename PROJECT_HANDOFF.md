@@ -1,6 +1,56 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-03, E103 P21 complete
+## Current checkpoint: 2026-11-04, E104 P22 complete
+
+**P22's scoped implementation and required gate are complete. No remaining P22
+packet; P23 has not started.** [E104](docs/completion/e104_p22_completion.md)
+records exact source identities, commands, native/fixture evidence, retained
+failures and limits. See the [wire contract](PLUMA.UI/PLUMA.UI/docs/wiring_health_setup_recovery.md).
+
+- Branch: p12-preparation. Pushed recovery/pre-p22-e104-20261103 preserves base
+  9d6653e3df6eb1ca7bd509590d58e401376a7262. Main remains 0468a03; no merge,
+  branch switch, reset, clean, force-push, new dependency or security bypass.
+- Health 23, setup 26 and critical recovery 25 now use authenticated real
+  status/capability contracts. Explicit consented checks stay process-owned;
+  fixture results cannot enable Continue. Proof expires and invalidates on
+  disconnect/config/instance change. Resident startup loads no ML workers.
+- The exclusive leased host restarts only its own drained runtime graph with
+  exact material approval. Dead/unverified hosts require manual startup. Same
+  PID/creation-time, new graph UUID and authenticated ready/hotkey proof verify
+  recovery. Corrupt settings and hotkey loss leave safe control-only execution.
+- 39f9139 binds health tools to exact typed user consent; 9283a87 repairs queued
+  restart after hotkey loss; ab2e31c drains authenticated health handlers before
+  storage closure; 718c057 makes global STOP withdraw queued replacement.
+  864b867 reconciles saved terminal readback after replacement without replay.
+- Fresh final Python: **1,057 passed**, no skips/xfails, on 718c057. Its backend
+  is unchanged at final native source 864b867890f93c233265d7cb6294c9086a6f0af7.
+  Actual local planner/speech/OCR/UIA/microphone access passes on ab2e31c, with
+  real hotkeys, setup_ready=true, absent owned worker and cold resident; no
+  samples or screenshots saved. Access checks do not claim inference accuracy.
+- [Windows run 41832693148](https://github.com/sai161812/pluma/actions/runs/41832693148)
+  passes on exact final source 864b867: **341 IPC/controller, 237 legacy native
+  UI, 12 P22 native UI, 663 popup, 195 formatting, 64,537 layout, 30 surface**,
+  audio/copy gates and zero-warning/error builds. Three actual approved restarts
+  cover normal/configuration-error/repaired states and joined teardown.
+  SHA256-verified artifacts/logs are in ignored
+  output/p22-e104-20261103-233337-bd70b644/ci-41832693148/.
+- Earlier failed UI runs are retained: stale disabled-button fixture, whole-
+  suite watchdog, a native teardown access violation, and interrupted terminal
+  readback. They are not passed or overwritten. E104 distinguishes repaired
+  defects, final native acceptance and the unestablished historical crash cause.
+
+**Remaining limits:** E94's owner-approved C-02 physical timing retest remains
+P25. Physical UI/device review, installed recovery/signing/install/uninstall,
+broad quality/performance/security and release keep their later gates. Positive
+native capability access and negative native UI readiness are separate evidence;
+a positive device-to-Continue UI run is not claimed. No product-wide readiness
+or Sol approval is inferred.
+
+**Next safe step:** independent Sol review of E104, then P23 only on owner
+instruction. Recovery uses reviewed dependent reverts while preserving profiles
+and unrelated work; no reset/clean/force-push or concurrent old/new host.
+
+## Previous checkpoint: 2026-11-03, E103 P21 complete
 
 **P21's settings/restart/readback gate is complete. No remaining P21 packet;
 P22 is not started.** [E103](docs/completion/e103_p21_completion.md) records the
