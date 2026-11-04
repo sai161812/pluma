@@ -92,6 +92,12 @@ class PerceptionFixture:
             for cap in self.supervisor._tasks.values():
                 worker=getattr(cap,'worker_controller',None)
                 if worker is not None and not worker.verify_cleanup():raise RuntimeError('Owned worker remains.')
+                proofs=[item for item in cap.cleanup_evidence if item.kind=='worker' and item.code=='WORKER_ABSENCE_VERIFIED' and item.verified]
+                if not cap.terminal_ready.is_set() or cap.terminal_persisted is not True or not proofs:
+                    raise RuntimeError('Owned task cleanup/persistence proof is missing.')
+                for proof in proofs:
+                    if not subprocess_absent(proof.identity['pid'],proof.identity['creation_time']):
+                        raise RuntimeError('Native readback found an owned worker still present.')
             if self.errors:raise RuntimeError('Owned target pump failed.')
         else:raise ValueError('Unsupported P23 fixture control.')
 

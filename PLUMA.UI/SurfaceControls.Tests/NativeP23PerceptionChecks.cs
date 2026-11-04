@@ -69,7 +69,7 @@ internal static class NativeP23PerceptionChecks
             nint layer=host.Handle;
             check(GetForegroundWindow()==target,"capture feedback does not activate or steal focus from the actual owned target");
             nint style=PopupDesktopPlacement.Native.GetWindowLongPtr(layer,-20);
-            check((style & (0x20|0x80|0x08000000))==(0x20|0x80|0x08000000),"native feedback HWND is input-transparent, a tool window and nonactivating");
+            check((style & (0x80000|0x20|0x80|0x08000000))==(0x80000|0x20|0x80|0x08000000)&&!IsWindowEnabled(layer),"native feedback HWND is layered, input-disabled/transparent, a tool window and nonactivating");
             nint hit=WindowFromPoint(new NativePoint{X=sampleX,Y=sampleY});
             GetWindowThreadProcessId(hit,out uint hitPid);
             check(hitPid==pid,"native hit testing reaches the owned target through the displayed feedback layer; hit="+hit+" pid="+hitPid+" target="+target+" layer="+layer+" style="+style.ToString("x"));
@@ -126,13 +126,14 @@ internal static class NativeP23PerceptionChecks
             task=await Start("fixture:match");await Until(()=>host.MatchVisible,15);
             await shell.StopForAcceptance();await Until(()=>host.Handle==0,.6);
             check(IsWindow(target)&&!host.TimerRunning,"priority UI STOP revokes feedback immediately and never closes the pre-existing target fixture");
-            var stopDeadline=Stopwatch.StartNew();
+            var stopDeadline=Stopwatch.StartNew();bool stopped=false;
             while(stopDeadline.Elapsed.TotalSeconds<3)
             {
                 var state=await client.GetTerminalReadbackAsync(Id(),task,default);
-                if(state.IsSuccess&&state.Response!.Terminal)break;
+                if(state.IsSuccess&&state.Response is {Terminal:true,TerminalPersisted:true,FinalState:"STOPPED"}){stopped=true;break;}
                 await Task.Delay(20);
             }
+            check(stopped,"native priority STOP completes with independently saved STOPPED terminal evidence");
             await fixture.ControlHistoryAsync("perception_assert_cleanup");
 
             task=await Start("fixture:match");await Until(()=>host.MatchVisible,15);
@@ -184,6 +185,7 @@ internal static class NativeP23PerceptionChecks
     [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint hwnd,out uint pid);
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindow(nint hwnd);
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowEnabled(nint hwnd);
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint{public int X,Y;}
     [DllImport("user32.dll")] private static extern nint WindowFromPoint(NativePoint point);
 }

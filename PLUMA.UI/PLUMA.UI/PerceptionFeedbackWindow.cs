@@ -38,6 +38,11 @@ internal sealed class PerceptionFeedbackWindow : Window
             nint style = PopupDesktopPlacement.Native.GetWindowLongPtr(Handle, -20);
             PopupDesktopPlacement.Native.SetWindowLongPtr(Handle, -20, style | 0x80000 | 0x20 | 0x80 | 0x08000000);
             PopupDesktopPlacement.Native.SetWindowLongPtr(Handle, -8, WinRT.Interop.WindowNative.GetWindowHandle(owner));
+            // This HWND presents facts only. Disable native input as well as
+            // XAML hit testing: WinUI's input-site child must not intercept the
+            // target's pointer just because the top-level style is transparent.
+            EnableWindow(Handle,false);
+            if(IsWindowEnabled(Handle))throw new InvalidOperationException("Feedback input could not be disabled.");
             Alpha(0);
             Closed += (_, _) => { _closed = true; Marker.HideMatch(); SystemBackdrop = null; };
         }
@@ -69,6 +74,8 @@ internal sealed class PerceptionFeedbackWindow : Window
         if (!PopupDesktopPlacement.Native.SetLayeredWindowAttributes(Handle,0,value,2))
             throw new System.ComponentModel.Win32Exception("Could not set feedback visibility.");
     }
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool EnableWindow(nint hwnd,bool enabled);
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowEnabled(nint hwnd);
 
     // SystemBackdrop removes the default opaque HWND background. Only the
     // unchanged controls draw pixels. Composition resources follow the target.
