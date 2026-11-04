@@ -79,6 +79,13 @@ internal sealed class HealthController(Func<string,CancellationToken,Task<CoreRe
                 {
                     if(current.Pid!=target.Pid||current.CreationTime!=target.CreationTime)
                         throw new InvalidOperationException("Owned host changed.");
+                    if(current.InstanceId!=target.InstanceId||current.Code=="RESTART_CANCELLED")
+                    {
+                        // Drain may interrupt the last live task read. Reconcile
+                        // persisted intent on the authenticated graph, never replay it.
+                        if(commands.View.Pending)await commands.ReconcileAsync().WaitAsync(budget.Token);
+                        if(commands.View.Pending)throw new InvalidOperationException("Saved restart outcome is unconfirmed.");
+                    }
                     if(current.InstanceId==target.InstanceId&&current.Code=="RESTART_CANCELLED")
                     {_message="Restart was stopped before replacement began. No recovery was verified.";return;}
                     if(current.InstanceId!=target.InstanceId)

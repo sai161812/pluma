@@ -37,6 +37,13 @@ internal static class HealthChecks
         await health.RestartAsync(default);
         check(health.View.Message.Contains("did not restore")&&!health.View.CanCheck&&!health.View.CanContinue,"restart with invalid configuration never claims successful recovery");
         snapshot=Snapshot();await health.RefreshAsync(default);
+        int beforeReplayCheck=backend.Count;
+        backend.FailReads=1;
+        backend.AfterSubmit=()=>snapshot=snapshot with {InstanceId=Id(),State="READY"};
+        await health.RestartAsync(default);
+        check(!commands.View.Pending&&backend.Count==beforeReplayCheck+1&&health.View.Message.Contains("authenticated health was verified"),
+            "new authenticated graph reconciles interrupted terminal readback without replaying restart");
+        snapshot=Snapshot();await health.RefreshAsync(default);
         using var entered=new SemaphoreSlim(0);
         backend.Entered=entered;backend.Wait=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var pending=health.CheckAsync(false,default);await entered.WaitAsync();
@@ -49,6 +56,7 @@ internal static class HealthChecks
     private sealed class Client:ICommandClient
     {
         internal int Count,Stops;
+        internal int FailReads;
         internal string? Request,Fence;
         internal CoreHealthProtocol.Operation? Last;
         internal Action? AfterSubmit;
@@ -58,7 +66,9 @@ internal static class HealthChecks
         public Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitAsync(string request,string text,CancellationToken token)=>throw new Exception("Health must be typed.");
         public async Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitHealthAsync(string request,CoreHealthProtocol.Operation operation,CancellationToken token)
         {Count++;Request=request;Last=operation;Entered?.Release();if(Wait is not null)await Wait.Task.WaitAsync(token);AfterSubmit?.Invoke();return Ok(new CoreRequestProtocol.SubmissionAck(1,"submission_ack",request,true,TaskId,null,"Owned fixture"));}
-        public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request,string task,CancellationToken token)=>Task.FromResult(Ok(new CoreRequestProtocol.TerminalReadback(1,"terminal_readback",request,task,true,"SUCCEEDED",true,true,false,"FAST","Owned fixture",1)));
+        public Task<CoreRequestResult<CoreRequestProtocol.TerminalReadback>> ReadAsync(string request,string task,CancellationToken token)=>Task.FromResult(
+            FailReads-->0?CoreRequestResult<CoreRequestProtocol.TerminalReadback>.Failed(CoreConnectionFailure.Protocol):
+            Ok(new CoreRequestProtocol.TerminalReadback(1,"terminal_readback",request,task,true,"SUCCEEDED",true,true,false,"FAST","Owned fixture",1)));
         public Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> HistoryAsync(string request,CancellationToken token)=>Task.FromResult(Ok(new CoreRequestProtocol.HistoryReply(1,"history_reply",request,null,[],[])));
         public Task<CoreRequestResult<CoreRequestProtocol.StopAck>> StopAsync(string request,string? submissionRequest,CancellationToken token)
         {Stops++;Fence=submissionRequest;return Task.FromResult(Ok(new CoreRequestProtocol.StopAck(1,"stop_ack",request,"ok","pluma.stop.v1","Owned fixture",null,[],[],0,1)));}
