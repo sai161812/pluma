@@ -62,12 +62,40 @@ Fresh ignored root: output/p23-e107-20261104-201225-d5ffdbf3/.
 - E106's 1,118 required Python regressions remain applicable: no production
   Python/backend changes in E107. No need to repeat unrelated unchanged gates.
 
-Final committed-source native rerun and Windows compile/integration gate pending.
-No pending/unexecuted check is counted as a pass.
+Exact source **a41e280ac4291f2be1ff2fc55298e1f90e99f598** passes the
+committed-source owned native probe (1 pass, 2.084s pytest), with a zero-warning/
+error Release rebuild (1.99s). Local test DLL SHA256:
+1D4F05E3AD8A793B5BAD9F6A3D5D0F909CB8DF932E8FBC1367A0B96F3BB1B454.
+An affected P20 folder/undo selection also passes 23 checks (15.873s pytest),
+no skips/xfails, after the native gate failure described below.
+
+Windows exact-source evidence (same unchanged source, normal full gate):
+
+- [Run 41852074824](https://github.com/sai161812/pluma/actions/runs/41852074824): **failed**, stage native-controls. 393 IPC checks passed. No production resident, microphone or personal desktop actions were started. 663 native popup checks passed. 195 formatting checks passed. No backend or microphone was started. Error: native-controls failed with exit code 1. Artifact 13334739213, SHA256 ba75e46e300190f5148a35a3acd26da6b43c4cb3005722b0568286bb605290ec (verified against GitHub digest). Test executable SHA256 8E754AC34826D36884228A7171E4AFA97292D8642A464B4EA0551D72FEBA2B3A; NotSigned.
+
+- [Run 41853104578](https://github.com/sai161812/pluma/actions/runs/41853104578): **passed**, stage complete. 393 IPC checks passed. No production resident, microphone or personal desktop actions were started. 663 native popup checks passed. 195 formatting checks passed. No backend or microphone was started. 237 UI checks passed. 15 UI checks passed. Artifact 13336751115, SHA256 da2b481d2738f588d72920a01adb647ec3d881836981df5199e47f8567eceaa3 (verified against GitHub digest). Test executable SHA256 8E754AC34826D36884228A7171E4AFA97292D8642A464B4EA0551D72FEBA2B3A; NotSigned.
+
+The first native run times out at NativeP20UndoChecks.cs:115 waiting six seconds
+for the existing conflict Open folder command to reach terminal UI state. The
+reported state is Running. IPC/controller, popup/formatting and build stages pass.
+The artifact has no corresponding worker stack or saved terminal/action trace,
+so the precise Shell/worker/readback cause is **not established**. E107's new
+classes are not called by that existing flow; no causal P23 regression is claimed.
+The failure is retained and is not a pass. Neither deadlines, assertions, policy,
+verification nor window ownership was changed. Mock/fault P20 checks do not
+establish native folder completion. A same-source comparison alone does not
+repair or explain the first failure.
+
+The comparison full Windows gate passes, but repeatability of the native folder
+completion remains an open reliability finding. No blanket whole-UI stability
+or full P23 acceptance claim is made.
+
 
 ## Remaining P23 and recovery
 
-Next safe packet: serialized live observation delivery plus owned nonactivating,
+Next safe step: diagnose the retained native P20 folder terminal-wait failure
+with owned-worker/native evidence, preserving deadlines and cleanup. P23 host
+work follows that prerequisite check. Remaining P23 packet: serialized live observation delivery plus owned nonactivating,
 input-transparent native host for existing surfaces 15/16. Deduplicate original
 observations, revoke on immediate STOP/terminal/disconnect and revalidate every
 display update. Cover remaining capture paths, explicit legacy coordinate
@@ -82,5 +110,5 @@ installation/recovery/security/performance/release gates remain unchanged.
 Recovery: use reviewed dependent reverts on p12-preparation, preserving E106 and
 unrelated work; recovery/pre-p23-e107-20261104 preserves the starting source.
 No reset, clean, force push, merge or branch switch. No concurrent production
-hosts on one profile/pipe. Independent Sol review is ready after the packet's
-final source gate; approval is not assumed.
+hosts on one profile/pipe. The new bounded implementation is ready for independent Sol review with the
+recorded native regression finding; full acceptance is not approved or inferred.

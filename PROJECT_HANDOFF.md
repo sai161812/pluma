@@ -1,6 +1,6 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-04, E107 P23 packet 2 verification
+## Current checkpoint: 2026-11-04, E107 P23 validation packet; native regression finding
 
 [E107](docs/completion/e107_p23_native_freshness.md) adds read-only native target
 probing and a revocable presentation lease. P23 remains in progress; surfaces
@@ -20,10 +20,19 @@ The lease refuses unsupported legacy conversion, stale identity/geometry/DPI,
 monitor changes, missing/ambiguous matches, task loss, disconnect and STOP.
 No caption/audio/pixels are saved by the new channel.
 
-Exact committed-source native rerun and Windows integration are pending.
+Exact source a41e280ac4291f2be1ff2fc55298e1f90e99f598 passes the native probe
+rerun and 23 affected P20 regressions. Windows run 41852074824 passes 393 IPC,
+663 popup, 195 formatting and builds, then fails P20 conflict-folder terminal
+readback at NativeP20UndoChecks.cs:115 (six-second wait, command still Running).
+Root cause is unestablished; new P23 types are not called by that flow. The
+failed artifact is retained. Same-source comparison 41853104578: passed.
+See E107 for exact results, artifact/executable digests and limitations. No full
+P23/native regression stability claim follows from a comparison run.
 Unique ignored evidence: output/p23-e107-20261104-201225-d5ffdbf3/.
 
-Next safe P23 packet after this verification: live observation delivery and
+Next safe step: diagnose the retained native P20 folder terminal-wait failure
+with owned native/worker evidence, preserving the existing budgets and assertions.
+P23 remaining after that prerequisite: live observation delivery and
 owned native surfaces 15/16 hosting, explicit legacy conversion, deduplication,
 immediate STOP invalidation and combined fresh-target visual acceptance.
 Verification 17 remains driven only by saved actual postcondition readback.
