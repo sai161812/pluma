@@ -46,7 +46,9 @@ internal static class NativeP23PerceptionChecks
             await Until(()=>GetForegroundWindow()==target);
             await Task.Delay(30);
             if(!PopupDesktopPlacement.Native.GetWindowRect(target,out var actualBounds))throw new InvalidOperationException("Owned target bounds unavailable.");
-            sampleX=actualBounds.Right-30;sampleY=actualBounds.Bottom-30;outsideX=actualBounds.Right+8;
+            // The small CI monitor's right-hand notification lane can overlap
+            // this fixture's right edge. Sample its empty left client margin.
+            sampleX=actualBounds.Left+18;sampleY=actualBounds.Bottom-30;outsideX=actualBounds.Left-8;
             baseline=Pixel(sampleX,sampleY);outsideBaseline=Pixel(outsideX,sampleY);
             var reply=await client.SubmitTextAsync(Id(),text,default);
             if(!reply.IsSuccess||reply.Response?.TaskId is null)throw new InvalidOperationException("Owned P23 task was not admitted.");
@@ -72,6 +74,11 @@ internal static class NativeP23PerceptionChecks
             check((style & (0x80000|0x20|0x80|0x08000000))==(0x80000|0x20|0x80|0x08000000)&&!IsWindowEnabled(layer),"native feedback HWND is layered, input-disabled/transparent, a tool window and nonactivating");
             nint hit=WindowFromPoint(new NativePoint{X=sampleX,Y=sampleY});
             GetWindowThreadProcessId(hit,out uint hitPid);
+            check(shell.Popups.Windows.All(window=>sampleX<window.Bounds.X||sampleX>=window.Bounds.Right||sampleY<window.Bounds.Y||sampleY>=window.Bounds.Bottom),
+                "owned pointer/pixel sample is outside the independent notification lane");
+            PopupDesktopPlacement.Native.GetWindowRect(target,out var probeBounds);
+            nint rightHit=WindowFromPoint(new NativePoint{X=probeBounds.Right-30,Y=sampleY});
+            Console.WriteLine("Right-edge diagnostic: known notification="+shell.Popups.Windows.Any(window=>window.Handle==rightHit||window.Handle==GetAncestor(rightHit,2)));
             check(hitPid==pid,"native hit testing reaches the owned target through the displayed feedback layer; hit="+hit+" pid="+hitPid+" target="+target+" layer="+layer+" style="+style.ToString("x"));
             var observation=host.ObservationForAcceptance!;
             var pixels=NativePerceptionTarget.Map(observation,1)!;
@@ -86,6 +93,14 @@ internal static class NativeP23PerceptionChecks
             check(lit!=baseline && red>0 && red<=128 && green>=0 && green<=128,
                 "actual composed capture flash brightens an owned target pixel rather than showing an opaque background");
             check(Pixel(outsideX,sampleY)==outsideBaseline,"capture feedback changes no pixel outside the target ROI or its owned input-transparent layer");
+            CheckTarget(target,pid);
+            check(LayerVisible(layer)&&GetForegroundWindow()==target,"actual pointer trial starts while the feedback is displayed over its owned foreground target");
+            nint clicks=GetProp(target,"PLUMA.Fixture.MouseDown");
+            if(!SetCursorPos(sampleX,sampleY))throw new InvalidOperationException("Owned pointer position was refused.");
+            var input=new[]{new NativeInput{Data=new(){Mouse=new(){Flags=2}}},new NativeInput{Data=new(){Mouse=new(){Flags=4}}}};
+            check(SendInput(2,input,Marshal.SizeOf<NativeInput>())==2,"Windows admits only the owned fixture pointer down/up pair");
+            await Until(()=>GetProp(target,"PLUMA.Fixture.MouseDown")==clicks+1,.15);
+            check(GetForegroundWindow()==target,"real pointer input reaches the owned target beneath the visual layer without activation theft");
             await Until(()=>host.Handle==0,1);
             int count=presented;await Task.Delay(350);
             check(presented==count&&!host.TimerRunning,"capture flash completes once; repeated observations do not replay or keep an idle timer");
@@ -93,10 +108,17 @@ internal static class NativeP23PerceptionChecks
 
             task=await Start("fixture:capture_short");
             await Until(()=>host.Handle!=0&&LayerVisible(host.Handle),2);
-            await Until(()=>host.ObservationForAcceptance?.TaskPhase=="SUCCEEDED",1);
             var shortTerminal=await client.GetTerminalReadbackAsync(Id(),task,default);
+            var shortDeadline=Stopwatch.StartNew();
+            while(shortTerminal.Response is not {Terminal:true,TerminalPersisted:true} && shortDeadline.Elapsed.TotalSeconds<1)
+            {
+                await Task.Delay(10);shortTerminal=await client.GetTerminalReadbackAsync(Id(),task,default);
+            }
+            var tail=await client.GetPerceptionAsync(Id(),default);
             check(shortTerminal.Response is {Terminal:true,TerminalPersisted:true,FinalState:"SUCCEEDED"},
                 "a capture-only task delivers its original observation after verified saved completion without an artificial holding step");
+            check(tail.IsSuccess&&tail.Response!.Observations.Any(item=>item.TaskId==task&&item.TaskPhase=="SUCCEEDED"),
+                "actual completed native capture remains available to a late poll at its original metadata deadline");
             await Until(()=>host.Handle==0,1);
             await Stop(task);
 
@@ -188,4 +210,11 @@ internal static class NativeP23PerceptionChecks
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowEnabled(nint hwnd);
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint{public int X,Y;}
     [DllImport("user32.dll")] private static extern nint WindowFromPoint(NativePoint point);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint hwnd,uint flags);
+    [DllImport("user32.dll",EntryPoint="GetPropW",CharSet=CharSet.Unicode)] private static extern nint GetProp(nint hwnd,string name);
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool SetCursorPos(int x,int y);
+    [StructLayout(LayoutKind.Sequential)] private struct NativeMouse{public int X,Y;public uint Data,Flags,Time;public nuint Extra;}
+    [StructLayout(LayoutKind.Explicit,Size=32)] private struct NativeInputUnion{[FieldOffset(0)]public NativeMouse Mouse;}
+    [StructLayout(LayoutKind.Sequential)] private struct NativeInput{public uint Type;public NativeInputUnion Data;}
+    [DllImport("user32.dll")] private static extern uint SendInput(uint count,[In]NativeInput[] inputs,int size);
 }

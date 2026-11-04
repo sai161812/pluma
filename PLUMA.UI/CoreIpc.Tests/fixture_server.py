@@ -224,8 +224,6 @@ def main():
                         prior_folder_windows = {int(windows.Item(i).HWND) for i in range(windows.Count)}
                     finally: pythoncom.CoUninitialize()
                 elif command == 'history_diagnostics':
-                    import sqlite3
-                    from contextlib import closing
                     records=[]
                     with closing(sqlite3.connect('file:'+owned_db.as_posix()+'?mode=ro',uri=True,timeout=.05)) as reader:
                         reader.row_factory=sqlite3.Row

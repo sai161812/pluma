@@ -56,6 +56,10 @@ def main(ready_path=None) -> None:
     user.SetWindowTextW.argtypes = [w.HWND, w.LPCWSTR]
     user.SetWindowTextW.restype = w.BOOL
     user.ShowWindow.argtypes = [w.HWND, c.c_int]
+    user.SetPropW.argtypes = [w.HWND,w.LPCWSTR,w.HANDLE]
+    user.SetPropW.restype = w.BOOL
+    user.GetPropW.argtypes = [w.HWND,w.LPCWSTR]
+    user.GetPropW.restype = w.HANDLE
     user.UpdateWindow.argtypes = [w.HWND]
     kernel.GetModuleHandleW.argtypes = [w.LPCWSTR]
     kernel.GetModuleHandleW.restype = w.HINSTANCE
@@ -66,6 +70,11 @@ def main(ready_path=None) -> None:
 
     def handle(hwnd: int, message: int, wp: int, lp: int) -> int:
         nonlocal open_windows
+        if message == 0x0201:  # WM_LBUTTONDOWN: owned acceptance counter only.
+            count=int(user.GetPropW(hwnd,'PLUMA.Fixture.MouseDown') or 0)
+            if not user.SetPropW(hwnd,'PLUMA.Fixture.MouseDown',w.HANDLE(count+1)):
+                raise c.WinError()
+            return 0
         if message == 0x0001:  # WM_CREATE
             open_windows += 1
             if textless_window:
