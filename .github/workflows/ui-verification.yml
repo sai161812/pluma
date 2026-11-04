@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       folder_trace:
-        description: Capture stacks only in disposable-host owned folder workers
+        description: Diagnose disposable-host fixture startup and repeat owned folder checks
         type: boolean
         required: false
         default: false

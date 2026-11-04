@@ -39,5 +39,18 @@ def test_native_owned_capture_reaches_typed_readback(owned_uia_window,resident_f
         assert len(rows)==1 and rows[0]['verified'] and 'perception_receipt' not in rows[0]['result_json']
         assert 'image_ref' not in json.dumps(frame) and info.window_title not in json.dumps(frame)
         assert not list(tmp_path.rglob('*.bmp')) and not list(tmp_path.rglob('*.png'))
+        from pluma.core.task_supervisor import TaskState
+        supervisor.finalize_task(cap.task_id,TaskState.SUCCEEDED)
+        assert cap.stop_latch_set and cap.cancellation_token.reason is None
+        completed=core.handle_ipc_command(dict(protocol_version=1,message_type='perception_query',request_id=str(uuid4())))
+        assert len(completed['observations'])==1,'Disposal-only native admission fencing lost the completed observation.'
+        assert completed['observations'][0]['task_phase']=='SUCCEEDED'
+        assert cap.snapshot_registry is None and cap.worker_controller is None
+        import pytest
+        from pluma.core.cancellation import TaskCancelledError
+        with pytest.raises(TaskCancelledError):cap.cancellation_token.admit_executor()
+        supervisor.request_stop(cap.task_id,wait_s=0)
+        assert core.handle_ipc_command(dict(protocol_version=1,message_type='perception_query',request_id=str(uuid4())))['observations']==[]
+        assert cap.state==TaskState.SUCCEEDED and cap.cancellation_token.reason is None
     finally:supervisor.stop_task(cap.task_id);registry.close()
     assert any(e.kind=='worker' and e.verified and e.code=='WORKER_ABSENCE_VERIFIED' for e in cap.cleanup_evidence)

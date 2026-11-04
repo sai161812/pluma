@@ -56,6 +56,14 @@ internal static class NativeP23PerceptionChecks
             // this fixture's right edge. Sample its empty left client margin.
             sampleX=actualBounds.Left+18;sampleY=actualBounds.Bottom-30;outsideX=actualBounds.Left-8;
             baseline=Pixel(sampleX,sampleY);outsideBaseline=Pixel(outsideX,sampleY);
+            var settle=Stopwatch.StartNew();var stable=Stopwatch.StartNew();
+            while(stable.Elapsed.TotalMilliseconds<100&&settle.Elapsed.TotalMilliseconds<500)
+            {
+                await Task.Delay(16);
+                uint inside=Pixel(sampleX,sampleY),outside=Pixel(outsideX,sampleY);
+                if(inside!=baseline||outside!=outsideBaseline){baseline=inside;outsideBaseline=outside;stable.Restart();}
+            }
+            if(stable.Elapsed.TotalMilliseconds<100)throw new InvalidOperationException("Owned target activation/shadow did not settle before capture.");
             var reply=await client.SubmitTextAsync(Id(),text,default);
             if(!reply.IsSuccess||reply.Response?.TaskId is null)throw new InvalidOperationException("Owned P23 task was not admitted.");
             currentTask=reply.Response.TaskId;return currentTask;
@@ -196,6 +204,8 @@ internal static class NativeP23PerceptionChecks
         catch(Exception error)
         {
             Console.Error.WriteLine("P23 native state: "+host.LastFailure+"; HWND "+host.Handle+"; frames "+presented+"; "+error);
+            Console.Error.WriteLine("Owned perception readback: "+JsonSerializer.Serialize(await client.GetPerceptionAsync(Id(),default)));
+            Console.Error.WriteLine("Owned runtime readback: "+JsonSerializer.Serialize(await client.GetRuntimeAsync(Id(),default)));
             if(currentTask is not null)
             {
                 var evidence=await client.GetTaskDetailAsync(Id(),currentTask,0,default);

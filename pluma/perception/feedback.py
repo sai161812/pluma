@@ -103,9 +103,15 @@ class PerceptionFeedback:
     def has_current(self):
         return not self._revoked and self._item is not None and time.monotonic()<self._deadline
 
+    @staticmethod
+    def task_stopped(cap):
+        # Successful worker disposal seals native executor admission without a
+        # cancellation cause. This never reopens that gate or authorizes action.
+        return cap.stop_latch_set and (cap.state.value!='SUCCEEDED' or cap.cancellation_token.reason is not None)
+
     def finish(self,cap):
         with self._lock:
-            if cap.state.value=='SUCCEEDED' and not cap.stop_latch_set and not self._revoked and self._item is not None:
+            if cap.state.value=='SUCCEEDED' and not self.task_stopped(cap) and not self._revoked and self._item is not None:
                 self._item=self._item.model_copy(update={'task_phase':'SUCCEEDED'})
                 self._anchor=None
             else:self._item=None
@@ -170,7 +176,7 @@ class PerceptionFeedback:
     def snapshot(self,cap):
         if not self._lock.acquire(timeout=.02):raise TimeoutError('Perception readback is busy.')
         try:
-            if (self._revoked or cap.stop_latch_set or cap.state.value not in ('RUNNING','SUCCEEDED') or time.monotonic()>=self._deadline
+            if (self._revoked or self.task_stopped(cap) or cap.state.value not in ('RUNNING','SUCCEEDED') or time.monotonic()>=self._deadline
                     or self._item is not None and datetime.now(timezone.utc)>=datetime.fromisoformat(self._item.expires_utc)):
                 self._item=None;return None
             if cap.state.value=='SUCCEEDED':

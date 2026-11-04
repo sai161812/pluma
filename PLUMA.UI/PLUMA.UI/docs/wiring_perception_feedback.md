@@ -80,6 +80,12 @@ rejects observations captured before its cutoff, including late completed tails.
 No observation is replayed or granted a new TTL. No idle capture loop or ML worker
 is introduced.
 
+Successful native worker disposal also seals its executor admission event. That
+disposal-only fence (no cancellation cause) is not presentation cancellation for
+a persisted SUCCEEDED task. The task's executor admission stays closed. Explicit
+STOP remains an immediate independent metadata revocation, including completed
+tasks. The actual owned-worker capture regression covers this distinction.
+
 Surfaces 15/16 use an owned, input-transparent, nonactivating native host
 bound to the captured target/region, outside the notification stack. Keep their
 existing XAML geometry/styles and transient image policy. Validate host DPI and
@@ -96,3 +102,7 @@ fresh capture; only installed local weights are loaded during execution.
 API contracts: [native point conversion](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-logicaltophysicalpointforpermonitordpi),
 [SystemBackdrop attachment](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.media.systembackdrop.ontargetconnected),
 [composition backdrop brush](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.composition.icompositionsupportssystembackdrop.systembackdrop).
+The host also uses [DWM client-alpha configuration](https://learn.microsoft.com/en-us/windows/win32/dwm/blur-ovw)
+and [native frame recalculation](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-nccalcsize).
+Native pixel acceptance uses [BitBlt CAPTUREBLT](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-bitblt)
+to include layered windows, retaining only transient owned-target pixel samples.

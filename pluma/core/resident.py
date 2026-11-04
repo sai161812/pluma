@@ -1004,7 +1004,7 @@ class ResidentCore:
             for cap in capsules:
                 if time.monotonic()>deadline:raise TimeoutError('Perception readback budget exceeded.')
                 item=cap.perception_feedback.snapshot(cap)
-                if item is not None and not cap.stop_latch_set:items.append(item)
+                if item is not None and not cap.perception_feedback.task_stopped(cap):items.append(item)
             return PerceptionSnapshotV1(request_id=request.request_id,observations=items).model_dump(mode='json')
         except Exception:
             return {'protocol_version':1,'message_type':'protocol_error','error_code':'PERCEPTION_UNAVAILABLE',

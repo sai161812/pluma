@@ -147,6 +147,32 @@ The fixture/folder/undo selection passes 24 checks and native acceptance compile
 with zero warnings/errors. Run artifact SHA256:
 a9b2759a76b36a5b5de0d8a111ecf0ce12f37fdfe4b280d2eb9d1f00437412a6.
 
+Run 41900460308 on e8ec837 passed 403 IPC, 237 native UI (including P20 folder
+visibility/verification/owned-window cleanup and P21), 663 popup and 195 formatting.
+P22 reached its final shutdown assertion but did not drain within five seconds;
+the next run records its exact awaited owner. No deadline was increased.
+P23 proves real pointer delivery beneath the layer and exact outer ROI bounds,
+but composed pixels expose an opaque #222222 matte and a 414x234 client in a
+420x240 ROI; the flash starts at zero arranged size. The candidate removes the
+native frame, reads back full client bounds, enables client alpha over an empty
+DWM blur region, clears WM_ERASEBKGND to alpha-zero black, and arranges the
+existing flash before its unchanged storyboard. No image-copy backdrop or new
+dependency is introduced. These repairs still require native pixel acceptance.
+
+The real short capture also exposed disposal-only fencing: worker disposal seals
+native admission with no cancellation cause, so stop_latch_set alone wrongly
+discarded successful metadata. Native regression disposal-tail-reproduction/
+fails before repair; disposal-tail-fixed/ passes 42 checks afterward. The parent
+permits only successful persisted metadata with no explicit cancellation cause;
+executor admission remains sealed. Extended native conversion/capture/OCR checks
+pass 3, including failed new admission and metadata-only STOP preserving success.
+Required affected regressions after this change pass 1213, no skips/xfails
+(required-regressions-disposal-tail/, base e8ec837 plus the reviewed source diff).
+Release native acceptance build is warning/error-free. Diagnostic folder mode
+adds three fresh owned fixture repetitions without changing the normal gate or
+individual budgets. Run 41900460308 artifact SHA256:
+ec3b9c42b1eb0bdbf7b33b66f1457424d8d9cf346c3a0727ad7c2b62f4729834.
+
 Required affected regressions, native conversion/capture/OCR checks and the
 combined native P23 suite must pass on the recorded committed source. Until
 then UI-15/16 remain UNVERIFIED and P24 ineligible. Existing physical monitor/

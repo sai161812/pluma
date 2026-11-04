@@ -106,7 +106,12 @@ internal static class NativeP22HealthChecks
                 "; dialog="+shell.CriticalForAcceptance?.IsLoaded+"/"+shell.CriticalForAcceptance?.CanRestart+"; "+error);
             throw;
         }
-        finally{shell.Close();await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5));}
+        finally
+        {
+            shell.Close();
+            try{await shell.ObservationLifetime.WaitAsync(TimeSpan.FromSeconds(5));}
+            catch{Console.Error.WriteLine("Owned health shutdown stage: "+shell.ShutdownStageForAcceptance);throw;}
+        }
         check(shell.ObservationLifetime.IsCompleted,"native health/setup/recovery close joins all UI-owned reads, dialogs and observers");
     }
 }

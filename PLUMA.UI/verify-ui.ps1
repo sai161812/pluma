@@ -119,11 +119,19 @@ try {
     # Each coherent suite retains its existing 60-second native watchdog and
     # 75-second owner budget. Both are mandatory, with separate retained reports.
     $suiteFailures = [Collections.Generic.List[string]]::new()
-    foreach ($suite in @(
+    $suites = @(
         @{ Label = 'native-controls'; Arguments = @(); Report = 'control-tests.txt'; Result = 'controlsResult' },
         @{ Label = 'native-p22-health'; Arguments = @('--p22-health'); Report = 'p22-health-tests.txt'; Result = 'healthControlsResult' },
         @{ Label = 'native-p23-perception'; Arguments = @('--p23-perception'); Report = 'p23-perception-tests.txt'; Result = 'perceptionControlsResult' }
-    )) {
+    )
+    if ($env:PLUMA_P20_FOLDER_TRACE -eq '1') {
+        # Reproduce the retained intermittent folder finding in fresh owned
+        # fixtures. These diagnostic repetitions never replace the normal gate.
+        foreach ($attempt in 1..3) {
+            $suites += @{ Label = "native-p20-repeat-$attempt"; Arguments = @('--p20-undo'); Report = "p20-repeat-$attempt.txt"; Result = "p20Repeat${attempt}Result" }
+        }
+    }
+    foreach ($suite in $suites) {
         try {
         $summary.stage = $suite.Label
         $controls = Start-OwnedProcess $controlsExecutable $suite.Arguments $suite.Label

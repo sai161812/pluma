@@ -111,24 +111,25 @@ namespace PLUMA.UI
                 _runtime.TextRequested -= OpenCommandEntry;
                 _runtime.WorkerTerminated -= OnWorkerTerminated;
                 _voice.Changed -= OnVoiceChanged;
-                await _commands.DisposeAsync();
+                ShutdownStageForAcceptance="commands";await _commands.DisposeAsync();
                 _commands.Changed -= _settings.OnCommandChanged;
-                await _settings.DisposeAsync();
+                ShutdownStageForAcceptance="settings";await _settings.DisposeAsync();
                 _commands.Changed-=_health.OnCommand;
                 _health.Changed-=OnHealthChanged;
                 _critical?.Hide();
-                await _health.DisposeAsync();
-                await _recoveryTask;
-                await _healthDialogTask;
-                await _observerStartupTask;
-                await _confirmationTask;
-                await _eventTask;
-                await _runtimeTask;
-                await _voiceTask;
-                await _activityNavigationTask;
-                await _history.DisposeAsync();
-                await _savedDetail.DisposeAsync();
-                await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
+                ShutdownStageForAcceptance="health";await _health.DisposeAsync();
+                ShutdownStageForAcceptance="recovery";await _recoveryTask;
+                ShutdownStageForAcceptance="health-dialog";await _healthDialogTask;
+                ShutdownStageForAcceptance="observer-startup";await _observerStartupTask;
+                ShutdownStageForAcceptance="confirmations";await _confirmationTask;
+                ShutdownStageForAcceptance="events";await _eventTask;
+                ShutdownStageForAcceptance="runtime";await _runtimeTask;
+                ShutdownStageForAcceptance="voice";await _voiceTask;
+                ShutdownStageForAcceptance="activity";await _activityNavigationTask;
+                ShutdownStageForAcceptance="history";await _history.DisposeAsync();
+                ShutdownStageForAcceptance="detail";await _savedDetail.DisposeAsync();
+                ShutdownStageForAcceptance="transport";await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
+                ShutdownStageForAcceptance="complete";
                 _closedDrain.TrySetResult();
             };
         }
@@ -154,6 +155,7 @@ namespace PLUMA.UI
         internal SetupWizard? Setup=>ContentFrame.Content as SetupWizard;
         internal CriticalErrorDialog? CriticalForAcceptance=>_critical;
         internal HealthView HealthForAcceptance=>_health.View;
+        internal string ShutdownStageForAcceptance {get;private set;}="open";
         internal void OpenSetupForAcceptance()=>OpenSetup();
         private async void OpenSetup()
         {
