@@ -38,6 +38,9 @@ internal static class HealthChecks
         backend.AfterSubmit=()=>snapshot=snapshot with {InstanceId=Id(),State="CONFIGURATION_ERROR",Code="SETTINGS_INVALID"};
         await health.RestartAsync(default);
         check(health.View.Message.Contains("did not restore")&&!health.View.CanCheck&&!health.View.CanContinue,"restart with invalid configuration never claims successful recovery");
+        health.OnRuntime(new([],true,1,snapshot.InstanceId,false));
+        check(health.View.CanRestart&&health.View.Snapshot?.State=="CONFIGURATION_ERROR"&&!commands.View.CanSubmit&&!health.View.CanContinue,
+            "verified configuration-error identity retains recovery while routine not-ready updates block commands and Continue");
         snapshot=Snapshot();await health.RefreshAsync(default);
         int beforeReplayCheck=backend.Count;
         backend.FailReads=1;

@@ -107,10 +107,13 @@ internal sealed class HealthController(Func<string,CancellationToken,Task<CoreRe
     internal void OnRuntime( RuntimeView value)
     {
         if(_closed)return;
+        bool stale=!value.Connected||(_snapshot?.State=="READY"&&value.CoreReady==false)||
+            (_snapshot is not null&&value.CoreInstanceId is not null&&_snapshot.InstanceId!=value.CoreInstanceId)||
+            DateTimeOffset.UtcNow-_readAt>TimeSpan.FromSeconds(45);
+        if(stale){_snapshot=null;if(!_busy)_message="Setup health needs a fresh check.";}
         commands.SetCoreReady(value.Connected?value.CoreReady:false);
         commands.SetConnected(value.Connected&&value.CoreReady!=false);
-        if(!value.Connected||value.CoreReady==false||(_snapshot is not null&&value.CoreInstanceId is not null&&_snapshot.InstanceId!=value.CoreInstanceId)||DateTimeOffset.UtcNow-_readAt>TimeSpan.FromSeconds(45))
-        {_snapshot=null;if(!_busy)_message="Setup health needs a fresh check.";Publish();}
+        if(stale)Publish();
     }
     internal void OnCommand(CommandView _) => Publish();
     public async ValueTask DisposeAsync()
