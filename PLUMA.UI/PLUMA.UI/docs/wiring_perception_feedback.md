@@ -2,7 +2,9 @@
 
 E106 adds observation transport; E107 adds a native target probe and revocable
 presentation lease. E108 connects owned-worker live observations and a native
-host. UI-15/16 are wired candidates, UNVERIFIED until combined acceptance passes.
+host. UI-15/16 pass combined acceptance on 6e87901 in normal Windows run
+41982933518 (28 P23 checks); see [E108](../../../docs/completion/e108_p23_live_hosting.md)
+for source/build identity, retained failures and later physical gates.
 
 ## Observation channel
 
@@ -50,7 +52,7 @@ clear, fresh native identity and a visible foreground target. NONE/AMBIGUOUS
 matches grant no lease. Capture-only observations can supply flash geometry.
 The host must pass fresh runtime/STOP state and call native revalidation before
 each presentation/update. A changed HWND/PID/creation/class/caption/geometry/
-DPI/monitor, hidden/minimized/foreground-lost target, missing task, disconnect,
+DPI/monitor, hidden/minimized/foreground-lost target, missing RUNNING task, disconnect,
 STOP, exception, wall reversal or expiry permanently revokes that lease.
 Revalidation includes time spent probing and never extends original expiry.
 

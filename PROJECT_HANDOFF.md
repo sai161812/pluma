@@ -1,49 +1,46 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-05, E108 P23 live/native host candidate
+## Current checkpoint: 2026-11-05, E108 P23 complete; normal native gate passed
 
-[E108](docs/completion/e108_p23_live_hosting.md) implements remaining live worker
-delivery, native surfaces 15/16 hosting and explicit Windows legacy DPI conversion.
-Full combined acceptance is pending; P23 is not yet declared complete. P24 is
-ineligible and has not started. Base 3502e9e was clean; the pushed recovery point
-is recovery/pre-p23-e108-20261104. No merge/branch switch/reset/clean/force-push,
-XAML styling or master specification change.
+P23's remaining live observation delivery, surfaces 15/16 native hosting, Windows
+legacy DPI conversion and combined visual/STOP acceptance are complete. Accepted
+source: **6e8790109bb4634eca8d8730e0c49bee3c977cdf** on p12-preparation. Normal
+non-tracing [Windows run 41982933518](https://github.com/sai161812/pluma/actions/runs/41982933518)
+passes 403 IPC, 237 native UI, 15 health, 28 P23, 663 popup and 195 formatting
+checks; builds have zero warnings/errors. [E108](docs/completion/e108_p23_live_hosting.md)
+records exact commands, source/build identity, native scope and retained failures.
 
-Fresh prerequisites 61 pass. Focused live/grounding/OCR guards 130 pass, C# IPC
-400 pass; native controls build has zero warnings/errors. Actual owned native
-PaddleOCR/ONNX capture/match passes after a reproduced cold-import freshness
-repair (5.289s), with original 12-second tool budget. Model loading precedes
-fresh image capture and uses installed local weights, with no inference-time
-network probe/download. Private intermediate observations do not revive expired
-action refs or enter the planner registry. STOP and image lifetime remain strict.
+Required affected Python regressions: 1213 passed, no skips/xfails (11 existing
+JUnit warnings). The actual native worker disposal/STOP regression passes on
+committed 8158f46; the accepted production sources are identical. Successful
+capture metadata survives worker disposal only until original expiry after
+terminal persistence. Action admission stays sealed. STOP revokes metadata and
+closes only feedback-owned HWNDs; native kernel readback proves worker absence.
+No image or raw OCR text is added to the metadata channel. Existing XAML/dark
+styling, safety gates and all original tool/acceptance deadlines are preserved.
 
-Latest pushed source 8158f46 includes a reproduced short-task delivery repair:
-successful metadata may survive normal completion only at its original expiry,
-after terminal persistence, with all images/snapshots released. STOP/shutdown
-revoke it without rewriting completed history. Required affected regressions:
-1213 passed on 22a5b2d, no skips/xfails; C# IPC 403 passed. Committed 02fd21e
-native conversion/capture/real OCR plus diagnostic control/storage: 4 passed.
-Real worker disposal was then reproduced to seal admission without a STOP cause;
-presentation distinguishes this for persisted success only, leaving action
-admission sealed. Committed focused native/disposal/STOP checks: 22 passed.
-Native composed pixels exposed a matte and residual client frame; the candidate
-now configures client alpha, removes native frame geometry and arranges the
-existing flash before playback. Required regressions after these backend changes:
-1213 passed, no skips/xfails. Native visual acceptance is still pending.
-Full native acceptance still has retained failures; E108 records exact runs and
-fixture repairs. Combined diagnostic run 41903570006 tests 8158f46, including three
-independent owned folder repetitions and shutdown-owner readback. Do not interpret
-passing local seams or the interrupted earlier run as native visual acceptance.
+The native gate proves real composed flash pixels, real pointer delivery through
+the layer, exact client/ROI and region bounds, a fast capture-only task, actual
+PaddleOCR/ONNX bounds/confidence and saved verification, moved/hidden/closed
+windows, expiry, disconnect/reconnect, priority UI STOP and shell shutdown.
+Three additional independent P20 folder/undo runs pass 26 checks each; the final
+normal gate also proves actual folder visibility, saved verifier and closure only
+of the new owned fixture window. Historical intermittent timeouts and transient
+fixture/startup/recovery failures remain retained; do not claim an unexplained
+root-cause repair or universal Windows timing guarantees from these passes.
 
-Native foreground/render/hit-testing, movement/hidden/closed/TTL/STOP and
-shutdown acceptance is implemented for the disposable Windows host. It must
-still pass on the committed candidate. The E107 P20 folder-terminal wait
-finding remains retained; a fresh full Windows regression is required.
-Unique ignored evidence: output/p23-e108-20261104-230308-e366ce50/.
+Evidence: output/p23-e108-20261104-230308-e366ce50/. Final artifact 13395650006
+SHA256 99460fe618e8ff463c8db05252b620fe2455010001aa50a9103945b98f938142.
+Pushed recovery point: recovery/pre-p23-e108-20261104 at 3502e9ee7cd8a467e3d1e76e6915776ff7ade986.
+Recover through reviewed dependent reversions, preserving unrelated work; no
+reset/clean/force-push. No merge, branch switch or master-specification change.
 
-Next safe work: finish required regression/native gates, fix reproduced failures
-and record exact source/build evidence before P23 closure. Existing P25 physical
-limits/C-02 deferral and later security/performance/install/release gates remain.
+No P23 component or scoped acceptance is pending. Ready for independent Sol
+review; no approval is assumed. Next safe milestone: P24 only after review and
+new instruction. P24 has not started. P25 physical monitor/scaling/accessibility
+review and the existing owner-approved C-02 timing deferral remain open, along
+with later corpus/quality/resource/security/installation/release gates. This is
+P23 closure, not full-product readiness or a claim of zero bugs.
 
 ## Previous checkpoint: 2026-11-04, E107 P23 validation packet; native regression finding
 

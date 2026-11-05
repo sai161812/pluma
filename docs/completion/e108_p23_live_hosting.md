@@ -1,12 +1,66 @@
 # E108 - P23 live delivery and native target hosting
 
-Implementation candidate; full native acceptance is pending. P23 is not yet
-declared complete and P24 has not started. Base 3502e9e on p12-preparation;
+P23's scoped implementation and required acceptance are complete. The normal
+Windows gate passes on 6e8790109bb4634eca8d8730e0c49bee3c977cdf. P24 has not
+started. Base 3502e9e on p12-preparation;
 recovery/pre-p23-e108-20261104 preserves the clean starting checkpoint and is
 pushed. No merge, branch switch, reset/clean/force-push, XAML/style or master edit.
 The unchanged complete master blob is 01b693dbf898b662aa4cd67736c1a0e8a21cf3e3.
 AGENTS, shared P23 contract, handoff/E107, build phase 14, E-01..10 and approved
 target/notification placement were reviewed/reused before editing.
+
+## Final accepted checkpoint - 2026-11-05
+
+Normal, non-tracing [run 41982933518](https://github.com/sai161812/pluma/actions/runs/41982933518)
+passes on source **6e8790109bb4634eca8d8730e0c49bee3c977cdf**, Windows build
+26100. The UI preview executable SHA256 (the runner's executableSha256 field) is
+D8008E893338FD7F9A91FCE3925865C96FE3250E4FEE38BEF57F59B8BD11F761.
+Artifact 13395650006 SHA256:
+99460fe618e8ff463c8db05252b620fe2455010001aa50a9103945b98f938142.
+The downloaded archive matches GitHub's digest; evidence is retained under
+output/p23-e108-20261104-230308-e366ce50/ci-41982933518/extracted/.
+
+| Required affected check | Result |
+| --- | --- |
+| Python regression selection (STOP, ownership, policy, history, voice, perception, lifecycle) | 1213 passed; no failures/errors/skips/xfails; 11 existing JUnit record_property warnings |
+| Committed real-worker disposal/metadata/STOP selection, source 8158f46 | 22 passed; executor admission stays sealed |
+| Native conversion, capture and actual PaddleOCR/ONNX | 3 passed; owned-HWND foreground seam locally, separately tested real foreground below |
+| C# authenticated IPC/controller integration | 403 passed |
+| Whole native UI / native health / P23 combined visual and STOP | 237 / 15 / 28 passed |
+| Native popup / formatting | 663 / 195 passed |
+| Builds / layout, surface, audio and UI-copy gates | Passed; builds have zero warnings/errors |
+| Three additional owned P20 native repetitions, diagnostic run 41903570006 | 26 each, all passed under original deadlines |
+
+The Python selection was run as `test-env/Scripts/python.exe required_regressions_disposal.py`
+inside the unique E108 output root; its expanded exact pytest command, environment,
+JUnit counts and output are in required-regressions-disposal-tail/command.json,
+results.xml and results.txt. Its tested Python sources are identical to accepted
+6e87901 (the subsequent changes only adjust native tests/docs). Committed-source
+focused evidence is in committed-native-disposal/; actual native tests are in
+disposal-native-stop-final/. The native CI command is `./PLUMA.UI/verify-ui.ps1`
+with folder_trace false, after declared windows/ocr setup and explicit local-model
+provisioning. Commands and build outputs are retained in the artifact. The source
+blob manifest is 8158f46-source-blobs.txt; production source is unchanged in 6e87901.
+
+The 28 combined checks prove actual native pixels and real pointer delivery,
+native ROI/client bounds and region-only flash, no replay, a fast capture-only
+task's saved success and original unexpired metadata, real OCR bounds/confidence,
+independent saved verification, moved/hidden/closed targets, original TTL,
+authenticated disconnect/reconnect, immediate UI STOP with saved STOPPED state,
+kernel readback of owned worker absence, and shell-owned layer/timer shutdown.
+The final sampled exposure changes blue d47800 to da8a22 (red +34, green +18),
+with no sampled pixel change outside the target ROI. No screenshot backdrop,
+unrelated window capture, native action authority or success claim is supplied
+by feedback. Existing XAML/styles and original deadlines remain unchanged.
+
+No P23 component or required scoped acceptance remains pending. Physical
+multi-monitor/scaling/accessibility review belongs to P25, including the existing
+owner-approved C-02 timing deferral; broad corpus/quality/resource/security,
+installation and release gates remain with P24+. The earlier intermittent P20
+timeouts and transient fixture/startup/recovery failures remain retained below:
+fresh normal and repeated folder checks pass, but no universal Windows timing
+guarantee or unexplained root-cause repair is claimed. Ready for independent Sol
+review, not assumed approved. Do not start P24 automatically or merge.
 
 ## Implementation
 
@@ -55,7 +109,7 @@ same task/known target remains owned, without reviving that expired action ref.
 Snapshot removal, task state and STOP still clear feedback. Meaningful tests
 exercise this distinction. No image timestamp is reset after recognition.
 
-## Current evidence and limitations
+## Historical initial evidence (superseded by final accepted checkpoint)
 
 Unique ignored root: output/p23-e108-20261104-230308-e366ce50/.
 The E98 declared Python initially needed sandbox-authorized runtime access.
@@ -83,7 +137,11 @@ E107's native P20 folder-terminal wait failure remains retained and unexplained;
 its same-source comparison passed. Fresh full UI regression evidence is required,
 not assumed. No deadline or assertion is relaxed to make that flow pass.
 
-## Completion condition
+## Retained pre-closure investigation checkpoints
+
+The records below describe the investigation as it happened. Their then-pending
+gates are superseded by the final accepted checkpoint above; failures are retained
+as failures and were never counted as passes.
 
 ### 2026-11-05 verification checkpoint (not closure)
 
@@ -190,8 +248,9 @@ both without speculative product changes. Artifact SHA256:
 b4bd7db2e3dea415411cce32dd40c6ed215fb72e2bb69d5fae1f154b66010d96.
 
 Required affected regressions, native conversion/capture/OCR checks and the
-combined native P23 suite must pass on the recorded committed source. Until
-then UI-15/16 remain UNVERIFIED and P24 ineligible. Existing physical monitor/
+combined native P23 suite now pass on the recorded accepted source. UI-15/16
+are IMPLEMENTED for P23; the next safe milestone is P24 after review/instruction.
+Existing physical monitor/
 scaling/accessibility, C-02 timing deferred to P25, and later quality/resource,
 security/installation/release gates remain with their owning milestones.
 
