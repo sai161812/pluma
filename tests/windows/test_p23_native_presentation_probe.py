@@ -58,8 +58,12 @@ def test_native_presentation_probe_reads_owned_target_and_refuses_hidden(owned_u
     native=ctypes.WinDLL('user32',use_last_error=True)
     native.LogicalToPhysicalPointForPerMonitorDPI.argtypes=[w.HWND,ctypes.POINTER(w.POINT)]
     def physical(x,y):
+        from pluma.adapters.window_geometry import _window_coordinates
         point=w.POINT(expected.rect.left+x,expected.rect.top+y)
-        assert native.LogicalToPhysicalPointForPerMonitorDPI(hwnd,ctypes.byref(point))
+        # Earlier semantic providers can initialize this test process as DPI
+        # aware. These coordinates belong to the target, not that caller.
+        with _window_coordinates(hwnd):
+            assert native.LogicalToPhysicalPointForPerMonitorDPI(hwnd,ctypes.byref(point))
         return point
     origin,end,start,finish=[physical(*p) for p in [(10,20),(200,120),(30,40),(90,70)]]
     assert placement['DesktopX']==origin.x and placement['DesktopY']==origin.y

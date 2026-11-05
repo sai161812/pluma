@@ -147,7 +147,7 @@
     "tests/unit/test_phase13_5_regression.py",
     "tests/unit/test_phase13_8_final_patch.py",
     "tests/unit/test_phase13_5_stage_e_perception.py",
-    "tests/unit/test_phase13_5_release_audit_fixes.py::test_audit_registry_exposes_86_tools",
+    "tests/unit/test_phase13_5_release_audit_fixes.py::test_audit_registry_exposes_complete_catalog_and_owned_utilities",
     "tests/unit/test_screen_control_catalog.py",
     "tests/unit/test_worker_cancellation.py",
     "tests/unit/test_adapters_input.py",
