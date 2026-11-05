@@ -17,14 +17,22 @@ fresh image capture and uses installed local weights, with no inference-time
 network probe/download. Private intermediate observations do not revive expired
 action refs or enter the planner registry. STOP and image lifetime remain strict.
 
-Latest pushed source 02fd21e includes a reproduced short-task delivery repair:
+Latest pushed source 8158f46 includes a reproduced short-task delivery repair:
 successful metadata may survive normal completion only at its original expiry,
 after terminal persistence, with all images/snapshots released. STOP/shutdown
 revoke it without rewriting completed history. Required affected regressions:
 1213 passed on 22a5b2d, no skips/xfails; C# IPC 403 passed. Committed 02fd21e
 native conversion/capture/real OCR plus diagnostic control/storage: 4 passed.
+Real worker disposal was then reproduced to seal admission without a STOP cause;
+presentation distinguishes this for persisted success only, leaving action
+admission sealed. Committed focused native/disposal/STOP checks: 22 passed.
+Native composed pixels exposed a matte and residual client frame; the candidate
+now configures client alpha, removes native frame geometry and arranges the
+existing flash before playback. Required regressions after these backend changes:
+1213 passed, no skips/xfails. Native visual acceptance is still pending.
 Full native acceptance still has retained failures; E108 records exact runs and
-fixture repairs. Combined run 41898248106 is testing 02fd21e. Do not interpret
+fixture repairs. Combined diagnostic run 41903570006 tests 8158f46, including three
+independent owned folder repetitions and shutdown-owner readback. Do not interpret
 passing local seams or the interrupted earlier run as native visual acceptance.
 
 Native foreground/render/hit-testing, movement/hidden/closed/TTL/STOP and

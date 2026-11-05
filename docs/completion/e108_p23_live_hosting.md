@@ -173,6 +173,22 @@ adds three fresh owned fixture repetitions without changing the normal gate or
 individual budgets. Run 41900460308 artifact SHA256:
 ec3b9c42b1eb0bdbf7b33b66f1457424d8d9cf346c3a0727ad7c2b62f4729834.
 
+Run 41903570006 on 8158f46 passes 403 IPC, 237 native UI, 15 native health,
+663 popup, 195 formatting and all three independent P20 repetitions (26 each).
+P23 proves actual transparent flash pixels (baseline d47800, peak da8c26; red
+delta 38, green delta 20), exact 420x240 client/ROI, unchanged outside pixel,
+real pointer delivery and one-shot cleanup. The next short-task assertion failed
+because this new test passed a fresh request ID to terminal readback; that API
+requires the original submission ID. Actual independent perception readback
+already contains the successful completed task, and saved action/cleanup agree.
+The test now retains each accepted task/request pair for terminal queries,
+including STOP; no assertion, deadline or product behavior is relaxed.
+Committed 8158f46 native disposal/STOP selection passes 22 (committed-native-disposal/).
+The next required gate is the normal non-tracing full Windows run after this
+test repair. Earlier startup/recovery failures remain retained; this run passes
+both without speculative product changes. Artifact SHA256:
+b4bd7db2e3dea415411cce32dd40c6ed215fb72e2bb69d5fae1f154b66010d96.
+
 Required affected regressions, native conversion/capture/OCR checks and the
 combined native P23 suite must pass on the recorded committed source. Until
 then UI-15/16 remain UNVERIFIED and P24 ineligible. Existing physical monitor/

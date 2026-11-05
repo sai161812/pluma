@@ -37,6 +37,7 @@ internal static class NativeP23PerceptionChecks
         int sampleX=0,sampleY=0,outsideX=0;
         uint baseline=0,outsideBaseline=0;
         string? currentTask=null;
+        var requests=new System.Collections.Generic.Dictionary<string,string>();
         var visualFailures=new System.Collections.Generic.List<string>();
         void Visual(bool condition,string name)
         {
@@ -66,7 +67,7 @@ internal static class NativeP23PerceptionChecks
             if(stable.Elapsed.TotalMilliseconds<100)throw new InvalidOperationException("Owned target activation/shadow did not settle before capture.");
             var reply=await client.SubmitTextAsync(Id(),text,default);
             if(!reply.IsSuccess||reply.Response?.TaskId is null)throw new InvalidOperationException("Owned P23 task was not admitted.");
-            currentTask=reply.Response.TaskId;return currentTask;
+            currentTask=reply.Response.TaskId;requests[currentTask]=reply.Response.RequestId;return currentTask;
         }
         async Task Stop(string task)
         {
@@ -130,11 +131,11 @@ internal static class NativeP23PerceptionChecks
 
             task=await Start("fixture:capture_short");
             await Until(()=>host.Handle!=0&&LayerVisible(host.Handle),2);
-            var shortTerminal=await client.GetTerminalReadbackAsync(Id(),task,default);
+            var shortTerminal=await client.GetTerminalReadbackAsync(requests[task],task,default);
             var shortDeadline=Stopwatch.StartNew();
             while(shortTerminal.Response is not {Terminal:true,TerminalPersisted:true} && shortDeadline.Elapsed.TotalSeconds<1)
             {
-                await Task.Delay(10);shortTerminal=await client.GetTerminalReadbackAsync(Id(),task,default);
+                await Task.Delay(10);shortTerminal=await client.GetTerminalReadbackAsync(requests[task],task,default);
             }
             var tail=await client.GetPerceptionAsync(Id(),default);
             check(shortTerminal.Response is {Terminal:true,TerminalPersisted:true,FinalState:"SUCCEEDED"},
@@ -173,7 +174,7 @@ internal static class NativeP23PerceptionChecks
             var stopDeadline=Stopwatch.StartNew();bool stopped=false;
             while(stopDeadline.Elapsed.TotalSeconds<3)
             {
-                var state=await client.GetTerminalReadbackAsync(Id(),task,default);
+                var state=await client.GetTerminalReadbackAsync(requests[task],task,default);
                 if(state.IsSuccess&&state.Response is {Terminal:true,TerminalPersisted:true,FinalState:"STOPPED"}){stopped=true;break;}
                 await Task.Delay(20);
             }
