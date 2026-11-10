@@ -30,8 +30,10 @@ Status: **CODE PREPARED ONLY - NO TESTS, BUILDS, INSTALLER RUNS OR PLUMA PROCESS
   later installer run to finish cleanup.
 - `uninstall.ps1` refuses an `installing` marker and directs the owner to rerun
   the installer for recovery. It validates and removes only a committed
-  transaction backup during ordinary uninstall; user data remains preserved by
-  default.
+  transaction backup after the app-removed marker reads back during ordinary
+  uninstall; user data remains preserved by default. If that backup cleanup is
+  interrupted, either installer or uninstaller can retry it from the recorded
+  committed state.
 - Recovery includes hidden transaction directories in its scan, rejects a
   Python/Core/UI process whose executable path cannot be read, and validates
   the saved prior install marker before publishing it as restored. The prior
