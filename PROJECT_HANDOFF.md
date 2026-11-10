@@ -1,6 +1,30 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current checkpoint: 2026-11-05, E109 P00-P23 prerequisite readiness
+## Current continuation: 2026-11-10, remaining-work handoff; P24 next
+
+[PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md) is the current entry point
+for the owner and next agent. It inventories the remaining P24-P33 gates,
+retained failures, source-confirmed release/benchmark gaps, recovery context
+and copyable implementation, continuation, fix and final audit prompts.
+P00-P23 remain recorded complete within their E109 scopes/approved limits;
+no P24 packet or subsequent milestone was implemented during this task.
+
+Inspected clean source: 60414fab69a7958170d810532da4530907744ae2 on
+p12-preparation. Read-only GitHub heads match that development source and main
+0468a031238261bee5bc79bd04b16a3d1964a3a9 (P00-P20 integration); 48 development
+commits await later verified integration. Fresh matrix validation passes
+298 source items / 336 rows: 229 IMPLEMENTED, 102 UNVERIFIED, 5 OPTIONAL.
+The existing corpus has 140 unique cases; inventory is not P24 execution.
+No runtime regression/native/physical suites were rerun for this documentation
+task; retained E109 XML/logs and E108 source applicability were inspected.
+
+Next safe step: use the P24 start prompt in the remaining-work file. Verify
+current branch/prerequisites and implement only P24's next bounded packet.
+Do not use the completion guide's historical P00/ui-wiring starting state or
+old reports as the current blocker list. Existing work/style/master remain
+preserved; no merge, branch switch, install or cleanup was performed.
+
+## Previous checkpoint: 2026-11-05, E109 P00-P23 prerequisite readiness
 
 [E109](docs/completion/e109_p00_p23_readiness.md) checks P00-P23 implementation,
 current evidence and owner limits. No missing required tool or unwired required

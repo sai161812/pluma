@@ -7,17 +7,23 @@ build-plan phases. Already-working code stays in place.
 
 ## Start here
 
-Open `D:\Workspace\DEVEL\PLUMA`. The active branch is `ui-wiring`. Send:
+Current continuation entry point (2026-11-10):
+[PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md). P00-P23's scoped implementation
+is recorded complete under its documented owner limits; P24 has not started.
+The active development branch is `p12-preparation`; recheck actual Git state.
+Use the new file's remaining-work inventory, cursor and P24-P33 prompts together
+with the detailed milestone contracts below. Send:
 
 ```text
-Read PLUMA_COMPLETION_PROMPTS.md and PROJECT_HANDOFF.md. Apply the shared
-execution contract and execute P00 only. Complete its bounded work, verify it,
-commit meaningful changes, push the relevant branch and report the next gate.
+Read PLUMA_REMAINING_WORK.md and PROJECT_HANDOFF.md. Apply the shared execution
+contract and execute only P24's next unfinished bounded packet. Verify it,
+commit/push meaningful changes, update the cursor and report the remaining gate.
 ```
 
-For the next task, replace `P00` with the next eligible ID. Each prompt below
-contains the actual task. Use a fresh conversation for each coherent milestone;
-the repository handoff carries progress. You do not need to supervise each edit.
+For later tasks, name the next eligible ID after its prerequisites pass. Each
+prompt below contains the actual task. Packets may continue in the same chat;
+use a fresh independent review for P30. The repository handoff carries progress.
+You do not need to supervise each edit.
 Do not paste every prompt at once or authorize automatic progression through
 the whole file. P11-P15 may require multiple bounded tasks as their gap lists
 are closed. Finish the named gate before advancing.
@@ -33,7 +39,11 @@ One scoped outcome, durable repository guidance, explicit completion evidence
 and a separate review pass follow [official OpenAI best practices](https://learn.chatgpt.com/guides/best-practices).
 The project-specific requirements below come from PLUMA's own documents.
 
-## Authority and the starting state
+## Authority and the historical 2026-10-19 starting state
+
+The starting-state bullets below are historical context, superseded by the
+current handoff and remaining-work file. They do not reopen completed P00-P23
+work, disable accepted submission wiring or establish current branch/PR state.
 
 Read these in order and inspect the actual implementation before changing code:
 
