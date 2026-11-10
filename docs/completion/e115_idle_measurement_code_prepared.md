@@ -3,6 +3,7 @@
 Date: 2026-11-10 (Asia/Calcutta)
 Branch: `p12-preparation`
 Code base before these edits: `caaec5b0f9f1bcebc27b4eb5c6dd627c7065b8ad`
+Prepared source checkpoint: `4918bf5a70c987f72b9c2f562e58b1809015270f`
 Status: **CODE PREPARED, NOT MEASURED; P26 GATE REMAINS OPEN**
 
 ## Source change prepared

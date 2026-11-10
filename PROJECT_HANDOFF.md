@@ -2,6 +2,10 @@
 
 ## Current continuation: 2026-11-10, P24 E113 undo acceptance prepared
 
+Code-only checkpoint commit: `4918bf5a70c987f72b9c2f562e58b1809015270f` on
+`p12-preparation`; it is unverified and not pushed. Tests/builds are deferred
+per the owner's latest instruction. `uv.lock` remains untracked and untouched.
+
 E114 also prepares code-only release safety changes in `build_release.py`,
 `install.ps1`, and `uninstall.ps1`; its full scope and limits are recorded in
 [E114](docs/completion/e114_release_safety_code_prepared.md). They remove the

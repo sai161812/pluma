@@ -190,7 +190,8 @@ Development branch: p12-preparation; push packet commits normally after checks.
 No branch switch, merge or main integration is part of P24.
 Recovery: pushed `recovery/pre-remaining-work-20261110-c9f597f` preserves
 `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; E110-E112 are accepted normal
-commits and E113 is preparation only until its tests are run.
+commits. Local code-only checkpoint `4918bf5a70c987f72b9c2f562e58b1809015270f`
+contains unverified E113-E115 preparation and has not been pushed.
 Do not start P25 until P24 passes or an applicable concrete owner-approved
 limitation is recorded. Do not merge/tag until P32's prerequisites pass.
 ```
