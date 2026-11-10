@@ -1,9 +1,30 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current continuation: 2026-11-10, E117 interrupted-upgrade recovery source
+## Current continuation: 2026-11-10, P24 verification resumed
 
-The owner clarified that the goal is all remaining project work, not one
-milestone packet, while explicitly deferring tests/builds for now. E116 already
+The owner has resumed full project completion and verification. Latest packet
+E119 adds GC-013/014/015 read-only volume-status acceptance through the real
+router, typed tool, emulated endpoint, verifier, owned worker and ledger.
+The focused owned read-only acceptance file passes **19/19**; fixture-only
+audio/router regressions pass **257**, with seven explicitly deselected
+(physical endpoint reads and a COM helper test whose declared `comtypes`
+dependency was unavailable offline). E119 logs/JUnit are under
+`output/p24-volume-readonly-final-20261110-232702-85ed88/` and
+`output/p24-volume-regressions-fixtures-20261110-232533-5ead89/`. P24 is now
+25/140 accepted cases and remains incomplete. See
+[E119](docs/completion/e119_p24_volume_status_readonly.md) for exact commands,
+hashes, limits and retained setup failure.
+
+E113 separately passes GC-054/GC-055 (**2 passed**) and its focused router,
+undo, policy, file-tool, folder and mutation regressions (**261 passed**) at
+`f1f7c5d58ebc284a16a231d4044753b7223dc3af`; logs/JUnit remain in
+`output/p24-resume-20261110-ac8a65d-retry3/` and `retry4/`.
+A fresh isolated rerun of GC-082/GC-083 passed **2/2 in 3.95 seconds** at the
+same tested commit, but did not reproduce the historical cold-run failure. Its
+original executor cause remains unknown; retain it as an unexplained historical
+failure, not a reproduced product defect or a pass for every mutation flow.
+
+E116 already
 prepares a unified Windows x64 Core + WinUI candidate and authenticated graceful
 Core shutdown; see [E116](docs/completion/e116_package_shutdown_code_only.md).
 E117 adds transaction-backed install/upgrade rollback, recovery of marked Core,
@@ -25,8 +46,8 @@ because tests/builds were deferred. The last observed `origin/p12-preparation`
 tracking ref was `3fb26f70be6e8918e915212aa44d02d19cefdac1`; no fetch or push was
 performed.
 
-No tests, build, PowerShell parser, installer/uninstaller, resident or UI process
-was run for E117/E118. The recovery and offline rebuild sources are unverified.
+No build, PowerShell parser, installer/uninstaller, resident or UI process was
+run for E117/E118. The recovery and offline rebuild sources are unverified.
 This work does not close
 P28/P29 or establish a working verified release. Authorized signing,
 exact-build install/launch/IPC, interrupted-update recovery and uninstall
@@ -34,14 +55,15 @@ acceptance remain open. The installer never force-kills; it requests graceful
 shutdown of only the identity-matched Core and requires the owner to close an
 open WinUI shell.
 
-P24 remains in progress with 20/140 accepted corpus cases; E112's cold-run
+P24 remains in progress with 25/140 accepted corpus cases; E112's cold-run
 failure remains unexplained. P25 physical checks, P26 measurements, P27
 adversarial/crash acceptance, P28 signing/build acceptance, P29 disposable
 install/recovery, P30 independent review, P31 exact-build gates, P32 gated main
 integration and P33 release handover remain. Continue across existing source
-and documentation work without creating milestones; do not run tests/builds
-until the owner resumes verification, and do not claim release completion while
-the physical/signing/installed gates are open. No branch change or merge
+and documentation work without creating milestones; run remaining checks
+sequentially with isolated fixtures and keep the machine's resource use bounded.
+Do not claim release completion while physical/signing/installed gates are open.
+No branch change or merge
 occurred. The user's untracked root `uv.lock` remains untouched.
 
 ### E114/E115 and prior P24 checkpoint retained below

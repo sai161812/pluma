@@ -11,17 +11,19 @@ adds transaction-backed interrupted-upgrade rollback and guarded cleanup;
 hash-validated Python and locked local NuGet inputs, exact toolchain checks and
 offline rebuild mode. The earlier [E116](docs/completion/e116_package_shutdown_code_only.md)
 prepares the unified Core + WinUI x64 candidate and identity-bound graceful
-Core shutdown. E116-E118 are local, unpushed and unverified. The owner asked to
-complete source/documentation work while deferring tests/builds. These packets
-do not change P24's accepted count (20/140) or close P24-P33 acceptance,
-signing, recovery or exact-build gates.
+Core shutdown. E116-E118 are local, unpushed and unverified. The owner has now
+resumed verification; P24 E119 adds three accepted emulated volume-status
+cases, bringing the corpus total to 25/140. This does not
+close P24 or P25-P33 acceptance, signing, recovery or exact-build gates.
 
 ## 1. What is finished
 
 **Scoped implementation is recorded complete through P23. P24 is in progress:**
-three bounded acceptance packets are recorded in [E110](docs/completion/e110_p24_readonly_corpus_slice.md),
-[E111](docs/completion/e111_p24_owned_folder_creation.md) and
-[E112](docs/completion/e112_p24_owned_mutation_acceptance.md).
+bounded acceptance packets are recorded in [E110](docs/completion/e110_p24_readonly_corpus_slice.md),
+[E111](docs/completion/e111_p24_owned_folder_creation.md),
+[E112](docs/completion/e112_p24_owned_mutation_acceptance.md),
+[E113](docs/completion/e113_p24_owned_undo_prepared.md) and
+[E119](docs/completion/e119_p24_volume_status_readonly.md).
 That is P01-P23 plus the P00 baseline: **24 of the 34 labels P00-P33**.
 **Ten milestones remain: P24-P33.** These numbers are the completion guide's
 milestones; they are different from the build plan's original phases 0-14.
@@ -31,16 +33,16 @@ percentage of effort or a guarantee that no implementation fixes remain.
 | Current fact | Checked state |
 | --- | --- |
 | Working checkout | `D:\Workspace\DEVEL\PLUMA`, branch `p12-preparation`; E112 production-source baseline `d3df79308aa806cc0494853e5e3ca9854b2cfc30` |
-| Current source cursor | Local HEAD `ac8a65df7e9b7ca25d18e932cd8272830b63b494`; E117/E118 are committed but unverified; untracked root `uv.lock` is preserved |
+| Current tested checkout | Production-source base `f1f7c5d58ebc284a16a231d4044753b7223dc3af`; E119's modified test source SHA-256 is `0C781AC71ECA1C2102862840FE84C87B1E82ECE2CE21D30D476DAB518BE74ABE`. Focused acceptance: 19 passed; fixture-only audio/router regressions: 257 passed, 7 deselected. E117/E118 release code at `ac8a65d` remains unverified; untracked root `uv.lock` is preserved |
 | P23 product baseline | `60414fab69a7958170d810532da4530907744ae2`; E111 adds a bounded FAST file-route purpose fix in `pluma/core/router.py`; E112 changes tests/evidence only |
-| P24 packet evidence | [E110](docs/completion/e110_p24_readonly_corpus_slice.md): 14 cases / 238 checks; [E111](docs/completion/e111_p24_owned_folder_creation.md): 4 additional cases / 247 checks; [E112](docs/completion/e112_p24_owned_mutation_acceptance.md): 2 additional cases / 259 checks. [E113](docs/completion/e113_p24_owned_undo_prepared.md) prepares unverified GC-054/GC-055 test code per owner direction to defer tests. Accepted count remains 20/140; E112's initial cold-run failure remains unexplained. |
+| P24 packet evidence | [E110](docs/completion/e110_p24_readonly_corpus_slice.md): 14 cases / 238 checks; [E111](docs/completion/e111_p24_owned_folder_creation.md): 4 additional cases / 247 checks; [E112](docs/completion/e112_p24_owned_mutation_acceptance.md): 2 additional cases / 259 checks; [E113](docs/completion/e113_p24_owned_undo_prepared.md): 2 undo cases and 261 regressions passed; [E119](docs/completion/e119_p24_volume_status_readonly.md): GC-013–015, 19 focused acceptance passed and 257 fixture-only regressions passed / 7 deselected. Accepted count is 25/140; a fresh E112 rerun passed 2/2 but did not reproduce its historical cold-run failure, whose original cause remains unknown. |
 | Remote development head at packet start | `origin/p12-preparation` matched `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; P24 commits require a normal push |
 | Last recorded main checkpoint | `0468a031238261bee5bc79bd04b16a3d1964a3a9` (P00-P20); main was not refreshed or merged in this packet |
 | Integration still pending | P21-P23 and subsequent work; refresh remote refs during the P32 gated integration step |
 | Latest readiness record | [E109](docs/completion/e109_p00_p23_readiness.md), following [E108 P23 closure](docs/completion/e108_p23_live_hosting.md) |
 | Traceability snapshot | 336 rows: **229 IMPLEMENTED, 102 UNVERIFIED, 5 OPTIONAL**; no MISSING, DEFECTIVE or UNWIRED rows recorded |
 | Locked catalog / UI | E109 records all 73 master tool names in 90 registered tools; all 26 required surfaces have scoped implementation evidence |
-| Existing fixed corpus | 140 unique cases: FAST 93, SCREEN 15, SMART 27, DEEP 5; E110-E112 execute 20 FAST/READ/LOW/MEDIUM cases end-to-end, with fixture-owned path substitutions and test confirmation |
+| Existing fixed corpus | 140 unique cases: FAST 93, SCREEN 15, SMART 27, DEEP 5; E110-E113 and E119 execute 25 FAST/READ/LOW/MEDIUM cases end-to-end, with fixture-owned path substitutions and test confirmation |
 
 `IMPLEMENTED` means the narrow invariant described in the matrix, not that every
 physical, installed, performance or adversarial scenario has passed. The 102
@@ -61,7 +63,7 @@ not become new mandatory work; mandatory voice input remains required.
 | P21 | Persistent validated settings, effective application/recovery and guarded undo | [E103](docs/completion/e103_p21_completion.md) |
 | P22 | Truthful setup/readiness, controlled owned Core restart and recovery | [E104](docs/completion/e104_p22_completion.md), [E105 recheck](docs/completion/e105_p22_completion_recheck.md) |
 | P23 | Live capture/OCR feedback, target geometry, composed native pixels, priority STOP and owned cleanup | [E108](docs/completion/e108_p23_live_hosting.md); physical monitor/device review remains P25 |
-| P24 | Bounded acceptance packets only; full milestone remains open | [E110](docs/completion/e110_p24_readonly_corpus_slice.md), [E111](docs/completion/e111_p24_owned_folder_creation.md) and [E112](docs/completion/e112_p24_owned_mutation_acceptance.md): 20 unique cases overall; E112's 259 affected tests passed after warm setup; an initial cold-run failure remains untriaged |
+| P24 | Bounded acceptance packets only; full milestone remains open | [E110](docs/completion/e110_p24_readonly_corpus_slice.md), [E111](docs/completion/e111_p24_owned_folder_creation.md), [E112](docs/completion/e112_p24_owned_mutation_acceptance.md), [E113](docs/completion/e113_p24_owned_undo_prepared.md) and [E119](docs/completion/e119_p24_volume_status_readonly.md): 25 unique cases overall; E119's focused 19 and selected 257 regressions pass. Seven audio regressions remain deselected for physical-device access or unavailable `comtypes`; the historical E112 cold-run failure did not reproduce in a fresh rerun, but its original cause is unknown |
 
 ### Evidence available, without inventing a fresh full-suite pass
 
@@ -100,7 +102,7 @@ owning milestone, not silently relabeled complete.
 | R5 / high cleanup risk, P27/P29 | E116 adds identity-bound authenticated Core shutdown with bounded exit readback; E117 refuses uncommitted uninstall and validates committed backups. The installer never force-kills and recovery refuses processes still running under the selected install. **No shutdown race, PowerShell, upgrade/recovery or disposable-profile acceptance was run.** | Verify exact and same-name unrelated processes, Core drain/ack/exit, open UI refusal, STOP/worker cleanup, interrupted-upgrade recovery at each boundary, default/custom/purge behavior and cleanup interruption. Preserve user data. |
 | R6 / build isolation risk, P28 | E116 isolates Python, NuGet and UI outputs, prevents output reuse, and limits MSBuild to one worker. E118 adds retained build constraints and offline package-source mode. **The builder has not been run; resource use, isolation, archive contents, hashes and offline repeatability remain unverified.** | Build once in a fresh output directory; inspect the candidate; extract and rebuild offline from its retained inputs; prove source/dependency/output identity and that existing bundles/reports/environments/unrelated changes remain untouched. |
 | R7 / measurement evidence gap, P26 | E115 changes [benchmark/idle_baseline.py](benchmark/idle_baseline.py) to require an explicit target PID for target CPU/RAM, include the current descendant tree, guard PID reuse, and leave GPU attribution and remote module inspection unverified. **No measurement was run; the P26 gate remains open.** | Measure the installed resident and owned worker tree; add/obtain target-attributable GPU and loaded-runtime evidence; verify cold runtimes/capture absence and report missing telemetry as unverified. Measure ten minutes and 50 cycles on the target laptop. Do not infer a product pass from the script alone. |
-| R8 / unexecuted release gates, P24-P31 | **Not established:** E110-E112 cover 20 of 140 unique corpus cases; the remaining 120 cases, physical display/accessibility/device behavior, full target-laptop quality/performance/soak, adversarial installed recovery, signed reproducible release and clean install/upgrade/uninstall remain open. | Finish implementation/documentation packets that do not depend on these runs. The owner has deferred tests/builds; when resumed, triage E112's initial cold-run cleanup failures before relying on mutation acceptance. Keep desktop/device/model work isolated; reuse unchanged-source evidence accurately. No claim of zero bugs, instant inference or lifetime compatibility is justified. |
+| R8 / unexecuted release gates, P24-P31 | **Not established:** E110-E113 and E119 cover 25 of 140 unique corpus cases; 115 cases remain, as do physical display/accessibility/device behavior, target-laptop quality/performance/soak, adversarial installed recovery, signed reproducible release and clean install/upgrade/uninstall. | Continue sequentially through owned corpus and regression fixtures, triage E112's initial cold-run cleanup failure, then perform physical/device and release gates in their required order. Keep desktop/device/model work isolated; reuse unchanged-source evidence accurately. No claim of zero bugs, instant inference or lifetime compatibility is justified. |
 
 For each new reproduced defect, append: severity, requirement ID, source and
 line, source/build identity, exact safe reproduction, expected/actual result,
@@ -187,34 +189,37 @@ before code changes. This file routes work; it cannot relax requirements.
 
 ```text
 Last completed milestone: P23; P00-P23 readiness record E109.
-Current milestone: P24, IN PROGRESS, not complete. E113 GC-054/GC-055 test
-code is prepared but unverified at the owner's request; these cases are not
-accepted and the corpus count remains 20/140.
+Current milestone: P24, IN PROGRESS, not complete. E113 GC-054/GC-055 and E119
+GC-013/014/015 pass at production-source base
+`f1f7c5d58ebc284a16a231d4044753b7223dc3af`; E119's test source SHA-256 is
+`0C781AC71ECA1C2102862840FE84C87B1E82ECE2CE21D30D476DAB518BE74ABE`.
+E119's focused acceptance passed 19/19 and selected audio/router regressions
+passed 257 with 7 deselected. The accepted corpus count is 25/140. E112's
+initial cold-run failure remains unexplained.
 Current source-only packets: E117 adds interrupted-upgrade recovery and
 transaction cleanup; E118 adds retained-input offline rebuild mode with exact
-toolchain checks. Both are committed but untested at local HEAD
-`ac8a65df7e9b7ca25d18e932cd8272830b63b494`. The builder and
-installer/uninstaller were not invoked. No tests, builds, PowerShell parser or
-PLUMA process was launched. Continue independent source/documentation work
-across P24-P33 while respecting the owner's test/build deferral.
+toolchain checks. Both are committed but untested at code commit `ac8a65d`.
+The builder and installer/uninstaller were not invoked. Continue P24 acceptance
+in bounded sequential packets; preserve physical, signing and installed gates.
 Accepted packets: E110 at `530dfceaf39d33907f71f261e3f617ecfdab560b`, E111
 source at `f30bb481c484f5b2dd7db5b66c400f38df69347e`, and E112 on production
 source baseline `d3df79308aa806cc0494853e5e3ca9854b2cfc30`.
-Accepted unique cases (20): GC-046, GC-047, GC-048, GC-056, GC-057, GC-058,
-GC-059, GC-076, GC-077, GC-078, GC-079, GC-080, GC-081, GC-082, GC-083,
-GC-084, GC-085, GC-086, GC-087, GC-090.
-Remaining unique corpus IDs (120): GC-001–GC-045, GC-049–GC-055,
+Accepted unique cases (25): GC-013, GC-014, GC-015, GC-046, GC-047, GC-048,
+GC-054, GC-055, GC-056, GC-057, GC-058, GC-059, GC-076, GC-077, GC-078,
+GC-079, GC-080, GC-081, GC-082, GC-083, GC-084, GC-085, GC-086, GC-087,
+GC-090.
+Remaining unique corpus IDs (115): GC-001–GC-012, GC-016–GC-045,
+GC-049–GC-053,
 GC-060–GC-075, GC-088–GC-089, GC-091–GC-125, and GC-N001–GC-N015.
-Next safe step when tests resume: run E113's GC-054/GC-055 cases and affected
-undo/file-move/policy regressions sequentially from a persistent test
-environment. Preserve E112's initial cold-run failure; its cause remains
-unknown. No owner's confirmation UI, personal files, clipboard, windows,
+Next safe step: continue a small FAST/READ corpus slice over owned fixture data.
+Preserve E112's initial cold-run failure; its cause remains unknown. No owner's
+confirmation UI, personal files, clipboard, windows,
 device or power state; no model or resident process.
 Development branch: p12-preparation; push packet commits normally after checks.
 No branch switch, merge or main integration is part of P24.
 Recovery: pushed `recovery/pre-remaining-work-20261110-c9f597f` preserves
-`c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; E110-E112 are accepted normal
-commits. Local source commit `ac8a65df7e9b7ca25d18e932cd8272830b63b494`
+`c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; E110-E113 are accepted local
+commits. E119 is an uncommitted test/documentation packet. Local source commit `ac8a65df7e9b7ca25d18e932cd8272830b63b494`
 and documentation follow-ups `7119766`/`682a381` are unpushed and unverified.
 Code-only checkpoint `4918bf5a70c987f72b9c2f562e58b1809015270f`
 and its documentation commit `408ec8a` are pushed on `p12-preparation`; E113-E118

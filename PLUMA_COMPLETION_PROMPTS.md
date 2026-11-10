@@ -9,7 +9,15 @@ build-plan phases. Already-working code stays in place.
 
 Current continuation entry point (2026-11-10):
 [PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md). P00-P23's scoped implementation
-is recorded complete under its documented owner limits; P24 has not started.
+is recorded complete under its documented owner limits; P24 is in progress with
+25/140 corpus cases accepted. E113's two undo cases and 261 affected regressions
+pass. E119's three emulated volume-status cases and 19-case read-only acceptance
+pass, along with 257 fixture-only audio/router regressions; seven cases remain
+deselected for physical-device access or an unavailable `comtypes` test
+dependency. E112's historical cold-run failure did not reproduce on a fresh
+isolated rerun, but its original executor cause remains unknown. The owner has resumed
+verification and authorized continuation across existing milestones; work must
+still follow the listed prerequisite and release gates.
 The active development branch is `p12-preparation`; recheck actual Git state.
 Use the new file's remaining-work inventory, cursor and P24-P33 prompts together
 with the detailed milestone contracts below. Send:

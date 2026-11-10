@@ -1,6 +1,6 @@
 """P24 owned-target, end-to-end read-only corpus acceptance.
 
-This first P24 slice runs fourteen explicit read-only cases from the fixed
+This first P24 slice runs seventeen explicit read-only cases from the fixed
 corpus. Every target and ledger is owned by the test; the real router,
 registered tool, verifier and terminal ledger path run without touching user
 files or desktop state. Only find_file uses its registered owned worker.
@@ -20,10 +20,14 @@ from pluma.config.paths import PlumaPaths
 from pluma.core.ownership import subprocess_absent
 from pluma.core.request import InputMode, PlumaRequest
 from pluma.memory.activity import ActivityQuery
+from pluma.tools import audio as audio_tools
 
 
 _CORPUS_PATH = Path(__file__).parents[1] / "fixtures" / "golden_commands.yaml"
 _READ_CASES = {
+    "GC-013": None,
+    "GC-014": None,
+    "GC-015": None,
     "GC-046": None,
     "GC-047": None,
     "GC-048": None,
@@ -81,7 +85,9 @@ def _owned_readonly_case(
     case = _corpus_case(case_id)
     assert case["expected_route"] == "FAST"
     tool_name = case["expected_tools"][0]
-    assert tool_name in {"find_file", "list_files", "show_activity", "get_system_status"}
+    assert tool_name in {
+        "find_file", "list_files", "show_activity", "get_system_status", "get_volume_status",
+    }
     assert case["expected_risk"] == "READ"
     assert case["expected_policy_decision"] == "ALLOW"
     assert case["expected_execution_status"] == "SUCCEEDED"
@@ -92,6 +98,17 @@ def _owned_readonly_case(
     target = root / target_name if target_name is not None else None
     if target is not None:
         target.write_bytes(b"PLUMA P24 owned read-only fixture\n")
+
+    audio_before = None
+    if tool_name == "get_volume_status":
+        # Read-only fixture evidence only: the isolated test environment selects
+        # PLUMA's explicit emulation seam, never the machine's audio endpoint.
+        monkeypatch.setenv("PLUMA_EMULATE_AUDIO", "1")
+        audio_before = audio_tools._get_audio_endpoint_volume()
+        assert audio_before is not None and audio_before["is_mock"] is True
+        import tempfile
+        mock_path = Path(audio_tools._get_mock_audio_path()).resolve()
+        assert mock_path.is_relative_to(Path(tempfile.gettempdir()).resolve())
 
     original_root = r"C:\PLUMA_Corpus"
     if tool_name == "find_file":
@@ -124,6 +141,8 @@ def _owned_readonly_case(
     elif tool_name == "show_activity":
         assert tool_name == "show_activity"
         expected_args = case["normalized_args"]
+    elif tool_name == "get_volume_status":
+        expected_args = case["normalized_args"]
     else:
         assert tool_name == "get_system_status"
         expected_args = case["normalized_args"]
@@ -150,6 +169,10 @@ def _owned_readonly_case(
         entry = tool_result.data["entries"][0]
         assert entry["name"] == target.name and entry["path"] == str(target)
         assert target.read_bytes() == b"PLUMA P24 owned read-only fixture\n"
+    elif tool_name == "get_volume_status":
+        assert tool_result.adapter_used == "emulated"
+        assert tool_result.data == audio_before
+        assert audio_tools._get_audio_endpoint_volume() == audio_before
     else:
         if tool_name == "show_activity":
             assert tool_result.adapter_used == "sqlite"
@@ -217,6 +240,8 @@ def _owned_readonly_case(
             assert saved_task is not None
             assert record["task_id"] == execution.task_id
             assert saved_task["command_text"] == record["command"] == command
+    elif tool_name == "get_volume_status":
+        assert saved_result == audio_before
     else:
         assert tool_name == "get_system_status"
         assert saved_result == tool_result.data
@@ -228,6 +253,8 @@ def _owned_readonly_case(
         assert saved_verification["method"] == "sqlite_snapshot"
     elif tool_name == "get_system_status":
         assert saved_verification["method"] == "native_api"
+    elif tool_name == "get_volume_status":
+        assert saved_verification["method"] == "api"
 
     cleanup_row = query.cleanup_report_for_task(execution.task_id)
     assert cleanup_row is not None
@@ -255,6 +282,8 @@ def _owned_readonly_case(
             if tool_name == "show_activity"
             else "native resource snapshot passes bounded consistency validation"
             if tool_name == "get_system_status"
+            else "isolated emulated volume state is read back unchanged; no native endpoint is accessed"
+            if tool_name == "get_volume_status"
             else "native file result matches owned fixture; fixture unchanged"
         ),
         "ledger_readback": "task, action, saved verifier and applicable worker cleanup verified",
