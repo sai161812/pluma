@@ -5,11 +5,12 @@
 The owner has resumed full project completion and verification. Latest packet
 E119 adds GC-013/014/015 read-only volume-status acceptance through the real
 router, typed tool, emulated endpoint, verifier, owned worker and ledger.
-The focused owned read-only acceptance file passes **19/19**; fixture-only
-audio/router regressions pass **257**, with seven explicitly deselected
+The focused owned read-only acceptance file passes **19/19**, including a
+post-commit rerun at `ca37ee3ae7817b15825ea7e75d8f5d61e5f73c2a` (**19 passed**).
+Fixture-only audio/router regressions pass **257**, with seven explicitly deselected
 (physical endpoint reads and a COM helper test whose declared `comtypes`
 dependency was unavailable offline). E119 logs/JUnit are under
-`output/p24-volume-readonly-final-20261110-232702-85ed88/` and
+`output/p24-volume-readonly-commit-ca37ee3-20261110-233455-04ea98/` and
 `output/p24-volume-regressions-fixtures-20261110-232533-5ead89/`. P24 is now
 25/140 accepted cases and remains incomplete. See
 [E119](docs/completion/e119_p24_volume_status_readonly.md) for exact commands,

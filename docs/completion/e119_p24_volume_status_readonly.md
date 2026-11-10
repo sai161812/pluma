@@ -2,6 +2,7 @@
 
 Date: 2026-11-10 (Asia/Calcutta)
 Branch: `p12-preparation`
+Tested E119 commit: `ca37ee3ae7817b15825ea7e75d8f5d61e5f73c2a`
 Tested production-source base: `f1f7c5d58ebc284a16a231d4044753b7223dc3af`
 Status: **BOUNDED FIXTURE ACCEPTANCE PASSED; P24 REMAINS INCOMPLETE**
 
@@ -37,9 +38,12 @@ Focused command:
 uv run --offline --no-project --python 'D:\Workspace\DEVEL\PLUMA\output\p24-python\cpython-3.12.10-windows-x86_64-none\python.exe' --with 'pytest==9.2.0' --with 'pytest-timeout==2.4.0' --with 'pydantic==2.14.3' --with 'PyYAML==6.0.3' --with psutil --with jsonschema -- python -m pytest tests/windows/test_p24_owned_readonly_acceptance.py -q --tb=short --timeout=90 --basetemp 'D:\Workspace\DEVEL\PLUMA\output\p24-volume-readonly-final-20261110-232702-85ed88\pytest-temp' -p no:cacheprovider --junitxml 'D:\Workspace\DEVEL\PLUMA\output\p24-volume-readonly-final-20261110-232702-85ed88\p24-volume-readonly.xml'
 ```
 
-Result: **19 passed in 9.91 seconds**, 0 failures, 0 skips. The 19 include all
-17 read-only corpus cases in this test file and its two existing text/voice
-parity cases.
+Result before the commit: **19 passed in 9.91 seconds**, 0 failures, 0 skips.
+The committed source was then rerun at `ca37ee3ae7817b15825ea7e75d8f5d61e5f73c2a`:
+**19 passed in 10.49 seconds**, 0 failures, 0 skips. The 19 include all 17
+read-only corpus cases in this test file and its two existing text/voice parity
+cases. Final commit-run logs and JUnit are in
+`output/p24-volume-readonly-commit-ca37ee3-20261110-233455-04ea98/`.
 
 Affected fixture-only regressions:
 
@@ -60,6 +64,7 @@ unverified, not a product pass.
 Full logs and JUnit are retained in:
 
 - `output/p24-volume-readonly-final-20261110-232702-85ed88/`
+- `output/p24-volume-readonly-commit-ca37ee3-20261110-233455-04ea98/`
 - `output/p24-volume-regressions-fixtures-20261110-232533-5ead89/`
 - Initial dependency-limited run: `output/p24-volume-regressions-20261110-232335-367a2f/`
 

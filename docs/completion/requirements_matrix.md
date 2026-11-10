@@ -1,7 +1,8 @@
 # PLUMA live requirements and evidence matrix
 
-Verification note (2026-11-10): E119's GC-013/014/015 emulated volume-status
-cases pass in the 19-case owned read-only acceptance file; 257 fixture-only
+Verification note (2026-11-10): E119 at `ca37ee3ae7817b15825ea7e75d8f5d61e5f73c2a`
+passes GC-013/014/015 emulated volume-status cases in the 19-case owned
+read-only acceptance file; 257 fixture-only
 audio/router regressions also pass, with seven cases deselected for physical
 endpoint access or unavailable `comtypes`. E113's GC-054/GC-055 owned undo
 cases and 261 affected regressions also pass at tested base
