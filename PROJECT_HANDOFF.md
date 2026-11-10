@@ -1,28 +1,47 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current continuation: 2026-11-10, remaining-work handoff; P24 next
+## Current continuation: 2026-11-10, P24 owned read-only end-to-end slice
 
-[PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md) is the current entry point
-for the owner and next agent. It inventories the remaining P24-P33 gates,
-retained failures, source-confirmed release/benchmark gaps, recovery context
-and copyable implementation, continuation, fix and final audit prompts.
-P00-P23 remain recorded complete within their E109 scopes/approved limits;
-no P24 packet or subsequent milestone was implemented during this task.
+[E110](docs/completion/e110_p24_readonly_corpus_slice.md) records the first
+bounded P24 acceptance packet. It runs 14 unique FAST/READ cases from the
+existing 140-case corpus through the real runtime, typed tools, policy,
+verification and an isolated ledger. Text/typed-voice parity is checked for
+owned file listing and search. This does not exercise microphone/STT or UI.
 
-Inspected clean source: 60414fab69a7958170d810532da4530907744ae2 on
-p12-preparation. Read-only GitHub heads match that development source and main
-0468a031238261bee5bc79bd04b16a3d1964a3a9 (P00-P20 integration); 48 development
-commits await later verified integration. Fresh matrix validation passes
-298 source items / 336 rows: 229 IMPLEMENTED, 102 UNVERIFIED, 5 OPTIONAL.
-The existing corpus has 140 unique cases; inventory is not P24 execution.
-No runtime regression/native/physical suites were rerun for this documentation
-task; retained E109 XML/logs and E108 source applicability were inspected.
+Tested source commit: `530dfceaf39d33907f71f261e3f617ecfdab560b` on
+`p12-preparation`. The final affected selection passed **238 tests, 0 failures,
+0 errors, 0 skips**: router 194, native file-search 28 and P24 acceptance 16.
+Exact command, isolated Python environment and ignored XML/log paths are in E110.
+All tracked changes since the pushed recovery base `c9f597f` are the new P24
+acceptance test and completion records; production source was not changed.
+No model, resident, microphone, clipboard, personal-window or destructive
+operation was started. Test-only owned workers and fixture junction commands
+ended within their bounded test cases; no `python`, `uv` or `pythonw` process
+remained when checked.
 
-Next safe step: use the P24 start prompt in the remaining-work file. Verify
-current branch/prerequisites and implement only P24's next bounded packet.
-Do not use the completion guide's historical P00/ui-wiring starting state or
-old reports as the current blocker list. Existing work/style/master remain
-preserved; no merge, branch switch, install or cleanup was performed.
+P24 is **in progress, not complete**: the other 126 unique corpus cases,
+screen/UIA/OCR, native-model planning, confirmation, mutation/undo/conflict,
+multi-step STOP, live/saved UI and reconnect/failure acceptance remain open.
+Remaining corpus IDs: `GC-001`–`GC-045`, `GC-049`–`GC-055`, `GC-060`–`GC-075`,
+`GC-080`–`GC-083`, `GC-086`, `GC-088`–`GC-125`, and `GC-N001`–`GC-N015`.
+Do not treat the direct `InputMode.VOICE` requests as STT acceptance. The
+existing owner-approved C-02 physical retest remains assigned to P25.
+
+Next safe packet: continue P24 only with owned fixtures or an isolated runtime.
+Do not inspect personal clipboard/windows/files or exercise device/power actions
+on the owner's desktop. Confirm a bounded isolated environment and available
+memory before model or combined UI acceptance. P25 and all later milestones
+remain gated by the P24 acceptance contract; no merge was performed.
+
+Recovery: pushed branch `recovery/pre-remaining-work-20261110-c9f597f` preserves
+the pre-P24 base `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`. The four P24
+acceptance commits are normal, reviewable commits on top. The root `uv.lock`
+generated during test-environment setup remains untracked and was excluded.
+
+Use [PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md) for the ordered P24-P33
+gates, retained findings, owner limits and continuation prompts. Earlier E109
+P00-P23 readiness and the P00-P20 main integration remain historical records;
+they were not re-audited or merged in this bounded packet.
 
 ## Previous checkpoint: 2026-11-05, E109 P00-P23 prerequisite readiness
 
