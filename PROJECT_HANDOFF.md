@@ -15,10 +15,12 @@ E118 adds hash-checked retained Python wheelhouse inputs, pinned build-support
 constraints and a locked local NuGet feed mode in `build_release.py`; see
 [E118](docs/completion/e118_offline_rebuild_source_preparation.md).
 
-E117/E118 source and packet records are committed locally as
+E117/E118 implementation and initial packet records are committed locally as
 `ac8a65df7e9b7ca25d18e932cd8272830b63b494` on `p12-preparation`, based on
 `cd62b5e28c6694b4f468f9f3e033ba2377eebc61`. The commit is unpushed and
-unverified. The earlier E116 source/doc commits are also local and unpushed
+unverified. Follow-up documentation commits `7119766` and `682a381` record
+the unverified cursor and retryable uninstall-backup cleanup detail. The
+earlier E116 source/doc commits are also local and unpushed
 because tests/builds were deferred. The last observed `origin/p12-preparation`
 tracking ref was `3fb26f70be6e8918e915212aa44d02d19cefdac1`; no fetch or push was
 performed.

@@ -214,7 +214,9 @@ Development branch: p12-preparation; push packet commits normally after checks.
 No branch switch, merge or main integration is part of P24.
 Recovery: pushed `recovery/pre-remaining-work-20261110-c9f597f` preserves
 `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; E110-E112 are accepted normal
-commits. Code-only checkpoint `4918bf5a70c987f72b9c2f562e58b1809015270f`
+commits. Local source commit `ac8a65df7e9b7ca25d18e932cd8272830b63b494`
+and documentation follow-ups `7119766`/`682a381` are unpushed and unverified.
+Code-only checkpoint `4918bf5a70c987f72b9c2f562e58b1809015270f`
 and its documentation commit `408ec8a` are pushed on `p12-preparation`; E113-E118
 remain unverified. Root `uv.lock` remains untracked and untouched. E116-E118
 source changes are local and unpushed; do not push them as acceptance-complete
