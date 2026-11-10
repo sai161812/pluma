@@ -1,47 +1,52 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current continuation: 2026-11-10, P24 owned read-only end-to-end slice
+## Current continuation: 2026-11-10, P24 owned corpus acceptance
 
 [E110](docs/completion/e110_p24_readonly_corpus_slice.md) records the first
-bounded P24 acceptance packet. It runs 14 unique FAST/READ cases from the
-existing 140-case corpus through the real runtime, typed tools, policy,
-verification and an isolated ledger. Text/typed-voice parity is checked for
-owned file listing and search. This does not exercise microphone/STT or UI.
+bounded P24 read-only slice: 14 unique FAST/READ cases through the real runtime,
+typed tools, policy, verification and an isolated ledger. [E111](docs/completion/e111_p24_owned_folder_creation.md)
+adds four owned folder-creation cases and fixes long file operands being copied
+into the 128-character `ToolCall.purpose` field. Long operands remain in typed
+arguments; no policy or schema validation was relaxed.
 
-Tested source commit: `530dfceaf39d33907f71f261e3f617ecfdab560b` on
-`p12-preparation`. The final affected selection passed **238 tests, 0 failures,
-0 errors, 0 skips**: router 194, native file-search 28 and P24 acceptance 16.
-Exact command, isolated Python environment and ignored XML/log paths are in E110.
-All tracked changes since the pushed recovery base `c9f597f` are the new P24
-acceptance test and completion records; production source was not changed.
-No model, resident, microphone, clipboard, personal-window or destructive
-operation was started. Test-only owned workers and fixture junction commands
-ended within their bounded test cases; no `python`, `uv` or `pythonw` process
-remained when checked.
+Latest tested source commit: `f30bb481c484f5b2dd7db5b66c400f38df69347e` on
+`p12-preparation`. E111's affected selection passed **247 tests, 0 failures,
+0 errors, 0 skips**: router 197, native file operations 26, file tools 4,
+read-only P24 acceptance 16 and owned folder creation 4. The exact command and
+ignored logs are in E111. E110 and E111 cover 18 of 140 corpus cases total.
+The route-purpose fix was committed in `f30bb48`; E111's documentation and
+handoff update are the current packet checkpoint.
 
-P24 is **in progress, not complete**: the other 126 unique corpus cases,
-screen/UIA/OCR, native-model planning, confirmation, mutation/undo/conflict,
+No model, resident, microphone, personal clipboard/window/file, device or power
+operation was started. The regression suite ran sequentially in one process
+with owned temporary storage; after it finished no `uv`, `python` or `pythonw`
+process remained. The initial long-default-temp attempt and the final short
+`--basetemp` pass are both retained; only the final **247 passed** run is
+acceptance evidence. The root `uv.lock` remains untracked and excluded.
+
+P24 is **in progress, not complete**. Remaining corpus IDs (122):
+`GC-001`-`GC-045`, `GC-049`-`GC-055`, `GC-060`-`GC-075`, `GC-082`-`GC-083`,
+`GC-088`-`GC-089`, `GC-091`-`GC-125` and `GC-N001`-`GC-N015`. Screen/UIA/OCR,
+native-model planning, real STT, confirmation UI, broader mutation/undo/conflict,
 multi-step STOP, live/saved UI and reconnect/failure acceptance remain open.
-Remaining corpus IDs: `GC-001`–`GC-045`, `GC-049`–`GC-055`, `GC-060`–`GC-075`,
-`GC-080`–`GC-083`, `GC-086`, `GC-088`–`GC-125`, and `GC-N001`–`GC-N015`.
-Do not treat the direct `InputMode.VOICE` requests as STT acceptance. The
-existing owner-approved C-02 physical retest remains assigned to P25.
+Do not count direct `InputMode.VOICE` requests as STT acceptance. The
+owner-approved C-02 physical retest remains assigned to P25.
 
-Next safe packet: continue P24 only with owned fixtures or an isolated runtime.
-Do not inspect personal clipboard/windows/files or exercise device/power actions
-on the owner's desktop. Confirm a bounded isolated environment and available
-memory before model or combined UI acceptance. P25 and all later milestones
-remain gated by the P24 acceptance contract; no merge was performed.
+Next safe packet: test GC-082/GC-083 using only pytest-owned source/destination
+files and an isolated test confirmation callback. Do not use the owner's
+desktop confirmation UI, clipboard, windows or files, and do not exercise
+device/power actions. No model or resident process is required. P25 and later
+milestones remain gated by P24; no merge was performed.
 
 Recovery: pushed branch `recovery/pre-remaining-work-20261110-c9f597f` preserves
-the pre-P24 base `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`. The four P24
-acceptance commits are normal, reviewable commits on top. The root `uv.lock`
-generated during test-environment setup remains untracked and was excluded.
+the pre-P24 base `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`. E111 source/test
+commit `f30bb48` is the latest local source checkpoint; packet commits are
+normal, reviewable commits above that recovery point. Earlier E109 P00-P23
+readiness and P00-P20 main integration remain historical records; they were
+not re-audited or merged in this packet.
 
 Use [PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md) for the ordered P24-P33
-gates, retained findings, owner limits and continuation prompts. Earlier E109
-P00-P23 readiness and the P00-P20 main integration remain historical records;
-they were not re-audited or merged in this bounded packet.
+gates, retained findings, owner limits and continuation prompts.
 
 ## Previous checkpoint: 2026-11-05, E109 P00-P23 prerequisite readiness
 

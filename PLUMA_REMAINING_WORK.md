@@ -7,7 +7,8 @@ of release readiness. Refresh its cursor and findings as work is completed.
 ## 1. What is finished
 
 **Scoped implementation is recorded complete through P23. P24 is in progress:**
-the first bounded owned read-only acceptance slice is recorded in [E110](docs/completion/e110_p24_readonly_corpus_slice.md).
+two bounded acceptance packets are recorded in [E110](docs/completion/e110_p24_readonly_corpus_slice.md)
+and [E111](docs/completion/e111_p24_owned_folder_creation.md).
 That is P01-P23 plus the P00 baseline: **24 of the 34 labels P00-P33**.
 **Ten milestones remain: P24-P33.** These numbers are the completion guide's
 milestones; they are different from the build plan's original phases 0-14.
@@ -16,16 +17,16 @@ percentage of effort or a guarantee that no implementation fixes remain.
 
 | Current fact | Checked state |
 | --- | --- |
-| Working checkout | `D:\Workspace\DEVEL\PLUMA`, branch `p12-preparation`; P24 acceptance source commit `530dfceaf39d33907f71f261e3f617ecfdab560b` |
-| P23 product baseline | `60414fab69a7958170d810532da4530907744ae2`; no production source changed in E110 |
-| P24 packet evidence | [E110](docs/completion/e110_p24_readonly_corpus_slice.md): 14 unique corpus cases; 238 affected tests passed, zero failures/errors/skips |
+| Working checkout | `D:\Workspace\DEVEL\PLUMA`, branch `p12-preparation`; latest tested P24 source commit `f30bb481c484f5b2dd7db5b66c400f38df69347e` |
+| P23 product baseline | `60414fab69a7958170d810532da4530907744ae2`; E111 adds a bounded FAST file-route purpose fix in `pluma/core/router.py` |
+| P24 packet evidence | [E110](docs/completion/e110_p24_readonly_corpus_slice.md): 14 cases / 238 checks; [E111](docs/completion/e111_p24_owned_folder_creation.md): 4 additional cases / 247 affected checks; all final selections passed with zero failures/errors/skips |
 | Remote development head at packet start | `origin/p12-preparation` matched `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; P24 commits require a normal push |
 | Last recorded main checkpoint | `0468a031238261bee5bc79bd04b16a3d1964a3a9` (P00-P20); main was not refreshed or merged in this packet |
 | Integration still pending | P21-P23 and subsequent work; refresh remote refs during the P32 gated integration step |
 | Latest readiness record | [E109](docs/completion/e109_p00_p23_readiness.md), following [E108 P23 closure](docs/completion/e108_p23_live_hosting.md) |
 | Traceability snapshot | 336 rows: **229 IMPLEMENTED, 102 UNVERIFIED, 5 OPTIONAL**; no MISSING, DEFECTIVE or UNWIRED rows recorded |
 | Locked catalog / UI | E109 records all 73 master tool names in 90 registered tools; all 26 required surfaces have scoped implementation evidence |
-| Existing fixed corpus | 140 unique cases: FAST 93, SCREEN 15, SMART 27, DEEP 5; E110 executes only 14 FAST/READ cases end-to-end |
+| Existing fixed corpus | 140 unique cases: FAST 93, SCREEN 15, SMART 27, DEEP 5; E110/E111 execute 18 FAST/READ/LOW cases end-to-end, with fixture-owned path substitutions |
 
 `IMPLEMENTED` means the narrow invariant described in the matrix, not that every
 physical, installed, performance or adversarial scenario has passed. The 102
@@ -46,7 +47,7 @@ not become new mandatory work; mandatory voice input remains required.
 | P21 | Persistent validated settings, effective application/recovery and guarded undo | [E103](docs/completion/e103_p21_completion.md) |
 | P22 | Truthful setup/readiness, controlled owned Core restart and recovery | [E104](docs/completion/e104_p22_completion.md), [E105 recheck](docs/completion/e105_p22_completion_recheck.md) |
 | P23 | Live capture/OCR feedback, target geometry, composed native pixels, priority STOP and owned cleanup | [E108](docs/completion/e108_p23_live_hosting.md); physical monitor/device review remains P25 |
-| P24 | First bounded acceptance packet only; full milestone remains open | [E110](docs/completion/e110_p24_readonly_corpus_slice.md): 14 unique FAST/READ cases and 238 affected tests; no broad completion claim |
+| P24 | Bounded acceptance packets only; full milestone remains open | [E110](docs/completion/e110_p24_readonly_corpus_slice.md) and [E111](docs/completion/e111_p24_owned_folder_creation.md): 18 unique cases overall; E111's 247 affected tests passed; no broad completion claim |
 
 ### Evidence available, without inventing a fresh full-suite pass
 
@@ -85,7 +86,7 @@ owning milestone, not silently relabeled complete.
 | R5 / high cleanup risk, P27/P29 | **Source-confirmed unsafe selection pattern, not executed:** [uninstall.ps1](uninstall.ps1#L19) force-stops by process name/command substring, without original PID/creation-time/path ownership proof. Recursive removal uses derived paths without canonical containment/reparse validation. Custom install-target reconciliation is also unproven. | Replace broad process matching with verified installation/task ownership and bounded shutdown/readback. Validate absolute deletion targets and preserve unrelated processes/files and user data according to documented intent. Test default/custom paths, false same-name matches, failed shutdown and purge/reparse/conflict cases only in disposable fixtures. |
 | R6 / build isolation risk, P28 | **Source-confirmed broad cleanup:** [build_release.py](build_release.py#L20) deletes root build/dist/release/cache/egg-info paths and recursively walks repository caches, including ignored environments. | Build in a fresh isolated staging/worktree with explicitly owned output paths. Preserve historical reports, existing bundles, unrelated changes and environments. Do not run the old cleanup as a shortcut to a clean release. |
 | R7 / measurement evidence gap, P26 | **Source-confirmed limitation:** [benchmark/idle_baseline.py](benchmark/idle_baseline.py#L39) samples its own PID and `sys.modules`, not an independently launched installed resident. GPU sampling is global/best-effort, and unavailable telemetry currently makes `gpu_idle` true. This cannot certify installed PLUMA's idle footprint. | Instrument the actual resident and owned worker tree, attribute GPU use, verify cold runtimes/capture absence and report missing telemetry as unverified. Measure ten minutes and 50 cycles on the target laptop. Do not infer a product pass from an idle measurement script alone. |
-| R8 / unexecuted release gates, P24-P31 | **Not established:** E110 covers 14 of 140 unique corpus cases; the remaining 126 cases, physical display/accessibility/device behavior, full target-laptop quality/performance/soak, adversarial installed recovery, signed reproducible release and clean install/upgrade/uninstall remain open. | Continue the ordered roadmap below. Keep desktop/device/model work in a bounded isolated environment; reuse valid unchanged-source evidence transparently and fix reproduced failures. No claim of zero bugs, instant inference or lifetime compatibility is justified. |
+| R8 / unexecuted release gates, P24-P31 | **Not established:** E110/E111 cover 18 of 140 unique corpus cases; the remaining 122 cases, physical display/accessibility/device behavior, full target-laptop quality/performance/soak, adversarial installed recovery, signed reproducible release and clean install/upgrade/uninstall remain open. | Continue the ordered roadmap below. Keep desktop/device/model work in a bounded isolated environment; reuse valid unchanged-source evidence transparently and fix reproduced failures. No claim of zero bugs, instant inference or lifetime compatibility is justified. |
 
 For each new reproduced defect, append: severity, requirement ID, source and
 line, source/build identity, exact safe reproduction, expected/actual result,
@@ -169,19 +170,22 @@ before code changes. This file routes work; it cannot relax requirements.
 ```text
 Last completed milestone: P23; P00-P23 readiness record E109.
 Current milestone: P24, IN PROGRESS, not complete.
-Accepted bounded packet: E110, tested at 530dfceaf39d33907f71f261e3f617ecfdab560b.
-Accepted unique cases: GC-046, GC-047, GC-048, GC-056, GC-057, GC-058, GC-059,
-GC-076, GC-077, GC-078, GC-079, GC-084, GC-085, GC-087.
-Remaining unique corpus IDs: GC-001–GC-045, GC-049–GC-055, GC-060–GC-075,
-GC-080–GC-083, GC-086, GC-088–GC-125, and GC-N001–GC-N015 (126 total).
-Next safe packet: continue P24 with owned fixtures/isolated runtime. Do not read
-personal clipboard/windows/files or exercise device/power actions on the owner's
-desktop. Confirm available RAM and bounded isolation before native-model or UI
-acceptance; do not load a model on the resident path.
-Development branch: p12-preparation; verify the remote head before a normal
-push. No branch switch, merge or main integration is part of P24.
+Accepted packets: E110 at `530dfceaf39d33907f71f261e3f617ecfdab560b` and E111
+source at `f30bb481c484f5b2dd7db5b66c400f38df69347e`.
+Accepted unique cases (18): GC-046, GC-047, GC-048, GC-056, GC-057, GC-058,
+GC-059, GC-076, GC-077, GC-078, GC-079, GC-080, GC-081, GC-084, GC-085,
+GC-086, GC-087, GC-090.
+Remaining unique corpus IDs (122): GC-001–GC-045, GC-049–GC-055,
+GC-060–GC-075, GC-082–GC-083, GC-088–GC-089, GC-091–GC-125, and
+GC-N001–GC-N015.
+Next safe packet: execute GC-082/GC-083 with fixture-owned source/destination
+files and an isolated test confirmation callback. No owner's desktop confirmation
+UI, personal files, clipboard, windows, device or power state. No model or
+resident process is needed.
+Development branch: p12-preparation; push packet commits normally after checks.
+No branch switch, merge or main integration is part of P24.
 Recovery: pushed `recovery/pre-remaining-work-20261110-c9f597f` preserves
-`c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; later P24 test commits are normal
+`c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; E110/E111 commits are normal
 reviewable commits on top.
 Do not start P25 until P24 passes or an applicable concrete owner-approved
 limitation is recorded. Do not merge/tag until P32's prerequisites pass.
@@ -202,10 +206,11 @@ rules and roadmap above and the original detailed milestone contract.
 ### Continue: P24
 
 ```text
-Read the current handoff/cursor, E110, AGENTS.md, the master specification,
+Read the current handoff/cursor, E110 and E111, AGENTS.md, the master specification,
 requirements matrix and the original P24 contract in PLUMA_COMPLETION_PROMPTS.md.
-Verify the current branch/source and do not restart E110's 14 accepted cases.
-Execute the next bounded P24 packet using owned fixtures or isolated runtime;
+Verify the current branch/source and do not restart E110/E111's 18 accepted cases.
+Execute the next bounded P24 packet (GC-082/GC-083) using owned fixtures and an
+isolated confirmation callback;
 do not read the owner's clipboard/files/windows or exercise device/power state.
 Run the focused gate and affected regressions, record exact IDs/counts/evidence,
 commit and push normally, and update the cursor with the remaining IDs. Do not
