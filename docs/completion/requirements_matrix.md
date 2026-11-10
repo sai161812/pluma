@@ -1,5 +1,10 @@
 # PLUMA live requirements and evidence matrix
 
+Code-only preparation note (2026-11-10): E113 adds unverified owned undo tests;
+E114 prepares isolated backend-build and guarded install/uninstall source;
+E115 prepares target-process resource accounting. None has been executed or
+accepted. Existing P24/P26/P28/P29 matrix statuses remain unchanged.
+
 Latest readiness review: [E109](e109_p00_p23_readiness.md) verifies P00-P23 scoped implementation and prerequisite readiness under the recorded owner limits. [E108](e108_p23_live_hosting.md) completes P23: the normal native Windows gate on 6e87901 passes 403 IPC, 237 native UI, 15 health, 28 perception, 663 popup and 195 formatting checks. P24 is in progress: E110-E112 cover 20 of 140 unique corpus cases; E112's first cold run failed and its precise cause remains unknown. The milestone remains incomplete. Physical and full-product acceptance remain with P24-P33; UNVERIFIED aggregate rows are not blanket passes.
 
 Implementation inventory: all 73 exact Section 21 names are registered (57 non-screen and 16 screen-control); the default registry exposes 90 tools including compatibility and utility names. E101 adds save_settings; E103 adds the confirmed recover_settings utility; E104 adds typed check_setup/restart_core utilities; the locked Section 21 catalog is unchanged. E66 closes the exact screen-name inventory, E67 records the P12 `CORE-OCR` runtime and generated-image smoke, and E69 closes the applicable P12 E-01 through E-10 implementation gate. P26 still owns the broad OCR quality/latency benchmark. E58 repairs production D-10 and DNS-only elevation, superseding E57. Historical evidence remains traceable, but native fixture checks do not replace physical acceptance. H-04 native confirmation passes in E85; broader owner/physical UI acceptance remains P25. E96 adds the registered bounded open_folder utility; the exact required catalog is unchanged.

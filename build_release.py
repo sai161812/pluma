@@ -1,149 +1,218 @@
-"""build_release.py — Clean release artifact builder for PLUMA.
+"""Build an isolated PLUMA backend bundle without cleaning the checkout.
 
-Spec §25: Build clean wheel package and release distribution ZIP with 0 build/cache artifacts.
+This legacy builder produces a backend-only bundle. It is not the unified,
+signed Core + WinUI release required by P28.
 """
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import os
-import shutil
 import subprocess
 import sys
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).parent.resolve()
-DIST_DIR = ROOT_DIR / "dist"
-RELEASE_DIR = ROOT_DIR / "release"
+ROOT_DIR = Path(__file__).resolve().parent
+OUTPUT_ROOT = ROOT_DIR / "output"
+PRODUCT_SCOPE = (
+    "PLUMA backend-only bundle. This artifact does not contain the WinUI shell, "
+    "a complete offline dependency set, or a release signature. It is not a "
+    "P28-complete production release.\n"
+)
 
 
-def clean_artifacts() -> None:
-    """Clean all Python caches and previous build artifacts."""
-    print("[1/4] Cleaning build artifacts and __pycache__ trees...")
-    for pattern in ["build", "dist", "release", "*.egg-info", ".pytest_cache"]:
-        for p in ROOT_DIR.glob(pattern):
-            if p.is_dir():
-                shutil.rmtree(p, ignore_errors=True)
-            elif p.is_file():
-                p.unlink(missing_ok=True)
-
-    for p in ROOT_DIR.rglob("__pycache__"):
-        if p.is_dir():
-            shutil.rmtree(p, ignore_errors=True)
-
-    for p in ROOT_DIR.rglob("*.pyc"):
-        p.unlink(missing_ok=True)
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def build_wheel() -> Path:
-    """Build Python wheel package."""
-    print("[2/4] Building clean Python wheel package...")
-    res = subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps", "-w", str(DIST_DIR), str(ROOT_DIR)],
-        capture_output=True,
-        text=True,
+def _build_environment(output_dir: Path) -> dict[str, str]:
+    temp_dir = output_dir / "temporary"
+    cache_dir = output_dir / "pip-cache"
+    pyinstaller_config_dir = output_dir / "pyinstaller-config"
+    temp_dir.mkdir(exist_ok=True)
+    cache_dir.mkdir(exist_ok=True)
+    pyinstaller_config_dir.mkdir(exist_ok=True)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "TEMP": str(temp_dir),
+            "TMP": str(temp_dir),
+            "PIP_CACHE_DIR": str(cache_dir),
+            "PYINSTALLER_CONFIG_DIR": str(pyinstaller_config_dir),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
+    return environment
+
+
+def _new_output_dir(requested: Path | None) -> Path:
+    if requested is None:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        candidate = OUTPUT_ROOT / f"release-backend-{stamp}"
+    else:
+        candidate = requested
+        if not candidate.is_absolute():
+            candidate = ROOT_DIR / candidate
+
+    candidate = candidate.resolve()
+    try:
+        candidate.relative_to(ROOT_DIR)
+    except ValueError as exc:
+        raise ValueError("Release output must remain inside the PLUMA checkout.") from exc
+    if candidate == ROOT_DIR or candidate.exists():
+        raise FileExistsError(f"Refusing to reuse existing release output: {candidate}")
+    candidate.mkdir(parents=True)
+    return candidate
+
+
+def build_wheel(destination: Path) -> Path:
+    destination.mkdir(parents=True, exist_ok=False)
+    output_dir = destination.parent
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--wheel-dir",
+            str(destination),
+            str(ROOT_DIR),
+        ],
+        cwd=ROOT_DIR,
+        env=_build_environment(output_dir),
         check=True,
     )
-    wheels = list(DIST_DIR.glob("*.whl"))
-    if not wheels:
-        raise RuntimeError(f"No wheel produced in {DIST_DIR}")
-    print(f"  -> Built wheel: {wheels[0].name}")
+    wheels = sorted(destination.glob("*.whl"))
+    if len(wheels) != 1:
+        raise RuntimeError(f"Expected exactly one wheel in {destination}; found {len(wheels)}.")
     return wheels[0]
 
 
-def create_release_zip(wheel_path: Path) -> Path:
-    """Create a pristine release ZIP containing the wheel, installer scripts, configs, docs, and SHA-256 manifest."""
-    print("[3/4] Packaging pristine release ZIP archive...")
-    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
-    zip_path = RELEASE_DIR / "pluma-0.1.0-windows-x64-release.zip"
-
-    # Compute wheel SHA-256
-    import hashlib
-    def hash_file(p: Path) -> str:
-        h = hashlib.sha256()
-        with open(p, "rb") as f:
-            while chunk := f.read(65536):
-                h.update(chunk)
-        return h.hexdigest()
-        
-    # Build EXE with PyInstaller
-    print("[3/5] Building EXE with PyInstaller...")
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", "pluma.spec"], check=True)
-    exe_path = ROOT_DIR / "dist" / "pluma.exe"
-    if not exe_path.exists():
-        raise RuntimeError("pluma.exe was not built!")
-
-    print("[4/5] Packaging pristine release ZIP archive...")
-    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
-    zip_path = RELEASE_DIR / "pluma-0.1.0-windows-x64-release.zip"
-
-    manifest_lines = [
-        f"{hash_file(wheel_path)}  packages/{wheel_path.name}",
-        f"{hash_file(exe_path)}  pluma.exe",
-    ]
-
-    manifest_path = RELEASE_DIR / "SHA256SUMS.txt"
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(manifest_lines) + "\n")
-
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Include wheel and exe
-        zf.write(wheel_path, arcname=f"packages/{wheel_path.name}")
-        zf.write(exe_path, arcname="pluma.exe")
-        
-        # Include install and uninstall scripts
-        for script_name in ["install.ps1", "uninstall.ps1"]:
-            script_path = ROOT_DIR / script_name
-            if script_path.exists():
-                zf.write(script_path, arcname=script_name)
-
-        # Include configs
-        cfg_dir = ROOT_DIR / "pluma" / "config"
-        for cfg in ["defaults.yaml", "tool_policy.yaml"]:
-            cp = cfg_dir / cfg
-            if cp.exists():
-                zf.write(cp, arcname=f"config/{cfg}")
-
-        # Include documentation and manifest
-        for doc_name in [
-            "README.md",
-            "pyproject.toml",
-            "docs/history/README.md",
-            "docs/history/PHASE_13_5_COMPLETION_REPORT.md",
-            "docs/history/PHASE_13_6_COMPLETION_REPORT.md",
-            "docs/history/PHASE_13_7_COMPLETION_REPORT.md",
-            "docs/history/FINAL_RELEASE_REPORT.md",
-            "pluma.spec",
-        ]:
-            doc_path = ROOT_DIR / doc_name
-            if doc_path.exists():
-                zf.write(doc_path, arcname=doc_name)
-
-        zf.write(manifest_path, arcname="SHA256SUMS.txt")
-
-    print(f"  -> Pristine release archive created: {zip_path.name} ({zip_path.stat().st_size / 1024:.1f} KB)")
-    return zip_path
+def build_executable(output_dir: Path) -> Path:
+    work_dir = output_dir / "pyinstaller-work"
+    dist_dir = output_dir / "executable"
+    work_dir.mkdir()
+    dist_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "--noconfirm",
+            "--workpath",
+            str(work_dir),
+            "--distpath",
+            str(dist_dir),
+            str(ROOT_DIR / "pluma.spec"),
+        ],
+        cwd=ROOT_DIR,
+        env=_build_environment(output_dir),
+        check=True,
+    )
+    exe_path = dist_dir / "pluma.exe"
+    if not exe_path.is_file():
+        raise RuntimeError(f"Expected backend executable was not produced: {exe_path}")
+    return exe_path
 
 
+def _release_files(wheel_path: Path, exe_path: Path, output_dir: Path) -> dict[str, Path]:
+    scope_path = output_dir / "PRODUCT_SCOPE.txt"
+    scope_path.write_text(PRODUCT_SCOPE, encoding="utf-8", newline="\n")
+    files: dict[str, Path] = {
+        f"packages/{wheel_path.name}": wheel_path,
+        "pluma.exe": exe_path,
+        "PRODUCT_SCOPE.txt": scope_path,
+    }
+    fixed_paths = (
+        "install.ps1",
+        "uninstall.ps1",
+        "README.md",
+        "pyproject.toml",
+        "pluma.spec",
+        "pluma/config/defaults.yaml",
+        "pluma/config/tool_policy.yaml",
+    )
+    for relative in fixed_paths:
+        source = ROOT_DIR / relative
+        if not source.is_file():
+            raise FileNotFoundError(f"Required release input is missing: {source}")
+        files[relative] = source
+    return files
 
-def verify_zip_cleanliness(zip_path: Path) -> None:
-    """Verify that the release ZIP contains ZERO cache, git, or compiler artifacts."""
-    print("[4/4] Verifying release archive cleanliness...")
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        entries = zf.namelist()
-        forbidden = [e for e in entries if any(bad in e for bad in ["__pycache__", ".git", ".pytest_cache", ".pyc"])]
-        if forbidden:
-            raise ValueError(f"Found forbidden cache artifacts in release ZIP: {forbidden}")
-        print(f"  -> Verified: {len(entries)} clean production files, 0 cache artifacts.")
+
+def create_release_zip(wheel_path: Path, exe_path: Path, output_dir: Path) -> Path:
+    archive_path = output_dir / "pluma-backend-only-windows-x64.zip"
+    files = _release_files(wheel_path, exe_path, output_dir)
+    manifest = "".join(f"{_sha256_file(source)}  {name}\n" for name, source in sorted(files.items()))
+    (output_dir / "SHA256SUMS.txt").write_text(manifest, encoding="utf-8", newline="\n")
+    with zipfile.ZipFile(archive_path, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, source in sorted(files.items()):
+            archive.write(source, arcname=name)
+        archive.writestr("SHA256SUMS.txt", manifest.encode("utf-8"))
+    return archive_path
 
 
-def main() -> None:
-    clean_artifacts()
-    wheel_path = build_wheel()
-    zip_path = create_release_zip(wheel_path)
-    verify_zip_cleanliness(zip_path)
-    print("\nRELEASE BUILD COMPLETED SUCCESSFULLY.")
+def verify_zip_cleanliness(archive_path: Path) -> None:
+    forbidden_segments = {".git", "__pycache__", ".pytest_cache", "bin", "obj"}
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        names = archive.namelist()
+        if len(names) != len(set(names)):
+            raise ValueError("Release archive contains duplicate paths.")
+        for name in names:
+            parts = Path(name).parts
+            if Path(name).is_absolute() or ".." in parts or forbidden_segments.intersection(parts):
+                raise ValueError(f"Release archive contains an unsafe or generated path: {name}")
+            if name.endswith(".pyc"):
+                raise ValueError(f"Release archive contains bytecode: {name}")
+
+        try:
+            manifest_bytes = archive.read("SHA256SUMS.txt")
+        except KeyError as exc:
+            raise ValueError("Release archive is missing its integrity manifest.") from exc
+        expected: dict[str, str] = {}
+        for line in manifest_bytes.decode("utf-8").splitlines():
+            digest, separator, name = line.partition("  ")
+            if not separator or len(digest) != 64 or name in expected:
+                raise ValueError("Release integrity manifest is malformed.")
+            expected[name] = digest
+        actual_names = set(names) - {"SHA256SUMS.txt"}
+        if set(expected) != actual_names:
+            raise ValueError("Release integrity manifest does not cover the archive contents.")
+        for name, digest in expected.items():
+            member_digest = hashlib.sha256()
+            with archive.open(name, "r") as member:
+                for chunk in iter(lambda: member.read(1024 * 1024), b""):
+                    member_digest.update(chunk)
+            if member_digest.hexdigest() != digest:
+                raise ValueError(f"Release integrity check failed for {name}.")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="new, unused output directory under the PLUMA checkout (default: ignored output/)",
+    )
+    args = parser.parse_args()
+
+    output_dir = _new_output_dir(args.output_dir)
+    wheel_path = build_wheel(output_dir / "packages")
+    exe_path = build_executable(output_dir)
+    archive_path = create_release_zip(wheel_path, exe_path, output_dir)
+    verify_zip_cleanliness(archive_path)
+    print(f"Backend-only bundle created: {archive_path}")
+    print("This is not the signed, unified Core + WinUI P28 release.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

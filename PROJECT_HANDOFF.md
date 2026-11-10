@@ -1,6 +1,38 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current continuation: 2026-11-10, P24 owned corpus acceptance through E112
+## Current continuation: 2026-11-10, P24 E113 undo acceptance prepared
+
+E114 also prepares code-only release safety changes in `build_release.py`,
+`install.ps1`, and `uninstall.ps1`; its full scope and limits are recorded in
+[E114](docs/completion/e114_release_safety_code_prepared.md). They remove the
+known broad build cleanup and process-name termination patterns and add
+fail-closed installation checks. No repository installer/uninstaller script,
+build, or test was run, so P28/P29
+remain open and none of these changes is verified. The backend-only package is
+still not a deployable P28 release.
+
+E115 prepares resident-process resource accounting in
+`benchmark/idle_baseline.py`; see [E115](docs/completion/e115_idle_measurement_code_prepared.md).
+It reports target GPU attribution and remote module inspection as unverified
+instead of passing them implicitly. No resident or benchmark was launched, so
+P26 measurement remains open.
+
+E113 prepares `tests/windows/test_p24_owned_undo_acceptance.py` for GC-054 and
+GC-055. The owner asked to defer tests and builds while coding work is
+completed, so this file is **not verified** and neither case is counted as
+accepted. See [E113](docs/completion/e113_p24_owned_undo_prepared.md). The
+verified corpus count remains 20 of 140; P24 remains incomplete. The existing
+E110-E112 evidence and E112's unexplained cold-run failure are retained below.
+
+The interrupted runner PIDs from the prior focused attempt were no longer
+running when checked. No new test or build process was started in this
+continuation. The root `uv.lock` remains untracked and untouched.
+
+Next action when verification resumes: run the E113 cases and affected undo,
+file-move and policy regressions sequentially from a persistent environment;
+do not count the cases or advance P24 until those checks have actual results.
+
+### E112 checkpoint retained below
 
 [E110](docs/completion/e110_p24_readonly_corpus_slice.md) records the first
 bounded P24 read-only slice: 14 unique FAST/READ cases through the real runtime,
