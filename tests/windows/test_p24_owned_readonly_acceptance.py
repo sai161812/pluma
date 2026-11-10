@@ -1,6 +1,6 @@
 """P24 owned-target, end-to-end read-only corpus acceptance.
 
-This first P24 slice runs seven explicit file-list/search cases from the fixed
+This first P24 slice runs ten explicit file/history cases from the fixed
 corpus. Every target and ledger is owned by the test; the real router,
 registered tool, verifier and terminal ledger path run without touching user
 files or desktop state. Only find_file uses its registered owned worker.
@@ -24,6 +24,9 @@ from pluma.memory.activity import ActivityQuery
 
 _CORPUS_PATH = Path(__file__).parents[1] / "fixtures" / "golden_commands.yaml"
 _READ_CASES = {
+    "GC-046": None,
+    "GC-056": None,
+    "GC-057": None,
     "GC-076": "listed-fixture.txt",
     "GC-077": "listed-fixture.txt",
     "GC-084": "listed-fixture.txt",
@@ -70,19 +73,21 @@ def _owned_readonly_case(
     case_id: str,
     input_mode: InputMode,
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[dict[str, Any], Any, Any, Path]:
+) -> tuple[dict[str, Any], Any, Any, Path | None]:
     case = _corpus_case(case_id)
     assert case["expected_route"] == "FAST"
     tool_name = case["expected_tools"][0]
-    assert tool_name in {"list_files", "find_file"}
+    assert tool_name in {"find_file", "list_files", "show_activity"}
     assert case["expected_risk"] == "READ"
     assert case["expected_policy_decision"] == "ALLOW"
     assert case["expected_execution_status"] == "SUCCEEDED"
 
     root = tmp_path / ("owned-corpus-" + case_id.lower() + "-" + input_mode.value)
     root.mkdir()
-    target = root / _READ_CASES[case_id]
-    target.write_bytes(b"PLUMA P24 owned read-only fixture\n")
+    target_name = _READ_CASES[case_id]
+    target = root / target_name if target_name is not None else None
+    if target is not None:
+        target.write_bytes(b"PLUMA P24 owned read-only fixture\n")
 
     original_root = r"C:\PLUMA_Corpus"
     if tool_name == "find_file":
@@ -110,7 +115,10 @@ def _owned_readonly_case(
     if tool_name == "find_file":
         expected_pattern = case["normalized_args"]["pattern"]
         expected_args = {"pattern": expected_pattern, "directory": str(root)}
+    elif tool_name == "list_files":
+        expected_args = case["normalized_args"]
     else:
+        assert tool_name == "show_activity"
         expected_args = case["normalized_args"]
     assert call.arguments == expected_args
 
@@ -128,14 +136,20 @@ def _owned_readonly_case(
         match = tool_result.data["matches"][0]
         assert match["path"] == str(target)
         assert match["identity"]["file_id"]
-    else:
+    elif tool_name == "list_files":
         assert tool_result.data["path"] == str(root)
         assert tool_result.data["count"] == 1
         assert len(tool_result.data["entries"]) == 1
         entry = tool_result.data["entries"][0]
         assert entry["name"] == target.name and entry["path"] == str(target)
         assert target.read_bytes() == b"PLUMA P24 owned read-only fixture\n"
-    assert target.is_file() and target.read_bytes() == b"PLUMA P24 owned read-only fixture\n"
+    else:
+        assert tool_name == "show_activity" and tool_result.adapter_used == "sqlite"
+        assert tool_result.data["count"] == len(tool_result.data["records"])
+        assert tool_result.data["count"] <= tool_result.data["limit"]
+
+    if target is not None:
+        assert target.is_file() and target.read_bytes() == b"PLUMA P24 owned read-only fixture\n"
 
     capsule = app_runtime.supervisor.get_task(execution.task_id)
     assert capsule.state.value == "SUCCEEDED" and capsule.terminal_persisted is True
@@ -175,13 +189,23 @@ def _owned_readonly_case(
     assert saved_result["count"] == 1
     if tool_name == "find_file":
         assert saved_result["unambiguous"] is True
-    else:
+    elif tool_name == "list_files":
         assert saved_result["path"] == str(root)
         assert saved_result["entries"][0]["path"] == str(target)
+    else:
+        assert tool_name == "show_activity"
+        assert saved_result == tool_result.data
+        for record in saved_result["records"]:
+            saved_task = query.task_by_id(record["task_id"])
+            assert saved_task is not None
+            assert record["task_id"] == execution.task_id
+            assert saved_task["command_text"] == record["command"] == command
     saved_verification = json.loads(action["verification_json"])
     assert saved_verification["ok"] is True
     if tool_name == "find_file":
         assert "native_candidate_and_directory_readback" in saved_verification["method"]
+    elif tool_name == "show_activity":
+        assert saved_verification["method"] == "sqlite_snapshot"
 
     cleanup_row = query.cleanup_report_for_task(execution.task_id)
     assert cleanup_row is not None
@@ -204,7 +228,11 @@ def _owned_readonly_case(
         "arguments": args,
         "risk": action["risk"],
         "policy": action["approval_state"],
-        "postcondition": "native read result matches owned fixture; fixture unchanged",
+        "postcondition": (
+            "returned activity rows match isolated SQLite history"
+            if tool_name == "show_activity"
+            else "native file result matches owned fixture; fixture unchanged"
+        ),
         "ledger_readback": "task, action, saved verifier and applicable worker cleanup verified",
         "worker_pid": worker_identity["pid"] if worker_identity else None,
         "worker_absent": worker_absent,
@@ -215,7 +243,7 @@ def _owned_readonly_case(
 
 
 @pytest.mark.parametrize("case_id", tuple(_READ_CASES))
-def test_fixed_corpus_readonly_file_operation_uses_owned_full_pipeline(
+def test_fixed_corpus_readonly_operation_uses_owned_full_pipeline(
     app_runtime: PlumaApplicationRuntime, tmp_path: Path, case_id: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
