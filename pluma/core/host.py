@@ -1,6 +1,8 @@
 """Single owned control host. Restarts replace only its graph, never another PID."""
 import hashlib
 import json
+import math
+import numbers
 import os
 from pathlib import Path
 import threading
@@ -17,6 +19,97 @@ class _GraphEndpoint:
     def begin_shutdown(self):pass
 
 
+def request_owned_core_shutdown(
+    target_pid: int,
+    installation_root: str | Path,
+    expected_executable: str | Path,
+    timeout_s: float = 3.0,
+    exit_timeout_s: float = 15.0,
+) -> dict:
+    """Ask the authenticated, exact installed Core to drain and exit gracefully."""
+    if type(target_pid) is not int or target_pid <= 0:
+        raise ValueError("A positive resident PID is required.")
+    if (isinstance(timeout_s, bool) or not isinstance(timeout_s, numbers.Real)
+            or not math.isfinite(timeout_s) or timeout_s <= 0 or timeout_s > 5.0):
+        raise ValueError("Shutdown IPC timeout must be between 0 and 5 seconds.")
+    if (isinstance(exit_timeout_s, bool) or not isinstance(exit_timeout_s, numbers.Real)
+            or not math.isfinite(exit_timeout_s) or exit_timeout_s <= 0 or exit_timeout_s > 30.0):
+        raise ValueError("Shutdown exit timeout must be between 0 and 30 seconds.")
+    install_root = Path(installation_root).resolve()
+    expected_executable = Path(expected_executable).resolve()
+    try:
+        common = os.path.commonpath((str(install_root), str(expected_executable)))
+        if os.path.normcase(common) != os.path.normcase(str(install_root)):
+            raise ValueError("Expected Core executable is outside the installation root.")
+    except ValueError as exc:
+        raise ValueError("Expected Core executable is outside the installation root.") from exc
+
+    from pluma.core.ownership import get_process_creation_time
+    import psutil
+
+    creation_time = get_process_creation_time(target_pid)
+    if creation_time is None:
+        raise RuntimeError("Installed Core process identity is unavailable.")
+    try:
+        process = psutil.Process(target_pid)
+        actual_executable = Path(process.exe()).resolve()
+    except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
+        raise RuntimeError("Installed Core executable could not be read safely.") from exc
+    if os.path.normcase(str(actual_executable)) != os.path.normcase(str(expected_executable)):
+        raise RuntimeError("Resident PID does not match the selected installation executable.")
+    if get_process_creation_time(target_pid) != creation_time:
+        raise RuntimeError("Core process identity changed during executable verification.")
+
+    from pluma.core.ipc import IpcClient
+    client = IpcClient(require_auth=True)
+    health_id = str(uuid4())
+    snapshot = client.send_command(
+        {"protocol_version": 1, "message_type": "health_query", "request_id": health_id},
+        timeout=timeout_s,
+    )
+    if (
+        snapshot.get("message_type") != "health_snapshot"
+        or snapshot.get("request_id") != health_id
+        or snapshot.get("pid") != target_pid
+        or snapshot.get("creation_time") != creation_time
+        or not isinstance(snapshot.get("instance_id"), str)
+    ):
+        raise RuntimeError("Authenticated Core health identity did not match the selected process.")
+    if get_process_creation_time(target_pid) != creation_time:
+        raise RuntimeError("Core process identity changed before shutdown admission.")
+
+    request_id = str(uuid4())
+    request = HealthRequest(
+        protocol_version=1,
+        message_type="core_shutdown",
+        request_id=request_id,
+        instance_id=snapshot["instance_id"],
+        pid=target_pid,
+        creation_time=creation_time,
+    )
+    ack = client.send_command(request.model_dump(mode="json"), timeout=timeout_s)
+    if (
+        ack.get("message_type") != "shutdown_ack"
+        or ack.get("request_id") != request_id
+        or ack.get("pid") != target_pid
+        or ack.get("creation_time") != creation_time
+        or ack.get("instance_id") != snapshot["instance_id"]
+        or ack.get("accepted") is not True
+    ):
+        raise RuntimeError("Core did not acknowledge the owned shutdown request.")
+    try:
+        exit_code = process.wait(timeout=float(exit_timeout_s))
+    except psutil.TimeoutExpired as exc:
+        raise RuntimeError("Core acknowledged shutdown but did not exit within the bounded drain period.") from exc
+    except psutil.NoSuchProcess as exc:
+        raise RuntimeError("Core exited before its process status could be read back.") from exc
+    if exit_code != 0:
+        raise RuntimeError(f"Core exited after shutdown with an unverified status: {exit_code!r}.")
+    if get_process_creation_time(target_pid) == creation_time:
+        raise RuntimeError("Core process identity remains after shutdown acknowledgement.")
+    return {"pid": target_pid, "creation_time": creation_time, "exit_code": exit_code, "request_id": request_id}
+
+
 class CoreHost:
     def __init__(self,paths,*,config_path=None,address=None,debug=False):
         from pluma.core.ipc import IpcServer
@@ -28,7 +121,15 @@ class CoreHost:
         self.debug=debug;self.runtime=None;self.instance_id=str(uuid4());self.state="STARTING"
         self.code="STARTING";self.recovery=None;self.setup_task=None;self.setup_time=0
         self._lease=None;self._lock=threading.RLock();self._restart=None;self._closing=False;self._recover_control=False
-        self.server=IpcServer(self.handle,address=address,require_auth=True)
+        self._shutdown_requested=False;self._shutdown_reply_sent=threading.Event();self._shutdown_reply_deadline=0.0
+        self.server=IpcServer(self.handle,address=address,require_auth=True,
+            response_sent_handler=self._response_sent)
+
+    def _response_sent(self,request,response):
+        if (request.get("message_type")=="core_shutdown" and response.get("message_type")=="shutdown_ack"
+                and response.get("accepted") is True and response.get("pid")==self.pid
+                and response.get("creation_time")==self.creation_time):
+            self._shutdown_reply_sent.set()
 
     def _construct(self):
         from pluma.app import PlumaApplicationRuntime,setup_logging
@@ -115,6 +216,11 @@ class CoreHost:
             self._recover_control=True;self.state="RECOVERY_ERROR";self.code="OWNED_DRAIN_PENDING"
 
     def advance(self):
+        if self._shutdown_requested:
+            if not self._shutdown_reply_sent.is_set() and time.monotonic()<self._shutdown_reply_deadline:return
+            self.server.begin_shutdown()
+            self.close()
+            return
         self._observe_liveness()
         if self._recover_control:
             if not self.runtime.close(3).complete:return
@@ -210,6 +316,26 @@ class CoreHost:
                 if kind=="setup_check" and ack.get("accepted") and self.setup_task!=ack["task_id"]:
                     self.setup_task=ack["task_id"];self.setup_time=time.monotonic()
                 return ack
+            if kind=="core_shutdown":
+                request=HealthRequest.model_validate(payload)
+                from pluma.core.ownership import get_process_creation_time
+                with self._lock:
+                    if (self._closing or self._shutdown_requested or self.runtime is None
+                            or request.instance_id!=self.instance_id or request.pid!=self.pid
+                            or request.creation_time!=self.creation_time
+                            or get_process_creation_time(self.pid)!=self.creation_time
+                            or self._restart is not None):
+                        raise ValueError("Shutdown target is not the owned current Core.")
+                    runtime=self.runtime
+                    self._closing=True;self._shutdown_requested=True
+                    self._shutdown_reply_sent.clear();self._shutdown_reply_deadline=time.monotonic()+2.0
+                    self.state="STOPPING";self.code="SHUTDOWN_REQUESTED"
+                # Close every admission path before acknowledging the request.
+                runtime.supervisor.begin_shutdown()
+                runtime.resident_core.begin_shutdown()
+                runtime.tool_registry.begin_shutdown()
+                return {"protocol_version":1,"message_type":"shutdown_ack","request_id":request.request_id,
+                    **self.identity(),"accepted":True}
             if self.state!="READY":
                 allowed={"confirmation_query","confirmation_decision","confirmation_disconnect","terminal_readback","history_query",
                     "history_page_query","task_detail_query","settings_query","settings_edit_query","stop","runtime_query","events_query"}

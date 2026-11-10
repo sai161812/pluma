@@ -1,5 +1,30 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
+## Current continuation: 2026-11-10, E116 code-only package/shutdown preparation
+
+E116 prepares a unified Windows x64 Core + WinUI package candidate and
+authenticated graceful Core shutdown for install/upgrade/uninstall. The source
+changes are in `build_release.py`, `install.ps1`, `uninstall.ps1`,
+`pluma/core/{host,health_contracts,ipc}.py`, and `pluma/app.py`; README, the requirements matrix and
+remaining-work record describe their limits. See
+[E116](docs/completion/e116_package_shutdown_code_only.md).
+
+The owner asked for code only and no tests yet. No tests, build, installer,
+PowerShell command, resident, or UI process was run. All E116 source is therefore
+unverified. This packet does not close P28/P29 or claim a working verified
+release. Signing, exact-build install/launch/IPC, interrupted-update recovery,
+and uninstall acceptance remain open. The installer never force-kills; it can
+request graceful shutdown of only the identity-matched Core and requires the
+owner to close an open WinUI shell.
+
+P24 remains in progress with 20/140 accepted corpus cases; E112's cold-run
+failure remains unexplained. P25 physical checks, P26 measurements, P27
+adversarial/crash acceptance, P30/P31 review and exact-build gates, P32 gated
+main integration, and P33 release handover remain. No branch change or merge
+occurred. The user's untracked root `uv.lock` remains untouched.
+
+### E114/E115 and prior P24 checkpoint retained below
+
 ## Current continuation: 2026-11-10, P24 E113 undo acceptance prepared
 
 Code-only source commit `4918bf5a70c987f72b9c2f562e58b1809015270f` and the

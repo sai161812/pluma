@@ -2,9 +2,11 @@
 .SYNOPSIS
     Removes the current-user PLUMA installation without touching unrelated apps.
 .DESCRIPTION
-    Running PLUMA processes must be closed by the user first. The script never
-    terminates processes by name. User data is preserved unless -PurgeData is
-    supplied and the exact canonical target path is typed at the prompt.
+    The script requests authenticated graceful shutdown from the exact owned
+    Core and waits for its verified exit. An open WinUI shell must be closed by
+    the user; the script never terminates processes by name. User data is
+    preserved unless -PurgeData is supplied and the exact canonical target path
+    is typed at the prompt.
 #>
 
 [CmdletBinding()]
@@ -88,22 +90,71 @@ try {
         throw 'The PLUMA ownership marker is a reparse point; refusing uninstall.'
     }
     $manifest = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
+    $manifestProperties = @($manifest.PSObject.Properties.Name)
     if ($manifest.schema_version -ne 1 -or
         (Get-CanonicalPath -Path $manifest.install_root) -ne $targetPath) {
         throw 'The PLUMA ownership marker is invalid or names a different install path.'
     }
-    $expectedExe = Get-CanonicalPath -Path (Join-Path $targetPath 'venv\Scripts\pluma.exe')
+    $venvPath = Join-Path $targetPath 'venv'
+    $venvPython = Get-CanonicalPath -Path (Join-Path $venvPath 'Scripts\python.exe')
+    $expectedExe = Get-CanonicalPath -Path (Join-Path $venvPath 'Scripts\pluma.exe')
     if ((Get-CanonicalPath -Path $manifest.executable) -ne $expectedExe) {
         throw 'The PLUMA ownership marker executable does not match the selected install path.'
     }
+    if ($manifestProperties -contains 'venv_python' -and $manifest.venv_python -and
+        (Get-CanonicalPath -Path $manifest.venv_python) -ne $venvPython) {
+        throw 'The PLUMA ownership marker Python does not match the selected install path.'
+    }
 
-    $processes = Get-CimInstance -ClassName Win32_Process -Filter "Name='pluma.exe' OR Name='python.exe'" -ErrorAction Stop
+    $uiDir = Join-Path $targetPath 'ui'
+    $expectedUiExe = Get-CanonicalPath -Path (Join-Path $uiDir 'PLUMA.UI.exe')
+    $expectedUiShortcutFolder = Join-Path ([Environment]::GetFolderPath('Programs')) 'PLUMA'
+    $expectedUiShortcut = Join-Path $expectedUiShortcutFolder 'PLUMA UI.lnk'
+    $uiIsOwned = $false
+    $hasUiDirectory = $manifestProperties -contains 'ui_directory'
+    $hasUiExecutable = $manifestProperties -contains 'ui_executable'
+    if (($hasUiDirectory -and $manifest.ui_directory) -or ($hasUiExecutable -and $manifest.ui_executable)) {
+        if (-not $hasUiDirectory -or -not $hasUiExecutable -or -not $manifest.ui_directory -or -not $manifest.ui_executable -or
+            (Get-CanonicalPath -Path $manifest.ui_directory) -ne (Get-CanonicalPath -Path $uiDir) -or
+            (Get-CanonicalPath -Path $manifest.ui_executable) -ne $expectedUiExe) {
+            throw 'The PLUMA UI ownership marker does not match the selected install path.'
+        }
+        $uiIsOwned = $true
+        if (($manifestProperties -contains 'ui_shortcut') -and $manifest.ui_shortcut -and
+            (Get-CanonicalPath -Path $manifest.ui_shortcut) -ne (Get-CanonicalPath -Path $expectedUiShortcut)) {
+            throw 'The PLUMA UI shortcut marker does not match the current-user Start Menu location.'
+        }
+    }
+    if (Test-Path -LiteralPath $uiDir -PathType Container) {
+        $uiItem = Get-Item -LiteralPath $uiDir -Force
+        if (($uiItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The PLUMA UI directory is a reparse point; refusing uninstall.'
+        }
+        if ($uiIsOwned) { Assert-NoReparsePoints -Path $uiDir }
+    }
+
+    $processes = Get-CimInstance -ClassName Win32_Process -Filter "Name='pluma.exe' OR Name='python.exe' OR Name='PLUMA.UI.exe'" -ErrorAction Stop
+    $runningUi = @(
+        foreach ($process in $processes) {
+            if ($process.Name -ne 'PLUMA.UI.exe') { continue }
+            if ([string]::IsNullOrWhiteSpace([string]$process.ExecutablePath)) {
+                throw "PLUMA.UI.exe PID $($process.ProcessId) has no readable path; refusing uninstall while ownership is uncertain."
+            }
+            if ($uiIsOwned -and (Get-CanonicalPath -Path $process.ExecutablePath) -eq $expectedUiExe) { $process }
+        }
+    )
+    if ($runningUi.Count -gt 0) {
+        throw "PLUMA UI is running (PID $($runningUi[0].ProcessId)). Close the UI and retry; no process was terminated."
+    }
     $ownedPathProcesses = @(
         foreach ($process in $processes) {
-            if ([string]::IsNullOrWhiteSpace([string]$process.ExecutablePath)) { continue }
+            if ([string]::IsNullOrWhiteSpace([string]$process.ExecutablePath)) {
+                if ($process.Name -eq 'pluma.exe') { throw "pluma.exe PID $($process.ProcessId) has no readable path; refusing uninstall while ownership is uncertain." }
+                continue
+            }
             $executablePath = Get-CanonicalPath -Path $process.ExecutablePath
             if (($executablePath -eq $expectedExe) -or
-                (Test-PathWithin -Parent (Join-Path $targetPath 'venv\Scripts') -Child $executablePath)) {
+                (Test-PathWithin -Parent $targetPath -Child $executablePath)) {
                 [pscustomobject]@{
                     ProcessId = $process.ProcessId
                     Name = $process.Name
@@ -113,9 +164,51 @@ try {
             }
         }
     )
-    if ($ownedPathProcesses.Count -gt 0) {
-        $ids = ($ownedPathProcesses | ForEach-Object { $_.ProcessId }) -join ', '
-        throw "PLUMA-owned installation processes are still running (PID $ids). Close PLUMA and retry. No process was terminated."
+    $coreProcesses = @($ownedPathProcesses | Where-Object { $_.ExecutablePath -eq $expectedExe })
+    $scriptsDir = Join-Path $venvPath 'Scripts'
+    $venvProcesses = @($ownedPathProcesses | Where-Object {
+        Test-PathWithin -Parent $scriptsDir -Child $_.ExecutablePath
+    })
+    $otherInstallProcesses = @($ownedPathProcesses | Where-Object {
+        $_.ExecutablePath -ne $expectedExe -and
+        -not (Test-PathWithin -Parent $scriptsDir -Child $_.ExecutablePath)
+    })
+    if ($otherInstallProcesses.Count -gt 0) {
+        $ids = ($otherInstallProcesses | ForEach-Object { $_.ProcessId }) -join ', '
+        throw "Processes are running from the selected PLUMA installation outside its Core environment (PID $ids); close them and retry."
+    }
+    if ($coreProcesses.Count -gt 1) {
+        throw 'More than one process matches the installed PLUMA Core executable; no process was terminated.'
+    }
+    if ($coreProcesses.Count -eq 0 -and $venvProcesses.Count -gt 0) {
+        $ids = ($venvProcesses | ForEach-Object { $_.ProcessId }) -join ', '
+        throw "PLUMA environment processes are running without an authenticated Core host (PID $ids); close them and retry."
+    }
+    if ($coreProcesses.Count -eq 1) {
+        if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            throw 'The installed Core is running but its marked Python shutdown helper is missing.'
+        }
+        $shutdownScript = 'import sys; from pluma.core.host import request_owned_core_shutdown; request_owned_core_shutdown(int(sys.argv[1]), sys.argv[2], sys.argv[3])'
+        & $venvPython -c $shutdownScript ([string]$coreProcesses[0].ProcessId) $targetPath $expectedExe
+        $shutdownExitCode = $LASTEXITCODE
+        if ($shutdownExitCode -ne 0) {
+            throw "Authenticated graceful Core shutdown failed with exit code ${shutdownExitCode}; installation data was preserved."
+        }
+    }
+    $afterShutdown = Get-CimInstance -ClassName Win32_Process -Filter "Name='pluma.exe' OR Name='python.exe'" -ErrorAction Stop
+    $remainingOwned = @(
+        foreach ($process in $afterShutdown) {
+            if ([string]::IsNullOrWhiteSpace([string]$process.ExecutablePath)) {
+                if ($process.Name -eq 'pluma.exe') { throw 'A pluma.exe process remains with unreadable identity after shutdown.' }
+                continue
+            }
+            $executablePath = Get-CanonicalPath -Path $process.ExecutablePath
+            if (Test-PathWithin -Parent $targetPath -Child $executablePath) { $process }
+        }
+    )
+    if ($remainingOwned.Count -gt 0) {
+        $ids = ($remainingOwned | ForEach-Object { $_.ProcessId }) -join ', '
+        throw "PLUMA-owned processes remain after graceful Core shutdown (PID $ids). No process was terminated."
     }
 
     if ($PurgeData) {
@@ -135,6 +228,12 @@ try {
                 throw 'The virtual environment is a reparse point; refusing recursive removal.'
             }
             Assert-NoReparsePoints -Path $venvPath
+        }
+        if ($uiIsOwned -and (Test-Path -LiteralPath $uiDir)) {
+            if (-not (Test-PathWithin -Parent $targetPath -Child $uiDir)) {
+                throw 'Resolved WinUI path is outside the owned PLUMA directory.'
+            }
+            Assert-NoReparsePoints -Path $uiDir
         }
     }
 
@@ -164,6 +263,31 @@ try {
         }
     }
 
+    if ($uiIsOwned -and (Test-Path -LiteralPath $expectedUiShortcut -PathType Leaf)) {
+        Assert-NoReparseAncestors -Path $expectedUiShortcut
+        $uiShortcutItem = Get-Item -LiteralPath $expectedUiShortcut -Force
+        if (($uiShortcutItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Write-Host "Preserved $expectedUiShortcut because it is a reparse point."
+        } else {
+            $shell = New-Object -ComObject WScript.Shell
+            $uiShortcut = $shell.CreateShortcut($expectedUiShortcut)
+            if (-not [string]::IsNullOrWhiteSpace($uiShortcut.TargetPath) -and
+                (Get-CanonicalPath -Path $uiShortcut.TargetPath) -eq $expectedUiExe) {
+                Remove-Item -LiteralPath $expectedUiShortcut -Force
+                if (Test-Path -LiteralPath $expectedUiShortcut) {
+                    throw 'The owned PLUMA UI shortcut remained after removal.'
+                }
+                $shortcutFolderItem = Get-Item -LiteralPath $expectedUiShortcutFolder -Force -ErrorAction SilentlyContinue
+                if ($shortcutFolderItem -and $shortcutFolderItem.PSIsContainer -and
+                    @(Get-ChildItem -LiteralPath $expectedUiShortcutFolder -Force).Count -eq 0) {
+                    Remove-Item -LiteralPath $expectedUiShortcutFolder -Force
+                }
+            } else {
+                Write-Host "Preserved $expectedUiShortcut because it points to another target."
+            }
+        }
+    }
+
     if ($PurgeData) {
         Remove-Item -LiteralPath $targetPath -Recurse -Force
         if (Test-Path -LiteralPath $targetPath) {
@@ -176,6 +300,12 @@ try {
             Remove-Item -LiteralPath $venvPath -Recurse -Force
             if (Test-Path -LiteralPath $venvPath) {
                 throw 'PLUMA virtual environment remained after removal.'
+            }
+        }
+        if ($uiIsOwned -and (Test-Path -LiteralPath $uiDir)) {
+            Remove-Item -LiteralPath $uiDir -Recurse -Force
+            if (Test-Path -LiteralPath $uiDir) {
+                throw 'PLUMA WinUI application files remained after removal.'
             }
         }
         $manifest.state = 'application_removed_data_preserved'
@@ -191,7 +321,7 @@ try {
         if ($savedManifest.state -ne 'application_removed_data_preserved') {
             throw 'Uninstall state marker did not read back with the expected state.'
         }
-        Write-Host "Removed PLUMA's virtual environment. User data was preserved at $targetPath." -ForegroundColor Yellow
+        Write-Host "Removed PLUMA's Core and UI application files. User data was preserved at $targetPath." -ForegroundColor Yellow
     }
 } catch {
     Write-Host "PLUMA uninstall stopped safely: $($_.Exception.Message)" -ForegroundColor Red

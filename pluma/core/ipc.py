@@ -198,12 +198,14 @@ class IpcServer:
         max_message_size: int = MAX_IPC_MESSAGE_SIZE,
         read_timeout_s: float = 5.0,
         require_auth: bool = True,
+        response_sent_handler: Optional[Callable[[Dict[str, Any], Dict[str, Any]], None]] = None,
     ) -> None:
         self.address = address or get_pipe_name()
         self._command_handler = command_handler
         self._max_message_size = max_message_size
         self._read_timeout_s = read_timeout_s
         self._require_auth = require_auth
+        self._response_sent_handler = response_sent_handler
         self._secret: Optional[bytes] = None
         self._listener: Any = None
         self._running = False
@@ -361,10 +363,10 @@ class IpcServer:
                 if self._closing:
                     return
             command = req.get("command")
-            priority_stop = (req.get("message_type") == "stop" or
-                             command in ("stop", "STOP", "stop_all", "stop_task"))
+            priority_control = (req.get("message_type") in ("stop", "core_shutdown") or
+                                 command in ("stop", "STOP", "stop_all", "stop_task"))
             normal_slot = False
-            if not priority_stop:
+            if not priority_control:
                 normal_slot = self._normal_request_semaphore.acquire(blocking=False)
                 if not normal_slot:
                     if req.get("protocol_version") == 1:
@@ -385,6 +387,11 @@ class IpcServer:
                         {"status": "error", "message": "Response too large"}
                     ).encode("utf-8")
                 conn.send_bytes(resp_bytes)
+                if self._response_sent_handler is not None:
+                    try:
+                        self._response_sent_handler(req, resp)
+                    except Exception:
+                        logger.error("IPC response-sent callback failed.")
             except Exception as e:
                 logger.error("Error processing IPC message: %s", e)
                 try:
