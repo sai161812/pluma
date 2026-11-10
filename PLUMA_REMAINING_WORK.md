@@ -4,12 +4,17 @@ Prepared **2026-11-10 (Asia/Calcutta)** from the checkout and evidence below.
 This is a continuation handoff, not a replacement specification or a new claim
 of release readiness. Refresh its cursor and findings as work is completed.
 
-Latest code-only source packet, commit `18e7612`: [E116](docs/completion/e116_package_shutdown_code_only.md)
-prepares a unified Core + WinUI package candidate, offline wheelhouse/install
-flow, and identity-bound graceful Core shutdown. It was prepared after the
-recorded P24 baseline without running tests, builds, installation scripts or
-PLUMA processes. It does not change P24's accepted count (20/140) and does not
-close P28/P29, signing, recovery or exact-build acceptance.
+Latest source packet, local commit
+`ac8a65df7e9b7ca25d18e932cd8272830b63b494`: [E117](docs/completion/e117_interrupted_upgrade_recovery_code_only.md)
+adds transaction-backed interrupted-upgrade rollback and guarded cleanup;
+[E118](docs/completion/e118_offline_rebuild_source_preparation.md) adds
+hash-validated Python and locked local NuGet inputs, exact toolchain checks and
+offline rebuild mode. The earlier [E116](docs/completion/e116_package_shutdown_code_only.md)
+prepares the unified Core + WinUI x64 candidate and identity-bound graceful
+Core shutdown. E116-E118 are local, unpushed and unverified. The owner asked to
+complete source/documentation work while deferring tests/builds. These packets
+do not change P24's accepted count (20/140) or close P24-P33 acceptance,
+signing, recovery or exact-build gates.
 
 ## 1. What is finished
 
@@ -26,6 +31,7 @@ percentage of effort or a guarantee that no implementation fixes remain.
 | Current fact | Checked state |
 | --- | --- |
 | Working checkout | `D:\Workspace\DEVEL\PLUMA`, branch `p12-preparation`; E112 production-source baseline `d3df79308aa806cc0494853e5e3ca9854b2cfc30` |
+| Current source cursor | Local HEAD `ac8a65df7e9b7ca25d18e932cd8272830b63b494`; E117/E118 are committed but unverified; untracked root `uv.lock` is preserved |
 | P23 product baseline | `60414fab69a7958170d810532da4530907744ae2`; E111 adds a bounded FAST file-route purpose fix in `pluma/core/router.py`; E112 changes tests/evidence only |
 | P24 packet evidence | [E110](docs/completion/e110_p24_readonly_corpus_slice.md): 14 cases / 238 checks; [E111](docs/completion/e111_p24_owned_folder_creation.md): 4 additional cases / 247 checks; [E112](docs/completion/e112_p24_owned_mutation_acceptance.md): 2 additional cases / 259 checks. [E113](docs/completion/e113_p24_owned_undo_prepared.md) prepares unverified GC-054/GC-055 test code per owner direction to defer tests. Accepted count remains 20/140; E112's initial cold-run failure remains unexplained. |
 | Remote development head at packet start | `origin/p12-preparation` matched `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; P24 commits require a normal push |
@@ -89,12 +95,12 @@ owning milestone, not silently relabeled complete.
 | --- | --- | --- |
 | R1 / high validation priority, P25 | **Recorded physical failure:** C-02's E94 MME timing trials at gains 0.5 and 1 each passed 0/3, with only 0-5 speech frames; WASAPI refused 16 kHz. Owner explicitly deferred the fresh retest to P25. Earlier E78 success is historical. | Reproduce on the permitted physical microphone, diagnose capture/device/sample-rate/VAD behavior, fix only a demonstrated cause, and pass the existing timing/stream-closure criteria. Preserve the failed evidence and thresholds. See [E94](docs/completion/p19_overlay_acceptance.md) and C-02 in the matrix. |
 | R2 / reliability concern, P24/P27 | **Historical intermittent failures:** P20 folder readback, P21 fixture startup, P22 recovery-dialog/shutdown timing. Latest normal gate and extra folder repetitions pass; E108 does not establish a root cause for every intermittent event. | Recheck through the full-flow harness under original budgets, retaining owned-worker/COM/startup/drain diagnostics if reproduced. Separate product hangs from fixture/readback races. Repair reproduced causes and rerun affected STOP/ownership/native checks; longer timeouts alone are not a fix. [E108](docs/completion/e108_p23_live_hosting.md) retains the failures. |
-| R3 / release blocker, P28 | E116 prepares a Core + WinUI x64 candidate, a pip-resolved offline wheelhouse, isolated NuGet lock/feed inputs, retained archive hashes and self-contained UI output. **No build or artifact inspection was run; code signatures and the authorized signing route remain absent.** | Build and inspect the exact candidate, prove offline inputs and source/build provenance, obtain the authorized signing path, verify signatures and launch/IPC under applicable Windows policy. The unsigned candidate is not a completed PLUMA release. |
-| R4 / high installation risk, P29 | E116 prepares SHA-256 preflight, offline dependency installation, exact Core-version checks, installed UI readback, resident-only Startup and explicit UI Start Menu launch. **No PowerShell or disposable-profile acceptance was run.** | On isolated profiles, verify old/missing Python, corrupt/missing wheel, failed install/import, runtime presence, exact paths, UI/Core handshake, hotkeys/microphone and data separation. Keep models external. |
-| R5 / high cleanup risk, P27/P29 | E116 adds identity-bound authenticated Core shutdown with bounded exit readback; the installer invokes it only for the exact marked Core. Uninstaller refuses while the UI remains open, never force-kills, and checks for residual owned processes. **No shutdown race, PowerShell, upgrade/recovery or disposable-profile acceptance was run.** | Verify exact and same-name unrelated processes, Core drain/ack/exit, open UI refusal, STOP/worker cleanup, interrupted-upgrade recovery and default/custom/purge behavior. Preserve user data. Add rollback/backup recovery if exact-build acceptance shows resume-only recovery insufficient. |
-| R6 / build isolation risk, P28 | E116 keeps Python, PyInstaller, NuGet and UI outputs under a new checkout-contained ignored path, prevents output reuse, and limits MSBuild to one worker. **The builder has not been run; resource use, isolation, archive contents and hashes remain unverified.** | Build once in a fresh output directory and prove existing bundles, reports, environments and unrelated changes remain untouched. Inspect the complete artifact and its retained rebuild inputs. |
+| R3 / release blocker, P28 | E116 prepares the Core + WinUI x64 candidate; E118 adds hash-validated Python wheelhouse inputs and locked local NuGet restore. **No build, offline rebuild or artifact inspection was run; code signatures and the authorized signing route remain absent.** | Build and inspect a fresh exact candidate, rebuild it offline from its retained inputs, prove source/build provenance, obtain the authorized signing path, verify signatures and launch/IPC under applicable Windows policy. The unsigned candidate is not a completed PLUMA release. |
+| R4 / high installation risk, P29 | E116 prepares SHA-256 preflight, offline dependency installation, exact Core-version checks, installed UI readback, resident-only Startup and explicit UI Start Menu launch. E117 adds rollback/recovery source for marked Core/UI payloads and owned shortcuts. **No PowerShell or disposable-profile acceptance was run.** | On isolated profiles, verify clean install, missing/corrupt inputs, old/missing Python, failed install/import, exact paths, UI/Core handshake, hotkeys/microphone, data separation, upgrade migration and recovery at each interruption point. Keep models external. |
+| R5 / high cleanup risk, P27/P29 | E116 adds identity-bound authenticated Core shutdown with bounded exit readback; E117 refuses uncommitted uninstall and validates committed backups. The installer never force-kills and recovery refuses processes still running under the selected install. **No shutdown race, PowerShell, upgrade/recovery or disposable-profile acceptance was run.** | Verify exact and same-name unrelated processes, Core drain/ack/exit, open UI refusal, STOP/worker cleanup, interrupted-upgrade recovery at each boundary, default/custom/purge behavior and cleanup interruption. Preserve user data. |
+| R6 / build isolation risk, P28 | E116 isolates Python, NuGet and UI outputs, prevents output reuse, and limits MSBuild to one worker. E118 adds retained build constraints and offline package-source mode. **The builder has not been run; resource use, isolation, archive contents, hashes and offline repeatability remain unverified.** | Build once in a fresh output directory; inspect the candidate; extract and rebuild offline from its retained inputs; prove source/dependency/output identity and that existing bundles/reports/environments/unrelated changes remain untouched. |
 | R7 / measurement evidence gap, P26 | E115 changes [benchmark/idle_baseline.py](benchmark/idle_baseline.py) to require an explicit target PID for target CPU/RAM, include the current descendant tree, guard PID reuse, and leave GPU attribution and remote module inspection unverified. **No measurement was run; the P26 gate remains open.** | Measure the installed resident and owned worker tree; add/obtain target-attributable GPU and loaded-runtime evidence; verify cold runtimes/capture absence and report missing telemetry as unverified. Measure ten minutes and 50 cycles on the target laptop. Do not infer a product pass from the script alone. |
-| R8 / unexecuted release gates, P24-P31 | **Not established:** E110-E112 cover 20 of 140 unique corpus cases; the remaining 120 cases, physical display/accessibility/device behavior, full target-laptop quality/performance/soak, adversarial installed recovery, signed reproducible release and clean install/upgrade/uninstall remain open. | Continue the ordered roadmap below. Triage E112's initial cold-run cleanup failures before relying on the mutation acceptance. Keep desktop/device/model work in a bounded isolated environment; reuse valid unchanged-source evidence transparently and fix reproduced failures. No claim of zero bugs, instant inference or lifetime compatibility is justified. |
+| R8 / unexecuted release gates, P24-P31 | **Not established:** E110-E112 cover 20 of 140 unique corpus cases; the remaining 120 cases, physical display/accessibility/device behavior, full target-laptop quality/performance/soak, adversarial installed recovery, signed reproducible release and clean install/upgrade/uninstall remain open. | Finish implementation/documentation packets that do not depend on these runs. The owner has deferred tests/builds; when resumed, triage E112's initial cold-run cleanup failures before relying on mutation acceptance. Keep desktop/device/model work isolated; reuse unchanged-source evidence accurately. No claim of zero bugs, instant inference or lifetime compatibility is justified. |
 
 For each new reproduced defect, append: severity, requirement ID, source and
 line, source/build identity, exact safe reproduction, expected/actual result,
@@ -169,9 +175,13 @@ before code changes. This file routes work; it cannot relax requirements.
   Physical/corpus/release checks still require their missing actual execution.
 - Commit each meaningful coherent change and push the authorized branch. Update
   this cursor, `PROJECT_HANDOFF.md`, the live matrix and the milestone evidence.
-  Stop at the named milestone boundary; the next milestone needs its own prompt.
-  Explain genuine owner decisions/blockers with the exact requirement; otherwise
-  finish routine authorized work without repeated questions.
+  The owner has now explicitly authorized continuing across all existing
+  remaining milestones without stopping between packets and asked to defer
+  tests/builds. Do not invent milestones or claim their acceptance gates passed.
+  Finish independent source/documentation work first; keep physical, signing,
+  installation, measurement and test gates visibly open until actually run.
+  Explain only genuine owner-only blockers; otherwise finish routine authorized
+  work without repeated questions.
 
 **Current cursor:**
 
@@ -180,6 +190,13 @@ Last completed milestone: P23; P00-P23 readiness record E109.
 Current milestone: P24, IN PROGRESS, not complete. E113 GC-054/GC-055 test
 code is prepared but unverified at the owner's request; these cases are not
 accepted and the corpus count remains 20/140.
+Current source-only packets: E117 adds interrupted-upgrade recovery and
+transaction cleanup; E118 adds retained-input offline rebuild mode with exact
+toolchain checks. Both are committed but untested at local HEAD
+`ac8a65df7e9b7ca25d18e932cd8272830b63b494`. The builder and
+installer/uninstaller were not invoked. No tests, builds, PowerShell parser or
+PLUMA process was launched. Continue independent source/documentation work
+across P24-P33 while respecting the owner's test/build deferral.
 Accepted packets: E110 at `530dfceaf39d33907f71f261e3f617ecfdab560b`, E111
 source at `f30bb481c484f5b2dd7db5b66c400f38df69347e`, and E112 on production
 source baseline `d3df79308aa806cc0494853e5e3ca9854b2cfc30`.
@@ -198,8 +215,10 @@ No branch switch, merge or main integration is part of P24.
 Recovery: pushed `recovery/pre-remaining-work-20261110-c9f597f` preserves
 `c9f597f0f8ee4e0e0531fb724fff5105a5a3cfec`; E110-E112 are accepted normal
 commits. Code-only checkpoint `4918bf5a70c987f72b9c2f562e58b1809015270f`
-and its documentation commit `408ec8a` are pushed on `p12-preparation`; E113-E115
-remain unverified.
+and its documentation commit `408ec8a` are pushed on `p12-preparation`; E113-E118
+remain unverified. Root `uv.lock` remains untracked and untouched. E116-E118
+source changes are local and unpushed; do not push them as acceptance-complete
+work.
 Do not start P25 until P24 passes or an applicable concrete owner-approved
 limitation is recorded. Do not merge/tag until P32's prerequisites pass.
 ```

@@ -1,31 +1,45 @@
 # PROJECT HANDOFF & TECHNICAL CONTINUITY RECORD
 
-## Current continuation: 2026-11-10, E116 code-only package/shutdown preparation
+## Current continuation: 2026-11-10, E117 interrupted-upgrade recovery source
 
-E116 prepares a unified Windows x64 Core + WinUI package candidate and
-authenticated graceful Core shutdown for install/upgrade/uninstall. The source
-changes are in `build_release.py`, `install.ps1`, `uninstall.ps1`,
-`pluma/core/{host,health_contracts,ipc}.py`, and `pluma/app.py`; README, the requirements matrix and
-remaining-work record describe their limits. See
-[E116](docs/completion/e116_package_shutdown_code_only.md).
-The source checkpoint is commit `18e7612` on `p12-preparation`, above source
-base `3fb26f70be6e8918e915212aa44d02d19cefdac1`; its documentation checkpoint
-is `2bbe3bf`. Both commits are local and unpushed because the requested tests
-and builds were deferred. The last observed `origin/p12-preparation` tracking
-ref was the source base above; no fetch or push was performed.
+The owner clarified that the goal is all remaining project work, not one
+milestone packet, while explicitly deferring tests/builds for now. E116 already
+prepares a unified Windows x64 Core + WinUI candidate and authenticated graceful
+Core shutdown; see [E116](docs/completion/e116_package_shutdown_code_only.md).
+E117 adds transaction-backed install/upgrade rollback, recovery of marked Core,
+UI and shortcut state, and safe committed-backup cleanup in `install.ps1` and
+`uninstall.ps1`; README, the requirements matrix and remaining-work record
+describe the source behavior and its limits. See
+[E117](docs/completion/e117_interrupted_upgrade_recovery_code_only.md).
+E118 adds hash-checked retained Python wheelhouse inputs, pinned build-support
+constraints and a locked local NuGet feed mode in `build_release.py`; see
+[E118](docs/completion/e118_offline_rebuild_source_preparation.md).
 
-The owner asked for code only and no tests yet. No tests, build, installer,
-PowerShell command, resident, or UI process was run. All E116 source is therefore
-unverified. This packet does not close P28/P29 or claim a working verified
-release. Signing, exact-build install/launch/IPC, interrupted-update recovery,
-and uninstall acceptance remain open. The installer never force-kills; it can
-request graceful shutdown of only the identity-matched Core and requires the
-owner to close an open WinUI shell.
+E117/E118 source and packet records are committed locally as
+`ac8a65df7e9b7ca25d18e932cd8272830b63b494` on `p12-preparation`, based on
+`cd62b5e28c6694b4f468f9f3e033ba2377eebc61`. The commit is unpushed and
+unverified. The earlier E116 source/doc commits are also local and unpushed
+because tests/builds were deferred. The last observed `origin/p12-preparation`
+tracking ref was `3fb26f70be6e8918e915212aa44d02d19cefdac1`; no fetch or push was
+performed.
+
+No tests, build, PowerShell parser, installer/uninstaller, resident or UI process
+was run for E117/E118. The recovery and offline rebuild sources are unverified.
+This work does not close
+P28/P29 or establish a working verified release. Authorized signing,
+exact-build install/launch/IPC, interrupted-update recovery and uninstall
+acceptance remain open. The installer never force-kills; it requests graceful
+shutdown of only the identity-matched Core and requires the owner to close an
+open WinUI shell.
 
 P24 remains in progress with 20/140 accepted corpus cases; E112's cold-run
 failure remains unexplained. P25 physical checks, P26 measurements, P27
-adversarial/crash acceptance, P30/P31 review and exact-build gates, P32 gated
-main integration, and P33 release handover remain. No branch change or merge
+adversarial/crash acceptance, P28 signing/build acceptance, P29 disposable
+install/recovery, P30 independent review, P31 exact-build gates, P32 gated main
+integration and P33 release handover remain. Continue across existing source
+and documentation work without creating milestones; do not run tests/builds
+until the owner resumes verification, and do not claim release completion while
+the physical/signing/installed gates are open. No branch change or merge
 occurred. The user's untracked root `uv.lock` remains untouched.
 
 ### E114/E115 and prior P24 checkpoint retained below
