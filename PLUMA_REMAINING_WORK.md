@@ -4,7 +4,7 @@ Prepared **2026-11-10 (Asia/Calcutta)** from the checkout and evidence below.
 This is a continuation handoff, not a replacement specification or a new claim
 of release readiness. Refresh its cursor and findings as work is completed.
 
-Latest code-only source packet: [E116](docs/completion/e116_package_shutdown_code_only.md)
+Latest code-only source packet, commit `18e7612`: [E116](docs/completion/e116_package_shutdown_code_only.md)
 prepares a unified Core + WinUI package candidate, offline wheelhouse/install
 flow, and identity-bound graceful Core shutdown. It was prepared after the
 recorded P24 baseline without running tests, builds, installation scripts or

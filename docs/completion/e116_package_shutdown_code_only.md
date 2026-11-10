@@ -1,7 +1,8 @@
 # E116 — Unified package and graceful Core shutdown source preparation
 
 Date: 2026-11-10 (Asia/Calcutta); branch: `p12-preparation`; source base:
-`3fb26f70be6e8918e915212aa44d02d19cefdac1`.
+`3fb26f70be6e8918e915212aa44d02d19cefdac1`; source commit:
+`18e7612`.
 Status: **SOURCE PREPARED ONLY — NO TESTS, BUILDS, INSTALLS OR PRODUCT PROCESSES RUN**
 
 ## Code prepared
@@ -41,6 +42,7 @@ archive creation, bundle integrity, offline dependency
 resolution, graceful IPC shutdown, native launch, upgrade, recovery and
 uninstall are **unverified**. This document records implementation intent, not
 acceptance evidence.
+`git diff --cached --check` passed before the source commit.
 
 Remaining blockers include the authorized Windows signing route; exact-build
 package/install/upgrade/recovery acceptance; UI/Core launch and IPC readback;

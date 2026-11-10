@@ -8,6 +8,8 @@ changes are in `build_release.py`, `install.ps1`, `uninstall.ps1`,
 `pluma/core/{host,health_contracts,ipc}.py`, and `pluma/app.py`; README, the requirements matrix and
 remaining-work record describe their limits. See
 [E116](docs/completion/e116_package_shutdown_code_only.md).
+The source checkpoint is commit `18e7612` on `p12-preparation`, above source
+base `3fb26f70be6e8918e915212aa44d02d19cefdac1`.
 
 The owner asked for code only and no tests yet. No tests, build, installer,
 PowerShell command, resident, or UI process was run. All E116 source is therefore
