@@ -9,7 +9,10 @@ changes are in `build_release.py`, `install.ps1`, `uninstall.ps1`,
 remaining-work record describe their limits. See
 [E116](docs/completion/e116_package_shutdown_code_only.md).
 The source checkpoint is commit `18e7612` on `p12-preparation`, above source
-base `3fb26f70be6e8918e915212aa44d02d19cefdac1`.
+base `3fb26f70be6e8918e915212aa44d02d19cefdac1`; its documentation checkpoint
+is `2bbe3bf`. Both commits are local and unpushed because the requested tests
+and builds were deferred. The last observed `origin/p12-preparation` tracking
+ref was the source base above; no fetch or push was performed.
 
 The owner asked for code only and no tests yet. No tests, build, installer,
 PowerShell command, resident, or UI process was run. All E116 source is therefore
