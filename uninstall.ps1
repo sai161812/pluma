@@ -66,6 +66,44 @@ function Assert-NoReparsePoints {
     }
 }
 
+function Remove-VerifiedTransactionBackup {
+    param ([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return }
+    $rootItem = Get-Item -LiteralPath $Path -Force
+    if (($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'The PLUMA transaction backup is a reparse point; refusing removal.'
+    }
+    $metadataPath = Join-Path $Path 'transaction.json'
+    if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+        if (@(Get-ChildItem -LiteralPath $Path -Force).Count -eq 0) {
+            Remove-Item -LiteralPath $Path -Force
+            return
+        }
+        throw 'PLUMA transaction metadata is missing while backup files remain; refusing removal.'
+    }
+    $allowed = @('transaction.json', 'previous-install.json', 'venv', 'ui', 'previous-startup.lnk', 'previous-ui.lnk')
+    foreach ($item in Get-ChildItem -LiteralPath $Path -Force) {
+        if ($item.Name -notin $allowed) {
+            throw "An unexpected file is present in the PLUMA transaction backup; preserving it: $($item.FullName)"
+        }
+        if ($item.Name -in @('venv', 'ui')) {
+            if (-not $item.PSIsContainer) { throw "The recorded PLUMA payload backup is not a directory: $($item.FullName)" }
+            Assert-NoReparsePoints -Path $item.FullName
+            Remove-Item -LiteralPath $item.FullName -Recurse -Force
+        } elseif ($item.Name -ne 'transaction.json') {
+            if ($item.PSIsContainer -or (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+                throw "A PLUMA transaction record is not a regular file: $($item.FullName)"
+            }
+            Remove-Item -LiteralPath $item.FullName -Force
+        }
+    }
+    Remove-Item -LiteralPath $metadataPath -Force
+    if (@(Get-ChildItem -LiteralPath $Path -Force).Count -ne 0) {
+        throw 'The PLUMA transaction backup contains unexpected files after removal.'
+    }
+    Remove-Item -LiteralPath $Path -Force
+}
+
 try {
     $targetPath = Get-CanonicalPath -Path $TargetDir
     Assert-NoReparseAncestors -Path $targetPath
@@ -94,6 +132,43 @@ try {
     if ($manifest.schema_version -ne 1 -or
         (Get-CanonicalPath -Path $manifest.install_root) -ne $targetPath) {
         throw 'The PLUMA ownership marker is invalid or names a different install path.'
+    }
+    if ($manifest.state -eq 'installing') {
+        throw 'A PLUMA upgrade is incomplete. Rerun the matching installer to restore the previous application before uninstalling.'
+    }
+    $transactionDir = $null
+    if (($manifestProperties -contains 'transaction_id') -and $manifest.transaction_id) {
+        if ([string]$manifest.transaction_id -notmatch '\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z') {
+            throw 'The PLUMA ownership marker has an invalid upgrade transaction identifier.'
+        }
+        $transactionDir = Join-Path $targetPath ".pluma-upgrade-$($manifest.transaction_id)"
+        if (-not (Test-PathWithin -Parent $targetPath -Child $transactionDir)) {
+            throw 'The PLUMA upgrade backup resolves outside the selected install directory.'
+        }
+        if (Test-Path -LiteralPath $transactionDir -PathType Container) {
+            $transactionItem = Get-Item -LiteralPath $transactionDir -Force
+            if (($transactionItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'The PLUMA upgrade backup directory is a reparse point; refusing uninstall.'
+            }
+            Assert-NoReparsePoints -Path $transactionDir
+            $transactionManifestPath = Join-Path $transactionDir 'transaction.json'
+            if (-not (Test-Path -LiteralPath $transactionManifestPath -PathType Leaf)) {
+                if (@(Get-ChildItem -LiteralPath $transactionDir -Force).Count -ne 0) {
+                    throw 'The PLUMA upgrade backup metadata is missing; refusing uninstall.'
+                }
+            } else {
+                $transactionManifest = Get-Content -LiteralPath $transactionManifestPath -Raw | ConvertFrom-Json
+                if ($transactionManifest.schema_version -ne 1 -or
+                    [string]$transactionManifest.transaction_id -ne [string]$manifest.transaction_id -or
+                    (Get-CanonicalPath -Path $transactionManifest.install_root) -ne $targetPath -or
+                    $transactionManifest.phase -ne 'ready_to_commit' -or
+                    $manifest.state -notin @('installed', 'application_removed_data_preserved')) {
+                    throw 'The PLUMA upgrade backup is not a committed transaction; refusing uninstall.'
+                }
+            }
+        } else {
+            $transactionDir = $null
+        }
     }
     $venvPath = Join-Path $targetPath 'venv'
     $venvPython = Get-CanonicalPath -Path (Join-Path $venvPath 'Scripts\python.exe')
@@ -320,6 +395,12 @@ try {
         $savedManifest = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
         if ($savedManifest.state -ne 'application_removed_data_preserved') {
             throw 'Uninstall state marker did not read back with the expected state.'
+        }
+        if ($transactionDir -and (Test-Path -LiteralPath $transactionDir -PathType Container)) {
+            Remove-VerifiedTransactionBackup -Path $transactionDir
+            if (Test-Path -LiteralPath $transactionDir) {
+                throw 'The verified prior PLUMA payload backup remained after removal.'
+            }
         }
         Write-Host "Removed PLUMA's Core and UI application files. User data was preserved at $targetPath." -ForegroundColor Yellow
     }

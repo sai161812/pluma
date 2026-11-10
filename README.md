@@ -200,7 +200,7 @@ pluma --debug
 
 The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR through ONNX Runtime when the OCR extra is installed. Their model files/runtime packages are not vendored in this repository and must be installed before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions. Install voice capture and STT support with `python -m pip install -e ".[media,stt]"`, then place a whisper.cpp GGML model at `%LOCALAPPDATA%\Pluma\models\whisper\ggml-base.en.bin` or set `voice.model_path` to its local path. PLUMA does not download model files automatically.
 
-The Windows x64 package candidate contains the PLUMA Core wheel and its resolved runtime wheelhouse, the self-contained WinUI publish, configuration, installer scripts, retained NuGet lock/feed inputs, and a SHA-256 manifest. Extract the bundle and run `install.ps1` from its root. The Core is the only startup entry; launch the WinUI shell explicitly from **Start Menu → PLUMA → PLUMA UI**. The installer validates package hashes, installs Python dependencies offline, and preserves user data on normal uninstall. Models remain external and are never downloaded automatically.
+The Windows x64 package candidate contains the PLUMA Core wheel and its resolved runtime wheelhouse, the self-contained WinUI publish, configuration, installer scripts, retained NuGet lock/feed inputs, and a SHA-256 manifest. Extract the bundle and run `install.ps1` from its root. The Core is the only startup entry; launch the WinUI shell explicitly from **Start Menu → PLUMA → PLUMA UI**. The installer validates package hashes, installs Python dependencies offline, and preserves user data on normal uninstall. The current source also records marked Core/UI/shortcut backups for upgrades and attempts owned rollback after an interrupted update; this recovery path has not yet been exercised on a disposable Windows profile. If the install marker says `installing`, rerun the matching installer to restore or finish recovery; the uninstaller will refuse that incomplete state. Models remain external and are never downloaded automatically.
 
 ```powershell
 .\install.ps1
@@ -213,6 +213,14 @@ python build_release.py
 ```
 
 The builder publishes the x64 WinUI shell and uses one MSBuild worker. It writes `output/release-<UTC timestamp>-<unique id>/pluma-core-winui-windows-x64-candidate.zip` into a new ignored directory and does not clean the checkout. The package is **unsigned and unverified** until the authorized signing path and exact-build install, launch, IPC, recovery, and uninstall gates pass; do not treat the candidate as a production release.
+
+After a candidate produced by the current builder has been retained and extracted, its hash-locked Python wheelhouse and hierarchical NuGet package feed can be used for an offline rebuild from a matching PLUMA source checkout:
+
+```powershell
+python build_release.py --offline-inputs D:\path\to\extracted-candidate
+```
+
+This mode requires a clean tracked checkout at the exact source commit and matching Python/pip/.NET versions recorded by the candidate, validates the candidate manifest and wheel hashes before creating output, then disables Python package indexes and uses locked local NuGet packages. It has not yet been exercised; an earlier E116 candidate does not contain the E118 build constraints and hierarchical NuGet feed required by this mode.
 
 ## Testing and release verification
 

@@ -13,6 +13,8 @@ param (
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$script:InstallTransactionPrepared = $false
+$script:InstallTransactionId = $null
 
 function Invoke-NativeCommand {
     param (
@@ -134,6 +136,387 @@ function Assert-PackageIntegrity {
     }
 }
 
+function Write-JsonAtomically {
+    param (
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][object]$Value
+    )
+    $temporaryPath = "$Path.$([guid]::NewGuid().ToString('N')).tmp"
+    $json = ConvertTo-Json -InputObject $Value -Depth 10
+    [System.IO.File]::WriteAllText($temporaryPath, $json, [System.Text.UTF8Encoding]::new($false))
+    try {
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            [System.IO.File]::Replace($temporaryPath, $Path, $null)
+        } else {
+            [System.IO.File]::Move($temporaryPath, $Path)
+        }
+    } finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force
+        }
+    }
+}
+
+function Get-InstallTransactionPath {
+    param (
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$TransactionId
+    )
+    if ($TransactionId -notmatch '\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z') {
+        throw 'The PLUMA install transaction identifier is malformed.'
+    }
+    $path = Join-Path $Root ".pluma-upgrade-$TransactionId"
+    if (-not (Test-PathWithin -Parent $Root -Child $path)) {
+        throw 'The PLUMA install transaction resolved outside its installation directory.'
+    }
+    return $path
+}
+
+function Read-InstallTransaction {
+    param (
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$TransactionId
+    )
+    $transactionPath = Get-InstallTransactionPath -Root $Root -TransactionId $TransactionId
+    if (-not (Test-Path -LiteralPath $transactionPath -PathType Container)) {
+        return $null
+    }
+    Assert-NoReparseAncestors -Path $transactionPath
+    Assert-NoReparseTree -Path $transactionPath
+    $metadataPath = Join-Path $transactionPath 'transaction.json'
+    if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+        if (@(Get-ChildItem -LiteralPath $transactionPath -Force).Count -eq 0) { return $null }
+        throw 'The PLUMA upgrade transaction metadata is missing; recovery stopped without changing files.'
+    }
+    $metadataItem = Get-Item -LiteralPath $metadataPath -Force
+    if (($metadataItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'The PLUMA upgrade transaction metadata is a reparse point.'
+    }
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    if ($metadata.schema_version -ne 1 -or
+        [string]$metadata.transaction_id -ne $TransactionId -or
+        (Get-CanonicalPath -Path $metadata.install_root) -ne (Get-CanonicalPath -Path $Root) -or
+        $metadata.phase -notin @('prepared', 'restoring', 'restored', 'ready_to_commit')) {
+        throw 'The PLUMA upgrade transaction metadata is invalid or names a different installation.'
+    }
+    return $metadata
+}
+
+function Remove-InstallTransactionDirectory {
+    param (
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$TransactionId,
+        [Parameter(Mandatory = $true)][string]$ExpectedPhase
+    )
+    $transactionPath = Get-InstallTransactionPath -Root $Root -TransactionId $TransactionId
+    if (-not (Test-Path -LiteralPath $transactionPath -PathType Container)) { return }
+    $transactionItem = Get-Item -LiteralPath $transactionPath -Force
+    if (($transactionItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'The PLUMA transaction directory is a reparse point; preserving it.'
+    }
+    $metadataPath = Join-Path $transactionPath 'transaction.json'
+    if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+        if (@(Get-ChildItem -LiteralPath $transactionPath -Force).Count -eq 0) {
+            Remove-Item -LiteralPath $transactionPath -Force
+            return
+        }
+        throw 'PLUMA transaction metadata is missing while transaction files remain; preserving them.'
+    }
+    $metadata = Read-InstallTransaction -Root $Root -TransactionId $TransactionId
+    if (-not $metadata -or $metadata.phase -ne $ExpectedPhase) {
+        throw 'The PLUMA transaction cleanup phase does not match its recorded ownership state.'
+    }
+    $allowedNames = @('transaction.json', 'previous-install.json', 'venv', 'ui', 'previous-startup.lnk', 'previous-ui.lnk')
+    foreach ($child in Get-ChildItem -LiteralPath $transactionPath -Force) {
+        if ($child.Name -notin $allowedNames) {
+            throw "An unexpected file is present in the PLUMA transaction backup; preserving it: $($child.FullName)"
+        }
+        if ($child.Name -in @('venv', 'ui')) {
+            if ($ExpectedPhase -ne 'ready_to_commit') {
+                throw "An application payload remains in a $ExpectedPhase transaction; preserving it: $($child.FullName)"
+            }
+            Assert-NoReparseTree -Path $child.FullName
+            Remove-Item -LiteralPath $child.FullName -Recurse -Force
+        } elseif ($child.Name -ne 'transaction.json') {
+            if (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 -or $child.PSIsContainer) {
+                throw "A PLUMA transaction record is not a regular file; preserving it: $($child.FullName)"
+            }
+            Remove-Item -LiteralPath $child.FullName -Force
+        }
+    }
+    Remove-Item -LiteralPath $metadataPath -Force
+    if (@(Get-ChildItem -LiteralPath $transactionPath -Force).Count -ne 0) {
+        throw 'The PLUMA transaction directory contains unexpected files after cleanup.'
+    }
+    Remove-Item -LiteralPath $transactionPath -Force
+}
+
+function Assert-NoInstallProcesses {
+    param ([Parameter(Mandatory = $true)][string]$Root)
+    $processes = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='pluma.exe' OR Name='python.exe' OR Name='PLUMA.UI.exe'" -ErrorAction Stop)
+    foreach ($process in $processes) {
+        if ([string]::IsNullOrWhiteSpace([string]$process.ExecutablePath)) {
+            if ($process.Name -in @('pluma.exe', 'python.exe', 'PLUMA.UI.exe')) {
+                throw "$($process.Name) PID $($process.ProcessId) has no readable path; recovery refused while ownership is uncertain."
+            }
+        }
+        if (Test-PathWithin -Parent $Root -Child $process.ExecutablePath) {
+            throw "A PLUMA installation process is still running (PID $($process.ProcessId)); close it and retry recovery. No process was terminated."
+        }
+    }
+}
+
+function Restore-InstallShortcut {
+    param (
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [Parameter(Mandatory = $true)][bool]$HadPrevious,
+        [Parameter(Mandatory = $true)][string]$ExpectedTarget
+    )
+    $parentPath = Split-Path -Parent $Path
+    if ($HadPrevious -and -not (Test-Path -LiteralPath $parentPath -PathType Container)) {
+        New-Item -ItemType Directory -Path $parentPath | Out-Null
+    }
+    Assert-NoReparseAncestors -Path $Path
+    if (Test-Path -LiteralPath $Path) {
+        $item = Get-Item -LiteralPath $Path -Force
+        if (-not $item.PSIsContainer -and
+            (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+            throw "Refusing to restore through a reparse-point shortcut: $Path"
+        }
+        if ($item.PSIsContainer) { throw "A directory now occupies the PLUMA shortcut path; preserving it: $Path" }
+        $shell = New-Object -ComObject WScript.Shell
+        $current = $shell.CreateShortcut($Path)
+        if ([string]::IsNullOrWhiteSpace($current.TargetPath) -or
+            (Get-CanonicalPath -Path $current.TargetPath) -ne (Get-CanonicalPath -Path $ExpectedTarget)) {
+            Write-Warning "A shortcut changed during PLUMA installation and now belongs to another target; it was preserved: $Path"
+            return
+        }
+    }
+    if ($HadPrevious) {
+        if (-not (Test-Path -LiteralPath $BackupPath -PathType Leaf)) {
+            throw "The original PLUMA shortcut backup is missing: $BackupPath"
+        }
+        $backupItem = Get-Item -LiteralPath $BackupPath -Force
+        if (($backupItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The original PLUMA shortcut backup is a reparse point.'
+        }
+        Copy-Item -LiteralPath $BackupPath -Destination $Path -Force
+    } elseif (Test-Path -LiteralPath $Path -PathType Leaf) {
+        Remove-Item -LiteralPath $Path -Force
+    }
+}
+
+function Restore-InstallTransaction {
+    param (
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$ManifestPath,
+        [Parameter(Mandatory = $true)][object]$Manifest
+    )
+    $properties = @($Manifest.PSObject.Properties.Name)
+    if ($Manifest.state -ne 'installing' -or $properties -notcontains 'transaction_id' -or
+        $properties -notcontains 'had_previous_manifest' -or $properties -notcontains 'had_venv' -or
+        $properties -notcontains 'had_ui') {
+        throw 'This interrupted installation predates transaction recovery metadata. Files were preserved; do not remove the target manually.'
+    }
+    $transactionId = [string]$Manifest.transaction_id
+    $transactionPath = Get-InstallTransactionPath -Root $Root -TransactionId $transactionId
+    $metadata = Read-InstallTransaction -Root $Root -TransactionId $transactionId
+    if (-not $metadata -or
+        [bool]$metadata.had_previous_manifest -ne [bool]$Manifest.had_previous_manifest -or
+        [bool]$metadata.had_venv -ne [bool]$Manifest.had_venv -or
+        [bool]$metadata.had_ui -ne [bool]$Manifest.had_ui) {
+        throw 'The PLUMA upgrade backup does not match its ownership marker; recovery stopped without deleting files.'
+    }
+    $metadataProperties = @($metadata.PSObject.Properties.Name)
+    if (($metadataProperties -notcontains 'had_startup_shortcut') -or
+        ($metadataProperties -notcontains 'had_ui_shortcut') -or
+        ($metadataProperties -notcontains 'had_ui_shortcut_folder') -or
+        ($metadataProperties -notcontains 'startup_shortcut_path') -or
+        ($metadataProperties -notcontains 'ui_shortcut_path')) {
+        throw 'The PLUMA upgrade backup lacks shortcut recovery ownership; files were preserved.'
+    }
+    $startupFolder = [Environment]::GetFolderPath('Startup')
+    $programsFolder = [Environment]::GetFolderPath('Programs')
+    if ([string]::IsNullOrWhiteSpace($startupFolder) -or [string]::IsNullOrWhiteSpace($programsFolder) -or
+        (Get-CanonicalPath -Path $metadata.startup_shortcut_path) -ne
+            (Get-CanonicalPath -Path (Join-Path $startupFolder 'PLUMA.lnk')) -or
+        (Get-CanonicalPath -Path $metadata.ui_shortcut_path) -ne
+            (Get-CanonicalPath -Path (Join-Path (Join-Path $programsFolder 'PLUMA') 'PLUMA UI.lnk'))) {
+        throw 'The recorded PLUMA shortcut paths do not match the current-user Windows locations; recovery stopped.'
+    }
+    Assert-NoInstallProcesses -Root $Root
+
+    $metadata.phase = 'restoring'
+    Write-JsonAtomically -Path (Join-Path $transactionPath 'transaction.json') -Value $metadata
+    foreach ($payload in @(
+        [pscustomobject]@{ Name = 'venv'; HadPrevious = [bool]$metadata.had_venv },
+        [pscustomobject]@{ Name = 'ui'; HadPrevious = [bool]$metadata.had_ui }
+    )) {
+        $destination = Join-Path $Root $payload.Name
+        $backup = Join-Path $transactionPath $payload.Name
+        if (Test-Path -LiteralPath $backup) {
+            Assert-NoReparseTree -Path $backup
+            if (Test-Path -LiteralPath $destination) {
+                Assert-NoReparseTree -Path $destination
+                Remove-Item -LiteralPath $destination -Recurse -Force
+            }
+            Move-Item -LiteralPath $backup -Destination $destination
+        } elseif ($payload.HadPrevious) {
+            if (-not (Test-Path -LiteralPath $destination -PathType Container)) {
+                throw "The previous PLUMA $($payload.Name) payload is missing from both its install path and recovery backup."
+            }
+        } elseif (Test-Path -LiteralPath $destination) {
+            Assert-NoReparseTree -Path $destination
+            Remove-Item -LiteralPath $destination -Recurse -Force
+        }
+    }
+
+    Restore-InstallShortcut -Path $metadata.startup_shortcut_path `
+        -BackupPath (Join-Path $transactionPath 'previous-startup.lnk') `
+        -HadPrevious ([bool]$metadata.had_startup_shortcut) `
+        -ExpectedTarget (Join-Path (Join-Path $Root 'venv') 'Scripts\pluma.exe')
+    Restore-InstallShortcut -Path $metadata.ui_shortcut_path `
+        -BackupPath (Join-Path $transactionPath 'previous-ui.lnk') `
+        -HadPrevious ([bool]$metadata.had_ui_shortcut) `
+        -ExpectedTarget (Join-Path (Join-Path $Root 'ui') 'PLUMA.UI.exe')
+    $uiShortcutFolder = Split-Path -Parent $metadata.ui_shortcut_path
+    if (-not [bool]$metadata.had_ui_shortcut_folder -and
+        (Test-Path -LiteralPath $uiShortcutFolder -PathType Container)) {
+        $folderItem = Get-Item -LiteralPath $uiShortcutFolder -Force
+        if (($folderItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The PLUMA UI shortcut folder became a reparse point during installation; preserving it.'
+        }
+        if (@(Get-ChildItem -LiteralPath $uiShortcutFolder -Force).Count -eq 0) {
+            Remove-Item -LiteralPath $uiShortcutFolder -Force
+        }
+    }
+
+    if ([bool]$metadata.had_previous_manifest) {
+        $previousManifestPath = Join-Path $transactionPath 'previous-install.json'
+        if (-not (Test-Path -LiteralPath $previousManifestPath -PathType Leaf)) {
+            throw 'The previous PLUMA ownership marker is missing from the recovery backup.'
+        }
+        $previousItem = Get-Item -LiteralPath $previousManifestPath -Force
+        if (($previousItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The previous PLUMA ownership marker is a reparse point.'
+        }
+        $previousManifest = Get-Content -LiteralPath $previousManifestPath -Raw | ConvertFrom-Json
+        $previousProperties = @($previousManifest.PSObject.Properties.Name)
+        $expectedPreviousExe = Get-CanonicalPath -Path (Join-Path $Root 'venv\Scripts\pluma.exe')
+        if ($previousManifest.schema_version -ne 1 -or
+            $previousManifest.state -notin @('installed', 'application_removed_data_preserved') -or
+            $previousProperties -notcontains 'install_id' -or
+            [string]::IsNullOrWhiteSpace([string]$previousManifest.install_id) -or
+            (Get-CanonicalPath -Path $previousManifest.install_root) -ne $Root -or
+            (Get-CanonicalPath -Path $previousManifest.executable) -ne $expectedPreviousExe) {
+            throw 'The previous PLUMA ownership marker is invalid or names a different installation; recovery stopped.'
+        }
+        $metadata.phase = 'restored'
+        Write-JsonAtomically -Path (Join-Path $transactionPath 'transaction.json') -Value $metadata
+        Write-JsonAtomically -Path $ManifestPath -Value $previousManifest
+        Remove-InstallTransactionDirectory -Root $Root -TransactionId $transactionId -ExpectedPhase 'restored'
+        Write-Host 'The previous PLUMA installation was restored after the interrupted upgrade.' -ForegroundColor Yellow
+        return
+    }
+
+    $Manifest.state = 'rolled_back'
+    $Manifest.updated_at_utc = [DateTime]::UtcNow.ToString('o')
+    $metadata.phase = 'restored'
+    Write-JsonAtomically -Path (Join-Path $transactionPath 'transaction.json') -Value $metadata
+    Write-JsonAtomically -Path $ManifestPath -Value $Manifest
+    Write-Host 'The incomplete first installation was rolled back. Rerun the installer to continue.' -ForegroundColor Yellow
+}
+
+function Remove-CompletedInstallTransaction {
+    param (
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][object]$Manifest
+    )
+    $properties = @($Manifest.PSObject.Properties.Name)
+    if ($properties -notcontains 'transaction_id' -or -not $Manifest.transaction_id) { return }
+    $transactionPath = Get-InstallTransactionPath -Root $Root -TransactionId ([string]$Manifest.transaction_id)
+    if (-not (Test-Path -LiteralPath $transactionPath -PathType Container)) { return }
+    $metadata = Read-InstallTransaction -Root $Root -TransactionId ([string]$Manifest.transaction_id)
+    if (-not $metadata) {
+        Remove-InstallTransactionDirectory -Root $Root -TransactionId ([string]$Manifest.transaction_id) -ExpectedPhase 'ready_to_commit'
+        return
+    }
+    if (-not $metadata -or $Manifest.state -ne 'installed' -or $metadata.phase -ne 'ready_to_commit') {
+        throw 'An uncommitted PLUMA upgrade backup is present; the installer will not remove it.'
+    }
+    Remove-InstallTransactionDirectory -Root $Root -TransactionId ([string]$Manifest.transaction_id) -ExpectedPhase 'ready_to_commit'
+}
+
+function Resolve-StaleInstallTransactions {
+    param (
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter()][object]$Manifest
+    )
+    $activeId = if ($Manifest -and $Manifest.transaction_id) { [string]$Manifest.transaction_id } else { '' }
+    foreach ($directory in Get-ChildItem -LiteralPath $Root -Directory -Force -Filter '.pluma-upgrade-*' -ErrorAction SilentlyContinue) {
+        if ($directory.Name -notmatch '\A\.pluma-upgrade-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\z') {
+            throw "An unrecognized PLUMA recovery directory is present; preserving it: $($directory.FullName)"
+        }
+        $transactionId = $Matches[1]
+        $metadata = Read-InstallTransaction -Root $Root -TransactionId $transactionId
+        if (-not $metadata) {
+            Remove-InstallTransactionDirectory -Root $Root -TransactionId $transactionId -ExpectedPhase 'prepared'
+            continue
+        }
+        if ($transactionId -eq $activeId) {
+            if ($Manifest.state -eq 'installing') { continue }
+            if ($Manifest.state -in @('installed', 'application_removed_data_preserved') -and
+                $metadata.phase -eq 'ready_to_commit') {
+                Remove-InstallTransactionDirectory -Root $Root -TransactionId $transactionId -ExpectedPhase 'ready_to_commit'
+                continue
+            }
+            if ($Manifest.state -eq 'rolled_back' -and $metadata.phase -eq 'restored') {
+                Remove-InstallTransactionDirectory -Root $Root -TransactionId $transactionId -ExpectedPhase 'restored'
+                continue
+            }
+            throw 'The PLUMA ownership marker and recovery transaction disagree; preserving both.'
+        }
+        if ($metadata.phase -eq 'restored') {
+            Remove-InstallTransactionDirectory -Root $Root -TransactionId $transactionId -ExpectedPhase 'restored'
+            continue
+        }
+        if ($metadata.phase -eq 'prepared' -and
+            -not (Test-Path -LiteralPath (Join-Path $directory.FullName 'venv')) -and
+            -not (Test-Path -LiteralPath (Join-Path $directory.FullName 'ui'))) {
+            Remove-InstallTransactionDirectory -Root $Root -TransactionId $transactionId -ExpectedPhase 'prepared'
+            continue
+        }
+        throw "An incomplete PLUMA recovery directory is not linked to the ownership marker; preserving it: $($directory.FullName)"
+    }
+}
+
+function Complete-RolledBackInstall {
+    param (
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$ManifestPath,
+        [Parameter(Mandatory = $true)][object]$Manifest
+    )
+    if ($Manifest.state -ne 'rolled_back' -or -not $Manifest.transaction_id) {
+        throw 'The PLUMA rollback marker is invalid; preserving installation files.'
+    }
+    $transactionPath = Get-InstallTransactionPath -Root $Root -TransactionId ([string]$Manifest.transaction_id)
+    $metadata = Read-InstallTransaction -Root $Root -TransactionId ([string]$Manifest.transaction_id)
+    if ($metadata -and $metadata.phase -ne 'restored') {
+        throw 'The PLUMA first-install rollback is incomplete; preserving files and recovery metadata.'
+    }
+    if (Test-Path -LiteralPath $transactionPath -PathType Container) {
+        Remove-InstallTransactionDirectory -Root $Root -TransactionId ([string]$Manifest.transaction_id) -ExpectedPhase 'restored'
+    }
+    if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) {
+        $marker = Get-Item -LiteralPath $ManifestPath -Force
+        if (($marker.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The PLUMA rollback marker is a reparse point; preserving it.'
+        }
+        Remove-Item -LiteralPath $ManifestPath -Force
+    }
+}
+
 try {
     Write-Host 'PLUMA Windows user installation' -ForegroundColor Cyan
 
@@ -189,11 +572,26 @@ try {
 
     $installManifestPath = Join-Path $targetPath '.pluma-install.json'
     if (Test-Path -LiteralPath $targetPath) {
+        $recoveryManifest = $null
         if (Test-Path -LiteralPath $installManifestPath -PathType Leaf) {
             $markerItem = Get-Item -LiteralPath $installManifestPath -Force
             if (($markerItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
                 throw 'The existing PLUMA ownership marker is a reparse point.'
             }
+            $recoveryManifest = Get-Content -LiteralPath $installManifestPath -Raw | ConvertFrom-Json
+            if ($recoveryManifest.state -eq 'installing') {
+                Restore-InstallTransaction -Root $targetPath -ManifestPath $installManifestPath -Manifest $recoveryManifest
+                $recoveryManifest = Get-Content -LiteralPath $installManifestPath -Raw | ConvertFrom-Json
+            }
+            if ($recoveryManifest.state -eq 'rolled_back') {
+                Complete-RolledBackInstall -Root $targetPath -ManifestPath $installManifestPath -Manifest $recoveryManifest
+                $recoveryManifest = $null
+            } elseif ($recoveryManifest.state -eq 'installed') {
+                Remove-CompletedInstallTransaction -Root $targetPath -Manifest $recoveryManifest
+            }
+            Resolve-StaleInstallTransactions -Root $targetPath -Manifest $recoveryManifest
+        } else {
+            Resolve-StaleInstallTransactions -Root $targetPath -Manifest $null
         }
         $existingItems = @(Get-ChildItem -LiteralPath $targetPath -Force)
         if ($existingItems.Count -gt 0 -and -not (Test-Path -LiteralPath $installManifestPath -PathType Leaf)) {
@@ -271,6 +669,29 @@ try {
             (Get-CanonicalPath -Path $existingUiShortcut.TargetPath) -ne (Get-CanonicalPath -Path $uiExe)) {
             throw "A different application already owns $uiShortcutPath; it was left unchanged."
         }
+    }
+    if (Test-Path -LiteralPath $uiShortcutPath -PathType Container) {
+        throw "A directory occupies the PLUMA UI shortcut path; it was preserved: $uiShortcutPath"
+    }
+    $startupFolder = [Environment]::GetFolderPath('Startup')
+    if ([string]::IsNullOrWhiteSpace($startupFolder)) {
+        throw 'Windows did not provide a Startup folder path; installation was not published.'
+    }
+    $shortcutPath = Join-Path $startupFolder 'PLUMA.lnk'
+    Assert-NoReparseAncestors -Path $shortcutPath
+    if (Test-Path -LiteralPath $shortcutPath -PathType Leaf) {
+        $shortcutItem = Get-Item -LiteralPath $shortcutPath -Force
+        if (($shortcutItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to replace a reparse-point startup shortcut: $shortcutPath"
+        }
+        $existingShortcut = $shell.CreateShortcut($shortcutPath)
+        if ([string]::IsNullOrWhiteSpace($existingShortcut.TargetPath) -or
+            (Get-CanonicalPath -Path $existingShortcut.TargetPath) -ne (Get-CanonicalPath -Path $plumaExe)) {
+            throw "A different application already owns $shortcutPath; it was left unchanged."
+        }
+    }
+    if (Test-Path -LiteralPath $shortcutPath -PathType Container) {
+        throw "A directory occupies the PLUMA startup shortcut path; it was preserved: $shortcutPath"
     }
 
     # Upgrade only the exact marked Core through authenticated graceful shutdown.
@@ -363,16 +784,52 @@ try {
         ui_executable = $uiExe
         ui_executable_sha256 = ''
         ui_shortcut = $uiShortcutPath
+        transaction_id = ''
+        had_previous_manifest = [bool](Test-Path -LiteralPath $installManifestPath -PathType Leaf)
+        had_venv = [bool](Test-Path -LiteralPath $venvDir -PathType Container)
+        had_ui = [bool](Test-Path -LiteralPath $uiDir -PathType Container)
         state = 'installing'
         updated_at_utc = [DateTime]::UtcNow.ToString('o')
     }
-    $manifestTemp = "$installManifestPath.$([guid]::NewGuid().ToString('N')).tmp"
-    [System.IO.File]::WriteAllText(
-        $manifestTemp,
-        ($manifest | ConvertTo-Json -Depth 4),
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    Move-Item -LiteralPath $manifestTemp -Destination $installManifestPath -Force
+    if ($manifest.had_venv) { Assert-NoReparseTree -Path $venvDir }
+    if ($manifest.had_ui) { Assert-NoReparseTree -Path $uiDir }
+    $transactionId = [guid]::NewGuid().ToString('D')
+    $transactionPath = Get-InstallTransactionPath -Root $targetPath -TransactionId $transactionId
+    if (Test-Path -LiteralPath $transactionPath) {
+        throw 'A PLUMA recovery transaction path collision occurred; no installation files were changed.'
+    }
+    New-Item -ItemType Directory -Path $transactionPath | Out-Null
+    $script:InstallTransactionId = $transactionId
+    $transactionMetadata = [ordered]@{
+        schema_version = 1
+        transaction_id = $transactionId
+        install_root = $targetPath
+        had_previous_manifest = [bool]$manifest.had_previous_manifest
+        had_venv = [bool]$manifest.had_venv
+        had_ui = [bool]$manifest.had_ui
+        had_startup_shortcut = [bool](Test-Path -LiteralPath $shortcutPath -PathType Leaf)
+        had_ui_shortcut = [bool](Test-Path -LiteralPath $uiShortcutPath -PathType Leaf)
+        had_ui_shortcut_folder = [bool](Test-Path -LiteralPath $uiShortcutFolder -PathType Container)
+        startup_shortcut_path = $shortcutPath
+        ui_shortcut_path = $uiShortcutPath
+        phase = 'prepared'
+    }
+    if ($manifest.had_previous_manifest) {
+        Copy-Item -LiteralPath $installManifestPath -Destination (Join-Path $transactionPath 'previous-install.json')
+    }
+    if ($transactionMetadata.had_startup_shortcut) {
+        Copy-Item -LiteralPath $shortcutPath -Destination (Join-Path $transactionPath 'previous-startup.lnk')
+    }
+    if ($transactionMetadata.had_ui_shortcut) {
+        Copy-Item -LiteralPath $uiShortcutPath -Destination (Join-Path $transactionPath 'previous-ui.lnk')
+    }
+    Write-JsonAtomically -Path (Join-Path $transactionPath 'transaction.json') -Value $transactionMetadata
+    $manifest.transaction_id = $transactionId
+    Write-JsonAtomically -Path $installManifestPath -Value $manifest
+    $script:InstallTransactionPrepared = $true
+
+    if ($manifest.had_venv) { Move-Item -LiteralPath $venvDir -Destination (Join-Path $transactionPath 'venv') }
+    if ($manifest.had_ui) { Move-Item -LiteralPath $uiDir -Destination (Join-Path $transactionPath 'ui') }
 
     if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
         Invoke-NativeCommand -FilePath $pythonExe -Arguments @('-m', 'venv', $venvDir)
@@ -429,43 +886,6 @@ if missing:
         }
     }
     $uiExecutableHash = (Get-FileHash -LiteralPath $uiExe -Algorithm SHA256).Hash.ToLowerInvariant()
-    $startupFolder = [Environment]::GetFolderPath('Startup')
-    if ([string]::IsNullOrWhiteSpace($startupFolder)) {
-        throw 'Windows did not provide a Startup folder path; installation was not published.'
-    }
-    $shortcutPath = Join-Path $startupFolder 'PLUMA.lnk'
-    $shell = New-Object -ComObject WScript.Shell
-    Assert-NoReparseAncestors -Path $shortcutPath
-    if (Test-Path -LiteralPath $shortcutPath -PathType Leaf) {
-        $shortcutItem = Get-Item -LiteralPath $shortcutPath -Force
-        if (($shortcutItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Refusing to replace a reparse-point startup shortcut: $shortcutPath"
-        }
-        $existingShortcut = $shell.CreateShortcut($shortcutPath)
-        if ([string]::IsNullOrWhiteSpace($existingShortcut.TargetPath) -or
-            (Get-CanonicalPath -Path $existingShortcut.TargetPath) -ne (Get-CanonicalPath -Path $plumaExe)) {
-            throw "A different application already owns $shortcutPath; it was left unchanged."
-        }
-    }
-    $manifest.ui_executable_sha256 = $uiExecutableHash
-    $manifest.state = 'installed'
-    $manifest.updated_at_utc = [DateTime]::UtcNow.ToString('o')
-    $manifestTemp = "$installManifestPath.$([guid]::NewGuid().ToString('N')).tmp"
-    [System.IO.File]::WriteAllText(
-        $manifestTemp,
-        ($manifest | ConvertTo-Json -Depth 4),
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    Move-Item -LiteralPath $manifestTemp -Destination $installManifestPath -Force
-    $savedManifest = Get-Content -LiteralPath $installManifestPath -Raw | ConvertFrom-Json
-    if ((Get-CanonicalPath -Path $savedManifest.install_root) -ne $targetPath -or
-        $savedManifest.install_id -ne $installId -or $savedManifest.state -ne 'installed' -or
-        (Get-CanonicalPath -Path $savedManifest.ui_directory) -ne (Get-CanonicalPath -Path $uiDir) -or
-        (Get-CanonicalPath -Path $savedManifest.ui_executable) -ne (Get-CanonicalPath -Path $uiExe) -or
-        $savedManifest.ui_executable_sha256 -ne $uiExecutableHash) {
-        throw 'Installation ownership marker did not read back with the expected identity.'
-    }
-
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $plumaExe
     $shortcut.WorkingDirectory = $targetPath
@@ -492,8 +912,47 @@ if missing:
         throw 'PLUMA UI shortcut did not read back with the expected executable.'
     }
 
+    $transactionMetadata.phase = 'ready_to_commit'
+    Write-JsonAtomically -Path (Join-Path $transactionPath 'transaction.json') -Value $transactionMetadata
+    $manifest.ui_executable_sha256 = $uiExecutableHash
+    $manifest.state = 'installed'
+    $manifest.updated_at_utc = [DateTime]::UtcNow.ToString('o')
+    Write-JsonAtomically -Path $installManifestPath -Value $manifest
+    $savedManifest = Get-Content -LiteralPath $installManifestPath -Raw | ConvertFrom-Json
+    if ((Get-CanonicalPath -Path $savedManifest.install_root) -ne $targetPath -or
+        $savedManifest.install_id -ne $installId -or $savedManifest.state -ne 'installed' -or
+        $savedManifest.transaction_id -ne $transactionId -or
+        (Get-CanonicalPath -Path $savedManifest.ui_directory) -ne (Get-CanonicalPath -Path $uiDir) -or
+        (Get-CanonicalPath -Path $savedManifest.ui_executable) -ne (Get-CanonicalPath -Path $uiExe) -or
+        $savedManifest.ui_executable_sha256 -ne $uiExecutableHash) {
+        throw 'Installation ownership marker did not read back with the expected identity.'
+    }
+    $script:InstallTransactionPrepared = $false
+    try {
+        Remove-CompletedInstallTransaction -Root $targetPath -Manifest $savedManifest
+    } catch {
+        Write-Warning "Installation is verified, but the previous owned payload backup remains at '$transactionPath'. Rerun the installer to complete its cleanup. $($_.Exception.Message)"
+    }
+
     Write-Host 'PLUMA Core installation verified; resident startup and explicit WinUI launch shortcuts published.' -ForegroundColor Green
 } catch {
     Write-Host "PLUMA installation failed: $($_.Exception.Message)" -ForegroundColor Red
+    if ($script:InstallTransactionPrepared -and $script:InstallTransactionId) {
+        try {
+            if (Test-Path -LiteralPath $installManifestPath -PathType Leaf) {
+                $failedManifest = Get-Content -LiteralPath $installManifestPath -Raw | ConvertFrom-Json
+                if ($failedManifest.state -eq 'installing') {
+                    Restore-InstallTransaction -Root $targetPath -ManifestPath $installManifestPath -Manifest $failedManifest
+                    $failedManifest = Get-Content -LiteralPath $installManifestPath -Raw | ConvertFrom-Json
+                }
+                if ($failedManifest.state -eq 'rolled_back') {
+                    Complete-RolledBackInstall -Root $targetPath -ManifestPath $installManifestPath -Manifest $failedManifest
+                }
+            }
+            $script:InstallTransactionPrepared = $false
+        } catch {
+            Write-Host "Automatic rollback needs recovery on the next installer run: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
     exit 1
 }
