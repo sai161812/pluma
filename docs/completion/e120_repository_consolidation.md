@@ -62,6 +62,38 @@ Logs/JUnit and expanded module selection are under
 `output/repository-consolidation-20261111-01/candidate-checks/`,
 `candidate-windows-deps/` and `windows-dependency-check/`.
 
-Merged-source full selection, merge/push and cleanup results are pending.
-No branch is deleted before its history is preserved and main integration is
-verified. Existing tags and stash remain untouched.
+## Merged-source result
+
+Local merge: `aa1a77b2d2aec61ed09052ce68e4c8e863bf74f2` (parents: the fetched
+main and reviewed `ec3949c` consolidation candidate). Its tree exactly equals
+the reviewed candidate. The complete inspected selection, now with declared
+Windows dependencies and the COM-helper regression, passes **528/528 in
+102.19 seconds**, zero failures/errors/skips/xfails. Two pytest warnings concern
+JUnit record_property metadata and do not suppress any test.
+
+Evidence: `output/repository-consolidation-20261111-01/merged-checks/` contains
+`results.log`, `results.xml`, `selection.txt` and `tested-commit.txt`.
+Command: the candidate's recorded uv prefix plus `--with 'pywin32>=306'
+--with 'comtypes>=1.4.0' --with 'pycaw>=20240210'`, then `python -m pytest`
+with every selector in selection.txt, `--runxfail --timeout=90 --basetemp
+D:\Workspace\DEVEL\PLUMA\output\cons-tmp-04 -p no:cacheprovider -q
+--junitxml <merged-checks>/results.xml`. Runs stayed sequential/BelowNormal.
+
+Compared with accepted native E108 source, production source differs only by
+E111's bounded router-purpose fix (fresh router tests pass); two UI wiring
+documents differ, while WinUI executable source and styling are identical.
+No new native/physical UI/model/installation acceptance is claimed.
+
+## Generated-file cleanup
+
+The reviewed cleanup removed **37 regenerable directories and three empty
+scratch folders**, reclaiming **1,121,046,124 bytes**. These include WinUI
+bin/obj, Python bytecode, build/pytest/egg metadata and the two disposable UV
+caches. Source, models, private notes, historical evidence, tags, stash and the
+verified recovery bundle remain. The exact path/count/byte inventory is in
+`output/repository-consolidation-20261111-01/cleanup-result.json`.
+Owned test-fixture directories with access restrictions or links were retained
+for a separate no-link-traversal cleanup; no ACL or Windows policy was changed.
+
+Normal main push and branch-pruning results are pending. No branch is deleted
+before its history is preserved and main integration is verified.

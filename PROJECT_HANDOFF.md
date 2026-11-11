@@ -50,10 +50,12 @@ and physical/installed evidence remain missing. Requirements are unchanged.
 ## Verification and integration
 
 Consolidation verification and remote status are recorded in
-[E120](docs/completion/e120_repository_consolidation.md). Candidate `d86ec3e`
-passed 526 checks; its one missing-Windows-dependency case then passed with
-the declared dependencies (2 focused checks passed). The full merged-source
-run and integration are still pending. Existing native E108/E109 evidence
+[E120](docs/completion/e120_repository_consolidation.md). Local merge
+`aa1a77b2d2aec61ed09052ce68e4c8e863bf74f2` passes the complete fresh selection:
+**528 passed**, zero failures/errors/skips/xfails, 102.19 seconds. This covers
+settings, health, perception delivery, STOP/ownership/shutdown, policy, routing
+and accepted P24 fixtures. Earlier missing-test-dependency failures were
+resolved without code/assertion changes. Existing native E108/E109 evidence
 is reused only where source identity is unchanged. No physical acceptance is
 inferred from fixtures, skipped/deselected cases or a successful merge.
 
