@@ -1,3 +1,8 @@
+> Historical preparation: on 2026-11-11 the owner selected the verified
+> development baseline for consolidation. This unfinished source was archived
+> at commit `751fa87` and excluded from active code. The record below is not
+> current implementation or passing acceptance. See E120 and PROJECT_HANDOFF.md.
+
 # E115 - Resident resource measurement code preparation
 
 Date: 2026-11-10 (Asia/Calcutta)

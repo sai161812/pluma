@@ -300,9 +300,7 @@ def run_app(argv: Optional[Sequence[str]] = None) -> int:
         signal.signal(signal.SIGTERM,lambda *_:stopped.set())
         try:
             host.start()
-            while not stopped.wait(.05):
-                host.advance()
-                if host.state=="STOPPED":stopped.set()
+            while not stopped.wait(.05):host.advance()
         except KeyboardInterrupt:
             stopped.set()
         finally:

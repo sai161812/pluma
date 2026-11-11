@@ -1,3 +1,8 @@
+> Development checkpoint, 2026-11-11: see [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md).
+> P00-P23 have scoped evidence; P24 is partial (25/140 corpus cases). The project
+> is not a verified release. Packaging/install/recovery/signing and physical
+> acceptance remain open; existing scripts are not a verified deployment path.
+
 # PLUMA
 
 **A local-first Windows 11 automation system with voice input, screen-aware control, typed tools, verification, rollback, and an on-demand local reasoning layer.**
@@ -6,11 +11,11 @@ PLUMA is built around a simple constraint: natural language can interpret intent
 
 The resident process stays lightweight. Local STT, OCR, and LLM runtimes are loaded only when a task needs them and are unloaded again after a short idle period.
 
-> **Current state (2026-11-10):** P24 is in progress with 20 of 140 corpus cases accepted; E112's initial cold-run failure remains unexplained. P25 physical checks, P26 measurements, P27 adversarial acceptance and P28/P29 packaging/install gates remain open. E116 prepares but does not verify a unified package candidate or graceful installed-Core shutdown. No tests/builds were run for E116, and this is not a production release. See [the handoff](PROJECT_HANDOFF.md).
+> **Current state (2026-11-02):** P20's scoped gate is complete: saved History search/paging, task/action detail, confirmed evidence-based selected undo, conflicts and Activity tray/command entry ([E95](docs/completion/p20_saved_history.md), [E96](docs/completion/p20_detail_undo.md)). Affected verification passes 631 Python checks and the authorized Windows gate, including 285 IPC and 214 native UI checks. P21 awaits owner instruction; independent Sol approval is not assumed. P19's owner-approved physical C-02 timing retest deferral to P25 remains ([E94](docs/completion/p19_overlay_acceptance.md)). This is not full-product release. See [the handoff](PROJECT_HANDOFF.md).
 
 ## Demo status
 
-Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP, material approval, voice, factual live events, settings, and saved history/detail/undo are connected. Broader corpus, physical, performance, adversarial, and installed-release acceptance remain open.
+Native dark component renders and automated popup/control checks are available in the [UI verification record](PLUMA.UI/PLUMA.UI/docs/wiring_status_connection.md). The `pluma/ui` package defines functional contracts; production text submission/STOP, material approval, voice, factual live events and saved history/detail/undo are connected. Settings and later health/perception surfaces retain their next milestones.
 
 A real interaction recording should be added here once that UI path is complete. Until then, the repository evidence is the implementation, tests, release artifacts, and verification logs rather than a mocked interface.
 
@@ -200,27 +205,11 @@ pluma --debug
 
 The base development install is enough to run the resident core and deterministic code paths, but it does **not** include every optional local-ML runtime. The planner lazily imports `llama-cpp-python`, voice STT lazily imports `pywhispercpp`, and OCR lazily imports PaddleOCR through ONNX Runtime when the OCR extra is installed. Their model files/runtime packages are not vendored in this repository and must be installed before exercising SMART/SCREEN/DEEP planning, voice transcription, or OCR-dependent actions. Install voice capture and STT support with `python -m pip install -e ".[media,stt]"`, then place a whisper.cpp GGML model at `%LOCALAPPDATA%\Pluma\models\whisper\ggml-base.en.bin` or set `voice.model_path` to its local path. PLUMA does not download model files automatically.
 
-The Windows x64 package candidate contains the PLUMA Core wheel and its resolved runtime wheelhouse, the self-contained WinUI publish, configuration, installer scripts, retained NuGet lock/feed inputs, and a SHA-256 manifest. Extract the bundle and run `install.ps1` from its root. The Core is the only startup entry; launch the WinUI shell explicitly from **Start Menu → PLUMA → PLUMA UI**. The installer validates package hashes, installs Python dependencies offline, and preserves user data on normal uninstall. The current source also records marked Core/UI/shortcut backups for upgrades and attempts owned rollback after an interrupted update; this recovery path has not yet been exercised on a disposable Windows profile. If the install marker says `installing`, rerun the matching installer to restore or finish recovery; the uninstaller will refuse that incomplete state. Models remain external and are never downloaded automatically.
+For packaged installation, the release bundle contains the wheel, `pluma.exe`, installer scripts, configuration, and SHA-256 manifest:
 
 ```powershell
 .\install.ps1
 ```
-
-Build the package candidate on Windows x64 with Python 3.12+ and the .NET SDK:
-
-```powershell
-python build_release.py
-```
-
-The builder publishes the x64 WinUI shell and uses one MSBuild worker. It writes `output/release-<UTC timestamp>-<unique id>/pluma-core-winui-windows-x64-candidate.zip` into a new ignored directory and does not clean the checkout. The package is **unsigned and unverified** until the authorized signing path and exact-build install, launch, IPC, recovery, and uninstall gates pass; do not treat the candidate as a production release.
-
-After a candidate produced by the current builder has been retained and extracted, its hash-locked Python wheelhouse and hierarchical NuGet package feed can be used for an offline rebuild from a matching PLUMA source checkout:
-
-```powershell
-python build_release.py --offline-inputs D:\path\to\extracted-candidate
-```
-
-This mode requires a clean tracked checkout at the exact source commit and matching Python/pip/.NET versions recorded by the candidate, validates the candidate manifest and wheel hashes before creating output, then disables Python package indexes and uses locked local NuGet packages. It has not yet been exercised; an earlier E116 candidate does not contain the E118 build constraints and hierarchical NuGet feed required by this mode.
 
 ## Testing and release verification
 
@@ -242,12 +231,18 @@ The historical verification report dated **August 28, 2026** records the followi
 | Failed | 0 |
 | Deterministic acceptance gates | 9 / 9 passed |
 
-The package candidate contains:
+The release build also produces:
 
-- `packages/`: PLUMA Core and offline runtime wheels
-- `ui/`: self-contained `PLUMA.UI.exe` and its runtime files
-- `build-inputs/`: resolved Python wheel hashes, NuGet lock and package archives
-- `SHA256SUMS.txt`: checksums for the bundle files
+- `dist/pluma-0.1.0-py3-none-any.whl`
+- `dist/pluma.exe`
+- `release/pluma-0.1.0-windows-x64-release.zip`
+- `release/SHA256SUMS.txt`
+
+Build from source with:
+
+```powershell
+python build_release.py
+```
 
 ### Verification evidence
 

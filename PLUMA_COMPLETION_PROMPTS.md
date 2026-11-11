@@ -7,26 +7,17 @@ build-plan phases. Already-working code stays in place.
 
 ## Start here
 
-Current continuation entry point (2026-11-10):
-[PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md). P00-P23's scoped implementation
-is recorded complete under its documented owner limits; P24 is in progress with
-25/140 corpus cases accepted. E113's two undo cases and 261 affected regressions
-pass. E119's three emulated volume-status cases and 19-case read-only acceptance
-pass, along with 257 fixture-only audio/router regressions; seven cases remain
-deselected for physical-device access or an unavailable `comtypes` test
-dependency. E112's historical cold-run failure did not reproduce on a fresh
-isolated rerun, but its original executor cause remains unknown. The owner has resumed
-verification and authorized continuation across existing milestones; work must
-still follow the listed prerequisite and release gates.
-The active development branch is `p12-preparation`; recheck actual Git state.
-Use the new file's remaining-work inventory, cursor and P24-P33 prompts together
-with the detailed milestone contracts below. Send:
+Current checkpoint (2026-11-11): [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md)
+and [PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md). The owner requested
+repository consolidation onto `main` and stopped further milestone work.
+P00-P23 have scoped completion evidence under recorded limits. P24 is partial
+at 25/140 accepted corpus cases; P25-P33 remain open. E114-E118 unfinished
+release/measurement source is archived in Git history/recovery storage and is
+excluded from the active verified production baseline. No release is claimed.
 
-```text
-Read PLUMA_REMAINING_WORK.md and PROJECT_HANDOFF.md. Apply the shared execution
-contract and execute only P24's next unfinished bounded packet. Verify it,
-commit/push meaningful changes, update the cursor and report the remaining gate.
-```
+Do not automatically execute the next prompt. On a future explicit request,
+resume the next bounded P24 packet using the contracts below. The maintenance
+merge/branch cleanup is not P32 release acceptance.
 
 For later tasks, name the next eligible ID after its prerequisites pass. Each
 prompt below contains the actual task. Packets may continue in the same chat;
