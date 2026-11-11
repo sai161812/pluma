@@ -92,8 +92,31 @@ bin/obj, Python bytecode, build/pytest/egg metadata and the two disposable UV
 caches. Source, models, private notes, historical evidence, tags, stash and the
 verified recovery bundle remain. The exact path/count/byte inventory is in
 `output/repository-consolidation-20261111-01/cleanup-result.json`.
-Owned test-fixture directories with access restrictions or links were retained
-for a separate no-link-traversal cleanup; no ACL or Windows policy was changed.
+The four owned test-fixture roots were subsequently removed under their
+creating user contexts. Inspection/deletion explicitly unlinked 292 links
+without traversing their targets, and reclaimed another 46,781,277 bytes.
+No ACL or Windows policy was changed. Total cleanup: **1,167,827,401 bytes**
+across 37 generated directories, three empty folders and four test roots.
+The detailed fixture plans/results are retained alongside the cleanup report.
 
-Normal main push and branch-pruning results are pending. No branch is deleted
-before its history is preserved and main integration is verified.
+## GitHub and local consolidation
+
+The verified development merge and evidence were pushed normally to GitHub
+`main` (`0468a03` to `44cf263`; later changes are documentation only). Remote
+readback matched the pushed main identity before branch cleanup.
+All other remote heads were compared against the archived exact SHA inventory,
+then **23 remote branches were deleted atomically**. **24 local branches** were
+removed only after confirming they were merged or exactly preserved in the
+verified bundle. The divergent old demo/sai/UI/integration lines were archived,
+not indiscriminately merged into the accepted product tree.
+
+Final structure: one worktree, one local branch `main`, one GitHub branch
+`main`; existing tags and stash retained. No reset, git clean, force-push, new
+milestone, release tag or branch with a new status name was introduced.
+Original refs are in the committed branch inventory and the complete local
+bundle. The final documentation commit is pushed normally and checked against
+GitHub; exact final refs are retained under the ignored recovery directory.
+
+This is a verified development checkpoint, not P24 completion, P32 release
+acceptance, independent Sol approval or product-release readiness. Further
+milestone work stops until the owner gives new instructions.

@@ -2,8 +2,8 @@
 
 Current checkpoint: 2026-11-11. [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) is the
 current handoff. The owner requested repository consolidation, with no further
-milestone development until new instructions. `main` is the intended single
-canonical branch; this maintenance checkpoint is not a finished release.
+milestone development until new instructions. `main` is the only local and
+GitHub branch; this maintenance checkpoint is not a finished release.
 
 ## Recorded progress
 

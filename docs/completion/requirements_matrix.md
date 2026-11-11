@@ -9,6 +9,8 @@ are historical preparation, not current implementation or acceptance.
 See [E120](e120_repository_consolidation.md) and the current handoff for fresh
 checks, recovery and branch consolidation. UNVERIFIED rows stay unverified;
 physical/signing/installed/release gates and owner-approved deferrals stay open.
+The consolidated main merge passes 528 fresh selected regressions; only `main`
+remains locally and on GitHub. This maintenance result is not final acceptance.
 
 Implementation inventory: all 73 exact Section 21 names are registered (57 non-screen and 16 screen-control); the default registry exposes 90 tools including compatibility and utility names. E101 adds save_settings; E103 adds the confirmed recover_settings utility; E104 adds typed check_setup/restart_core utilities; the locked Section 21 catalog is unchanged. E66 closes the exact screen-name inventory, E67 records the P12 `CORE-OCR` runtime and generated-image smoke, and E69 closes the applicable P12 E-01 through E-10 implementation gate. P26 still owns the broad OCR quality/latency benchmark. E58 repairs production D-10 and DNS-only elevation, superseding E57. Historical evidence remains traceable, but native fixture checks do not replace physical acceptance. H-04 native confirmation passes in E85; broader owner/physical UI acceptance remains P25. E96 adds the registered bounded open_folder utility; the exact required catalog is unchanged.
 

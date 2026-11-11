@@ -59,9 +59,16 @@ resolved without code/assertion changes. Existing native E108/E109 evidence
 is reused only where source identity is unchanged. No physical acceptance is
 inferred from fixtures, skipped/deselected cases or a successful merge.
 
-The final intended state is `main` locally and on GitHub, with unnecessary
-development/recovery branches removed after preservation and verification.
+`main` is now the only local branch and the only GitHub branch. The verified
+checkpoint was pushed normally; **23 remote and 24 local branches** were
+removed after preservation. No force-push, reset or new branch was used.
 See [branch inventory](docs/history/BRANCH_INVENTORY_20261111.md).
+
+Cleanup removed 37 generated/cache directories, three empty scratch folders
+and four owned test roots, reclaiming approximately **1.17 GB**. Test links
+were unlinked without following their targets; no ACL or Windows policy was
+changed. Historical evidence, model files and private notes were retained.
+No PLUMA test/resident process remains running from this work.
 
 ## Recovery without keeping extra branches
 
@@ -73,7 +80,7 @@ All recovery files are inside `PLUMA/output/repository-consolidation-20261111-01
 - `refs-before-fetch.txt`, `remote-refs-fetched.txt`: exact original refs.
 - `unfinished-and-evidence-source-751fa87.zip`: unfinished source/evidence
   snapshot, SHA-256 `E3F204D7264F23FB4780E4C69C33AC8E89F1D76A3AAD62D76BC9AA90C2FD119B`.
-- `uv.lock` and `uv.lock.original`: preserved untracked dependency lock; excluded
+- `uv.lock`: preserved untracked dependency lock; excluded
   from the active root because it was not an accepted release lock.
 
 `git bundle list-heads output/repository-consolidation-20261111-01/all-refs-before-fetch.bundle`

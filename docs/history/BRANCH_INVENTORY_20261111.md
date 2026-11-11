@@ -1,5 +1,9 @@
 # Branch inventory before repository consolidation
 
+Outcome: 23 remote and 24 local non-main branches removed after verified main
+integration and bundle preservation. Only `main` remains locally/on GitHub.
+The table below records original identities, not current branch existence.
+
 2026-11-11. Every listed ref is preserved in the verified local recovery bundle.
 Ancestor refs are included in the consolidated development history. Divergent refs are older/superseded lines retained in the bundle, not automatically merged.
 
