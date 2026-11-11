@@ -101,6 +101,12 @@ class OcrLifecycleManager:
 
         return result
 
+    def prepare(self, cancellation_token=None) -> None:
+        """On-demand worker load before acquiring short-lived image evidence."""
+        if cancellation_token is not None:cancellation_token.raise_if_cancelled()
+        self._ensure_warm()
+        if cancellation_token is not None:cancellation_token.raise_if_cancelled()
+
     def shutdown(self) -> None:
         """Immediately unload the OCR model and cancel any pending timers."""
         with self._lock:

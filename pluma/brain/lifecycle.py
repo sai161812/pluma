@@ -197,6 +197,9 @@ class LlmLifecycleManager:
             self._timers = {timer for timer in self._timers if timer.is_alive()}
             self._timers.add(self._idle_timer)
             self._idle_timer.start()
+        else:
+            self.adapter.unload()
+            self._state = LlmLifecycleState.COLD
 
     def _cancel_idle_timer(self) -> None:
         if self._idle_timer is not None:

@@ -65,6 +65,9 @@ class VoiceLifecycleManager:
             self._timers = {timer for timer in self._timers if timer.is_alive()}
             self._timers.add(self._unload_timer)
             self._unload_timer.start()
+        else:
+            self.adapter.unload()
+            self._state = "COLD"
 
     def _on_idle_timeout(self) -> None:
         """Handler for idle unload timeout."""

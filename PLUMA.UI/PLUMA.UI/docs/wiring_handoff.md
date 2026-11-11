@@ -1,5 +1,21 @@
 # UI wiring handoff
 
+Current P23 E108 completes live owned-worker delivery, native target hosting and
+Windows legacy DPI conversion, preserving the existing XAML. Short successful
+tasks retain metadata only until original expiry after terminal persistence;
+STOP revokes it and executor admission stays sealed. Normal Windows run 41982933518
+passes on 6e87901: 403 IPC, 237 native UI, 15 health, 28 P23, 663 popup and 195
+formatting checks. See [E108](../../../docs/completion/e108_p23_live_hosting.md) and
+the root handoff for exact source/build identity, retained failures and P25 physical
+limits. Ready for independent Sol review; no approval is assumed. Earlier
+"dormant/missing host" notes below describe superseded packets. P24 has not begun.
+
+## Historical checkpoints (superseded by the P23 checkpoint above)
+
+P22 implementation/verification superseded the still-earlier historical notes below.
+See [E104](../../../docs/completion/e104_p22_completion.md), the root handoff and
+[health/setup/recovery contract](wiring_health_setup_recovery.md). P23 packet 1 metadata readback is verified in [E106](../../../docs/completion/e106_p23_perception_readback.md); surfaces 15/16 remain dormant pending native hosting and full acceptance. [E107](../../../docs/completion/e107_p23_native_freshness.md) adds the native freshness boundary and records a fresh existing P20 folder terminal-wait failure; see the root checkpoint before advancing.
+
 **Current progress (2026-11-02, E96):** P20's scoped gate is complete on
 `p12-preparation`, native tested source `d223a32`. Saved History detail, exact
 selected undo, conflict evidence/folder actions and Activity tray/command entry

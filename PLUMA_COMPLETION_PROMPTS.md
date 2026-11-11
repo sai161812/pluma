@@ -7,17 +7,22 @@ build-plan phases. Already-working code stays in place.
 
 ## Start here
 
-Open `D:\Workspace\DEVEL\PLUMA`. The active branch is `ui-wiring`. Send:
+Current checkpoint (2026-11-11): [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md)
+and [PLUMA_REMAINING_WORK.md](PLUMA_REMAINING_WORK.md). The owner requested
+repository consolidation onto `main` and stopped further milestone work.
+P00-P23 have scoped completion evidence under recorded limits. P24 is partial
+at 25/140 accepted corpus cases; P25-P33 remain open. E114-E118 unfinished
+release/measurement source is archived in Git history/recovery storage and is
+excluded from the active verified production baseline. No release is claimed.
 
-```text
-Read PLUMA_COMPLETION_PROMPTS.md and PROJECT_HANDOFF.md. Apply the shared
-execution contract and execute P00 only. Complete its bounded work, verify it,
-commit meaningful changes, push the relevant branch and report the next gate.
-```
+Do not automatically execute the next prompt. On a future explicit request,
+resume the next bounded P24 packet using the contracts below. The maintenance
+merge/branch cleanup is not P32 release acceptance.
 
-For the next task, replace `P00` with the next eligible ID. Each prompt below
-contains the actual task. Use a fresh conversation for each coherent milestone;
-the repository handoff carries progress. You do not need to supervise each edit.
+For later tasks, name the next eligible ID after its prerequisites pass. Each
+prompt below contains the actual task. Packets may continue in the same chat;
+use a fresh independent review for P30. The repository handoff carries progress.
+You do not need to supervise each edit.
 Do not paste every prompt at once or authorize automatic progression through
 the whole file. P11-P15 may require multiple bounded tasks as their gap lists
 are closed. Finish the named gate before advancing.
@@ -33,7 +38,11 @@ One scoped outcome, durable repository guidance, explicit completion evidence
 and a separate review pass follow [official OpenAI best practices](https://learn.chatgpt.com/guides/best-practices).
 The project-specific requirements below come from PLUMA's own documents.
 
-## Authority and the starting state
+## Authority and the historical 2026-10-19 starting state
+
+The starting-state bullets below are historical context, superseded by the
+current handoff and remaining-work file. They do not reopen completed P00-P23
+work, disable accepted submission wiring or establish current branch/PR state.
 
 Read these in order and inspect the actual implementation before changing code:
 

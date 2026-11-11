@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace PLUMA.UI
 {
-    public enum SetupCheckId { OcrRuntime, UiAutomation, LocalModel, Microphone, Hotkeys }
+    public enum SetupCheckId { OcrRuntime, UiAutomation, LocalModel, SpeechModel, Microphone, Hotkeys }
     public enum SetupCheckState { Pending, Passed, Failed }
 
     public sealed class SetupCheck : INotifyPropertyChanged
@@ -44,7 +44,8 @@ namespace PLUMA.UI
         {
             new SetupCheck(SetupCheckId.OcrRuntime, "OCR runtime", 0),
             new SetupCheck(SetupCheckId.UiAutomation, "Windows UI Automation", 0),
-            new SetupCheck(SetupCheckId.LocalModel, "Local model path", 0),
+            new SetupCheck(SetupCheckId.LocalModel, "Local planner file and runtime", 0),
+            new SetupCheck(SetupCheckId.SpeechModel,"Local speech file and runtime",0),
             new SetupCheck(SetupCheckId.Microphone, "Microphone access", 1),
             new SetupCheck(SetupCheckId.Hotkeys, "Command and STOP hotkeys", 1)
         });

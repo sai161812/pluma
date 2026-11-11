@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json;
 using PLUMA.UI;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _checks;
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "PLUMA-Ipc-tests-" + Guid.NewGuid().ToString("N"));
@@ -22,8 +22,19 @@ internal static class Program
         new(pipe, key ?? Secret, TimeSpan.FromMilliseconds(milliseconds));
     private static string PipeName() => "pluma_status_test_" + Guid.NewGuid().ToString("N");
 
-    private static async Task<int> Main()
+    private static async Task<int> Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--perception-map")
+        {
+            var frame = CoreRequestProtocol.PerceptionSnapshot.Parse(Encoding.UTF8.GetBytes(await Console.In.ReadToEndAsync()));
+            Console.WriteLine(JsonSerializer.Serialize(NativePerceptionTarget.Map(frame.Observations.Single(), 1)));
+            return 0;
+        }
+        if (args.Length == 2 && args[0] == "--perception-probe" && long.TryParse(args[1], out long hwnd))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(NativePerceptionTarget.Read(hwnd)));
+            return 0;
+        }
         try
         {
             CreatePrivateDirectory(Root);
@@ -51,9 +62,14 @@ internal static class Program
     {
         await ConfirmationControllerChecks.RunAsync(Check);
         await CommandControllerChecks.RunAsync(Check);
+        await SettingsControllerChecks.RunAsync(Check);
+        await HealthChecks.RunAsync(Check);
         await EventFeedChecks.RunAsync(Check);
         await SurfaceFactChecks.RunAsync(Check);
         await RuntimeChecks.RunAsync(Check);
+        PerceptionChecks.Run(Check);
+        PerceptionPresentationChecks.Run(Check);
+        await PerceptionDeliveryChecks.RunAsync(Check);
         VoiceChecks.Run(Check);
         await VoiceControllerChecks.RunAsync(Check);
         await HistoryChecks.RunAsync(Check);
@@ -253,6 +269,10 @@ internal static class Program
         await using (var client = new CoreIpcClient(Options(requestsPipe, Path.Combine(Root, "Pluma", "ipc_secret.key"))))
         {
             string wireRequestId = Guid.NewGuid().ToString("D");
+            string perceptionId=Guid.NewGuid().ToString("D");
+            var perception=await client.GetPerceptionAsync(perceptionId,default);
+            Check(perception.IsSuccess&&perception.Response!.RequestId==perceptionId&&perception.Response.Observations.Length==0,
+                "authenticated native perception readback is empty at idle and starts no capture");
             var voice = await client.GetVoiceAsync(Guid.NewGuid().ToString("D"), null, null, default);
             Check(voice.IsSuccess && voice.Response is { Voice: null, ResetRequired: true },
                 "authenticated native voice query reads the cold Python resident without starting capture");
@@ -328,6 +348,9 @@ internal static class Program
             Check(statuses.All(result => result.Status is { Running: true }),
                 "priority STOP releases the owned stalled status fixtures cleanly");
         }
+        // Keep P09's initially absent credential precondition intact. Settings
+        // creates a real core/credential and therefore runs after that check.
+        await RunSettingsAsync();
     }
 
     private static async Task RemainingContractsAsync(CoreIpcClient client, string pipe)

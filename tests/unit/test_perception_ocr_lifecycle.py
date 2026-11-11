@@ -17,6 +17,19 @@ def test_ocr_lifecycle_cold_at_init() -> None:
     assert manager.state == OcrLifecycleState.COLD
 
 
+def test_prepare_loads_on_demand_before_image_without_recognizing():
+    backend=MagicMock()
+    manager=OcrLifecycleManager(custom_backend=backend)
+    try:
+        manager.prepare()
+        assert manager.state==OcrLifecycleState.WARM
+        backend.recognize.assert_not_called()
+        token=CancellationToken();token.cancel()
+        with pytest.raises(TaskCancelledError):manager.prepare(token)
+        backend.recognize.assert_not_called()
+    finally:manager.shutdown()
+
+
 def test_ocr_lifecycle_warm_after_run() -> None:
     mock_backend = MagicMock()
     mock_backend.recognize.return_value = [

@@ -24,6 +24,8 @@ MOD_NOREPEAT = 0x4000
 
 def parse_hotkey_string(hotkey_str: str) -> Tuple[int, int]:
     """Parse hotkey string like 'ctrl+alt+v' into Win32 (modifiers, vk_code)."""
+    from pluma.config.settings import _hotkey
+    _hotkey(hotkey_str)  # Reject unknown/multiple keys instead of falling back to V.
     parts = [p.strip().lower() for p in hotkey_str.split("+") if p.strip()]
     modifiers = 0
     vk_code = 0

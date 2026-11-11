@@ -329,6 +329,8 @@ def execute_undo_last(args: Dict[str, Any], task_context: Any = None) -> ToolRes
             payload = dict(state, clipboard_private=receipt['clipboard_private'])
         elif state['action'] == 'screen_control_text':
             payload = dict(state, screen_text_private=receipt['screen_text_private'])
+        elif state['action'] == 'settings_write':
+            payload = dict(state, staging=binding['settings_staging'])
         else:
             payload = state
         inverse = RollbackRecipes().apply(state['action'], payload)

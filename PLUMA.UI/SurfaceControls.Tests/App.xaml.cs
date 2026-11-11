@@ -24,10 +24,16 @@ namespace PLUMA.UI.Tests
                 var root = new StackPanel { Spacing = 12 };
                 _window = new Window { Title = "PLUMA UI contract checks", Content = root };
                 _window.Activate();
-                if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p18-startup") >= 0)
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p23-perception") >= 0)
+                    await NativeP23PerceptionChecks.RunAsync(Check);
+                else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p18-startup") >= 0)
                     for(int iteration=0;iteration<5;iteration++) await NativeP18ShellChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-undo") >= 0)
                     await NativeP20UndoChecks.RunAsync(Check);
+                else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p22-health") >= 0)
+                    await NativeP22HealthChecks.RunAsync(Check);
+                else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p21-settings") >= 0)
+                    await NativeP21SettingsChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p20-history") >= 0)
                     await NativeP20HistoryChecks.RunAsync(Check);
                 else if (Array.IndexOf(Environment.GetCommandLineArgs(), "--p19-voice") >= 0)
@@ -192,6 +198,7 @@ namespace PLUMA.UI.Tests
             wizard.SetCheckResult(SetupCheckId.OcrRuntime, SetupCheckState.Passed, "Verified");
             wizard.SetCheckResult(SetupCheckId.UiAutomation, SetupCheckState.Passed, "Verified");
             wizard.SetCheckResult(SetupCheckId.LocalModel, SetupCheckState.Passed, "Verified");
+            wizard.SetCheckResult(SetupCheckId.SpeechModel, SetupCheckState.Passed, "Fixture display only");
             await Click(next);
             Check(!next.IsEnabled, "setup requires voice and hotkey results");
             wizard.SetCheckResult(SetupCheckId.Microphone, SetupCheckState.Passed, "Verified");
@@ -199,8 +206,10 @@ namespace PLUMA.UI.Tests
             await Click(next);
             int continueRequests = 0;
             wizard.ContinueRequested += (_, _) => continueRequests++;
-            await Click(next);
-            Check(continueRequests == 1, "Continue requests host transition after all checks pass");
+            Check(!next.IsEnabled,"fixture-only review has no invocable Continue action");
+            try { await Click(next); }
+            catch(System.Runtime.InteropServices.COMException) when(!next.IsEnabled) { }
+            Check(continueRequests == 0 && !next.IsEnabled, "fixture display checks cannot enable production Continue");
             wizard.SetCheckResult(SetupCheckId.Microphone, SetupCheckState.Failed, "Access revoked");
             Check(!next.IsEnabled, "revoked capability disables Continue");
 
@@ -225,6 +234,7 @@ namespace PLUMA.UI.Tests
             await NativeP19VoiceChecks.RunAsync(Check);
             await NativeP20HistoryChecks.RunAsync(Check);
             await NativeP20UndoChecks.RunAsync(Check);
+            await NativeP21SettingsChecks.RunAsync(Check);
         }
 
         private sealed class FakeCoreStatusClient : ICoreStatusClient

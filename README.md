@@ -1,3 +1,8 @@
+> Development checkpoint, 2026-11-11: see [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md).
+> P00-P23 have scoped evidence; P24 is partial (25/140 corpus cases). The project
+> is not a verified release. Packaging/install/recovery/signing and physical
+> acceptance remain open; existing scripts are not a verified deployment path.
+
 # PLUMA
 
 **A local-first Windows 11 automation system with voice input, screen-aware control, typed tools, verification, rollback, and an on-demand local reasoning layer.**

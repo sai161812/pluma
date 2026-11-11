@@ -57,10 +57,12 @@ class WorkerRequest:
     env_overrides: Dict[str, str] = field(default_factory=dict)
     grounded_ui_target: Optional[Dict[str, Any]] = None
     storage_path: Optional[str] = None
+    settings_path: Optional[str] = None
     supervisor_pid: Optional[int] = None
     execution_binding: Optional[Dict[str, Any]] = field(default=None, repr=False)
     screen_snapshot: Optional[Dict[str, Any]] = field(default=None, repr=False)
     recognition_updates: bool = False
+    perception_updates: bool = False
 
 
 @dataclass
@@ -203,11 +205,16 @@ def _worker_process_loop(
                 if worker_req.tool_name != "voice_stt":
                     raise ValueError("Recognition updates require the voice worker.")
                 worker_ctx.publish_recognition = lambda sequence, text: conn.send(("recognition", (sequence, text)))
+            if worker_req.perception_updates:
+                if worker_req.tool_name not in ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text'):
+                    raise ValueError('Perception updates require an admitted screen producer.')
+                worker_ctx.publish_perception = lambda receipt, snapshot: conn.send(("perception", (receipt, snapshot)))
             if admission is not None:
                 worker_ctx.cancellation_token = WorkerCancellationView(admission)
             worker_ctx.undo_stack = list(worker_req.undo_stack)
             worker_ctx.grounded_ui_target = worker_req.grounded_ui_target
             worker_ctx.storage_path = worker_req.storage_path
+            worker_ctx.settings_path = worker_req.settings_path
             worker_ctx.supervisor_pid = worker_req.supervisor_pid
             worker_ctx.execution_binding = worker_req.execution_binding
             if worker_req.screen_snapshot is not None:
@@ -401,6 +408,7 @@ class TaskWorkerController:
         cancellation_token: Optional[CancellationToken] = None,
         on_entered: Optional[Callable[[float], None]] = None,
         on_recognition: Optional[Callable[[int, str], None]] = None,
+        on_perception: Optional[Callable[[dict, dict], None]] = None,
     ) -> Tuple[str, Any]:
         from pluma.adapters.worker_pipe import WorkerPipe, WorkerIOCancelled
 
@@ -409,6 +417,10 @@ class TaskWorkerController:
         if worker_req.recognition_updates and (worker_req.tool_name != "voice_stt" or on_recognition is None):
             return ("error", "Recognition updates require a voice observation owner.")
         recognition_sequence = 0
+        perception_count = 0
+        if worker_req.perception_updates and (worker_req.tool_name not in
+                ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text') or on_perception is None):
+            return ('error','Perception updates require an admitted observation owner.')
         deadline = time.monotonic() + timeout_s
         admission = cancellation_token.process_admission() if cancellation_token is not None else None
         while True:
@@ -460,6 +472,17 @@ class TaskWorkerController:
                                 raise ValueError("Recognition sequence is not contiguous.")
                             recognition_sequence = sequence
                             on_recognition(sequence, text)
+                            continue
+                        if response[0] == 'perception':
+                            perception_count += 1
+                            if (not worker_req.perception_updates or on_perception is None or perception_count>4
+                                    or not isinstance(response[1],tuple) or len(response[1])!=2):
+                                raise ValueError('Unexpected perception evidence.')
+                            try:on_perception(*response[1])
+                            except Exception:
+                                # Schema errors can include private caption/OCR
+                                # values. Never copy that body into tool history.
+                                raise ValueError('Owned perception evidence was invalid.') from None
                             continue
                         if response[0] == "entered":
                             if on_entered is not None:
@@ -576,7 +599,8 @@ class ToolRegistry:
         result = registry.execute(ToolCall(...), task_context)
     """
 
-    def __init__(self, policy_engine: Optional[Any] = None, stop_service: Optional[Any] = None) -> None:
+    def __init__(self, policy_engine: Optional[Any] = None, stop_service: Optional[Any] = None, settings_path: Optional[str] = None) -> None:
+        self.settings_path = settings_path
         self._specs: Dict[str, ToolSpec] = {}
         self._lock = threading.RLock()
         self._policy_engine = policy_engine
@@ -739,6 +763,7 @@ class ToolRegistry:
                             error_code="STALE_SNAPSHOT")
                 request = WorkerRequest(task_id, spec.name, arguments, timeout_s,
                     storage_path=getattr(context, "storage_path", None),
+                    settings_path=getattr(context, "settings_path", None),
                     supervisor_pid=os.getpid(),
                     execution_binding=execution_binding,
                     env_overrides={k: v for k, v in os.environ.items() if k.startswith("PLUMA_")},
@@ -1025,6 +1050,14 @@ class ToolRegistry:
         from pluma.core.cancellation import TaskCancelledError
         spec = self.lookup(tool_name)
         validated_args = self._validate_args(spec, arguments)
+        perception=getattr(task_context,'perception_feedback',None)
+        if perception is not None and tool_name in ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text'):
+            perception.clear()
+        if tool_name in ("check_setup","restart_core"):
+            if getattr(task_context,"health_authorization",None)!=(tool_name,validated_args):
+                raise ToolArgumentError("Health actions require an explicit typed user request.")
+        if tool_name in ("save_settings", "recover_settings") and task_context is not None:
+            task_context.settings_path = self.settings_path
         # One declared tool budget covers policy, pre-state capture, dispatch,
         # and readback. Starting the clock after policy allowed a slow approval
         # path to silently extend every call beyond its ToolSpec deadline.
@@ -1240,6 +1273,11 @@ class ToolRegistry:
                     policy_reason=policy_eval.reason)
             if tool_name == 'run_project_command':
                 execution_binding = getattr(policy_eval, 'execution_binding', None)
+
+        if tool_name == "check_setup":
+            execution_binding=getattr(self,"setup_binding",None)
+        if tool_name == "save_settings":
+            execution_binding=dict(execution_binding or {},active_hotkeys=list(getattr(self,"settings_owned_hotkeys",())))
 
         # 2. Check cancellation latch before starting
         # Cancellability describes in-flight work; it never exempts admission
@@ -1460,6 +1498,30 @@ class ToolRegistry:
                     ),
                 )
 
+        settings_source = self.settings_path if tool_name in ("save_settings", "recover_settings") else None
+        if tool_name == "undo_last" and self.settings_path is not None:
+            from pluma.tools.settings import peek_settings
+            lookup_spec = spec.model_copy(update={"undo_builder": peek_settings})
+            captured = self._owned_prestate(lookup_spec, validated_args, task_context, token,
+                max(0.0, call_deadline - time.monotonic()))
+            if not captured.ok:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, captured)
+            settings_source = captured.data["pre_state"].get("path")
+        if settings_source is not None:
+            try:
+                from pluma.tools.settings import stage_settings
+                if settings_source != self.settings_path:
+                    raise ValueError("Settings source is not the active configured source.")
+                staging = stage_settings(task_context, ledger, settings_source)
+                execution_binding = dict(execution_binding or {}, settings_staging=staging)
+                if tool_name in ("save_settings", "recover_settings"):
+                    pre_undo_data["staging"] = staging
+            except Exception:
+                return _record_no_execution(ledger, task_context, step_index, tool_name,
+                    validated_args, effective_risk, approval_state, ToolResult.failure(tool_name,
+                        "Owned settings storage could not be verified. No action was executed.", "SETTINGS_OWNERSHIP_UNAVAILABLE"))
+
         worker_req = WorkerRequest(
             task_id=task_id,
             tool_name=tool_name,
@@ -1469,9 +1531,12 @@ class ToolRegistry:
             env_overrides=env_flags,
             grounded_ui_target=grounded_ui_target,
             storage_path=getattr(task_context, "storage_path", None),
+            settings_path=getattr(task_context, "settings_path", None),
             supervisor_pid=os.getpid(),
             execution_binding=execution_binding,
             screen_snapshot=screen_snapshot,
+            perception_updates=perception is not None and tool_name in
+                ('capture_target_window','read_visible_text','find_visible_text','refresh_screen_snapshot','click_ocr_text'),
         )
 
 
@@ -1575,6 +1640,9 @@ class ToolRegistry:
                     job_object=getattr(task_context, "job_object", None) if task_context else None,
                     cancellation_token=token,
                     on_entered=(lambda started: live.entered(live_generation, started)) if live is not None else None,
+                    **({'on_perception':lambda receipt,snapshot: perception.publish_live(
+                        receipt,snapshot,task_context,screen_snapshot or {'hwnd':validated_args.get('hwnd')})}
+                        if worker_req.perception_updates else {}),
                 )
                 if status == "ok" and isinstance(payload, WorkerResponse):
                     result = payload.result
@@ -1698,6 +1766,10 @@ class ToolRegistry:
             future = None
             try:
                 executor_context = task_context
+                if tool_name == "restart_core":
+                    from types import SimpleNamespace
+                    executor_context=SimpleNamespace(task_id=task_context.task_id,cancellation_token=token,
+                        request_core_restart=getattr(self,"core_restart_callback",None))
                 if grounded_ui_target is not None and task_context is not None:
                     executor_context = _ExecutorContextOverlay(task_context, grounded_ui_target)
                 future = self.submit_owned(
@@ -1880,6 +1952,15 @@ class ToolRegistry:
                     self._screen_text_undo_cache.pop(state.get('undo_ref'), None)
         if live is not None:
             live.complete(live_generation)
+        if perception is not None and tool_name in ('capture_target_window','read_visible_text','find_visible_text'):
+            receipt=result.private_context.get('perception_receipt')
+            if final_result.ok and final_result.verified and receipt is not None:
+                try:
+                    if receipt.get('snapshot_id')!=final_result.data.get('snapshot_id'):
+                        raise ValueError('Observation does not match the executed result.')
+                    perception.publish(receipt,task_context)
+                except Exception:
+                    perception.clear()  # Refuse optional feedback, never fabricate a target.
         return final_result
 
     # ------------------------------------------------------------------
@@ -1969,6 +2050,8 @@ def register_default_tools(registry: ToolRegistry) -> None:
     from pluma.tools.files import FILE_TOOL_SPECS
     from pluma.tools.system import SYSTEM_TOOL_SPECS
     from pluma.tools.processes import PROCESS_TOOL_SPECS
+    from pluma.tools.settings import SETTINGS_TOOL_SPECS
+    from pluma.tools.health import HEALTH_TOOL_SPECS
     from pluma.tools.memory import MEMORY_TOOL_SPECS
     from pluma.tools.terminal import TERMINAL_TOOL_SPECS
     from pluma.tools.browser import BROWSER_TOOL_SPECS
@@ -1983,6 +2066,8 @@ def register_default_tools(registry: ToolRegistry) -> None:
         + SYSTEM_TOOL_SPECS
         + PROCESS_TOOL_SPECS
         + MEMORY_TOOL_SPECS
+        + SETTINGS_TOOL_SPECS
+        + HEALTH_TOOL_SPECS
         + TERMINAL_TOOL_SPECS
         + BROWSER_TOOL_SPECS
         + CLIPBOARD_TOOL_SPECS

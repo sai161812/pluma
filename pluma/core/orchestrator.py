@@ -147,12 +147,15 @@ class Orchestrator:
             return self._execute_request(request, capsule)
 
     def execute_typed_plan(self, request, capsule, plan):
-        """UI-selected saved action through the same owned FAST lifecycle."""
+        """UI-selected typed action through the same owned FAST lifecycle."""
         from pluma.core.router import RouteResult
         from pluma.brain.schemas import RouteMode
         if (plan.route != RouteMode.FAST or len(plan.steps) != 1 or
-                plan.steps[0].tool not in ('undo_last', 'open_folder') or not plan.steps[0].arguments):
-            raise ValueError('Only an exact selected history action is admitted here.')
+                plan.steps[0].tool not in ('undo_last', 'open_folder', 'save_settings', 'recover_settings', 'check_setup', 'restart_core') or not plan.steps[0].arguments):
+            raise ValueError('Only a supported exact typed action is admitted here.')
+        if plan.steps[0].tool in ('check_setup','restart_core'):
+            from copy import deepcopy
+            capsule.health_authorization=(plan.steps[0].tool,deepcopy(plan.steps[0].arguments))
         with self._supervisor.execution_gate.enter():
             return self._execute_request(request, capsule, selected_plan=plan)
 
@@ -167,7 +170,7 @@ class Orchestrator:
         logger.info(
             "task=%s request=%s mode=%s text=%r",
             task_id, request.request_id, request.input_mode.value,
-            redact_command_text(request.text)[:120],
+            redact_command_text(request.text)[:120] if getattr(self,"include_command_previews",True) else "[Command preview disabled]",
         )
 
         capsule.history_expected = True
@@ -202,13 +205,13 @@ class Orchestrator:
         # 3. Classify route
         if request.input_mode == InputMode.VOICE and capsule.voice_presentation is not None:
             capsule.voice_presentation.committed(request, capsule=capsule)
-        route_result: RouteResult = (RouteResult(route=RouteMode.FAST, reason="Selected saved action.", plan=selected_plan)
+        route_result: RouteResult = (RouteResult(route=RouteMode.FAST, reason="Selected typed action.", plan=selected_plan)
                                      if selected_plan is not None else self._router.route(request))
         if redact_command_text(request.text) == "[REDACTED CLIPBOARD COMMAND]":
             route_result.reason = "Clipboard-related command routed; private text omitted."
         else:
             route_result.reason = redact_command_text(route_result.reason)
-        logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason)
+        logger.info("task=%s route=%s reason=%r", task_id, route_result.route.value, route_result.reason if getattr(self,"include_command_previews",True) else "[Route detail disabled]")
 
         if self._ledger:
             try:

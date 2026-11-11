@@ -39,9 +39,11 @@ records exact tested source and native-versus-fixture boundaries.
 **Wire:** P17 CommandController owns typed submission/priority STOP and persisted terminal readback; P18 E91 adds actual current activity, bounded saved executor/task messages and measured connection readback. See [command wiring](wiring_command_submission.md) and [event/readback wiring](wiring_event_feed.md).
 
 ### 2. Settings
-**Purpose:** Configure LLM paths, hotkeys, audio emulation, tool policy overrides.  
-**Data/Actions:** Form fields bound to `config.yaml` and `PreferencesStore`; save action writes back via `SettingsContract`.  
-**Wire:** `pluma/ui/settings_contract.py`, `pluma/config/loader.py`, `pluma/memory/preferences.py`.
+**Purpose:** Read actual local configuration and edit supported settings.
+
+**Data/Actions:** P21 edits the plan limit, Text/STOP/push-to-talk hotkeys, local planner/speech model paths, bounded grace permission/delays, diagnostic logging, command-preview privacy and optional low-risk confirmation through typed settings query/save, exact revision, shared command/STOP ownership and material confirmation. Cancel discards drafts; Reload reads persisted/effective values. All changes require Core restart. Required voice, local approved runtimes, transient raw capture, sensitive-value redaction and mandatory policy/elevation boundaries cannot be disabled. Explicit recovery restores only the exact previous valid source and preserves the rejected source without promising automatic undo. Native text-hotkey activation reaches command entry through expiring authenticated runtime readback; it executes no tool.
+
+**Wire:** Native `MainWindow.NavigateSettings`, `SettingsPage`, `SettingsController`, `CoreSettingsProtocol`; backend `SettingsStore` JSON v1, registered `save_settings`/`recover_settings` and independent ledger/verifier; NativeHotkeys and the existing owned RuntimeController for text activation. `pluma/ui/settings_contract.py` remains an abstract alternate-host boundary, not a second native implementation. Exact acceptance and limitations are in [E103](../../../docs/completion/e103_p21_completion.md).
 
 ### 3. History / Activity Ledger
 **Purpose:** Browse all completed tasks.  
@@ -170,7 +172,7 @@ records exact tested source and native-versus-fixture boundaries.
 ### 23. Core Health Indicator
 **Purpose:** Small ambient indicator showing the resident core is connected.  
 **Data/Actions:** Green/red dot, "Connected" / "Disconnected", IPC ping latency.  
-**Current wire (P18 E91):** status on load/Refresh plus measured shell-owned runtime connection readback. This is connection/latency only; extended worker/model/device/capability health remains P22.
+**Current wire (P18 E91):** status on load/Refresh plus measured shell-owned runtime connection readback. This is connection/latency. P22 E104 adds explicit authenticated capability/status readback; see [health/setup/recovery](wiring_health_setup_recovery.md).
 
 ### 24. Toast Notification
 **Purpose:** One-line non-blocking info / warning pop-in.  
@@ -180,7 +182,7 @@ records exact tested source and native-versus-fixture boundaries.
 ### 25. Critical Error Dialog
 **Purpose:** Blocking dialog on fatal failures — IPC down, unhandled crash.  
 **Data/Actions:** Error message, optional stack trace, "Restart Core" button.  
-**Wire:** `CrashRecovery`, IPC connection loss event.
+**Wire (P22 E104):** explicit Recovery reads authenticated CoreHost status. Restart uses the existing material approval, typed owned graph drain and new-instance health; dead/unverified hosts cannot spawn a replacement. See [contract](wiring_health_setup_recovery.md).
 
 ---
 
@@ -188,5 +190,5 @@ records exact tested source and native-versus-fixture boundaries.
 
 ### 26. Setup Wizard
 **Purpose:** First-run check ensuring all system dependencies are present.  
-**Data/Actions:** Checklist — Tesseract OCR, PyWinAuto / UIA, microphone access, local LLM path, hotkey confirmation. "Continue" unlocks the Dashboard.  
-**Wire:** `pluma/config/loader.py` capability checks, `PreferencesStore`.
+**Data/Actions:** Checklist — local PaddleOCR/ONNX, UIA, llama.cpp and whisper.cpp files, consented microphone access and actual hotkey registration. "Continue" unlocks the Dashboard.
+**Wire (P22 E104):** bounded typed check_setup worker and HealthController. No first-run flag or fixture result grants readiness; Continue requires fresh native evidence. See [contract](wiring_health_setup_recovery.md).

@@ -605,9 +605,22 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
                 verified=False, error=str(e), error_code="INVALID_REGION",
             )
 
+    # Load only for this admitted OCR request, before starting the image TTL.
+    try:
+        from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
+        ocr_manager = get_default_ocr_lifecycle_manager()
+        ocr_manager.prepare(cancellation_token=cancellation_token)
+        check_cancelled()
+    except TaskCancelledError:raise
+    except Exception:
+        return ToolResult.failure('click_ocr_text','Local OCR preparation failed. No input was executed.','OCR_FAILED')
+
     # 4. Capture ephemeral image bytes. Even calls without a supplied snapshot
     # must expire their own pixel observation before input.
     capture_started = time.monotonic()
+    feedback_snapshot=None
+    from datetime import datetime,timedelta,timezone
+    observed_at=datetime.now(timezone.utc)
     image_bytes: Optional[bytes] = None
     try:
         check_cancelled()
@@ -616,6 +629,14 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
             image_bytes = capture.capture_region(region, hwnd=target_hwnd)
         else:
             image_bytes = capture.capture_window(target_hwnd)
+        if getattr(task_context,'publish_perception',None) is not None:
+            from pluma.perception.element_refs import ScreenSnapshot
+            from pluma.tools.screen_catalog import _feedback_receipt,_SNAPSHOT_TTL_S
+            feedback_snapshot=ScreenSnapshot(created_at=observed_at,expires_at=observed_at+timedelta(seconds=_SNAPSHOT_TTL_S),
+                hwnd=target_hwnd,pid=captured_pid,process_creation_time_ns=captured_creation_time_ns,
+                active_process=target_info.process_name,active_window_title=target_info.window_title,
+                window_class=target_info.class_name,window_rect=window_rect,dpi_scale=captured_dpi_scale)
+            _feedback_receipt(feedback_snapshot,region,task_context)
     except TaskCancelledError:
         raise
     except Exception as cap_exc:
@@ -628,8 +649,6 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
     # 5. Run OCR only on the captured target image. A process-isolated ToolSpec
     # supplies the hard stop boundary for an uninterruptible OCR backend.
     try:
-        from pluma.perception.ocr_lifecycle import get_default_ocr_lifecycle_manager
-        ocr_manager = get_default_ocr_lifecycle_manager()
         check_cancelled()
         ocr_result = ocr_manager.run_ocr(image_bytes, cancellation_token=cancellation_token)
         check_cancelled()
@@ -650,6 +669,18 @@ def execute_click_ocr_text(args: Dict[str, Any], task_context: Any = None) -> To
 
     # 6. Find matching words
     matches = ocr_result.find_words(text_query, min_confidence=min_confidence, exact_match=True)
+    if feedback_snapshot is not None:
+        from pluma.perception.element_refs import ScreenElement,ElementSource
+        from pluma.tools.screen_catalog import _feedback_receipt
+        element=None
+        if len(matches)==1:
+            word=matches[0];left=region.left if region else 0;top=region.top if region else 0
+            element=ScreenElement(snapshot_id=feedback_snapshot.snapshot_id,source=ElementSource.OCR,label=word.text,
+                bounds=BoundingBox(left=word.bounds.left+left,top=word.bounds.top+top,
+                    right=word.bounds.right+left,bottom=word.bounds.bottom+top),confidence=word.confidence)
+            feedback_snapshot=feedback_snapshot.model_copy(update={'ocr_words':[element]})
+        _feedback_receipt(feedback_snapshot,region,task_context,
+            'UNIQUE' if len(matches)==1 else 'NONE' if not matches else 'AMBIGUOUS',element)
 
     if len(matches) == 0:
         return ToolResult(

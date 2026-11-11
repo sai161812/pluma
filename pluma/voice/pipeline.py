@@ -92,8 +92,10 @@ class VoicePipeline:
         self,
         lifecycle_manager: Optional[VoiceLifecycleManager] = None,
         vad: Optional[EnergyVAD] = None,
+        include_command_previews: bool = True,
     ) -> None:
         self.lifecycle = lifecycle_manager or VoiceLifecycleManager()
+        self.include_command_previews = include_command_previews
         self.vad = vad or EnergyVAD()
 
     def process_audio(
@@ -155,6 +157,6 @@ class VoicePipeline:
 
         logger.info(
             "Voice utterance transcribed: '%s' (confidence: %0.2f)",
-            redact_command_text(normalized_text), stt_result.confidence,
+            redact_command_text(normalized_text) if self.include_command_previews else "[Command preview disabled]", stt_result.confidence,
         )
         return request

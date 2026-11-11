@@ -417,9 +417,16 @@ def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
     user.SetWindowPos.argtypes = [w.HWND, w.HWND, c.c_int, c.c_int, c.c_int, c.c_int, w.UINT]
     user.SetWindowPos.restype = w.BOOL
 
+    prepared = []
+    def prepare_fixture_ocr(_, cancellation_token=None):
+        if cancellation_token is not None:
+            cancellation_token.raise_if_cancelled()
+        prepared.append("fixture-ready")
+
     def move_owned_window_during_ocr(
         _: object, image_bytes: bytes, cancellation_token=None
     ) -> OcrResult:
+        assert prepared == ["fixture-ready"]
         assert image_bytes == b"BM_BYTES"
         moved = user.SetWindowPos(
             w.HWND(hwnd), None,
@@ -437,6 +444,9 @@ def test_p12_e05_ocr_click_refuses_when_owned_window_moves_during_ocr(
         ])
 
     monkeypatch.setattr("pluma.perception.capture.WindowCapture.capture_window", lambda self, target: b"BM_BYTES")
+    # This case injects recognition, so preparation must use the same inert
+    # fixture boundary. Actual local-model preparation is covered separately.
+    monkeypatch.setattr("pluma.perception.ocr_lifecycle.OcrLifecycleManager.prepare", prepare_fixture_ocr)
     monkeypatch.setattr(
         "pluma.perception.ocr_lifecycle.OcrLifecycleManager.run_ocr",
         move_owned_window_during_ocr,

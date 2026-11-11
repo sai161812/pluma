@@ -252,6 +252,27 @@ namespace PLUMA.UI
             VersionedCallAsync(new CoreRequestProtocol.SettingsQueryRequest(requestId).ToMessage(), requestId,
                 false, false, bytes => CoreRequestProtocol.SettingsSnapshot.Parse(bytes), value => value.RequestId, cancellationToken);
 
+        internal Task<CoreRequestResult<CoreRequestProtocol.PerceptionSnapshot>> GetPerceptionAsync(string request,CancellationToken token)=>
+            VersionedCallAsync(new CoreRequestProtocol.PerceptionRequest(request).ToMessage(),request,false,false,
+                bytes=>CoreRequestProtocol.PerceptionSnapshot.Parse(bytes),value=>value.RequestId,token);
+
+        internal Task<CoreRequestResult<CoreHealthProtocol.Snapshot>> GetHealthAsync(string request,CancellationToken token)=>
+            VersionedCallAsync(CoreHealthProtocol.Query(request),request,false,false,
+                bytes=>CoreHealthProtocol.Snapshot.Parse(bytes),value=>value.RequestId,token);
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SubmitHealthAsync(string request,CoreHealthProtocol.Operation operation,CancellationToken token)=>
+            VersionedCallAsync(operation.Message(request),request,false,true,
+                bytes=>CoreRequestProtocol.SubmissionAck.Parse(bytes),value=>value.RequestId,token);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SettingsEditSnapshot>> GetSettingsEditAsync(
+            string requestId, CancellationToken token) =>
+            VersionedCallAsync(new CoreRequestProtocol.SettingsEditQuery(requestId).ToMessage(), requestId,
+                false, false, bytes => CoreRequestProtocol.SettingsEditSnapshot.Parse(bytes), value => value.RequestId, token);
+
+        internal Task<CoreRequestResult<CoreRequestProtocol.SubmissionAck>> SaveSettingsAsync(
+            CoreRequestProtocol.SettingsSaveRequest request, CancellationToken token) =>
+            VersionedCallAsync(request.ToMessage(), request.RequestId, false, true,
+                bytes => CoreRequestProtocol.SubmissionAck.Parse(bytes), value => value.RequestId, token);
+
         internal Task<CoreRequestResult<CoreRequestProtocol.HistoryReply>> GetHistoryAsync(
             string requestId, string? taskId, int limit, CancellationToken cancellationToken) =>
             VersionedCallAsync(new CoreRequestProtocol.HistoryQueryRequest(requestId, taskId, limit).ToMessage(), requestId,

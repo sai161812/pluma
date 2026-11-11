@@ -8,6 +8,9 @@ from pydantic import (BaseModel, ConfigDict, Field, StrictBool, StrictInt,
                       StrictStr, ValidationError, model_validator)
 
 
+from pluma.config.settings_contract import FIELDS
+from pluma.perception.feedback import Observation
+
 PROTOCOL_VERSION = 1
 
 
@@ -81,6 +84,44 @@ class SettingsQueryV1(_Envelope):
     def canonical_request_id(self):
         _validate_id("request_id", self.request_id)
         return self
+
+
+class SettingsEditQueryV1(_Envelope):
+    message_type: Literal["settings_edit_query"]
+    request_id: StrictStr
+
+    @model_validator(mode="after")
+    def canonical_id(self):
+        _validate_id("request_id", self.request_id)
+        return self
+
+
+from pluma.config.settings_contract import SettingsSaveArgs, SettingsValues
+
+
+class SettingsSaveV1(SettingsSaveArgs):
+    protocol_version: Literal[1]
+    message_type: Literal["settings_save"]
+    request_id: StrictStr
+
+    @model_validator(mode="after")
+    def canonical_id(self):
+        _validate_id("request_id", self.request_id)
+        return self
+
+
+class SettingsEditSnapshotV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    protocol_version: Literal[1] = 1
+    message_type: Literal["settings_edit_snapshot"] = "settings_edit_snapshot"
+    request_id: StrictStr
+    revision: StrictStr = Field(pattern=r"^(?:absent|[0-9a-f]{64})$")
+    persisted: SettingsValues
+    effective: SettingsValues
+    hotkeys_registered: StrictBool = False
+    previous_revision: Optional[StrictStr] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    editable_fields: list[StrictStr] = Field(default_factory=lambda: list(FIELDS))
+    restart_fields: list[StrictStr] = Field(max_length=15)
 
 
 class VoiceQueryV1(_Envelope):
@@ -398,6 +439,25 @@ class RuntimeQueryV1(_Envelope):
         return self
 
 
+class PerceptionQueryV1(RuntimeQueryV1):
+    message_type: Literal['perception_query']
+
+
+class PerceptionSnapshotV1(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True,frozen=True)
+    protocol_version:Literal[1]=PROTOCOL_VERSION
+    message_type:Literal['perception_snapshot']='perception_snapshot'
+    request_id:StrictStr
+    observations:list[Observation]=Field(max_length=256)
+
+    @model_validator(mode='after')
+    def ids(self):
+        _validate_id('request_id',self.request_id)
+        ids=[item.task_id for item in self.observations]
+        if len(ids)!=len(set(ids)):raise ValueError('Duplicate perception task.')
+        return self
+
+
 class RuntimeTaskV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     task_id: StrictStr
@@ -453,10 +513,21 @@ class RuntimeSnapshotV1(BaseModel):
     request_id: StrictStr
     tasks: list[RuntimeTaskV1] = Field(max_length=256)
     terminations: list[WorkerTerminationV1] = Field(max_length=256)
+    core_instance_id: Optional[StrictStr] = None
+    core_ready: Optional[StrictBool] = None
+    text_activation_id: Optional[StrictStr] = None
+    text_activation_utc: Optional[StrictStr] = Field(default=None,max_length=64)
 
     @model_validator(mode="after")
     def consistent(self):
         _validate_id("request_id", self.request_id)
+        if (self.text_activation_id is None)!=(self.text_activation_utc is None):
+            raise ValueError("Partial text activation.")
+        if self.text_activation_id is not None:
+            _validate_id("text_activation_id",self.text_activation_id)
+            from datetime import datetime
+            if datetime.fromisoformat(self.text_activation_utc).tzinfo is None:
+                raise ValueError("Text activation requires UTC time.")
         ids = [item.task_id for item in self.tasks]
         if len(set(ids)) != len(ids):
             raise ValueError("Duplicate runtime task")
@@ -835,6 +906,10 @@ def parse_versioned_request(payload: dict):
             return StopRequestV1.model_validate(payload)
         if kind == "settings_query":
             return SettingsQueryV1.model_validate(payload)
+        if kind == "settings_edit_query":
+            return SettingsEditQueryV1.model_validate(payload)
+        if kind == "settings_save":
+            return SettingsSaveV1.model_validate(payload)
         if kind == "voice_query":
             return VoiceQueryV1.model_validate(payload)
         if kind == "history_query":
@@ -855,6 +930,8 @@ def parse_versioned_request(payload: dict):
             return ActionVerificationQueryV1.model_validate(payload)
         if kind == "runtime_query":
             return RuntimeQueryV1.model_validate(payload)
+        if kind == 'perception_query':
+            return PerceptionQueryV1.model_validate(payload)
     except ValidationError:
         raise ValueError("INVALID_REQUEST") from None
     raise ValueError("UNKNOWN_MESSAGE_TYPE")

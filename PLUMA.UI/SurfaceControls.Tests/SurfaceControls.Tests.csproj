@@ -31,6 +31,9 @@
     <Compile Include="../PLUMA.UI/CoreStatus.cs" Link="CoreStatus.cs" />
     <Compile Include="../PLUMA.UI/CoreIpcClient.cs" Link="CoreIpcClient.cs" />
     <Compile Include="../PLUMA.UI/CoreRequestProtocol.cs" Link="CoreRequestProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CoreHealthProtocol.cs" Link="CoreHealthProtocol.cs" />
+    <Compile Include="../PLUMA.UI/HealthController.cs" Link="HealthController.cs" />
+    <Compile Include="../PLUMA.UI/CoreSettingsProtocol.cs" Link="CoreSettingsProtocol.cs" />
     <Compile Include="../PLUMA.UI/CoreContractProtocol.cs" Link="CoreContractProtocol.cs" />
     <Compile Include="../PLUMA.UI/CoreActivityProtocol.cs" Link="CoreActivityProtocol.cs" />
     <Compile Include="../PLUMA.UI/ActivitySurfaceFact.cs" Link="ActivitySurfaceFact.cs" />
@@ -43,6 +46,7 @@
     <Compile Include="../PLUMA.UI/PopupStatusIndicator.cs" Link="PopupStatusIndicator.cs" />
     <Compile Include="../PLUMA.UI/ConfirmationController.cs" Link="ConfirmationController.cs" />
     <Compile Include="../PLUMA.UI/CommandController.cs" Link="CommandController.cs" />
+    <Compile Include="../PLUMA.UI/SettingsController.cs" Link="SettingsController.cs" />
     <Compile Include="../PLUMA.UI/EventFeedController.cs" Link="EventFeedController.cs" />
     <Compile Include="../PLUMA.UI/EventNoticePresentation.cs" Link="EventNoticePresentation.cs" />
     <Compile Include="../PLUMA.UI/NativeConfirmationPresenter.cs" Link="NativeConfirmationPresenter.cs" />
@@ -71,6 +75,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../PLUMA.UI/CoreRuntimeProtocol.cs" Link="CoreRuntimeProtocol.cs" />
+    <Compile Include="../PLUMA.UI/CorePerceptionProtocol.cs" Link="CorePerceptionProtocol.cs" />
+    <Compile Include="../PLUMA.UI/PerceptionPresentation.cs" Link="PerceptionPresentation.cs" />
+    <Compile Include="../PLUMA.UI/NativePerceptionTarget.cs" Link="NativePerceptionTarget.cs" />
+    <Compile Include="../PLUMA.UI/PerceptionFeedbackHost.cs" Link="PerceptionFeedbackHost.cs" />
+    <Compile Include="../PLUMA.UI/PerceptionFeedbackWindow.cs" Link="PerceptionFeedbackWindow.cs" />
+    <Page Include="../PLUMA.UI/ScreenCaptureFlash.xaml" Link="ScreenCaptureFlash.xaml" />
+    <Compile Include="../PLUMA.UI/ScreenCaptureFlash.xaml.cs" Link="ScreenCaptureFlash.xaml.cs" />
     <Compile Include="../PLUMA.UI/CoreVoiceProtocol.cs" Link="CoreVoiceProtocol.cs" />
     <Compile Include="../PLUMA.UI/VoiceController.cs" Link="VoiceController.cs" />
     <Compile Include="../PLUMA.UI/CoreHistoryProtocol.cs" Link="CoreHistoryProtocol.cs" />

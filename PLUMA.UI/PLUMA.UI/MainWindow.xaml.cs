@@ -44,6 +44,9 @@ namespace PLUMA.UI
         private readonly TaskCompletionSource _closedDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CommandController _commands;
         private readonly DispatcherQueue _dispatcher;
+        private readonly PerceptionFeedbackHost _feedback;
+        internal PerceptionFeedbackHost FeedbackForAcceptance => _feedback;
+        internal Task StopForAcceptance() => _commands.StopAsync();
         private string? _lastStopMessage;
         public PopupStackHost Popups
         {
@@ -60,18 +63,26 @@ namespace PLUMA.UI
             _coreStatus = new CoreIpcClient(options);
             InitializeComponent();
             _dispatcher = DispatcherQueue;
+            _feedback = new PerceptionFeedbackHost(this);
             _commands = new CommandController(new CoreCommandClient(_coreStatus));
             _commands.Changed += OnCommandChanged;
             _events = new EventFeedController(new CoreEventFeedClient(_coreStatus));
             _events.Notice += OnEventNotice;
             _events.Surface += OnActivitySurface;
-            _runtime = new RuntimeController(_coreStatus.GetRuntimeAsync);
+            _runtime = new RuntimeController(_coreStatus.GetRuntimeAsync, perception: _coreStatus.GetPerceptionAsync);
+            _runtime.PerceptionChanged += OnPerception;
             _runtime.Changed += OnRuntimeChanged;
+            _runtime.TextRequested += OpenCommandEntry;
             _runtime.WorkerTerminated += OnWorkerTerminated;
             _voice = new VoiceController(_coreStatus.GetVoiceAsync);
             _voice.Changed += OnVoiceChanged;
             _history = new HistoryController(_coreStatus.GetHistoryPageAsync);
             _savedDetail = new SavedDetailController(_coreStatus);
+            _health=new HealthController(_coreStatus.GetHealthAsync,_commands);
+            _commands.Changed+=_health.OnCommand;
+            _health.Changed+=OnHealthChanged;
+            _settings = new SettingsController(_coreStatus.GetSettingsEditAsync, _coreStatus.GetSettingsAsync, _commands);
+            _commands.Changed += _settings.OnCommandChanged;
 
             // Extend content into the title bar so we can show a subtle app title
             // while retaining the native caption buttons. Register the AppTitleBar
@@ -91,23 +102,34 @@ namespace PLUMA.UI
             };
             Closed += async (_, _) =>
             {
-                _closed = true; _healthLifetime.Cancel(); _popups?.Dispose(); _activityTray?.Dispose();
+                _closed = true; _healthLifetime.Cancel(); _feedback.Dispose(); _popups?.Dispose(); _activityTray?.Dispose();
                 _commands.Changed -= OnCommandChanged;
                 _events.Notice -= OnEventNotice;
                 _events.Surface -= OnActivitySurface;
                 _runtime.Changed -= OnRuntimeChanged;
+                _runtime.PerceptionChanged -= OnPerception;
+                _runtime.TextRequested -= OpenCommandEntry;
                 _runtime.WorkerTerminated -= OnWorkerTerminated;
                 _voice.Changed -= OnVoiceChanged;
-                await _commands.DisposeAsync();
-                await _observerStartupTask;
-                await _confirmationTask;
-                await _eventTask;
-                await _runtimeTask;
-                await _voiceTask;
-                await _activityNavigationTask;
-                await _history.DisposeAsync();
-                await _savedDetail.DisposeAsync();
-                await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
+                ShutdownStageForAcceptance="commands";await _commands.DisposeAsync();
+                _commands.Changed -= _settings.OnCommandChanged;
+                ShutdownStageForAcceptance="settings";await _settings.DisposeAsync();
+                _commands.Changed-=_health.OnCommand;
+                _health.Changed-=OnHealthChanged;
+                _critical?.Hide();
+                ShutdownStageForAcceptance="health";await _health.DisposeAsync();
+                ShutdownStageForAcceptance="recovery";await _recoveryTask;
+                ShutdownStageForAcceptance="health-dialog";await _healthDialogTask;
+                ShutdownStageForAcceptance="observer-startup";await _observerStartupTask;
+                ShutdownStageForAcceptance="confirmations";await _confirmationTask;
+                ShutdownStageForAcceptance="events";await _eventTask;
+                ShutdownStageForAcceptance="runtime";await _runtimeTask;
+                ShutdownStageForAcceptance="voice";await _voiceTask;
+                ShutdownStageForAcceptance="activity";await _activityNavigationTask;
+                ShutdownStageForAcceptance="history";await _history.DisposeAsync();
+                ShutdownStageForAcceptance="detail";await _savedDetail.DisposeAsync();
+                ShutdownStageForAcceptance="transport";await _coreStatus.DisposeAsync(); _healthLifetime.Dispose();
+                ShutdownStageForAcceptance="complete";
                 _closedDrain.TrySetResult();
             };
         }
@@ -117,6 +139,9 @@ namespace PLUMA.UI
             ContentFrame.Navigate(typeof(DashboardPage));
             if (ContentFrame.Content is DashboardPage dashboard)
             {
+                dashboard.AttachHealth(_health);
+                dashboard.SetupRequested+=OpenSetup;
+                dashboard.RecoveryRequested+=OpenRecovery;
                 dashboard.AttachCommandController(_commands);
                 dashboard.AttachCoreClient(_coreStatus, _healthLifetime.Token);
                 dashboard.AttachEventController(_events);
@@ -124,9 +149,60 @@ namespace PLUMA.UI
             }
         }
 
+        private readonly HealthController _health;
+        private CriticalErrorDialog? _critical;
+        private Task _healthDialogTask=Task.CompletedTask,_recoveryTask=Task.CompletedTask;
+        internal SetupWizard? Setup=>ContentFrame.Content as SetupWizard;
+        internal CriticalErrorDialog? CriticalForAcceptance=>_critical;
+        internal HealthView HealthForAcceptance=>_health.View;
+        internal string ShutdownStageForAcceptance {get;private set;}="open";
+        internal void OpenSetupForAcceptance()=>OpenSetup();
+        private async void OpenSetup()
+        {
+            ContentFrame.Navigate(typeof(SetupWizard));
+            if(Setup is {} page)
+            {
+                page.AttachHealth(_health,_commands,_healthLifetime.Token);
+                page.ContinueRequested+=async (_,_)=>{if(await _health.VerifyContinueAsync(_healthLifetime.Token)&&!_closed)NavigateDashboard();};
+                await _health.RefreshAsync(_healthLifetime.Token);
+            }
+        }
+        private void OpenRecovery(){if(_healthDialogTask.IsCompleted)_healthDialogTask=ShowRecoveryAsync();}
+        private async Task ShowRecoveryAsync()
+        {
+            await _health.RefreshAsync(_healthLifetime.Token);
+            if(_closed||_confirmationPresenter?.ActiveDialog is not null)return;
+            var dialog=new CriticalErrorDialog{XamlRoot=ContentFrame.XamlRoot,Title="Core recovery",ErrorMessage=_health.View.Message,
+                SanitizedDetails=_health.View.Snapshot?.Code??"Authenticated Core identity unavailable. Start Core manually; no replacement is launched.",CanRestart=_health.View.CanRestart};
+            _critical=dialog;
+            dialog.RestartRequested+=(_,_)=>{if(_recoveryTask.IsCompleted)_recoveryTask=RestartFromDialog(dialog);};
+            try{await dialog.ShowAsync();}finally{if(ReferenceEquals(_critical,dialog))_critical=null;}
+        }
+        private async Task RestartFromDialog(CriticalErrorDialog dialog)
+        {
+            // Let the exact existing policy approval surface own the modal root.
+            // Dashboard health remains factual while the approval is displayed.
+            dialog.Hide();await _healthDialogTask;
+            await _health.RestartAsync(_healthLifetime.Token);
+            if(!_closed&&_health.View.Snapshot?.State!="READY")_healthDialogTask=ShowRecoveryAsync();
+        }
+        private void OnHealthChanged(HealthView view)
+        {
+            if(!_dispatcher.HasThreadAccess){_dispatcher.TryEnqueue(()=>OnHealthChanged(_health.View));return;}
+            if(_closed)return;
+            if(_critical is {} dialog){dialog.ErrorMessage=view.Message;dialog.CanRestart=view.CanRestart;}
+        }
         private readonly RuntimeController _runtime;
         private readonly HistoryController _history;
         private readonly SavedDetailController _savedDetail;
+        private readonly SettingsController _settings;
+        internal SettingsPage? Settings => ContentFrame.Content as SettingsPage;
+        internal void NavigateSettingsForAcceptance() => NavigateSettings();
+        private void NavigateSettings()
+        {
+            ContentFrame.Navigate(typeof(SettingsPage));
+            if (ContentFrame.Content is SettingsPage page) page.AttachSettings(_settings, _commands, _healthLifetime.Token);
+        }
         internal HistoryPage? History => ContentFrame.Content as HistoryPage;
         internal void NavigateHistoryForAcceptance() => NavigateHistory();
         private void NavigateHistory()
@@ -174,7 +250,7 @@ namespace PLUMA.UI
         internal event Action<string, int, bool>? NotificationPresented;
         internal DashboardPage? Dashboard => ContentFrame.Content as DashboardPage;
         internal void NavigateForAcceptance(bool dashboard)
-        { if (dashboard) NavigateDashboard(); else ContentFrame.Navigate(typeof(SettingsPage)); }
+        { if (dashboard) NavigateDashboard(); else NavigateSettings(); }
         private void OnWorkerTerminated(CoreRequestProtocol.WorkerTermination proof)
         {
             if (!_dispatcher.HasThreadAccess)
@@ -190,11 +266,23 @@ namespace PLUMA.UI
         private readonly System.Collections.Generic.HashSet<string> _terminalTasks = new();
         private readonly System.Collections.Generic.Queue<string> _terminalOrder = new();
         private int _runtimeOffset;
+        private void OpenCommandEntry(DateTimeOffset requested)
+        {
+            if(!_dispatcher.HasThreadAccess){_dispatcher.TryEnqueue(()=>OpenCommandEntry(requested));return;}
+            var age=DateTimeOffset.UtcNow-requested;
+            if(_closed || age<TimeSpan.Zero || age>TimeSpan.FromSeconds(3))return;
+            Activate(); NavigateDashboard();
+            if(Dashboard?.FindName("CommandInput") is Microsoft.UI.Xaml.Controls.AutoSuggestBox input)
+                input.Focus(FocusState.Programmatic);
+        }
         private void OnRuntimeChanged(RuntimeView view)
         {
             if (!_dispatcher.HasThreadAccess)
             { _dispatcher.TryEnqueue(() => OnRuntimeChanged(_runtime.View)); return; }
             if (_closed) return;
+            _feedback.Runtime(view);
+            if(view.CoreReady is not null)_commands.SetCoreReady(view.CoreReady);
+            _health.OnRuntime(view);
             var current = new System.Collections.Generic.HashSet<string>();
             var pending = new System.Collections.Generic.List<(string Key, int Surface, CoreRequestProtocol.RuntimeTask Task)>();
             foreach (var task in view.Tasks)
@@ -261,6 +349,7 @@ namespace PLUMA.UI
             if (_closed) return;
             if (entry.Terminal && _terminalTasks.Add(entry.TaskId))
             {
+                _runtime.NotePerceptionActivity();
                 _terminalOrder.Enqueue(entry.TaskId);
                 if (_terminalOrder.Count > 512) _terminalTasks.Remove(_terminalOrder.Dequeue());
                 foreach (string key in _runtimeKeys)
@@ -273,7 +362,9 @@ namespace PLUMA.UI
         {
             if (!_dispatcher.HasThreadAccess)
             { _dispatcher.TryEnqueue(() => OnCommandChanged(_commands.View)); return; }
-            if (_closed || view.StopMessage == _lastStopMessage) return;
+            if (_closed) return;
+            if (view.StopPending) _feedback.Stop();
+            if (view.StopMessage == _lastStopMessage) return;
             _lastStopMessage = view.StopMessage;
             if (view.StopMessage is null) { _popups?.Dismiss("command-stop"); return; }
             Popups.Present("command-stop", 20, new CancellationAnimation
@@ -284,11 +375,17 @@ namespace PLUMA.UI
             }, persistent: false, lifetime: TimeSpan.FromSeconds(4));
         }
 
+        private void OnPerception(CoreRequestProtocol.PerceptionSnapshot? frame)
+        {
+            if (!_dispatcher.HasThreadAccess) { _dispatcher.TryEnqueue(() => OnPerception(frame)); return; }
+            if (!_closed) _feedback.Observe(frame);
+        }
+
         private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
         {
             if (args.IsSettingsInvoked)
             {
-                ContentFrame.Navigate(typeof(SettingsPage));
+                NavigateSettings();
                 return;
             }
 

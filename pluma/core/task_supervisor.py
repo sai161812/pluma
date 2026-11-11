@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from pluma.core.cancellation import CancellationToken, StopReason, TaskCancelledError
 from pluma.core.cleanup import CleanupEvidence, cleanup_job, latest_unresolved
 from pluma.core.live_presentation import LivePresentation
+from pluma.perception.feedback import PerceptionFeedback
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,9 @@ class TaskCapsule(BaseModel):
     undo_stack: List[Dict[str, Any]] = Field(default_factory=list)
     steps: List[TaskStep] = Field(default_factory=list)
     live_presentation: Any = Field(default_factory=LivePresentation, exclude=True)
+    perception_feedback: Any = Field(default_factory=PerceptionFeedback, exclude=True)
     recognition_progress: Any = Field(default=None, exclude=True)
+    health_authorization: Any = Field(default=None, exclude=True)
     voice_presentation: Any = Field(default=None, exclude=True)
     owned_resources: List[OwnedResource] = Field(default_factory=list)
 
@@ -204,6 +207,7 @@ class TaskCapsule(BaseModel):
     worker_controller: Any = Field(default=None, exclude=True)
     tool_registry: Any = Field(default=None, exclude=True)
     inverse_workers: Dict[str, Any] = Field(default_factory=dict, exclude=True)
+    settings_path: Optional[str] = Field(default=None, exclude=True)
     storage_path: Optional[str] = Field(default=None, exclude=True)
     tool_services: Any = Field(default=None, exclude=True)
     tool_call_count: int = 0
@@ -377,6 +381,7 @@ class TaskCapsule(BaseModel):
         if self.snapshot_registry is not None:
             check = CleanupEvidence(resource_id="snapshots:" + self.task_id, kind="snapshots", code="SNAPSHOT_RELEASE_UNVERIFIED")
             try:
+                self.perception_feedback.finish(self)
                 self.snapshot_registry.clear()
                 if len(self.snapshot_registry) != 0:
                     raise RuntimeError("Snapshot release readback failed.")
@@ -675,6 +680,7 @@ class TaskSupervisor:
         with self._admission_lock:
             capsule = self._get_task(task_id)
             capsule.cancellation_token.cancel(reason)
+            capsule.perception_feedback.revoke()
             if not self._claim_stop_cleanup(capsule):
                 return
         self._cleanup_stopped_task(capsule, reason, grace_s)
@@ -765,6 +771,22 @@ class TaskSupervisor:
         if self._ledger is None:
             return
         try:
+            for resource in capsule.owned_resources:
+                if resource.metadata.get("persisted_resource") is not True or resource.released_at is None:
+                    continue
+                checks = [entry for entry in capsule.cleanup_evidence if entry.resource_id == resource.resource_id]
+                if not checks or not checks[-1].verified:
+                    continue
+                row = self._ledger._db.execute_read_one(
+                    "SELECT task_id,external_id FROM resources WHERE id=?", (resource.resource_id,))
+                if row is None or row["task_id"] != capsule.task_id or row["external_id"] != resource.external_id:
+                    raise RuntimeError("Persisted resource ownership readback failed.")
+                released = resource.released_at.isoformat()
+                self._ledger.release_resource(resource.resource_id, released)
+                readback = self._ledger._db.execute_read_one(
+                    "SELECT released_at FROM resources WHERE id=?", (resource.resource_id,))
+                if readback is None or readback["released_at"] != released:
+                    raise RuntimeError("Persisted resource release readback failed.")
             self._ledger.record_cleanup(capsule.task_id, [item.model_dump() for item in capsule.cleanup_evidence])
         except Exception:
             capsule.cleanup_evidence.append(CleanupEvidence(resource_id="ledger:" + capsule.task_id,
@@ -815,6 +837,7 @@ class TaskSupervisor:
                 if cap.state not in _TERMINAL_STATES or cap.cleanup_pending:
                     cap.cancellation_token.cancel(StopReason.USER_STOP)
         self.execution_gate.begin_shutdown()
+        for cap in list(self._tasks.values()):cap.perception_feedback.revoke()
 
     def drain_shutdown_tasks(self) -> None:
         if not self.join_stop_operations(1.0):
@@ -895,6 +918,7 @@ class TaskSupervisor:
                 affected = [cap for cap in self._tasks.values() if cap.state not in _TERMINAL_STATES]
                 for capsule in affected:
                     capsule.cancellation_token.cancel(StopReason.USER_STOP)
+                for cap in self._tasks.values():cap.perception_feedback.revoke()
                 claimed = [cap for cap in affected if self._claim_stop_cleanup(cap)]
             for capsule in claimed:
                 try:
@@ -943,6 +967,7 @@ class TaskSupervisor:
             active = [cap for cap in affected if cap.state not in _TERMINAL_STATES]
             for cap in active:
                 cap.cancellation_token.cancel(StopReason.USER_STOP)
+            for cap in (list(self._tasks.values()) if global_stop else affected):cap.perception_feedback.revoke()
             claimed = []
             for cap in active:
                 try:

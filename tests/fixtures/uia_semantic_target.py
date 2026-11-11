@@ -27,8 +27,8 @@ BS_PUSHBUTTON = 0
 SS_LEFT = 0
 
 
-def main() -> None:
-    ready_path = Path(sys.argv[1])
+def main(ready_path=None) -> None:
+    ready_path = Path(sys.argv[1]) if ready_path is None else Path(ready_path)
     user = c.WinDLL("user32", use_last_error=True)
     kernel = c.WinDLL("kernel32", use_last_error=True)
     lresult = c.c_ssize_t
@@ -56,6 +56,10 @@ def main() -> None:
     user.SetWindowTextW.argtypes = [w.HWND, w.LPCWSTR]
     user.SetWindowTextW.restype = w.BOOL
     user.ShowWindow.argtypes = [w.HWND, c.c_int]
+    user.SetPropW.argtypes = [w.HWND,w.LPCWSTR,w.HANDLE]
+    user.SetPropW.restype = w.BOOL
+    user.GetPropW.argtypes = [w.HWND,w.LPCWSTR]
+    user.GetPropW.restype = w.HANDLE
     user.UpdateWindow.argtypes = [w.HWND]
     kernel.GetModuleHandleW.argtypes = [w.LPCWSTR]
     kernel.GetModuleHandleW.restype = w.HINSTANCE
@@ -66,6 +70,11 @@ def main() -> None:
 
     def handle(hwnd: int, message: int, wp: int, lp: int) -> int:
         nonlocal open_windows
+        if message == 0x0201:  # WM_LBUTTONDOWN: owned acceptance counter only.
+            count=int(user.GetPropW(hwnd,'PLUMA.Fixture.MouseDown') or 0)
+            if not user.SetPropW(hwnd,'PLUMA.Fixture.MouseDown',w.HANDLE(count+1)):
+                raise c.WinError()
+            return 0
         if message == 0x0001:  # WM_CREATE
             open_windows += 1
             if textless_window:
@@ -129,7 +138,9 @@ def main() -> None:
         ]
 
     instance = kernel.GetModuleHandleW(None)
-    definition = WndClass(0, procedure, 0, 0, instance, None, None, None, None, class_name)
+    # Borrowed system highlight brush gives owned capture/overlay fixtures a
+    # deterministic opaque background without changing any desktop setting.
+    definition = WndClass(0, procedure, 0, 0, instance, None, None, w.HBRUSH(14), None, class_name)
     user.RegisterClassW.argtypes = [c.POINTER(WndClass)]
     user.RegisterClassW.restype = w.ATOM
     if not user.RegisterClassW(c.byref(definition)):

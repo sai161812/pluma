@@ -88,6 +88,9 @@ class PolicyEngine:
             if risk in (RiskClass.READ, RiskClass.LOW, RiskClass.MEDIUM):
                 risk = RiskClass.HIGH
 
+        if risk == RiskClass.LOW and getattr(self.rules,"confirm_low_risk",False):
+            risk = RiskClass.MEDIUM
+
         # 1. RESTRICTED & DENY: Strictly forbidden
         if risk in (RiskClass.RESTRICTED, RiskClass.DENY):
             logger.warning("Policy DENIED tool '%s': forbidden under %s risk tier.", tool_name, risk.value)
@@ -141,6 +144,10 @@ class PolicyEngine:
                 if tool_name == 'undo_last' and arguments.get('selection') is not None:
                     prompt = 'Restore this selected saved action? Newer changes will be preserved if restoration conflicts. An uncertain inverse will not be repeated. PLUMA cannot automatically redo a completed undo.'
                     summary = arguments['selection']['material']
+                if tool_name == 'recover_settings':
+                    prompt = 'Restore the last valid local settings? The rejected source will be preserved separately. Core restart is required. No automatic undo is available.'
+                if tool_name == 'restart_core':
+                    prompt = 'Restart this exact owned Core? Active tasks will be stopped and safe reversible changes rolled back. No automatic undo is available. Recovery must be verified by authenticated new-instance health.'
                 if tool_name == 'safe_delete':
                     # This tool always recycles; the confirmation must state
                     # the actual recovery path and must never imply permanent

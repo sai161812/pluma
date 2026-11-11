@@ -7,12 +7,26 @@ def main():
     import threading
     from types import SimpleNamespace
 
+    # Diagnose native-host cold startup within the existing seven-second bound.
+    # Stack frames contain no captured content and are emitted only on this
+    # disposable test host; the production entry point never enables this.
+    trace_startup=os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('PLUMA_P20_FOLDER_TRACE')=='1'
+    if trace_startup:
+        import faulthandler
+        faulthandler.dump_traceback_later(5,file=sys.stderr)
+
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     os.environ["LOCALAPPDATA"] = sys.argv[2]
     mode = sys.argv[3] if len(sys.argv) > 3 else "status"
     saturate_status = len(sys.argv) > 4 and sys.argv[4] == "saturate"
     startup_control = mode == "history_undo"
     if startup_control: mode = "history"
+    if mode=="health":
+        from health_server import run
+        return run(sys.argv[1],Path(sys.argv[2]))
+    if mode in {"settings", "settings_restart", "settings_ui"}:
+        from settings_server import run
+        return run(sys.argv[1], Path(sys.argv[2]), mode)
 
     from pluma.core.ipc import IpcServer
 
@@ -44,6 +58,7 @@ def main():
 
 
     voice_threads = []
+    perception_fixture = None
     voice_release = threading.Event()
     voice_entered = threading.Event()
     voice_paused = threading.Event()
@@ -51,7 +66,7 @@ def main():
     initial_status_pending = threading.Event()
     initial_status_release = threading.Event()
     early_observation = threading.Event()
-    if mode in {"versioned", "commands", "voice", "history"}:
+    if mode in {"versioned", "commands", "voice", "history", "perception"}:
         from pluma.core.resident import ResidentCore
         from pluma.core.task_supervisor import TaskState, TaskSupervisor
         from pluma.config.loader import load_config
@@ -124,6 +139,10 @@ def main():
         core.config = load_config(Path(sys.argv[2]) / "no-user-settings.json")
         core.config["brain"]["model_path"] = r"C:\fixture\planner.gguf"
         core.config["voice"]["model_path"] = r"C:\fixture\whisper.ggml"
+        if mode=='perception':
+            from perception_server import PerceptionFixture
+            perception_fixture=PerceptionFixture(core,registry,supervisor,ledger,Path(sys.argv[2]))
+            core.orchestrator=perception_fixture
 
         if mode == "history":
             import sqlite3
@@ -200,6 +219,10 @@ def main():
                         verified = reader.execute("SELECT COUNT(*) FROM undo_claims WHERE state='verified'").fetchone()[0]
                         if verified != 1: raise RuntimeError('Owned inverse atomic consumption was not read back.')
                 elif command == "history_prepare_folder":
+                    if os.environ.get('PLUMA_P20_FOLDER_TRACE')=='1' and os.environ.get('GITHUB_ACTIONS')=='true':
+                        os.environ['PLUMA_P20_FOLDER_TRACE_ROOT']=str(Path(sys.argv[2]))
+                        startup=str(Path(__file__).resolve().parents[2]/'tests'/'fixtures'/'p20_folder_startup')
+                        os.environ['PYTHONPATH']=startup+os.pathsep+os.environ.get('PYTHONPATH','')
                     import pythoncom
                     import win32com.client
                     pythoncom.CoInitialize()
@@ -208,6 +231,20 @@ def main():
                         if windows.Count > 256: raise RuntimeError('Fixture folder enumeration exceeded its bound.')
                         prior_folder_windows = {int(windows.Item(i).HWND) for i in range(windows.Count)}
                     finally: pythoncom.CoUninitialize()
+                elif command == 'history_diagnostics':
+                    records=[]
+                    with closing(sqlite3.connect('file:'+owned_db.as_posix()+'?mode=ro',uri=True,timeout=.05)) as reader:
+                        reader.row_factory=sqlite3.Row
+                        for row in reader.execute('SELECT * FROM actions ORDER BY rowid DESC LIMIT 3'):
+                            records.append({key:row[key] for key in row.keys() if key in
+                                ('id','task_id','tool','tool_name','ok','success','verified','error_code','result_json','duration_ms')})
+                    workers=[]
+                    for cap in list(supervisor._tasks.values()):
+                        controller=getattr(cap,'worker_controller',None)
+                        workers.append(dict(task_id=cap.task_id,state=cap.state.value,stopped=cap.stop_latch_set,
+                            worker=getattr(controller,'worker_identity',None)))
+                    with (Path(sys.argv[2])/'folder-diagnostics.json').open('x',encoding='utf-8') as stream:
+                        json.dump(dict(actions=records,workers=workers),stream)
                 elif command == "history_assert_folder":
                     import pythoncom
                     import win32com.client
@@ -442,6 +479,8 @@ def main():
                 report_event(command.upper())
 
         def handler(request):
+            if mode=='perception' and perception_fixture.disconnected:
+                return {'protocol_version':1,'message_type':'protocol_error','error_code':'FIXTURE_DISCONNECTED','message':'Owned fixture disconnected.'}
             if mode == 'history' and request.get('message_type') in ('confirmation_query','events_query','runtime_query','voice_query') and not initial_status_read.is_set():
                 early_observation.set()
             if request.get("message_type") == "voice_query" and voice_paused.is_set():
@@ -463,6 +502,9 @@ def main():
             if request.get("message_type") == "stop":
                 release_status.set()
             reply = core.handle_ipc_command(request)
+            if mode=='perception' and reply.get('message_type')=='runtime_snapshot':
+                # Fixture-only readiness; native health acceptance is separate.
+                reply.update(core_instance_id='d2f2ec50-77d7-45fe-8b20-847d053f4264',core_ready=True)
             if mode == "history" and reply.get('message_type') == 'history_page':
                 assert_history_page(request, reply)
             if (request.get("message_type") == "confirmation_decision" and request.get("approved") is True
@@ -481,6 +523,7 @@ def main():
             raise RuntimeError("Fixture pipe did not start.")
         if any(name in sys.modules for name in ("torch", "whisper", "llama_cpp", "paddleocr")):
             raise RuntimeError("An IPC fixture imported a heavy inference runtime.")
+        if trace_startup:faulthandler.cancel_dump_traceback_later()
         print("READY", flush=True)
         for line in sys.stdin:
             if line.strip() == "stop":
@@ -489,6 +532,8 @@ def main():
                 voice_control(line.strip())
             if mode == "history" and line.strip().startswith("history_"):
                 history_control(line.strip())
+            if mode=='perception' and line.strip().startswith('perception_'):
+                perception_fixture.control(line.strip());report_event(line.strip().upper())
             if line.strip() == "pause_events":
                 paused_events.set(); report_event("EVENTS_PAUSED")
             if line.strip() == "resume_events":
@@ -519,6 +564,7 @@ def main():
                 if thread.is_alive():
                     raise RuntimeError("Owned fixture task did not exit.")
             registry.close()
+            if perception_fixture is not None:perception_fixture.close()
             if set(executed_calls) - approved_calls or len(executed_calls) != len(set(executed_calls)):
                 raise RuntimeError("Unapproved or duplicate fixture executor entry.")
             if len(command_calls) != len(set(command_calls)):

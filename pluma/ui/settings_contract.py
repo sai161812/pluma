@@ -1,15 +1,17 @@
-"""pluma.ui.settings_contract — Settings UI contract (stub).
+"""Settings view boundary for alternate Python hosts.
 
 Spec §19: Settings view is a functional contract; visual design is not defined here.
-Implemented in Phase 14.
+The production WinUI host implements navigation in MainWindow.NavigateSettings,
+with SettingsPage/SettingsController and the authenticated typed settings API.
+This abstract interface does not itself display a native view.
 """
 
 import abc
 
 
 class SettingsContract(abc.ABC):
-    """Stub: Abstract settings view contract. Implemented in Phase 14."""
+    """Alternate hosts must supply their own view implementation."""
 
     @abc.abstractmethod
     def show_settings(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-        raise NotImplementedError("SettingsContract not implemented until Phase 14.")
+        raise NotImplementedError("The selected host must implement settings navigation.")

@@ -330,3 +330,29 @@ def test_router_uses_supplied_registry_contract():
     from pluma.tools.registry import ToolRegistry
     result = Router(registry=ToolRegistry()).route("mute")
     assert result.plan is None and result.error
+
+
+@pytest.mark.parametrize("operation", ["create", "move", "rename"])
+def test_fast_file_route_keeps_long_operands_in_typed_args_not_purpose(tmp_path, operation):
+    root = tmp_path / ("owned-" + "x" * 48)
+    source = str(root / ("s" * 64 + ".txt"))
+    destination = str(root / ("d" * 64 + ".txt"))
+    if operation == "create":
+        command, tool, args = f"create folder {source}", "create_folder", {"path": source}
+    elif operation == "move":
+        command, tool, args = f"move file {source} to {destination}", "move_file", {
+            "source": source, "destination": destination,
+        }
+    else:
+        command, tool, args = f"rename file {source} to new.txt", "rename_file", {
+            "path": source, "new_name": "new.txt",
+        }
+
+    result = Router().route(PlumaRequest(input_mode=InputMode.TEXT, text=command))
+
+    assert result.route == RouteMode.FAST
+    assert result.plan is not None and len(result.plan.steps) == 1
+    call = result.plan.steps[0]
+    assert call.tool == tool and call.arguments == args
+    assert 1 <= len(call.purpose) <= 128
+    _assert_no_ml_loaded()

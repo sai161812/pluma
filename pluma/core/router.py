@@ -489,17 +489,26 @@ class Router:
 
     def _fast_create_folder(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         folder_name = m.group(1).strip()
-        plan = self._make_fast_plan(req.request_id, "create_folder", {"path": folder_name}, f"Create folder '{folder_name}'.")
-        return RouteResult(route=RouteMode.FAST, reason=f"Matched 'create_folder' for '{folder_name}'", plan=plan)
+        plan = self._make_fast_plan(
+            req.request_id, "create_folder", {"path": folder_name},
+            "Create the requested folder.",
+        )
+        return RouteResult(route=RouteMode.FAST, reason="Folder creation request.", plan=plan)
 
     def _fast_move_file(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         src = m.group(1).strip()
         dst = m.group(2).strip()
-        plan = self._make_fast_plan(req.request_id, "move_file", {"source": src, "destination": dst}, f"Move file '{src}' to '{dst}'.")
-        return RouteResult(route=RouteMode.FAST, reason=f"Matched 'move_file' from '{src}' to '{dst}'", plan=plan)
+        plan = self._make_fast_plan(
+            req.request_id, "move_file", {"source": src, "destination": dst},
+            "Move the requested file.",
+        )
+        return RouteResult(route=RouteMode.FAST, reason="File move request.", plan=plan)
 
     def _fast_rename_file(self, req: PlumaRequest, m: re.Match[str]) -> RouteResult:
         path = m.group(1).strip()
         new_name = m.group(2).strip()
-        plan = self._make_fast_plan(req.request_id, "rename_file", {"path": path, "new_name": new_name}, f"Rename file '{path}' to '{new_name}'.")
-        return RouteResult(route=RouteMode.FAST, reason=f"Matched 'rename_file' from '{path}' to '{new_name}'", plan=plan)
+        plan = self._make_fast_plan(
+            req.request_id, "rename_file", {"path": path, "new_name": new_name},
+            "Rename the requested file.",
+        )
+        return RouteResult(route=RouteMode.FAST, reason="File rename request.", plan=plan)

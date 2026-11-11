@@ -116,20 +116,55 @@ try {
 
     $summary.stage = 'native-controls'
     $controlsExecutable = Join-Path $repositoryRoot 'PLUMA.UI/SurfaceControls.Tests/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/SurfaceControls.Tests.exe'
-    $controls = Start-OwnedProcess $controlsExecutable @() 'native-controls'
-    try {
-        if (-not $controls.Process.WaitForExit(75000)) { throw 'Native control checks exceeded 75 seconds.' }
-        if ($controls.Process.ExitCode -ne 0) { throw "Native control runner failed with exit code $($controls.Process.ExitCode)." }
+    # Each coherent suite retains its existing 60-second native watchdog and
+    # 75-second owner budget. Both are mandatory, with separate retained reports.
+    $suiteFailures = [Collections.Generic.List[string]]::new()
+    $suites = @(
+        @{ Label = 'native-controls'; Arguments = @(); Report = 'control-tests.txt'; Result = 'controlsResult' },
+        @{ Label = 'native-p22-health'; Arguments = @('--p22-health'); Report = 'p22-health-tests.txt'; Result = 'healthControlsResult' },
+        @{ Label = 'native-p23-perception'; Arguments = @('--p23-perception'); Report = 'p23-perception-tests.txt'; Result = 'perceptionControlsResult' }
+    )
+    if ($env:PLUMA_P20_FOLDER_TRACE -eq '1') {
+        # Reproduce the retained intermittent folder finding in fresh owned
+        # fixtures. These diagnostic repetitions never replace the normal gate.
+        foreach ($attempt in 1..3) {
+            $suites += @{ Label = "native-p20-repeat-$attempt"; Arguments = @('--p20-undo'); Report = "p20-repeat-$attempt.txt"; Result = "p20Repeat${attempt}Result" }
+        }
     }
-    finally {
-        Finish-OwnedProcess $controls
-        $controlsLog = Join-Path (Split-Path $controlsExecutable -Parent) 'control-tests.txt'
-        if (Test-Path $controlsLog) { Copy-Item -LiteralPath $controlsLog -Destination (Join-Path $runDirectory 'control-tests.txt') }
-        $historyRender = Join-Path (Split-Path $controlsExecutable -Parent) 'history-page-saved-dark.png'
-        if (Test-Path $historyRender) { Copy-Item -LiteralPath $historyRender -Destination (Join-Path $runDirectory 'history-page-saved-dark.png') }
+    foreach ($suite in $suites) {
+        try {
+        $summary.stage = $suite.Label
+        $controls = Start-OwnedProcess $controlsExecutable $suite.Arguments $suite.Label
+        try {
+            if (-not $controls.Process.WaitForExit(75000)) { throw "$($suite.Label) exceeded 75 seconds." }
+            if ($controls.Process.ExitCode -ne 0) {
+                # Read only crash records for this owned executable on the test host.
+                Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=$controls.Created.ToLocalTime()} -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Message -match 'SurfaceControls.Tests.exe' } |
+                    Select-Object TimeCreated,Message | Out-String |
+                    Set-Content (Join-Path $runDirectory ($suite.Label + '.crash.txt'))
+                throw "$($suite.Label) failed with exit code $($controls.Process.ExitCode)."
+            }
+        }
+        finally {
+            Finish-OwnedProcess $controls
+            $controlsLog = Join-Path (Split-Path $controlsExecutable -Parent) 'control-tests.txt'
+            if (Test-Path $controlsLog) { Copy-Item -LiteralPath $controlsLog -Destination (Join-Path $runDirectory $suite.Report) }
+            $historyRender = Join-Path (Split-Path $controlsExecutable -Parent) 'history-page-saved-dark.png'
+            if (Test-Path $historyRender) { Copy-Item -LiteralPath $historyRender -Destination (Join-Path $runDirectory 'history-page-saved-dark.png') }
+        }
+        $controlReport = Assert-Report (Join-Path $runDirectory $suite.Report) '(?m)^\d+ UI checks passed\.'
+        $summary[$suite.Result] = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''
+        }
+        catch {
+            $failure = $suite.Label + ': ' + $_.Exception.Message
+            $suiteFailures.Add($failure)
+            $summary[$suite.Result] = 'FAILED ' + $failure
+            Write-Warning $failure
+        }
     }
-    $controlReport = Assert-Report (Join-Path $runDirectory 'control-tests.txt') '(?m)^\d+ UI checks passed\.'
-    $summary.controlsResult = ($controlReport -split '\r?\n' | Where-Object { $_ -match '^\d+ UI checks passed\.' }) -join ''
+    $summary['suiteFailures'] = $suiteFailures.ToArray()
+    if ($suiteFailures.Count -gt 0) { throw ($suiteFailures -join '; ') }
     $summary.status = 'passed'
     $summary.stage = 'complete'
     Write-Host 'Native popup, gallery formatting and control checks passed. Physical Windows 11 taskbar/DPI/accessibility review remains separate.'

@@ -296,14 +296,26 @@ def test_audit_terminal_task_memory_bounding() -> None:
     assert len(supervisor._tasks) == 25
 
 
-def test_audit_registry_exposes_86_tools() -> None:
-    """Audit: Verify P12's exact Section 21 screen catalog is registered."""
+def test_audit_registry_exposes_complete_catalog_and_owned_utilities() -> None:
+    """Verify the catalog plus the closed P21/P22 settings/health utilities."""
     from pluma.tools.registry import get_default_tool_registry
     reg = get_default_tool_registry()
 
-    assert len(reg) == 86
-    assert len(reg.list_tools()) == 86
-    assert len(reg.list_tool_names()) == 86
+    assert len(reg) == 90
+    assert len(reg.list_tools()) == 90
+    assert len(reg.list_tool_names()) == 90
+    settings = reg.lookup("save_settings")
+    assert settings.process_isolated and settings.undo_builder is not None
+    assert settings.verifier.__name__ == "verify_settings"
+    recovery = reg.lookup("recover_settings")
+    assert recovery.process_isolated and recovery.non_undoable and recovery.undo_builder is not None
+    assert recovery.verifier.__name__ == "verify_recovery"
+    setup = reg.lookup("check_setup")
+    assert setup.process_isolated and setup.risk_class == RiskClass.READ
+    assert setup.verifier.__name__ == "verify_setup"
+    restart = reg.lookup("restart_core")
+    assert restart.execution_scope == "task_service" and restart.non_undoable and restart.undo_builder is not None
+    assert restart.verifier.__name__ == "verify_restart"
     assert "move_file" in reg.list_tool_names()
     assert "inspect_active_window" in reg.list_tool_names()
     assert "undo_last" in reg.list_tool_names()

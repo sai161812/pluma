@@ -52,10 +52,14 @@ class ResidentCore:
         effective_model_path: Optional[str] = None,
         effective_stt_model_path: Optional[str] = None,
         confirmation_broker: Optional[Any] = None,
+        settings_path: Optional[str] = None,
     ) -> None:
         self.config = config or load_config()
+        self.settings_path = settings_path
         self.effective_model_path = effective_model_path
         self.effective_stt_model_path = effective_stt_model_path
+        self.default_model_path = effective_model_path or ""
+        self.default_stt_model_path = effective_stt_model_path or ""
         self.confirmation_broker = confirmation_broker
         self.registry = ownership_registry or OwnershipRegistry()
         self.ledger = ledger
@@ -94,6 +98,7 @@ class ResidentCore:
 
         self._hotkey_thread: Optional[threading.Thread] = None
         self._running = False
+        self._text_activation = None
         from pluma.core.shutdown import WorkGate
         self._entry_gate = WorkGate()
         self._voice_lock = threading.Lock()
@@ -337,11 +342,11 @@ class ResidentCore:
 
     def _handle_versioned_ipc(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         from pluma.core.ipc_contracts import (
-            ProtocolErrorV1, SubmissionAckV1,
+            ProtocolErrorV1, SubmissionAckV1, SettingsEditQueryV1, SettingsSaveV1,
             VoiceQueryV1,
             HistoryPageQueryV1, TaskDetailQueryV1, UndoSubmitV1, HistoryFolderSubmitV1,
             ConfirmationQueryV1, ConfirmationDecisionV1, ConfirmationDisconnectV1, EventsQueryV1,
-            ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
+            PerceptionQueryV1, ActionVerificationQueryV1, RuntimeQueryV1, ActionDetailQueryV1, ActivityQueryV1, HistoryQueryV1, SettingsQueryV1, StopRequestV1, SubmitTextV1,
             TerminalReadbackRequestV1, parse_versioned_request,
         )
         try:
@@ -366,6 +371,14 @@ class ResidentCore:
             return self._stop_v1(request)
         if isinstance(request, SettingsQueryV1):
             return self._settings_query_v1(request)
+        if isinstance(request, SettingsEditQueryV1):
+            return self._settings_edit_query_v1(request)
+        if isinstance(request, SettingsSaveV1):
+            from pluma.core.ipc_contracts import SubmitTextV1
+            selected = {"settings": request.model_dump(include={"expected_revision", "changes", "previous_revision"}, exclude_unset=True)}
+            task_request = SubmitTextV1(protocol_version=1, message_type="submit_text",
+                request_id=request.request_id, text="Restore previous valid PLUMA settings." if request.changes.recover_previous else "Save PLUMA settings.")
+            return self._submit_text_v1(task_request, SubmissionAckV1, selected=selected)
         if isinstance(request, HistoryQueryV1):
             return self._history_query_v1(request)
         if isinstance(request, TaskDetailQueryV1):
@@ -382,6 +395,8 @@ class ResidentCore:
             return self._action_verification_v1(request)
         if isinstance(request, ActionDetailQueryV1):
             return self._action_detail_v1(request)
+        if isinstance(request, PerceptionQueryV1):
+            return self._perception_query_v1(request)
         if isinstance(request, RuntimeQueryV1):
             return self._runtime_query_v1(request)
         if isinstance(request, VoiceQueryV1):
@@ -565,10 +580,19 @@ class ResidentCore:
                 result = self.orchestrator.execute(request, capsule=capsule)
             else:
                 from pluma.brain.schemas import Plan, RouteMode, ToolCall
-                plan = Plan(task_id=capsule.task_id, route=RouteMode.FAST, steps=[ToolCall(
-                    tool="open_folder" if 'folder' in selected else "undo_last",
-                    arguments={"path": selected['folder']} if 'folder' in selected else {"selection": selected},
-                    purpose="Execute the selected history action.")])
+                if "health_tool" in selected:
+                    tool,arguments=selected["health_tool"],selected["arguments"]
+                elif "settings" in selected:
+                    arguments=selected["settings"]
+                    if arguments.get("changes",{}).get("recover_previous"):
+                        tool="recover_settings"
+                        arguments={key:arguments[key] for key in ("expected_revision","previous_revision")}
+                    else:tool="save_settings"
+                elif "folder" in selected:
+                    tool,arguments="open_folder",{"path":selected["folder"]}
+                else:tool,arguments="undo_last",{"selection":selected}
+                plan=Plan(task_id=capsule.task_id,route=RouteMode.FAST,steps=[ToolCall(
+                    tool=tool,arguments=arguments,purpose="Execute the selected typed action.")])
                 result = self.orchestrator.execute_typed_plan(request, capsule, plan)
             projection = {
                 "terminal": bool(capsule.terminal_ready.is_set()),
@@ -711,6 +735,37 @@ class ResidentCore:
         except Exception:
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "CONTRACT_UNAVAILABLE", "message": "The requested contract is unavailable."}
+
+    def _settings_edit_query_v1(self, request):
+        from pluma.config.settings import SettingsStore
+        from pluma.config.settings_contract import values, FIELDS
+        from pluma.config.loader import _merge, _load_yaml, _DEFAULTS_FILE
+        from pluma.core.ipc_contracts import SettingsEditSnapshotV1, ProtocolErrorV1
+        try:
+            if self.settings_path is None:
+                raise ValueError("No editable source is configured.")
+            store=SettingsStore(self.settings_path)
+            previous_revision=None
+            try:
+                saved=store.snapshot()
+                from pluma.config.settings import _validate
+                _validate(saved.overrides)
+            except Exception:
+                revision, saved=store.recovery_state()
+                previous_revision=saved.revision
+            persisted = values(_merge(_load_yaml(_DEFAULTS_FILE), saved.overrides),
+                               self.default_model_path, self.default_stt_model_path)
+            effective = values(self.config, self.default_model_path, self.default_stt_model_path)
+            return SettingsEditSnapshotV1(request_id=request.request_id, revision=revision if previous_revision else saved.revision,
+                previous_revision=previous_revision,
+                hotkeys_registered=bool(self._running and getattr(self,"_hotkey_thread",None) is not None
+                    and self._hotkey_thread.is_alive() and getattr(self,"_hotkey_ready",threading.Event()).is_set()
+                    and getattr(self,"_hotkey_error",None) is None), editable_fields=[] if previous_revision else list(FIELDS),
+                persisted=persisted, effective=effective,
+                restart_fields=[key for key in FIELDS if getattr(persisted, key) != getattr(effective, key)]).model_dump(mode="json")
+        except Exception:
+            return ProtocolErrorV1(error_code="SETTINGS_UNAVAILABLE",
+                message="Saved settings are unavailable. Existing settings were preserved.").model_dump(mode="json")
 
     def _settings_query_v1(self, request):
         from pluma.core.ipc_contracts import SettingsSnapshotV1
@@ -925,12 +980,35 @@ class ResidentCore:
                         terminations[(cap.task_id, item.pid, item.creation_time)] = item
                         if len(terminations) > 256:
                             del terminations[next(iter(terminations))]
+            activation=getattr(self,"_text_activation",None)
             return RuntimeSnapshotV1(request_id=request.request_id, tasks=tasks,
+                text_activation_id=activation[0] if activation else None,
+                text_activation_utc=activation[1] if activation else None,
                 terminations=list(terminations.values())).model_dump(mode="json")
         except Exception:
             logger.warning("Live task evidence could not be read safely.")
             return {"protocol_version": 1, "message_type": "protocol_error",
                     "error_code": "RUNTIME_UNAVAILABLE", "message": "Live task evidence is unavailable."}
+
+    def _perception_query_v1(self,request):
+        from pluma.core.ipc_contracts import PerceptionSnapshotV1
+        import time
+        try:
+            supervisor=self.supervisor
+            if not supervisor._lock.acquire(timeout=.05):raise TimeoutError('Task readback is busy.')
+            try:capsules=[cap for cap in supervisor._tasks.values() if cap.perception_feedback.has_current()]
+            finally:supervisor._lock.release()
+            if len(capsules)>256:raise ValueError('Perception task bound exceeded.')
+            deadline=time.monotonic()+.1
+            items=[]
+            for cap in capsules:
+                if time.monotonic()>deadline:raise TimeoutError('Perception readback budget exceeded.')
+                item=cap.perception_feedback.snapshot(cap)
+                if item is not None and not cap.perception_feedback.task_stopped(cap):items.append(item)
+            return PerceptionSnapshotV1(request_id=request.request_id,observations=items).model_dump(mode='json')
+        except Exception:
+            return {'protocol_version':1,'message_type':'protocol_error','error_code':'PERCEPTION_UNAVAILABLE',
+                    'message':'Transient perception observations are unavailable.'}
 
     def _action_verification_v1(self, request):
         from pluma.core.ipc_contracts import ActionVerificationV1
@@ -1041,57 +1119,68 @@ class ResidentCore:
         pass
 
     def _hotkey_loop(self) -> None:
-        """Windows message loop for global hotkeys."""
-        if sys.platform != "win32":
-            return
-
-        import ctypes
-        from ctypes import wintypes
-        from pluma.voice.activation import parse_hotkey_string
-
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
-
-        # Register text and STOP hotkeys from config
-        text_mods, text_vk = parse_hotkey_string(get(self.config, "agent", "text_hotkey", default="win+alt+p"))
-        stop_mods, stop_vk = parse_hotkey_string(get(self.config, "agent", "stop_hotkey", default="ctrl+alt+esc"))
-
-        if not user32.RegisterHotKey(None, HOTKEY_ID_TEXT, text_mods, text_vk):
-            logger.warning("Failed to register Text hotkey")
-
-        if not user32.RegisterHotKey(None, HOTKEY_ID_STOP, stop_mods, stop_vk):
-            logger.warning("Failed to register STOP hotkey")
-
-        msg = wintypes.MSG()
-        while self._running:
-            bRet = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
-            if bRet <= 0:
-                break
-
-            if msg.message == 0x0312:  # WM_HOTKEY
-                if msg.wParam == HOTKEY_ID_STOP:
-                    logger.info("Global STOP hotkey triggered!")
+        """Acquire STOP first; publish readiness only after the complete bundle."""
+        from pluma.adapters.hotkeys import NativeHotkeys
+        owner = None
+        try:
+            owner = NativeHotkeys()
+            owner.prepare_queue()
+            owner.acquire([(HOTKEY_ID_STOP, get(self.config, "agent", "stop_hotkey")),
+                           (HOTKEY_ID_TEXT, get(self.config, "agent", "text_hotkey")),
+                           (0x3A03, get(self.config, "agent", "voice_hotkey", default="ctrl+alt+v"))])
+            registry=getattr(getattr(self,"orchestrator",None),"_registry",None)
+            if registry is not None:
+                registry.settings_owned_hotkeys=tuple(get(self.config,"agent",key,default="ctrl+alt+v")
+                    for key in ("text_hotkey","stop_hotkey","voice_hotkey"))
+            self._hotkey_ready.set()
+            while self._running:
+                message = owner.next()
+                if message is None:
+                    break
+                if message == (0x0312, HOTKEY_ID_STOP):
                     self.supervisor.stop_all_active_tasks()
-                elif msg.wParam == HOTKEY_ID_TEXT:
-                    logger.info("Global Text hotkey triggered!")
-
-            user32.TranslateMessage(ctypes.byref(msg))
-            user32.DispatchMessageW(ctypes.byref(msg))
-
-        user32.UnregisterHotKey(None, HOTKEY_ID_TEXT)
-        user32.UnregisterHotKey(None, HOTKEY_ID_STOP)
+                elif message == (0x0312, HOTKEY_ID_TEXT):
+                    from datetime import datetime, timezone
+                    from uuid import uuid4
+                    self._text_activation=(str(uuid4()),datetime.now(timezone.utc).isoformat())
+        except Exception:
+            self._hotkey_error = "HOTKEY_UNAVAILABLE"
+            self.supervisor.begin_shutdown()
+            self.supervisor.stop_all_active_tasks()
+            self.begin_shutdown()
+            self._running = False
+            self._hotkey_ready.set()
+        finally:
+            registry=getattr(getattr(self,"orchestrator",None),"_registry",None)
+            if registry is not None:
+                registry.settings_owned_hotkeys=()
+            try:
+                if owner is not None:
+                    owner.close()
+            except Exception:
+                self._hotkey_error = "HOTKEY_RELEASE_UNVERIFIED"
+            self._hotkey_ready.set()
 
     def start(self) -> None:
-        """Start the resident core, voice listener, and background workers."""
+        """Publish IPC/voice admission only after required hotkeys are acquired."""
+        if self._running:
+            return
         self._run_crash_recovery()
-        self.ipc.start()
-
-        if self.voice_enabled and self.voice_activation is not None:
-            self.voice_activation.start()
-
+        self._hotkey_ready = threading.Event()
+        self._hotkey_error = None
         self._running = True
-        if sys.platform == "win32":
-            self._hotkey_thread = threading.Thread(target=self._hotkey_loop, daemon=True, name="HotkeyThread")
-            self._hotkey_thread.start()
+        try:
+            if sys.platform == "win32":
+                self._hotkey_thread = threading.Thread(target=self._hotkey_loop, daemon=True, name="HotkeyThread")
+                self._hotkey_thread.start()
+                if not self._hotkey_ready.wait(2) or self._hotkey_error or not self._hotkey_thread.is_alive():
+                    raise RuntimeError("Required global hotkeys are unavailable. Core admission was not started.")
+            self.ipc.start()
+            if self.voice_enabled and self.voice_activation is not None:
+                self.voice_activation.start()
+        except Exception:
+            self.stop()
+            raise
 
     def begin_shutdown(self) -> None:
         from pluma.core.shutdown import WorkGate

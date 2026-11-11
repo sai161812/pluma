@@ -102,6 +102,20 @@ class OcrBackend(Protocol):
 # PaddleOCR Backend — lazy-loaded
 # ---------------------------------------------------------------------------
 
+def _local_model_dirs():
+    """Resolve already installed weights; execution never downloads models."""
+    import os
+    from pathlib import Path
+    from pluma.config.paths import PlumaPaths
+    roots=[PlumaPaths().ocr_models_dir,
+        Path(os.environ.get('PADDLE_PDX_CACHE_HOME',str(Path.home()/'.paddlex')))/'official_models']
+    for root in roots:
+        directories=[root/(name+'_onnx') for name in (_PADDLEOCR_DETECTION_MODEL,_PADDLEOCR_RECOGNITION_MODEL)]
+        if all((directory/'inference.onnx').is_file() and (directory/'inference.yml').is_file() for directory in directories):
+            return directories
+    raise FileNotFoundError('Installed local PP-OCRv6 small ONNX models are unavailable. Complete model setup before OCR.')
+
+
 class _PaddleOcrBackend:
     """PaddleOCR/ONNX Runtime backend loaded lazily inside method bodies."""
 
@@ -116,7 +130,17 @@ class _PaddleOcrBackend:
             if "CPUExecutionProvider" not in ort.get_available_providers():
                 raise RuntimeError("ONNX Runtime CPU provider is unavailable.")
 
-            from paddleocr import PaddleOCR  # type: ignore[import-not-found]
+            import os
+            directories=_local_model_dirs()
+            # Installed local models need no vendor network-host probe. Scope
+            # this switch to the lazy import; inference gets explicit disk paths.
+            previous=os.environ.get('PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK')
+            os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK']='True'
+            try:
+                from paddleocr import PaddleOCR  # type: ignore[import-not-found]
+            finally:
+                if previous is None:os.environ.pop('PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK',None)
+                else:os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK']=previous
 
             # Keep the OCR engine explicit, local and CPU-only. These small
             # PP-OCRv6 models are selected for rendered screen text; no
@@ -125,6 +149,8 @@ class _PaddleOcrBackend:
             self._ocr = PaddleOCR(
                 text_detection_model_name=_PADDLEOCR_DETECTION_MODEL,
                 text_recognition_model_name=_PADDLEOCR_RECOGNITION_MODEL,
+                text_detection_model_dir=str(directories[0]),
+                text_recognition_model_dir=str(directories[1]),
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,

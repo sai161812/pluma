@@ -10,7 +10,8 @@ def _invoke(dispatch, name, flags, *args):
     the fixed operations here needs a type library or a generated Python class.
     """
     try:
-        return dispatch.Invoke(dispatch.GetIDsOfNames(name), 0, flags, True, *args)
+        member = dispatch.GetIDsOfNames(name)
+        return dispatch.Invoke(member, 0, flags, True, *args)
     finally:
         dispatch = None  # Exception tracebacks must not retain apartment proxies.
 
