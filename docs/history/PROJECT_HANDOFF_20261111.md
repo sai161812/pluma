@@ -3987,4 +3987,3 @@ Reference: `PLUMA_BUILD_PLAN.md` Phase 11 & `PLUMA_MASTER_SPEC.md` §14, §15.
 3. Upon approval, implement `pluma/policy/` components and unit tests.
 4. Verify all tests pass (`pytest tests/unit/ -v`).
 5. Update `PROJECT_HANDOFF.md` before proceeding to Phase 12.
-
